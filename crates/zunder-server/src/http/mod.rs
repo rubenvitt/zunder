@@ -12,6 +12,7 @@ pub mod extract;
 pub mod static_files;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::extract::State;
 use axum::http::header::{REFERRER_POLICY, X_CONTENT_TYPE_OPTIONS, X_FRAME_OPTIONS};
@@ -22,12 +23,17 @@ use axum::{middleware, Json, Router};
 use serde_json::json;
 use tower_http::compression::CompressionLayer;
 use tower_http::set_header::SetResponseHeaderLayer;
+use tower_http::timeout::RequestBodyTimeoutLayer;
 use tower_http::trace::TraceLayer;
 
 use crate::app::App;
 use crate::auth::middleware::require_auth;
 use crate::auth::oidc::OidcClient;
 use crate::error::AppError;
+
+/// A request body that sends nothing for this long fails, so a stalled
+/// upload does not hold its connection (and a graceful shutdown) open.
+pub const REQUEST_BODY_IDLE_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Builds the complete router.
 pub fn router(app: App, oidc: Option<Arc<OidcClient>>) -> Router {
@@ -50,6 +56,7 @@ pub fn router(app: App, oidc: Option<Arc<OidcClient>>) -> Router {
         .with_state(app)
         // Compression skips text/event-stream, so SSE stays unbuffered.
         .layer(CompressionLayer::new().gzip(true).br(true))
+        .layer(RequestBodyTimeoutLayer::new(REQUEST_BODY_IDLE_TIMEOUT))
         .layer(SetResponseHeaderLayer::if_not_present(
             X_CONTENT_TYPE_OPTIONS,
             HeaderValue::from_static("nosniff"),

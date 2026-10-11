@@ -27,6 +27,7 @@ pub mod oauth;
 pub mod timing;
 pub mod views;
 
+use std::future::IntoFuture;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -101,18 +102,51 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
         .await
         .with_context(|| format!("{bind} lässt sich nicht binden"))?;
     tracing::info!(addr = %listener.local_addr()?, "zunder-server listening");
+    serve(listener, app, router, shutdown_signal(), DRAIN_TIMEOUT).await
+}
 
+/// How long running requests may take to finish after the shutdown signal.
+/// Below Docker's default stop timeout of 10 s, so the process still exits
+/// on its own (and closes SQLite) before it would be killed.
+pub const DRAIN_TIMEOUT: Duration = Duration::from_secs(8);
+
+/// Serves `router` on `listener` with the nightly backup until `signal`
+/// completes, then lets running requests finish for at most
+/// `drain_timeout` and closes the remaining connections.
+pub async fn serve(
+    listener: tokio::net::TcpListener,
+    app: App,
+    router: Router,
+    signal: impl std::future::Future<Output = ()> + Send + 'static,
+    drain_timeout: Duration,
+) -> anyhow::Result<()> {
     let backup = tokio::spawn(backup::run_nightly(app.clone()));
     let shutdown = app.shutdown_token();
-    axum::serve(listener, router)
-        .with_graceful_shutdown(async move {
-            shutdown_signal().await;
+    let server = axum::serve(listener, router).with_graceful_shutdown({
+        let shutdown = shutdown.clone();
+        async move {
+            signal.await;
             tracing::info!("shutting down");
             // Ends SSE streams and background tasks so connections drain.
             shutdown.cancel();
-        })
-        .await?;
-    backup.await?;
+        }
+    });
+    let deadline = async {
+        shutdown.cancelled().await;
+        tokio::time::sleep(drain_timeout).await;
+    };
+    tokio::select! {
+        result = server.into_future() => result?,
+        () = deadline => {
+            // Dropping the server stops accepting; the remaining connection
+            // tasks end with the runtime.
+            tracing::warn!(timeout = ?drain_timeout, "requests still running at the drain deadline, closing them");
+        }
+    }
+    match tokio::time::timeout(drain_timeout, backup).await {
+        Ok(joined) => joined?,
+        Err(_) => tracing::warn!("backup still running at shutdown"),
+    }
     tracing::info!("stopped");
     Ok(())
 }

@@ -252,7 +252,7 @@ Leere Werte gelten als nicht gesetzt (Compose und Portainer reichen optionale Va
 **Container** (umgesetzt im `Dockerfile`, beschrieben in `docs/betrieb.md`):
 
 - Image `ghcr.io/<owner>/zunder` für `linux/amd64` und `linux/arm64`. Binärdateien `/usr/local/bin/zunder-server` und `/usr/local/bin/zunder-import`, Web-UI unter `/app/web`, Daten unter `/data` (Volume), Nutzer `zunder` (UID/GID 10001), Port 8080. Im Image gesetzt: `ZUNDER_BIND=0.0.0.0:8080`, `ZUNDER_DATA_DIR=/data`, `ZUNDER_WEB_DIR=/app/web`, `TZ=Europe/Berlin`.
-- `tini` ist PID 1. `zunder-server` beendet sich bei `SIGTERM` (und `SIGINT`) sauber: keine neuen Verbindungen, laufende Anfragen abschließen, SQLite schließen.
+- `tini` ist PID 1. `zunder-server` beendet sich bei `SIGTERM` (und `SIGINT`) sauber: keine neuen Verbindungen, laufende Anfragen höchstens 8 s abschließen lassen (danach werden offene Verbindungen getrennt, unter Dockers Stopp-Frist von 10 s), SQLite schließen. Ein Request-Body, der 15 s lang nichts sendet, bricht ab.
 - Healthcheck: `zunder-server healthcheck` (kein `curl` im Image; folgt `ZUNDER_BIND`). `/healthz` antwortet erst mit 200, wenn die Datenbank geöffnet ist.
 - `tzdata` ist installiert, `TZ=Europe/Berlin` ist im Image gesetzt (überschreibbar) und bestimmt die Stunde des nächtlichen Backups.
 - Keine OpenSSL-/native-tls-Abhängigkeit (rustls verwenden), damit der Cross-Build ohne Ziel-`libssl` auskommt. SQLite kommt gebündelt über `rusqlite`.
