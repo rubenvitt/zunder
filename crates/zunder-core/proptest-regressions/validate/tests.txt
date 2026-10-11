@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 730655d1de66157cde417e29f8bf3cea3cd68fc80be2fbf4664974f83ede0fb8 # shrinks to pushes = [[(Task, 25, "parent_id", String("01929c3e-0000-7000-8000-000000000019")), (Task, 25, "deleted", Bool(true))], [(Task, 25, "title", String("Aufgabe"))], [(Task, 25, "deleted", Bool(false))]]

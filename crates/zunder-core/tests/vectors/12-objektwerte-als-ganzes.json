@@ -1,0 +1,89 @@
+{
+  "name": "objektwerte-als-ganzes",
+  "description": "phoenix und links werden als ganze Werte ersetzt, nicht tief zusammengeführt.",
+  "kind": "merge",
+  "ops": [
+    {
+      "op_id": "0192a000-0000-7000-8000-00000000a001",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-00000000e001",
+      "field": "title",
+      "value": "Deep Work",
+      "hlc": "1760000000000:00000:web-a"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-00000000a002",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-00000000e001",
+      "field": "phoenix",
+      "value": {
+        "role": "feuer_schritt",
+        "fire": "2026-W42"
+      },
+      "hlc": "1760000000100:00000:web-a"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-00000000a003",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-00000000e001",
+      "field": "phoenix",
+      "value": {
+        "role": "flamme",
+        "fire": "2026-W43"
+      },
+      "hlc": "1760000000200:00000:web-b"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-00000000a004",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-00000000e001",
+      "field": "links",
+      "value": [
+        {
+          "url": "https://example.org/a",
+          "title": "A"
+        }
+      ],
+      "hlc": "1760000000100:00001:web-a"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-00000000a005",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-00000000e001",
+      "field": "links",
+      "value": [
+        {
+          "url": "https://example.org/b"
+        }
+      ],
+      "hlc": "1760000000300:00000:server"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-00000000a006",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-00000000e001",
+      "field": "vault_links",
+      "value": [
+        "Projekte/Zunder.md"
+      ],
+      "hlc": "1760000000400:00000:web-a"
+    }
+  ],
+  "expected": {
+    "task/0192a000-0000-7000-8000-00000000e001": {
+      "title": "Deep Work",
+      "phoenix": {
+        "role": "flamme",
+        "fire": "2026-W43"
+      },
+      "links": [
+        {
+          "url": "https://example.org/b"
+        }
+      ],
+      "vault_links": [
+        "Projekte/Zunder.md"
+      ]
+    }
+  }
+}

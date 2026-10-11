@@ -1,0 +1,36 @@
+{
+  "name": "lww-gleichstand-op-id",
+  "description": "Identischer HLC (nur bei fehlerhaften Clients möglich): die lexikografisch größere op_id gewinnt.",
+  "kind": "merge",
+  "ops": [
+    {
+      "op_id": "0192a000-0000-7000-8000-00000000a009",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-00000000e001",
+      "field": "title",
+      "value": "op a009",
+      "hlc": "1760000000000:00000:web-a"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-00000000a00a",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-00000000e001",
+      "field": "title",
+      "value": "op a00a",
+      "hlc": "1760000000000:00000:web-a"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-00000000a002",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-00000000e001",
+      "field": "title",
+      "value": "op a002",
+      "hlc": "1760000000000:00000:web-a"
+    }
+  ],
+  "expected": {
+    "task/0192a000-0000-7000-8000-00000000e001": {
+      "title": "op a00a"
+    }
+  }
+}

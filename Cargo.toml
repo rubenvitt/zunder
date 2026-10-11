@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+exclude = ["apps/zunder-app/src-tauri"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+zunder-core = { path = "crates/zunder-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v7", "v5", "serde"] }
+thiserror = "2"
+time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
+url = "2"
+proptest = "1"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[profile.dev.package.proptest]
+opt-level = 2

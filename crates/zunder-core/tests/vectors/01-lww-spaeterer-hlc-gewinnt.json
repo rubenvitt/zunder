@@ -1,0 +1,28 @@
+{
+  "name": "lww-spaeterer-hlc-gewinnt",
+  "description": "Zwei Titel für dieselbe Aufgabe; der größere wall_ms gewinnt, unabhängig von der Reihenfolge.",
+  "kind": "merge",
+  "ops": [
+    {
+      "op_id": "0192a000-0000-7000-8000-00000000a001",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-00000000e001",
+      "field": "title",
+      "value": "neuer Titel",
+      "hlc": "1760000005000:00000:web-a"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-00000000a002",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-00000000e001",
+      "field": "title",
+      "value": "alter Titel",
+      "hlc": "1760000000000:00000:server"
+    }
+  ],
+  "expected": {
+    "task/0192a000-0000-7000-8000-00000000e001": {
+      "title": "neuer Titel"
+    }
+  }
+}
