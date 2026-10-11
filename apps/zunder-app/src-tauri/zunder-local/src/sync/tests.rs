@@ -183,6 +183,32 @@ async fn syncer_requires_a_configured_server() {
 }
 
 #[test]
+fn syncer_client_follows_the_configuration() {
+    let device = store();
+    let syncer = Syncer::new();
+    assert_eq!(syncer.client(&device).unwrap_err().code(), "not_configured");
+
+    let configure = |url: &str, token: &str| {
+        lock(&device)
+            .set_config(&crate::ConfigUpdate {
+                server_url: Some(Some(url.into())),
+                api_token: Some(Some(token.into())),
+                discard_pending: false,
+            })
+            .unwrap();
+    };
+    configure("https://zunder.example.org/", "zt_one");
+    let first = syncer.client(&device).unwrap();
+    assert_eq!(first.remote().server_url, "https://zunder.example.org");
+    assert_eq!(first.remote().api_token, "zt_one");
+    assert_eq!(syncer.client(&device).unwrap().remote(), first.remote());
+
+    // A new token takes effect for the next call without a restart.
+    configure("https://zunder.example.org", "zt_two");
+    assert_eq!(syncer.client(&device).unwrap().remote().api_token, "zt_two");
+}
+
+#[test]
 fn retry_delays_back_off_to_the_regular_interval() {
     let secs: Vec<u64> = (0..6).map(|n| retry_delay(n).as_secs()).collect();
     assert_eq!(secs, vec![30, 5, 10, 20, 30, 30]);

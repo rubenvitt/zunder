@@ -127,7 +127,11 @@ async fn run<A: SyncApi>(store: &Mutex<LocalStore>, api: &A) -> Result<SyncRepor
 /// long as server URL and token stay the same.
 #[derive(Debug, Default)]
 pub struct Syncer {
-    client: tokio::sync::Mutex<Option<HttpClient>>,
+    /// Held for a whole sync round, so rounds never overlap.
+    round: tokio::sync::Mutex<()>,
+    /// Client for the current server URL and token; held only briefly, so
+    /// other server calls (history, flames) never wait for a sync round.
+    client: Mutex<Option<HttpClient>>,
 }
 
 impl Syncer {
@@ -135,17 +139,26 @@ impl Syncer {
         Self::default()
     }
 
+    /// The HTTP client for the configured server (shares the connection
+    /// pool with the sync rounds). `Error::NotConfigured` without server URL
+    /// and token.
+    pub fn client(&self, store: &Mutex<LocalStore>) -> Result<HttpClient> {
+        let remote = lock(store).remote()?.ok_or(Error::NotConfigured)?;
+        let mut cached = self.client.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(client) = cached.as_ref().filter(|c| c.remote() == &remote) {
+            return Ok(client.clone());
+        }
+        let client = HttpClient::new(&remote)?;
+        *cached = Some(client.clone());
+        Ok(client)
+    }
+
     /// One sync round with the configured server. Concurrent calls wait for
     /// each other.
     pub async fn sync(&self, store: &Mutex<LocalStore>, now_ms: i64) -> Result<SyncReport> {
-        let mut client = self.client.lock().await;
-        let remote = lock(store).remote()?.ok_or(Error::NotConfigured)?;
-        let reusable = client.as_ref().is_some_and(|c| c.remote() == &remote);
-        if !reusable {
-            *client = Some(HttpClient::new(&remote)?);
-        }
-        let client = client.as_ref().expect("client was just set");
-        sync_once(store, client, now_ms).await
+        let _round = self.round.lock().await;
+        let client = self.client(store)?;
+        sync_once(store, &client, now_ms).await
     }
 }
 

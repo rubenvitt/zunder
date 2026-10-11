@@ -43,6 +43,18 @@ pub struct ServerSnapshot {
     pub entities: Vec<SnapshotEntity>,
 }
 
+/// One entry of `GET /api/tasks/{id}/history`; the app's `task_history`
+/// command returns these unchanged.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HistoryEntry {
+    pub seq: i64,
+    pub op: Op,
+    /// `web`, `api:<token name>`, `mcp:<token name>` or `server`.
+    pub source: String,
+    /// When the server received the operation (RFC 3339, UTC).
+    pub received_at: String,
+}
+
 /// Error body of the server: `{"error":{"code","message"}}`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ErrorBody {

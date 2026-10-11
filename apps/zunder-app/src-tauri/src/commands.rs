@@ -2,11 +2,15 @@
 //! implementation contract, section 5). Errors arrive in JavaScript as
 //! `{"code", "message"}`.
 
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
+use uuid::Uuid;
 use zunder_core::hlc::system_time_ms;
 use zunder_core::Op;
 use zunder_local::sync::lock;
-use zunder_local::{ApplyResult, ConfigUpdate, ConfigView, Error, LocalSnapshot, SyncReport};
+use zunder_local::{
+    ApplyResult, ConfigUpdate, ConfigView, Error, FlameAction, HistoryEntry, LocalSnapshot,
+    SyncReport,
+};
 
 use crate::{background, notify, AppState};
 
@@ -65,4 +69,49 @@ pub fn set_config(
         notify::refresh(&app);
     }
     Ok(after)
+}
+
+/// `GET /api/tasks/{id}/history` with the stored API token (the webview may
+/// not talk to the server itself). Operations that are still pending are
+/// not in the server's history yet.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn task_history(
+    state: State<'_, AppState>,
+    task_id: Uuid,
+) -> Result<Vec<HistoryEntry>, Error> {
+    let client = state.syncer.client(&state.store)?;
+    client.task_history(task_id).await
+}
+
+/// Starts the task's flame on the server (Timing bridge) and syncs, so the
+/// flame fields the server wrote arrive right away (`zunder://changed`).
+#[tauri::command(rename_all = "snake_case")]
+pub async fn flame_start(app: AppHandle, task_id: Uuid) -> Result<serde_json::Value, Error> {
+    flame(&app, task_id, FlameAction::Start).await
+}
+
+/// Stops the task's flame on the server and syncs. Without a running flame
+/// the server answers 409 (`server` error).
+#[tauri::command(rename_all = "snake_case")]
+pub async fn flame_stop(app: AppHandle, task_id: Uuid) -> Result<serde_json::Value, Error> {
+    flame(&app, task_id, FlameAction::Stop).await
+}
+
+async fn flame(
+    app: &AppHandle,
+    task_id: Uuid,
+    action: FlameAction,
+) -> Result<serde_json::Value, Error> {
+    let state = app.state::<AppState>();
+    // The server only knows tasks it has received: push first. A failure
+    // here shows up again in the flame request itself.
+    if lock(&state.store).pending_count() > 0 {
+        let _ = background::sync(app).await;
+    }
+    let client = state.syncer.client(&state.store)?;
+    let outcome = client.flame(task_id, action).await?;
+    // Fetch the flame fields; a failed sync is reported via `zunder://sync`
+    // and retried by the background loop, the flame itself succeeded.
+    let _ = background::sync(app).await;
+    Ok(outcome)
 }
