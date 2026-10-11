@@ -14,11 +14,13 @@ crates/zunder-server/      axum, SQLite (rusqlite, bundled), Sync-API, /mcp, OID
 crates/zunder-import/      CLI für den ClickUp-Import
 web/                       zunder-web: SolidJS + Vite + TypeScript, Vitest, Playwright
 apps/zunder-app/           Tauri 2 (E4); src-tauri ist NICHT Workspace-Mitglied (braucht webkit)
-deploy/                    compose.yaml, stack.env, generate-secrets.sh (Portainer/Traefik)
+deploy/                    compose.yaml, stack.env (Vorlage), generate-secrets.sh (Portainer/Traefik)
 Dockerfile                 Multi-Stage: Web bauen, Server bauen, schlankes Runtime-Image
 .github/workflows/ci.yml   fmt, clippy -D warnings, Tests, Web, Playwright, GHCR
-docs/                      Spec, dieser Vertrag, Betrieb, Umstieg
+docs/                      Spec, dieser Vertrag, betrieb.md, umstieg.md, entwicklung.md
 ```
+
+`deploy/stack.env` ist eine eingecheckte Vorlage mit Platzhaltern; `deploy/generate-secrets.sh` schreibt das befüllte Ergebnis nach `deploy/stack.env.local` (von Git ignoriert). Die Tauri-App wird in der CI nicht gebaut (Begründung als Kommentar in `ci.yml`).
 
 Code-Bezeichner sind englisch, Doku und UI deutsch.
 
@@ -199,6 +201,8 @@ Basis: `ZUNDER_PUBLIC_URL`. JSON, UTF-8. Fehler: `{"error":{"code":…,"message"
 | `ZUNDER_DEV_AUTH` | `true` = Login ohne OIDC (nur lokal, Warnung im Log) |
 | `ZUNDER_BACKUP_HOUR` | Stunde (lokal) für das nächtliche Backup, Default 3 |
 
+Leere Werte gelten als nicht gesetzt (Compose und Portainer reichen optionale Variablen wie `ZUNDER_TIMING_TOKEN` als leeren String durch). „Lokal“ heißt: Zeitzone des Prozesses, im Container über `TZ` (z. B. `Europe/Berlin`).
+
 **Persistenz:** SQLite im WAL-Modus. Tabellen mindestens `users`, `ops` (seq, op_id unique, entity, entity_id, field, value_json, hlc, source, received_at, owner_id), `entities` (materialisierter Zustand je Entität als JSON inkl. Feld-HLCs), `api_tokens`, `sessions`. Der Server hält den materialisierten Zustand zusätzlich im Speicher. Nächtliches Backup per `VACUUM INTO` nach `data/backups/`, 14 Stück aufbewahren.
 
 ### 3.1 Präzisierungen (umgesetzt in `zunder-server`)
@@ -234,6 +238,16 @@ Basis: `ZUNDER_PUBLIC_URL`. JSON, UTF-8. Fehler: `{"error":{"code":…,"message"
 **Statische Dateien.** `ZUNDER_WEB_DIR` wird unter `/` ausgeliefert. `/assets/*` (Vite-Ausgabe mit Hash im Namen) mit `Cache-Control: public, max-age=31536000, immutable`, alles andere mit `no-cache`. Unbekannte Pfade ohne Dateiendung liefern `index.html` (SPA-Fallback); fehlende Dateien unter `/assets/` oder mit Endung sind 404. Antworten werden mit gzip oder Brotli komprimiert, wenn der Client es anbietet.
 
 **Schema.** Migrationen sind eingebettetes SQL, versioniert über `PRAGMA user_version`; ein Server verweigert eine Datenbank mit neuerer Version. Zeitstempel sind Unix-Millisekunden. `meta.materialized_seq:<owner_id>` hält fest, bis zu welchem `seq` die Tabelle `entities` aktuell ist; stimmt das (oder die Anzahl der Entitäten) beim Start nicht mit dem Log überein, baut der Server `entities` aus dem Log neu auf.
+
+### 3.2 Container
+
+**Container** (umgesetzt im `Dockerfile`, beschrieben in `docs/betrieb.md`):
+
+- Image `ghcr.io/<owner>/zunder` für `linux/amd64` und `linux/arm64`. Binärdateien `/usr/local/bin/zunder-server` und `/usr/local/bin/zunder-import`, Web-UI unter `/app/web`, Daten unter `/data` (Volume), Nutzer `zunder` (UID/GID 10001), Port 8080. Im Image gesetzt: `ZUNDER_BIND=0.0.0.0:8080`, `ZUNDER_DATA_DIR=/data`, `ZUNDER_WEB_DIR=/app/web`.
+- `tini` ist PID 1. `zunder-server` beendet sich bei `SIGTERM` (und `SIGINT`) sauber: keine neuen Verbindungen, laufende Anfragen abschließen, SQLite schließen.
+- Healthcheck: `curl -fsS http://127.0.0.1:8080/healthz`. `/healthz` antwortet erst mit 200, wenn die Datenbank geöffnet ist.
+- Keine OpenSSL-/native-tls-Abhängigkeit (rustls verwenden), damit der Cross-Build ohne Ziel-`libssl` auskommt. SQLite kommt gebündelt über `rusqlite`.
+- Logs gehen nach stdout/stderr.
 
 ## 4. MCP
 
@@ -294,6 +308,8 @@ Jedes Werkzeug, das eine Aufgabe adressiert, akzeptiert `task_id` **oder** `clic
 - Scheitert Timing (nicht erreichbar, Fehlerstatus), läuft die Flamme trotzdem mit Zeitstempeln: `timing.used: false`, `timing.error` mit deutscher Meldung, `timing_ref` leer. Ohne Token: `timing.configured: false`.
 - Flammen-Operationen tragen die Quelle `server` (Timing-Brücke), unabhängig davon, ob HTTP oder MCP sie ausgelöst hat.
 
+**Offener Punkt – claude.ai:** Claude Code und andere Agenten senden den Bearer-Token als Header. Benutzerdefinierte Connectors in claude.ai bieten dagegen nur OAuth (MCP-Authorization-Spezifikation) oder gar keine Authentifizierung an, aber keinen frei setzbaren Header. Für claude.ai braucht `/mcp` deshalb zusätzlich einen OAuth-Weg (z. B. Pocket-ID als Authorization-Server oder ein schlanker eigener Authorization-Endpoint, der nach dem OIDC-Login einen API-Token ausstellt). Das ist noch nicht Teil dieses Vertrags und muss vor E3 entschieden werden (siehe `docs/betrieb.md`).
+
 ## 5. Web-UI
 
 SolidJS + Vite + TypeScript (strict). Kein UI-Framework mit großem Laufzeitanteil; eigenes, schlankes CSS mit Variablen, hell/dunkel.
@@ -306,6 +322,7 @@ SolidJS + Vite + TypeScript (strict). Kein UI-Framework mit großem Laufzeitante
 - **Mobil:** Tabs unten, Wisch-Gesten in der Inbox.
 - Erledigte/verworfene Aufgaben verschwinden **3 Tage** nach `status_changed_at` aus den Standardansichten, bleiben in der Suche.
 - Playwright-Abläufe: erfassen, Inbox abarbeiten, Board verschieben, Flamme starten; Tempo-Budget (Interaktion < 100 ms, Kaltstart < 1 s) wird gemessen.
+- Mit `ZUNDER_E2E_BACKEND=real` startet die Playwright-Konfiguration (`webServer`) den echten Server: Binärdatei aus `ZUNDER_SERVER_BIN` (Default `../target/debug/zunder-server`), mit `ZUNDER_DEV_AUTH=true`, einem frischen temporären `ZUNDER_DATA_DIR` und `ZUNDER_WEB_DIR=dist` (vorher `npm run build`). Die CI baut den Server im Release-Profil und setzt `ZUNDER_SERVER_BIN` entsprechend.
 
 ## 6. Import
 

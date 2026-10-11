@@ -1,0 +1,19 @@
+# Allow-list: the image only needs the Rust workspace and the web UI sources.
+*
+!Cargo.toml
+!Cargo.lock
+!crates/
+!web/
+
+# Build output and local state, even inside allowed directories
+**/target/
+web/node_modules/
+web/dist/
+web/test-results/
+web/playwright-report/
+web/blob-report/
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/.env
+**/.env.*

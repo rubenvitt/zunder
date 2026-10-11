@@ -16,6 +16,15 @@ dist/
 /data/
 /import-backup/
 
+# Deployment: deploy/stack.env ist die Vorlage (eingecheckt), das befüllte
+# Ergebnis von deploy/generate-secrets.sh bleibt lokal
+/deploy/stack.env.local
+/deploy/stack.env.local.tmp
+/deploy/stack.env.local.tmp.new
+
+# Import (zunder-import plan) erzeugt eine Zuordnungsdatei mit echten Namen
+/mapping.toml
+
 # Editor / OS
 .DS_Store
 .idea/
