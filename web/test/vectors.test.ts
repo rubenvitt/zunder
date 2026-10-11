@@ -11,7 +11,7 @@ import type { JsonValue, Op } from "../src/sync/types";
 import { permutations, shuffled } from "./helpers";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const VECTOR_DIR = resolve(here, "../../crates/zunder-core/tests/vectors");
+const VECTOR_DIR = resolve(process.env.ZUNDER_VECTOR_DIR ?? resolve(here, "../../crates/zunder-core/tests/vectors"));
 
 interface MergeVector {
   name: string;

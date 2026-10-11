@@ -273,8 +273,8 @@ function DetailBody(props: { task: Task }) {
       </Show>
 
       <section class="detail-section detail-meta">
-        <span>Erstellt {formatInstant(new Date(hlcWallMs(t().created_hlc)).toISOString(), new Date(now()))}</span>
-        <span>Geändert {formatInstant(new Date(hlcWallMs(t().updated_hlc)).toISOString(), new Date(now()))}</span>
+        <span>Erstellt {hlcLabel(t().created_hlc)}</span>
+        <span>Geändert {hlcLabel(t().updated_hlc)}</span>
         <Show when={t().clickup_id}>
           <span class="mono">ClickUp {t().clickup_id}</span>
         </Show>
@@ -296,6 +296,12 @@ function DetailBody(props: { task: Task }) {
       <History taskId={t().id} version={t().updated_hlc} />
     </div>
   );
+}
+
+/** German relative label for the wall time of an HLC. */
+function hlcLabel(hlc: string): string {
+  const ms = hlcWallMs(hlc);
+  return Number.isFinite(ms) ? formatInstant(new Date(ms).toISOString(), new Date(now())) : "";
 }
 
 function DueEditor(props: { task: Task }) {
@@ -528,7 +534,7 @@ function History(props: { taskId: string; version: string }) {
           <For each={sorted()} fallback={<li class="muted">{entries.loading ? "Lädt …" : "Noch keine Einträge."}</li>}>
             {(entry) => (
               <li>
-                <span class="history-time">{formatInstant(new Date(hlcWallMs(entry.op.hlc)).toISOString(), new Date(now()))}</span>
+                <span class="history-time">{hlcLabel(entry.op.hlc)}</span>
                 <span>
                   <strong>{FIELD_LABELS[entry.op.field] ?? entry.op.field}</strong> → {describeValue(entry.op.field, entry.op.value)}
                 </span>
