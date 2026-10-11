@@ -50,6 +50,10 @@ export class SyncEngine {
   private pushing = false;
   private pulling: Promise<void> | null = null;
   private pullAgain = false;
+  private reloading: Promise<void> | null = null;
+  private reloadAgain = false;
+  /** Counts applied push results, so a reload can detect a stale snapshot. */
+  private pushEpoch = 0;
   private live = false;
   private failures = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -137,6 +141,7 @@ export class SyncEngine {
         this.live = connected;
         if (connected && !wasLive) void this.pull();
       },
+      onReset: () => void this.reload(),
     });
     this.pollTimer = setInterval(() => {
       if (!this.live) void this.pull();
@@ -229,6 +234,44 @@ export class SyncEngine {
     }
   }
 
+  /**
+   * Replaces the confirmed state with a fresh snapshot and rebuilds the view
+   * (pending ops stay on top). Used when the source changed in a way pulls
+   * cannot express, e.g. the Tauri app's own sync rolled ops back.
+   * Concurrent calls coalesce into one more round.
+   */
+  reload(): Promise<void> {
+    if (!this.started || this.stopped) return Promise.resolve();
+    this.reloadAgain = true;
+    this.reloading ??= this.runReloads();
+    return this.reloading;
+  }
+
+  private async runReloads(): Promise<void> {
+    try {
+      while (this.reloadAgain && !this.stopped) {
+        this.reloadAgain = false;
+        const epoch = this.pushEpoch;
+        const snapshot = await this.transport.snapshot();
+        if (this.stopped) return;
+        if (epoch !== this.pushEpoch) {
+          // A push result landed meanwhile; the snapshot may predate it.
+          this.reloadAgain = true;
+          continue;
+        }
+        this.confirmed.loadSnapshot(snapshot);
+        this.cursorValue = snapshot.cursor;
+        for (const e of snapshot.entities) for (const f of Object.values(e.fields)) this.clock.receive(f.hlc);
+        this.markOnline();
+        this.rebuild();
+      }
+    } catch (err) {
+      this.handleTransportError(err);
+    } finally {
+      this.reloading = null;
+    }
+  }
+
   private async pullOnce(): Promise<void> {
     for (;;) {
       const res = await this.transport.pull(this.cursorValue);
@@ -288,6 +331,7 @@ export class SyncEngine {
     // Everything not rejected is stored by the server (accepted, or already known by op_id).
     const rejectedIds = new Set(rejected.map((r) => r.op_id));
     for (const op of ops) if (!rejectedIds.has(op.op_id)) this.confirmed.apply(op);
+    this.pushEpoch += 1;
     this.pending = this.pending.slice(groupCount);
     void this.store.savePending(this.pending);
     this.listener.pending?.(this.pendingOps.length);

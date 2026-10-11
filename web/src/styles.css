@@ -611,6 +611,16 @@ select.field {
 .notice-success {
   background: var(--success-soft);
 }
+.notice-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.notice p {
+  margin: 0 0 0.4rem;
+}
+.notice p:last-child {
+  margin-bottom: 0;
+}
 
 /* ---- Task list --------------------------------------------------------------- */
 
@@ -1015,6 +1025,19 @@ select.field {
 .logo {
   color: var(--accent);
 }
+.setup-card {
+  width: min(440px, 100%);
+}
+.setup-card .form {
+  align-self: stretch;
+  text-align: left;
+}
+.connection-form {
+  max-width: 480px;
+}
+.connection-status code {
+  font-size: 0.85em;
+}
 
 /* ---- Overlays ---------------------------------------------------------------- */
 
@@ -1312,4 +1335,8 @@ select.field {
   * {
     transition: none !important;
   }
+}
+
+a.sync {
+  text-decoration: none;
 }

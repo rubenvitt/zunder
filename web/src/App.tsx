@@ -1,4 +1,4 @@
-import { createSignal, For, Match, onCleanup, onMount, Show, Switch } from "solid-js";
+import { createSignal, For, lazy, Match, onCleanup, onMount, Show, Switch } from "solid-js";
 import { CommandPalette } from "./components/CommandPalette";
 import { Icon, type IconName } from "./components/Icon";
 import { ShortcutHelp, Toasts } from "./components/Overlays";
@@ -6,6 +6,7 @@ import { QuickCapture } from "./components/QuickCapture";
 import { StructureForm } from "./components/StructureForm";
 import { TaskDetail } from "./components/TaskDetail";
 import { installKeyboard } from "./keys";
+import { isTauri } from "./platform/runtime";
 import { isUnauthorized } from "./sync/transport";
 import { navigate, parseRoute, route, type ViewName } from "./state/router";
 import { inboxCount } from "./state/selectors";
@@ -44,6 +45,16 @@ setNotifier({
 type AuthState = "checking" | "ok" | "login";
 
 export function App() {
+  return isTauri() ? <DesktopApp shell={Shell} onReady={markReady} /> : <BrowserApp />;
+}
+
+// Tauri app only: loaded on demand, so the browser bundle stays lean.
+const desktopViews = () => import("./views/Desktop");
+const DesktopApp = lazy(() => desktopViews().then((m) => ({ default: m.DesktopApp })));
+const ConnectionView = lazy(() => desktopViews().then((m) => ({ default: m.ConnectionView })));
+const DesktopSyncIndicator = lazy(() => desktopViews().then((m) => ({ default: m.DesktopSyncIndicator })));
+
+function BrowserApp() {
   const [auth, setAuth] = createSignal<AuthState>("checking");
 
   onMount(async () => {
@@ -88,6 +99,7 @@ function markReady(): void {
 }
 
 function Shell() {
+  const desktop = isTauri();
   onMount(() => onCleanup(installKeyboard()));
   const active = (view: ViewName) => route().view === view;
 
@@ -122,10 +134,20 @@ function Shell() {
           <button class="btn btn-primary capture-button" onClick={() => setCaptureOpen(true)} title="Neue Aufgabe (n)">
             <Icon name="plus" size={16} /> Neue Aufgabe
           </button>
-          <a href="#/tokens" class="nav-item small" classList={{ active: active("tokens") }}>
-            <Icon name="key" size={16} />
-            <span>API-Tokens</span>
-          </a>
+          <Show
+            when={desktop}
+            fallback={
+              <a href="#/tokens" class="nav-item small" classList={{ active: active("tokens") }}>
+                <Icon name="key" size={16} />
+                <span>API-Tokens</span>
+              </a>
+            }
+          >
+            <a href="#/verbindung" class="nav-item small" classList={{ active: active("verbindung") }}>
+              <Icon name="sync" size={16} />
+              <span>Verbindung</span>
+            </a>
+          </Show>
           <button class="nav-item small" onClick={() => setHelpOpen(true)}>
             <Icon name="keyboard" size={16} />
             <span>Tastenkürzel</span>
@@ -142,9 +164,18 @@ function Shell() {
         <button class="btn btn-ghost btn-icon" aria-label="Suchen" onClick={openSearch}>
           <Icon name="search" />
         </button>
-        <a class="btn btn-ghost btn-icon" aria-label="API-Tokens" href="#/tokens">
-          <Icon name="key" />
-        </a>
+        <Show
+          when={desktop}
+          fallback={
+            <a class="btn btn-ghost btn-icon" aria-label="API-Tokens" href="#/tokens">
+              <Icon name="key" />
+            </a>
+          }
+        >
+          <a class="btn btn-ghost btn-icon" aria-label="Verbindung" href="#/verbindung">
+            <Icon name="sync" />
+          </a>
+        </Show>
       </header>
 
       <main class="main" id="main">
@@ -169,6 +200,11 @@ function Shell() {
           </Match>
           <Match when={route().view === "tokens"}>
             <TokensView />
+          </Match>
+          <Match when={route().view === "verbindung"}>
+            <Show when={desktop} fallback={<TokensView />}>
+              <ConnectionView />
+            </Show>
           </Match>
         </Switch>
       </main>
@@ -207,6 +243,10 @@ function Shell() {
 }
 
 function SyncIndicator() {
+  return isTauri() ? <DesktopSyncIndicator /> : <BrowserSyncIndicator />;
+}
+
+function BrowserSyncIndicator() {
   const label = () => {
     if (syncStatus() === "offline") return pendingCount() > 0 ? `Offline · ${pendingCount()} ausstehend` : "Offline";
     if (pendingCount() > 0) return "Synchronisiert …";

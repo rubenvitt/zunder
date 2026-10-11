@@ -33,7 +33,10 @@ const defaultServices: Services = { transport: httpTransport, api: httpTransport
 
 const [data, setData] = createStore<DataState>({ areas: {}, projects: {}, tasks: {} });
 const [syncStatus, setSyncStatus] = createSignal<SyncStatus>("loading");
-const [pendingCount, setPendingCount] = createSignal(0);
+const [enginePending, setEnginePending] = createSignal(0);
+// Tauri app: operations stored locally but not yet pushed by the app.
+const [appPending, setAppPending] = createSignal(0);
+const pendingCount = () => enginePending() + appPending();
 const [ready, setReady] = createSignal(false);
 const [now, setNow] = createSignal(Date.now());
 
@@ -41,7 +44,7 @@ let services = defaultServices;
 let engine: SyncEngine | null = null;
 let notifier: Notifier = { rejected: () => {}, warnings: () => {} };
 
-export { data, now, pendingCount, ready, syncStatus };
+export { data, now, pendingCount, ready, setAppPending, syncStatus };
 
 export function api(): ApiClient {
   return services.api;
@@ -72,9 +75,19 @@ export function setNotifier(n: Notifier): void {
   notifier = n;
 }
 
-/** For tests or the Tauri shell: swap transport, API and local store before start. */
+/** For tests or the Tauri app: swap transport, API and local store before start. */
 export function configureServices(next: Partial<Services>): void {
   services = { ...services, ...next };
+}
+
+/** Shows rejections that did not come from the engine (Tauri app's background sync). */
+export function reportRejected(rejections: readonly Rejection[]): void {
+  if (rejections.length > 0) notifier.rejected(rejections);
+}
+
+/** Reloads the whole state from the source (Tauri app after a configuration change). */
+export function reloadData(): Promise<void> {
+  return engine?.reload() ?? Promise.resolve();
 }
 
 export async function startSync(): Promise<boolean> {
@@ -93,7 +106,7 @@ export async function startSync(): Promise<boolean> {
       });
     },
     status: setSyncStatus,
-    pending: setPendingCount,
+    pending: setEnginePending,
     rejected: (r) => notifier.rejected(r),
     warnings: (w) => notifier.warnings(w),
   });

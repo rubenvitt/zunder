@@ -368,7 +368,7 @@ Lücken, die beim Bau von `zunder-web` geschlossen wurden. Der Server darf mehr 
 
 ### 5.1 App-Befehle (Tauri, E4)
 
-In der Tauri-App spricht die Web-UI nicht direkt mit dem Server (die CSP erlaubt nur `ipc:`), sondern über Befehle der App, die einen lokalen SQLite-Speicher mit Operations-Log (`pending` + `confirmed`), materialisiertem Zustand und Cursor führt und selbst synchronisiert. Ein künftiger `TauriTransport` der Web-UI ruft sie per `invoke` auf. Fehler: abgelehntes Promise mit `{"code","message"}`.
+In der Tauri-App spricht die Web-UI nicht direkt mit dem Server (die CSP erlaubt nur `ipc:`, der Server kein CORS), sondern über Befehle der App, die einen lokalen SQLite-Speicher mit Operations-Log (`pending` + `confirmed`), materialisiertem Zustand und Cursor führt und selbst synchronisiert. Der `TauriTransport` der Web-UI (`web/src/platform/tauri.ts`) ruft sie per `invoke` auf. Fehler: abgelehntes Promise mit `{"code","message"}`; Fehler von Tauri selbst (unbekannter Befehl, unpassendes Argument) als String.
 
 | Befehl | Argumente | Ergebnis |
 |---|---|---|
@@ -377,6 +377,8 @@ In der Tauri-App spricht die Web-UI nicht direkt mit dem Server (die CSP erlaubt
 | `sync_now` | – | `{"pushed","rejected":[Rejection],"warnings":[Warning],"pulled","cursor","pending","changed"}` |
 | `get_config` | – | `{"server_url"\|null,"has_api_token","node_id","cursor","pending","last_sync":{"at_ms","ok","error"?}\|null}` (Token wird nie zurückgegeben) |
 | `set_config` | `{"update":{"server_url"?,"api_token"?,"discard_pending"?}}` | wie `get_config`; fehlender Schlüssel = unverändert, `null` = löschen |
+| `task_history` | `{"task_id"}` | `GET /api/tasks/{id}/history` mit dem gespeicherten Token, Antwort unverändert |
+| `flame_start`, `flame_stop` | `{"task_id"}` | `POST /api/tasks/{id}/flame/start\|stop`, Antwort unverändert; vorher Push, falls Operationen ausstehen, danach ein Sync (Flammenfelder kommen per `zunder://changed`). 409 → Fehler `server` |
 
 - Sync-Ablauf: ausstehende Operationen in Paketen zu 500 pushen (`client_id` = `node_id`), bei Cursor 0 den Snapshot übernehmen, dann `pull` bis `has_more = false`. Abgelehnte Operationen werden lokal zurückgenommen (Sicht = bestätigter Zustand + übrige ausstehende) und gemeldet.
 - Auslöser: Start, alle 30 s, 0,5 s nach `local_apply`, Rückkehr in den Vordergrund, `online`-Ereignis des Webviews, `sync_now`; nach Netzwerkfehlern 5/10/20 s, dann wieder 30 s.
@@ -384,6 +386,7 @@ In der Tauri-App spricht die Web-UI nicht direkt mit dem Server (die CSP erlaubt
 - Serverwechsel löscht die lokalen Daten; mit ausstehenden Operationen nur mit `discard_pending: true` (sonst Fehler `pending_ops`).
 - Fehlercodes: `not_configured`, `invalid_config`, `pending_ops`, `network`, `unauthorized`, `server`, `protocol`, `db`, `corrupt`, `schema_too_new`, `notification`.
 - Ereignisse: `zunder://changed` `{"cursor","pending"}` (Sicht durch Sync geändert → `local_snapshot` neu laden), `zunder://sync` `{"ok":true,"report"}` bzw. `{"ok":false,"error":{"code","message"}}`.
+- **Web-UI in der App:** Erkennung über `window.__TAURI_INTERNALS__`; die Brücke und `@tauri-apps/api` werden nur dann per dynamischem Import geladen. Keine OIDC-Anmeldung: ohne `server_url` oder Token erscheint eine Einrichtung (Adresse + Token → `set_config`, dann `sync_now` als Probe; die Einstellungen bleiben auch bei einem Fehlschlag gespeichert). Die Sync-Engine der Web-UI nutzt `local_snapshot` als Snapshot und `local_apply` als Push, pullt nicht und lädt nach `zunder://changed` den Snapshot neu (Ausstehendes bleibt obenauf; ein Snapshot, der während eines `local_apply` angefordert wurde, wird verworfen und neu geholt). Die Sync-Anzeige folgt `zunder://sync` und dem `pending` der App, Ablehnungen aus `report.rejected` werden gemeldet. API-Tokens lassen sich in der App nicht verwalten (nur Browser-Sitzung); an ihre Stelle tritt die Ansicht „Verbindung“ (`#/verbindung`).
 - Erinnerungen: für offene, lebende Aufgaben zu `remind_at` und zu `due` mit Uhrzeit (gleicher Moment → nur eine). Mobil plant das Betriebssystem die 64 nächsten (iOS-Grenze) über `tauri-plugin-notification`; Desktop zeigt sie per Timer, solange die App läuft.
 
 Einzelheiten: [`apps/zunder-app/README.md`](../../../apps/zunder-app/README.md).
@@ -408,4 +411,4 @@ Präzisierungen (umgesetzt in `crates/zunder-import`, Bedienung im README der Cr
 
 ## 7. Etappen im Repo
 
-E1–E2 werden vollständig gebaut. E3 ist überwiegend Betrieb (Runbook in `docs/umstieg.md`). E4 (Tauri) wird als lauffähiges Gerüst angelegt, das `zunder-core` für lokale SQLite und Sync nutzt; Mobile-Builds werden in dieser Umgebung nicht verifiziert. Speicher, Sync und Erinnerungsplanung liegen in der webview-freien Crate `apps/zunder-app/src-tauri/zunder-local` (zweites Mitglied des eigenen Workspaces von `src-tauri`), die Tauri-Hülle verdrahtet sie nur (Befehle: Abschnitt 5.1).
+E1–E2 werden vollständig gebaut. E3 ist überwiegend Betrieb (Runbook in `docs/umstieg.md`). E4 (Tauri) wird als lauffähiges Gerüst angelegt, das `zunder-core` für lokale SQLite und Sync nutzt; Mobile-Builds werden in dieser Umgebung nicht verifiziert. Speicher, Sync, die Server-Aufrufe für Verlauf und Flammen und die Erinnerungsplanung liegen in der webview-freien Crate `apps/zunder-app/src-tauri/zunder-local` (zweites Mitglied des eigenen Workspaces von `src-tauri`), die Tauri-Hülle verdrahtet sie nur (Befehle: Abschnitt 5.1). Die Web-UI ist an die App angebunden (Abschnitt 5.1, „Web-UI in der App“).

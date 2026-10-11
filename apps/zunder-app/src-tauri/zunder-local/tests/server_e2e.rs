@@ -13,11 +13,12 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use uuid::Uuid;
 use zunder_core::hlc::system_time_ms;
 use zunder_core::model::fields::task as f;
 use zunder_core::{Clock, EntityKind, Location, NewArea, NewTask, NodeId, Op, OpBatch, RejectCode};
 use zunder_local::sync::lock;
-use zunder_local::{ConfigUpdate, LocalStore, Syncer};
+use zunder_local::{ConfigUpdate, FlameAction, LocalStore, Syncer};
 
 const TOKEN: &str = "zt_app-e2e-bootstrap-token-0123456789abcdef";
 
@@ -201,4 +202,40 @@ async fn devices_sync_through_the_real_server() {
     let stranger = device(&dir, "stranger", &server, "zt_wrong-token");
     let err = Syncer::new().sync(&stranger, now()).await.unwrap_err();
     assert_eq!(err.code(), "unauthorized");
+}
+
+#[tokio::test]
+#[ignore = "braucht ZUNDER_SERVER_BIN (gebautes zunder-server-Binary)"]
+async fn history_and_flames_with_the_api_token() {
+    let server = start_server().await;
+    let dir = tempfile::tempdir().unwrap();
+    let phone = device(&dir, "phone", &server, TOKEN);
+    let syncer = Syncer::new();
+    let mut ui = Ui::new("web-phone");
+
+    let (task, ops) = ui.ops(|b| b.create_task(NewTask::new("Steuererklärung")));
+    apply(&phone, &ops);
+    syncer.sync(&phone, now()).await.unwrap();
+
+    // The commands `task_history`, `flame_start` and `flame_stop` use this client.
+    let client = syncer.client(&phone).unwrap();
+    let history = client.task_history(task).await.unwrap();
+    assert_eq!(history.len(), ops.len());
+    assert!(history.iter().all(|e| e.source == "api:bootstrap"));
+    assert!(history.iter().any(|e| e.op.field == "title"));
+
+    let outcome = client.flame(task, FlameAction::Start).await.unwrap();
+    assert_eq!(outcome["running"], true);
+    let report = syncer.sync(&phone, now()).await.unwrap();
+    assert!(report.changed, "the server wrote flame_started_at");
+    let local = lock(&phone).state().task(task).unwrap();
+    assert!(local.flame_started_at.is_some());
+
+    client.flame(task, FlameAction::Stop).await.unwrap();
+    let err = client.flame(task, FlameAction::Stop).await.unwrap_err();
+    assert_eq!(err.code(), "server");
+    assert!(err.to_string().contains("409"), "{err}");
+
+    let err = client.task_history(Uuid::now_v7()).await.unwrap_err();
+    assert!(err.to_string().contains("404"), "{err}");
 }

@@ -1,6 +1,6 @@
 # zunder-app
 
-Zunder als Tauri-2-App für Desktop (Linux, macOS, Windows), iOS und Android (Etappe E4 der [Spec](../../docs/superpowers/specs/2026-10-11-zunder-design.md)). Die App ist eine Hülle um die Web-UI aus `web/` und bringt einen lokalen SQLite-Speicher mit: Änderungen landen sofort lokal, der Sync mit dem Server läuft im Hintergrund, Erinnerungen plant das Gerät selbst.
+Zunder als Tauri-2-App für Desktop (Linux, macOS, Windows), iOS und Android (Etappe E4 der [Spec](../../docs/superpowers/specs/2026-10-11-zunder-design.md)). Die App zeigt die Web-UI aus `web/` und bringt einen lokalen SQLite-Speicher mit: Änderungen landen sofort lokal, der Sync mit dem Server läuft im Hintergrund, Erinnerungen plant das Gerät selbst. Die Web-UI erkennt die App und spricht dann nur noch über die Befehle unten mit ihr (siehe [Web-UI in der App](#web-ui-in-der-app)).
 
 Verbindlich ist der [Implementierungsvertrag](../../docs/superpowers/plans/2026-10-11-zunder-implementation.md), insbesondere Abschnitt 2 (Operationen), 3 (Sync-API) und 5.1 (App-Befehle).
 
@@ -101,7 +101,7 @@ HTTP läuft über `reqwest` mit rustls und den eingebauten Mozilla-Wurzelzertifi
 
 ## Befehle für die Web-UI
 
-Die Web-UI ruft sie mit `invoke` aus `@tauri-apps/api/core` auf (ein späterer `TauriTransport`). Argumentnamen sind die hier gezeigten Schlüssel. Fehler kommen als abgelehntes Promise mit `{"code": "...", "message": "..."}` (Meldung deutsch).
+Die Web-UI ruft sie mit `invoke` aus `@tauri-apps/api/core` auf (`TauriTransport` in `web/src/platform/tauri.ts`). Argumentnamen sind die hier gezeigten Schlüssel (auch `task_id` in snake_case). Fehler kommen als abgelehntes Promise mit `{"code": "...", "message": "..."}` (Meldung deutsch); Fehler von Tauri selbst (unbekannter Befehl, Argument passt nicht, z. B. keine UUID) als einfacher String.
 
 | Befehl | Argumente | Ergebnis |
 |---|---|---|
@@ -110,6 +110,8 @@ Die Web-UI ruft sie mit `invoke` aus `@tauri-apps/api/core` auf (ein späterer `
 | `sync_now` | – | `SyncReport`: `{"pushed": N, "rejected": [Rejection], "warnings": [Warning], "pulled": N, "cursor": N, "pending": N, "changed": bool}` |
 | `get_config` | – | `{"server_url": String\|null, "has_api_token": bool, "node_id": String, "cursor": N, "pending": N, "last_sync": {"at_ms": N, "ok": bool, "error"?: String}\|null}` – der Token selbst wird nie zurückgegeben |
 | `set_config` | `{"update": {"server_url"?: String\|null, "api_token"?: String\|null, "discard_pending"?: bool}}` | wie `get_config`. Fehlender Schlüssel = unverändert, `null` = löschen |
+| `task_history` | `{"task_id": UUID}` | `[{"seq","op","source","received_at"}]` – `GET /api/tasks/{id}/history` mit dem gespeicherten Token; kennt nur, was der Server schon erhalten hat |
+| `flame_start`, `flame_stop` | `{"task_id": UUID}` | Antwort des Servers unverändert (`{task, running, stopped_task_ids, unchanged, timing, warnings}`). Vorher wird gepusht, falls Operationen ausstehen (der Server kennt sonst die Aufgabe nicht), danach synchronisiert, damit `flame_started_at`/`flame_ended_at` sofort per `zunder://changed` ankommen. Stopp ohne laufende Flamme: Fehler `server` („Server-Fehler (409): …“) |
 
 Regeln:
 
@@ -127,7 +129,19 @@ Ereignisse (`listen` aus `@tauri-apps/api/event`):
 
 `local_apply` sendet kein Ereignis; die aufrufende UI kennt das Ergebnis.
 
-Die Content-Security-Policy erlaubt nur `ipc:`-Verbindungen. Die Web-UI spricht in der App also nie direkt mit dem Server, sondern ausschließlich über diese Befehle.
+Die Content-Security-Policy erlaubt nur `ipc:`-Verbindungen (und der Server erlaubt kein CORS). Die Web-UI spricht in der App also nie direkt mit dem Server, sondern ausschließlich über diese Befehle. API-Tokens verwalten (`/api/tokens`) geht nur mit Browser-Sitzung und ist deshalb in der App nicht verfügbar.
+
+## Web-UI in der App
+
+Die Web-UI erkennt die App an `window.__TAURI_INTERNALS__` und lädt erst dann per dynamischem Import die Brücke (`web/src/platform/tauri.ts`, `web/src/state/desktop.ts`, `web/src/views/Desktop.tsx`) samt `@tauri-apps/api`. Im Browser werden diese Teile nie geladen.
+
+- **Start:** `get_config`. Fehlen Server-Adresse oder Token, erscheint statt der OIDC-Anmeldung die Einrichtung (Server-Adresse + API-Token → `set_config`, danach `sync_now` als Probe). Ein abgelehnter Token oder ein nicht erreichbarer Server wird angezeigt; die Einstellungen bleiben gespeichert („Trotzdem öffnen“). Ist alles eingerichtet, startet die UI sofort mit den lokalen Daten, auch offline.
+- **Sync-Engine der Web-UI:** Snapshot = `local_snapshot`, Push = `local_apply`, Pull gibt es nicht. Nach `zunder://changed` lädt die Engine den Snapshot neu (Ausstehendes bleibt obenauf). Die HLC-Knoten-ID ist `node_id`. Eine Ausstehend-Warteschlange führt die Web-UI nur für einen laufenden `local_apply`, gespeichert wird in SQLite.
+- **Status:** Die Sync-Anzeige folgt `zunder://sync` (Synchron, Synchronisiert …, Offline, Token abgelehnt, Sync-Fehler) und der Zahl ausstehender Operationen der App; Ablehnungen aus `report.rejected` erscheinen als Meldung. Ein Klick führt zur Ansicht **Verbindung** (`#/verbindung`: Adresse, Token ersetzen, letzter Abgleich, „Jetzt abgleichen“). Sie ersetzt in der App die Token-Seite und „Abmelden“.
+- **Serverwechsel** mit ausstehenden Änderungen: Die UI meldet `pending_ops` und bietet „Änderungen verwerfen und wechseln“ an (`discard_pending: true`).
+- Verlauf und Flammen laufen über `task_history`, `flame_start` und `flame_stop`.
+
+Geprüft wird das ohne Webview: Vitest mit nachgebautem `invoke`/`listen` (`web/test/tauri.test.ts`, `web/test/desktop.test.ts`) und ein Playwright-Test, der im Browser eine App-Attrappe als `__TAURI_INTERNALS__` einsetzt (`web/e2e/tauri.spec.ts`; prüft auch, dass keine einzige `/api`-Anfrage gestellt wird). Die HTTP-Seite der neuen Befehle testet `zunder-local` (`client.rs` gegen einen Testserver, `tests/server_e2e.rs` gegen den echten Server).
 
 ## Erinnerungen
 
@@ -143,7 +157,8 @@ Titel ist der Aufgabentitel, der Text „Erinnerung“ bzw. „Jetzt fällig“,
 
 ## Offen
 
-- Die Web-UI hat noch keinen `TauriTransport`; bis dahin ist die App eine Hülle ohne Datenanbindung der UI. Der Befehlsvertrag oben ist dafür festgelegt.
+- Die fertige App (Webview + Rust) ist hier nicht von Hand durchgeklickt; geprüft sind Rust-Befehle und Web-UI je für sich (siehe oben).
+- Der Verlauf einer Aufgabe zeigt erst nach dem Push etwas; noch ausstehende Änderungen fehlen darin.
 - Kein SSE in der App: Änderungen anderer Geräte kommen mit dem 30-s-Takt (oder per `sync_now`).
 - API-Token im Schlüsselbund statt in SQLite.
 - Mobile Builds und Signierung sind nicht eingerichtet und hier nicht getestet.

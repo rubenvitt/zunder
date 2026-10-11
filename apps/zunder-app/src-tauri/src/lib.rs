@@ -6,7 +6,8 @@
 //! into Tauri:
 //!
 //! - [`commands`]: `local_snapshot`, `local_apply`, `sync_now`,
-//!   `get_config`, `set_config`
+//!   `get_config`, `set_config`, and the server calls `task_history`,
+//!   `flame_start`, `flame_stop`
 //! - [`background`]: sync loop (every 30 s, after local changes, on resume
 //!   and when the webview reports the network is back)
 //! - [`notify`]: local reminders (OS scheduler on mobile, in-process timer
@@ -82,6 +83,9 @@ pub fn run() {
             commands::sync_now,
             commands::get_config,
             commands::set_config,
+            commands::task_history,
+            commands::flame_start,
+            commands::flame_stop,
         ])
         .build(tauri::generate_context!())
         .expect("Zunder konnte nicht starten");

@@ -5294,6 +5294,7 @@ dependencies = [
  "tauri-plugin-notification",
  "time",
  "tokio",
+ "uuid",
  "zunder-core",
  "zunder-local",
 ]
