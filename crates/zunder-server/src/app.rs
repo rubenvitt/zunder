@@ -388,22 +388,24 @@ impl App {
         T: Send + 'static,
         F: FnOnce(&State, &mut OpBatch<'_>) -> AppResult<T> + Send + 'static,
     {
-        let (value, result) = self
-            .mutate(source, move |state, batch| {
-                let value = build(state, batch)?;
-                let outcome = validate_push(state, batch.ops(), system_time_ms());
-                match rejection_error(&outcome.rejected) {
-                    Some(e) => Err(e),
-                    None => Ok(value),
-                }
-            })
-            .await?;
-        // Validation ran on the same state under the write lock, so the
-        // commit cannot reject anything; stay defensive nonetheless.
-        if let Some(e) = rejection_error(&result.rejected) {
-            return Err(e);
-        }
-        Ok((value, result.warnings))
+        self.blocking(move |inner| {
+            let mut writer = lock(&inner.writer);
+            let Writer { conn, clock } = &mut *writer;
+            let now = system_time_ms();
+            let (value, validated) = {
+                let mat = inner.read_materialized();
+                let mut batch = OpBatch::new(clock, now);
+                let value = build(&mat.state, &mut batch)?;
+                // Validated once, under the write lock, and committed as is.
+                (value, Validated::new(&mat, batch.ops(), now))
+            };
+            if let Some(e) = rejection_error(&validated.outcome.rejected) {
+                return Err(e);
+            }
+            let result = inner.persist(conn, clock, validated, &source, None, false)?;
+            Ok((value, result.warnings))
+        })
+        .await
     }
 
     /// Read access to the current state (do not hold it across `.await`).
@@ -796,14 +798,26 @@ impl Inner {
         client_id: Option<&str>,
         remote: bool,
     ) -> AppResult<PushResult> {
-        let now = system_time_ms();
-        let (outcome, touched, cursor) = {
-            let mat = self.read_materialized();
-            let outcome = validate_push(&mat.state, ops, now);
-            let touched = touched_entities(&mat.state, &outcome.new_ops);
-            (outcome, touched, mat.cursor)
-        };
-        let mut cursor = cursor;
+        let validated = Validated::new(&self.read_materialized(), ops, system_time_ms());
+        self.persist(conn, clock, validated, source, client_id, remote)
+    }
+
+    /// Persists and applies a validation result. Must be called with the
+    /// writer lock held since before the validation.
+    fn persist(
+        &self,
+        conn: &mut Connection,
+        clock: &mut Clock,
+        validated: Validated,
+        source: &Source,
+        client_id: Option<&str>,
+        remote: bool,
+    ) -> AppResult<PushResult> {
+        let Validated {
+            outcome,
+            touched,
+            mut cursor,
+        } = validated;
         if !outcome.new_ops.is_empty() {
             cursor = db::commit_ops(
                 conn,
@@ -838,6 +852,28 @@ impl Inner {
             warnings: outcome.warnings,
             cursor,
         })
+    }
+}
+
+/// A push validated against the materialized state, with everything needed
+/// to persist it.
+struct Validated {
+    outcome: zunder_core::PushOutcome,
+    /// Materialized form of the entities the new operations touch.
+    touched: Vec<SnapshotEntity>,
+    /// Cursor of the state the push was validated against.
+    cursor: i64,
+}
+
+impl Validated {
+    fn new(mat: &Materialized, ops: &[Op], now: u64) -> Self {
+        let outcome = validate_push(&mat.state, ops, now);
+        let touched = touched_entities(&mat.state, &outcome.new_ops);
+        Validated {
+            outcome,
+            touched,
+            cursor: mat.cursor,
+        }
     }
 }
 
