@@ -13,7 +13,8 @@ crates/zunder-core/        Domäne, Validierung, HLC, Merge (keine I/O-Abhängig
 crates/zunder-server/      axum, SQLite (rusqlite, bundled), Sync-API, /mcp, OIDC, Timing
 crates/zunder-import/      CLI für den ClickUp-Import
 web/                       zunder-web: SolidJS + Vite + TypeScript, Vitest, Playwright
-apps/zunder-app/           Tauri 2 (E4); src-tauri ist NICHT Workspace-Mitglied (braucht webkit)
+apps/zunder-app/           Tauri 2 (E4); src-tauri ist NICHT Workspace-Mitglied (braucht webkit),
+                           sondern eigener Workspace mit zunder-local (ohne webkit testbar)
 deploy/                    compose.yaml, stack.env (Vorlage), generate-secrets.sh (Portainer/Traefik)
 Dockerfile                 Multi-Stage: Web bauen, Server bauen, schlankes Runtime-Image
 .github/workflows/ci.yml   fmt, clippy -D warnings, Tests, Web, Playwright, GHCR
@@ -338,6 +339,28 @@ Lücken, die beim Bau von `zunder-web` geschlossen wurden. Der Server darf mehr 
 - **Kurzschreibweise:** Ein Wochentag allein meint das nächste Vorkommen (1–7 Tage voraus), `nächsten <Wochentag>` den Tag in der folgenden Kalenderwoche (Montag als Wochenbeginn). `12.10.` in der Vergangenheit meint das nächste Jahr. Eine Uhrzeit ohne Datum, die heute schon vorbei ist, meint morgen. `am` vor einem Datum und `um` vor einer Uhrzeit werden mit entfernt. Unbekannte `#tags` bleiben im Titel stehen und werden in der Vorschau markiert.
 - **Inbox:** Erledigte oder verworfene Aufgaben verlassen die Inbox sofort (Ziel: null); die übrigen Sichten folgen der 3-Tage-Regel.
 
+### 5.1 App-Befehle (Tauri, E4)
+
+In der Tauri-App spricht die Web-UI nicht direkt mit dem Server (die CSP erlaubt nur `ipc:`), sondern über Befehle der App, die einen lokalen SQLite-Speicher mit Operations-Log (`pending` + `confirmed`), materialisiertem Zustand und Cursor führt und selbst synchronisiert. Ein künftiger `TauriTransport` der Web-UI ruft sie per `invoke` auf. Fehler: abgelehntes Promise mit `{"code","message"}`.
+
+| Befehl | Argumente | Ergebnis |
+|---|---|---|
+| `local_snapshot` | – | `{"cursor","entities":[SnapshotEntity],"pending":N}` (Format von `GET /api/snapshot`, lokale Sicht = bestätigt + ausstehend, inkl. Tombstones) |
+| `local_apply` | `{"ops":[Op]}` | `{"accepted":[op_id],"rejected":[Rejection],"warnings":[Warning],"pending":N}`; lokal per `validate_push` geprüft, angenommene neue Operationen sofort sichtbar und zum Push vorgemerkt |
+| `sync_now` | – | `{"pushed","rejected":[Rejection],"warnings":[Warning],"pulled","cursor","pending","changed"}` |
+| `get_config` | – | `{"server_url"\|null,"has_api_token","node_id","cursor","pending","last_sync":{"at_ms","ok","error"?}\|null}` (Token wird nie zurückgegeben) |
+| `set_config` | `{"update":{"server_url"?,"api_token"?,"discard_pending"?}}` | wie `get_config`; fehlender Schlüssel = unverändert, `null` = löschen |
+
+- Sync-Ablauf: ausstehende Operationen in Paketen zu 500 pushen (`client_id` = `node_id`), bei Cursor 0 den Snapshot übernehmen, dann `pull` bis `has_more = false`. Abgelehnte Operationen werden lokal zurückgenommen (Sicht = bestätigter Zustand + übrige ausstehende) und gemeldet.
+- Auslöser: Start, alle 30 s, 0,5 s nach `local_apply`, Rückkehr in den Vordergrund, `online`-Ereignis des Webviews, `sync_now`; nach Netzwerkfehlern 5/10/20 s, dann wieder 30 s.
+- Die Web-UI nimmt `node_id` (Form `app-<12 hex>`) als Knoten ihrer HLC.
+- Serverwechsel löscht die lokalen Daten; mit ausstehenden Operationen nur mit `discard_pending: true` (sonst Fehler `pending_ops`).
+- Fehlercodes: `not_configured`, `invalid_config`, `pending_ops`, `network`, `unauthorized`, `server`, `protocol`, `db`, `corrupt`, `schema_too_new`, `notification`.
+- Ereignisse: `zunder://changed` `{"cursor","pending"}` (Sicht durch Sync geändert → `local_snapshot` neu laden), `zunder://sync` `{"ok":true,"report"}` bzw. `{"ok":false,"error":{"code","message"}}`.
+- Erinnerungen: für offene, lebende Aufgaben zu `remind_at` und zu `due` mit Uhrzeit (gleicher Moment → nur eine). Mobil plant das Betriebssystem die 64 nächsten (iOS-Grenze) über `tauri-plugin-notification`; Desktop zeigt sie per Timer, solange die App läuft.
+
+Einzelheiten: [`apps/zunder-app/README.md`](../../../apps/zunder-app/README.md).
+
 ## 6. Import
 
 `zunder-import` (CLI, clap): `plan` (Probelauf → `mapping.toml`), `report` (Mengen, unbekannte Status, Aufgaben ohne Ziel), `run --mapping mapping.toml` (schreibt über `POST /api/sync/push` mit API-Token, Knoten `import`), `backup --out <dir>` (Roh-JSON inkl. Zeiteinträgen, Standard-Ziel außerhalb des Repos). Idempotent über `clickup_id` (erneuter Lauf aktualisiert statt dupliziert; IDs werden deterministisch aus der `clickup_id` abgeleitet: UUIDv5 im Zunder-Namespace oder Lookup).
@@ -358,4 +381,4 @@ Präzisierungen (umgesetzt in `crates/zunder-import`, Bedienung im README der Cr
 
 ## 7. Etappen im Repo
 
-E1–E2 werden vollständig gebaut. E3 ist überwiegend Betrieb (Runbook in `docs/umstieg.md`). E4 (Tauri) wird als lauffähiges Gerüst angelegt, das `zunder-core` für lokale SQLite und Sync nutzt; Mobile-Builds werden in dieser Umgebung nicht verifiziert.
+E1–E2 werden vollständig gebaut. E3 ist überwiegend Betrieb (Runbook in `docs/umstieg.md`). E4 (Tauri) wird als lauffähiges Gerüst angelegt, das `zunder-core` für lokale SQLite und Sync nutzt; Mobile-Builds werden in dieser Umgebung nicht verifiziert. Speicher, Sync und Erinnerungsplanung liegen in der webview-freien Crate `apps/zunder-app/src-tauri/zunder-local` (zweites Mitglied des eigenen Workspaces von `src-tauri`), die Tauri-Hülle verdrahtet sie nur (Befehle: Abschnitt 5.1).
