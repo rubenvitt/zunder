@@ -1,0 +1,19 @@
+[
+  {
+    "id": "te-1001", "wid": "9000001", "billable": false,
+    "user": {"id": 1, "username": "Beispielperson"},
+    "task": {"id": "86a002", "name": "Steuererklärung vorbereiten"},
+    "start": "1710000000000", "end": "1710003600000", "duration": "3600000",
+    "description": "", "tags": []
+  },
+  {
+    "id": "te-1002", "wid": "9000001",
+    "task": {"id": "86d001", "name": "Fliesen aussuchen"},
+    "start": "1750000000000", "end": "1750001800000", "duration": "1800000"
+  },
+  {
+    "id": "te-1003", "wid": "9000001",
+    "task": null,
+    "start": "1790000000000", "end": "1790000600000", "duration": "600000"
+  }
+]

@@ -1,0 +1,324 @@
+{
+  "_comment": "Synthetische ClickUp-API-v2-Antworten, frei erfunden. Schlüssel: Pfad plus relevante Query (archived=true, page=N). Fehlende archived=true-Routen liefern leere Listen.",
+
+  "/team": {
+    "teams": [
+      {"id": "9000001", "name": "Muster-Workspace", "color": "#536cfe", "avatar": null, "members": []}
+    ]
+  },
+
+  "/team/9000001/space": {
+    "spaces": [
+      {"id": "90010", "name": "Zuhause", "private": false, "archived": false, "statuses": []},
+      {"id": "90011", "name": "Werkstatt", "private": false, "archived": false, "statuses": []}
+    ]
+  },
+  "/team/9000001/space?archived=true": {
+    "spaces": [
+      {"id": "90012", "name": "Altlasten", "private": false, "archived": true}
+    ]
+  },
+
+  "/space/90010/folder": {
+    "folders": [
+      {"id": "90020", "name": "Renovierung", "orderindex": 0, "hidden": false, "archived": false, "task_count": "3", "lists": []}
+    ]
+  },
+  "/space/90010/list": {
+    "lists": [
+      {"id": "9001001", "name": "Allgemein", "orderindex": 0, "archived": false, "folder": {"id": "1", "name": "hidden", "hidden": true}, "space": {"id": "90010", "name": "Zuhause"}},
+      {"id": "9001002", "name": "Inbox", "orderindex": 1, "archived": false}
+    ]
+  },
+  "/space/90010/list?archived=true": {
+    "lists": [
+      {"id": "9001003", "name": "Garten 2025", "orderindex": 2, "archived": true}
+    ]
+  },
+  "/folder/90020/list": {
+    "lists": [
+      {"id": "9002001", "name": "Küche", "orderindex": 0, "archived": false},
+      {"id": "9002002", "name": "Bad", "orderindex": 1, "archived": false}
+    ]
+  },
+
+  "/space/90011/folder": {
+    "folders": [
+      {"id": "90021", "name": "Werkzeugkiste", "orderindex": 0, "hidden": false, "archived": false}
+    ]
+  },
+  "/space/90011/list": {
+    "lists": [
+      {"id": "9001101", "name": "Ideen", "orderindex": 0, "archived": false}
+    ]
+  },
+  "/folder/90021/list": {
+    "lists": [
+      {"id": "9002101", "name": "Backlog", "orderindex": 0, "archived": false}
+    ]
+  },
+
+  "/space/90012/folder": {"folders": []},
+  "/space/90012/list": {"lists": []},
+
+  "/list/9001001": {
+    "id": "9001001", "name": "Allgemein", "archived": false, "override_statuses": false,
+    "statuses": [
+      {"id": "s1", "status": "to do", "orderindex": 0, "color": "#d3d3d3", "type": "open"},
+      {"id": "s2", "status": "in progress", "orderindex": 1, "color": "#4194f6", "type": "custom"},
+      {"id": "s3", "status": "complete", "orderindex": 2, "color": "#6bc950", "type": "closed"}
+    ]
+  },
+  "/list/9001002": {
+    "id": "9001002", "name": "Inbox", "archived": false,
+    "statuses": [
+      {"status": "to do", "type": "open"},
+      {"status": "complete", "type": "closed"}
+    ]
+  },
+  "/list/9001003": {
+    "id": "9001003", "name": "Garten 2025",
+    "statuses": [
+      {"status": "Offen", "type": "open"},
+      {"status": "Erledigt", "type": "closed"}
+    ]
+  },
+  "/list/9002001": {
+    "id": "9002001", "name": "Küche", "archived": false,
+    "statuses": [
+      {"status": "to do", "type": "open"},
+      {"status": "doing", "type": "custom"},
+      {"status": "waiting", "type": "custom"},
+      {"status": "done", "type": "done"},
+      {"status": "cancelled", "type": "closed"}
+    ]
+  },
+  "/list/9002002": {
+    "id": "9002002", "name": "Bad", "archived": false,
+    "statuses": [
+      {"status": "to do", "type": "open"},
+      {"status": "complete", "type": "closed"}
+    ]
+  },
+  "/list/9002101": {
+    "id": "9002101", "name": "Backlog", "archived": false,
+    "statuses": [
+      {"status": "backlog", "type": "open"},
+      {"status": "in progress", "type": "custom"},
+      {"status": "in review", "type": "custom"},
+      {"status": "eingefroren", "type": "custom"},
+      {"status": "closed", "type": "closed"}
+    ]
+  },
+  "/list/9001101": {
+    "id": "9001101", "name": "Ideen", "archived": false,
+    "statuses": [
+      {"status": "Idee", "type": "open"},
+      {"status": "verworfen", "type": "closed"}
+    ]
+  },
+
+  "/list/9001001/task?page=0": {
+    "last_page": false,
+    "tasks": [
+      {
+        "id": "86a001", "custom_id": null, "name": "Fenster putzen",
+        "text_content": "", "description": "", "markdown_description": "",
+        "status": {"status": "to do", "color": "#d3d3d3", "type": "open", "orderindex": 0},
+        "orderindex": "1.00000000000000000000000000000000",
+        "date_created": "1790000000000", "date_closed": null, "archived": false,
+        "creator": {"id": 1, "username": "Beispielperson"},
+        "assignees": [], "tags": [], "parent": null, "top_level_parent": null, "priority": null,
+        "due_date": "1792029600000", "start_date": null,
+        "list": {"id": "9001001", "name": "Allgemein", "access": true},
+        "folder": {"id": "1", "name": "hidden", "hidden": true, "access": true},
+        "space": {"id": "90010"},
+        "url": "https://app.clickup.com/t/86a001"
+      },
+      {
+        "id": "86a002", "name": "Steuererklärung vorbereiten",
+        "text_content": "Belege sammeln", "description": "Belege sammeln",
+        "markdown_description": "**Belege** sammeln",
+        "status": {"status": "In Progress", "type": "custom"},
+        "orderindex": "2.50000000000000000000000000000000",
+        "archived": false, "tags": [{"name": "bug", "tag_fg": "#fff", "tag_bg": "#f00"}],
+        "parent": null,
+        "due_date": "1791790200000", "due_date_time": true,
+        "list": {"id": "9001001"},
+        "url": "https://app.clickup.com/t/86a002"
+      }
+    ]
+  },
+  "/list/9001001/task?page=1": {
+    "last_page": true,
+    "tasks": [
+      {
+        "id": "86a003", "name": "Altpapier wegbringen",
+        "text_content": null, "description": null,
+        "status": {"status": "complete", "type": "closed"},
+        "orderindex": 3, "archived": false, "tags": [], "parent": null,
+        "date_closed": "1790900000000",
+        "due_date": null,
+        "list": {"id": "9001001"},
+        "url": "https://app.clickup.com/t/86a003"
+      },
+      {
+        "id": "86a004", "name": "Belege scannen",
+        "status": {"status": "to do", "type": "open"},
+        "orderindex": "1", "parent": "86a002", "top_level_parent": "86a002",
+        "due_date": "1797289200000", "due_date_time": false,
+        "list": {"id": "9001001"},
+        "url": "https://app.clickup.com/t/86a004"
+      },
+      {
+        "id": "86a005", "name": "Scanner einrichten",
+        "status": {"status": "complete", "type": "closed"},
+        "orderindex": "1", "parent": "86a004", "top_level_parent": "86a002",
+        "list": {"id": "9001001"},
+        "url": "https://app.clickup.com/t/86a005"
+      },
+      {
+        "id": "86a006", "name": "Verwaiste Unteraufgabe",
+        "status": {"status": "to do", "type": "open"},
+        "orderindex": "4", "parent": "86zz404",
+        "list": {"id": "9001001"},
+        "url": "https://app.clickup.com/t/86a006"
+      },
+      {
+        "id": "86a007", "name": "Kind einer archivierten Aufgabe",
+        "status": {"status": "to do", "type": "open"},
+        "orderindex": "5", "parent": "86a900",
+        "list": {"id": "9001001"},
+        "url": "https://app.clickup.com/t/86a007"
+      }
+    ]
+  },
+  "/task/86a900": {
+    "id": "86a900", "name": "Archivierte Elternaufgabe",
+    "text_content": "Schon lange erledigt",
+    "status": {"status": "complete", "type": "closed"},
+    "orderindex": "9", "archived": true, "parent": null,
+    "due_date": "1790812800000",
+    "list": {"id": "9001001"},
+    "url": "https://app.clickup.com/t/86a900"
+  },
+
+  "/list/9001002/task?page=0": {
+    "last_page": true,
+    "tasks": [
+      {
+        "id": "86b001", "name": "Idee notieren",
+        "status": {"status": "to do", "type": "open"},
+        "orderindex": null, "description": null,
+        "list": {"id": "9001002"},
+        "url": "https://app.clickup.com/t/86b001"
+      }
+    ]
+  },
+
+  "/list/9001003/task?page=0": {
+    "last_page": true,
+    "tasks": [
+      {
+        "id": "86c001", "name": "Rasen mähen",
+        "status": {"status": "Erledigt", "type": "closed"},
+        "orderindex": "1",
+        "list": {"id": "9001003"},
+        "url": "https://app.clickup.com/t/86c001"
+      }
+    ]
+  },
+
+  "/list/9002001/task?page=0": {
+    "tasks": [
+      {
+        "id": "86d001", "name": "Fliesen aussuchen",
+        "status": {"status": "waiting", "type": "custom"},
+        "orderindex": "1",
+        "list": {"id": "9002001"},
+        "url": "https://app.clickup.com/t/86d001"
+      },
+      {
+        "id": "86d002", "name": "Spüle tauschen",
+        "status": {"status": "cancelled", "type": "closed"},
+        "orderindex": "2",
+        "list": {"id": "9002001"},
+        "url": "https://app.clickup.com/t/86d002"
+      }
+    ]
+  },
+  "/list/9002001/task?page=1": {"tasks": []},
+
+  "/list/9002002/task?page=0": {
+    "last_page": true,
+    "tasks": [
+      {
+        "id": "86e001", "name": "Silikon erneuern",
+        "status": {"status": "complete", "type": "closed"},
+        "orderindex": "1",
+        "list": {"id": "9002002"},
+        "url": "https://app.clickup.com/t/86e001"
+      },
+      {
+        "id": "86e002", "name": "   ",
+        "status": {"status": "to do", "type": "open"},
+        "orderindex": "2",
+        "list": {"id": "9002002"},
+        "url": "https://app.clickup.com/t/86e002"
+      }
+    ]
+  },
+
+  "/list/9002101/task?page=0": {
+    "last_page": true,
+    "tasks": [
+      {
+        "id": "86f001", "name": "Rate-Limit beachten",
+        "status": {"status": "in review", "type": "custom"},
+        "orderindex": "1", "tags": [{"name": "Feature"}],
+        "list": {"id": "9002101"},
+        "url": "https://app.clickup.com/t/86f001"
+      },
+      {
+        "id": "86f002", "name": "Altes Ticket",
+        "status": {"status": "eingefroren", "type": "custom"},
+        "orderindex": "2",
+        "list": {"id": "9002101"},
+        "url": "https://app.clickup.com/t/86f002"
+      },
+      {
+        "id": "86f003", "name": "Absturz beim Start beheben",
+        "status": {"status": "closed", "type": "closed"},
+        "orderindex": "3", "tags": [{"name": "bug"}],
+        "list": {"id": "9002101"},
+        "url": "https://app.clickup.com/t/86f003"
+      }
+    ]
+  },
+
+  "/list/9001101/task?page=0": {
+    "last_page": true,
+    "tasks": [
+      {
+        "id": "86g001", "name": "Vogelhaus bauen",
+        "status": {"status": "Idee", "type": "open"},
+        "orderindex": "1",
+        "list": {"id": "9001101"},
+        "url": "https://app.clickup.com/t/86g001"
+      }
+    ]
+  },
+
+  "/list/9002002/task?archived=true&page=0": {
+    "last_page": true,
+    "tasks": [
+      {
+        "id": "86e900", "name": "Archivierte Badaufgabe",
+        "status": {"status": "complete", "type": "closed"},
+        "orderindex": "7", "archived": true,
+        "list": {"id": "9002002"},
+        "url": "https://app.clickup.com/t/86e900"
+      }
+    ]
+  }
+}
