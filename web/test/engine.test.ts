@@ -121,7 +121,7 @@ describe("SyncEngine", () => {
   it("refuses invalid changes client-side without queueing", async () => {
     await engine.start();
     const issues = engine.change([{ entity: "task", id: "t1", fields: { title: "" } }]);
-    expect(issues.map((i) => i.code)).toEqual(["required"]);
+    expect(issues.map((i) => i.code)).toEqual(["invalid_value"]);
     expect(engine.pendingOps).toHaveLength(0);
     expect(titleOf(engine, "t1")).toBe("Vom Server");
   });

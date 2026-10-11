@@ -152,6 +152,8 @@ export interface SnapshotField {
 export interface SnapshotEntity {
   entity: EntityKind;
   entity_id: string;
+  /** Smallest HLC of any op of the entity (derived created_at); optional for older servers. */
+  created_hlc?: Hlc;
   fields: Record<string, SnapshotField>;
 }
 
@@ -193,7 +195,10 @@ export interface PullResponse {
 export interface HistoryEntry {
   seq: number;
   op: Op;
+  /** web | api:<token> | mcp:<token> | server */
   source: string;
+  /** RFC 3339 (UTC), when the server received the op. */
+  received_at?: string;
 }
 
 export interface Me {

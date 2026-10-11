@@ -7,7 +7,12 @@
 //   POST /__test/reset   {"seed": "demo" | "empty", "auth": true | false}
 //   POST /__test/ops     {"ops": [Op], "source": "mcp:test"}   simulate another client
 //   GET  /__test/state   materialized state for assertions
-// Mock-only rule: a task title containing "[ablehnen]" is rejected, to exercise rollback.
+//
+// Mirrors the real server where the UI depends on it (contract 3 and 3.1): error
+// format {"error":{"code","message"}}, CSRF header X-Zunder-Client: web for
+// state-changing requests, snapshot with created_hlc/op_id, history entries with
+// source/received_at, flame responses (409 without a running flame), token rules,
+// and a subset of the core validation with the core's rejection codes.
 
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -41,6 +46,7 @@ interface Entity {
   entity: EntityKind;
   id: string;
   fields: Record<string, FieldState>;
+  created_hlc: string;
 }
 
 interface Token {
@@ -76,7 +82,7 @@ const ENUMS: Record<string, string[]> = {
 
 // ---- State -------------------------------------------------------------------
 
-let log: { seq: number; op: Op; source: string }[] = [];
+let log: { seq: number; op: Op; source: string; received_at: string }[] = [];
 let state = new Map<string, Entity>();
 let opIds = new Set<string>();
 let tokens: Token[] = [];
@@ -108,7 +114,8 @@ function key(entity: string, id: string): string {
 function applyToState(op: Op) {
   const k = key(op.entity, op.entity_id);
   let e = state.get(k);
-  if (!e) state.set(k, (e = { entity: op.entity, id: op.entity_id, fields: {} }));
+  if (!e) state.set(k, (e = { entity: op.entity, id: op.entity_id, fields: {}, created_hlc: op.hlc }));
+  if (op.hlc < e.created_hlc) e.created_hlc = op.hlc;
   const cur = e.fields[op.field];
   if (!cur || op.hlc > cur.hlc || (op.hlc === cur.hlc && op.op_id > cur.op_id)) {
     e.fields[op.field] = { value: op.value, hlc: op.hlc, op_id: op.op_id };
@@ -118,7 +125,7 @@ function applyToState(op: Op) {
 function append(op: Op, source: string) {
   if (opIds.has(op.op_id)) return;
   opIds.add(op.op_id);
-  log.push({ seq: log.length + 1, op, source });
+  log.push({ seq: log.length + 1, op, source, received_at: new Date().toISOString() });
   applyToState(op);
   observe(op.hlc);
 }
@@ -133,42 +140,107 @@ function alive(entity: string, id: string): boolean {
   return !!e && e.fields.deleted?.value !== true;
 }
 
-// ---- Validation (subset of contract 2.5) ----------------------------------------
+// ---- Validation (subset of contract 2.5, core codes) ------------------------------
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const HLC_RE = /^\d{13}:\d{5}:[a-z0-9-]{1,36}$/;
+const REQUIRED: Record<string, string[]> = { area: ["name"], project: ["name", "area_id"], task: ["title"] };
+
+/** Wire-format check; a malformed op fails the whole push with 400 (like the server). */
+function wireError(op: unknown): string | null {
+  if (!op || typeof op !== "object") return "Operation ist kein Objekt.";
+  const o = op as Record<string, unknown>;
+  if (!UUID_RE.test(String(o.op_id)) || !UUID_RE.test(String(o.entity_id))) return "Keine kanonische UUID.";
+  if (!["area", "project", "task"].includes(String(o.entity))) return "Unbekannte Entitätsart.";
+  if (typeof o.field !== "string") return "Feld fehlt.";
+  if (!("value" in o)) return "value fehlt.";
+  if (typeof o.hlc !== "string" || !HLC_RE.test(o.hlc)) return "Ungültiger HLC.";
+  return null;
+}
 
 function checkOp(op: Op): [string, string] | null {
-  const known = FIELDS[op.entity];
-  if (!known) return ["invalid_entity", "Unbekannte Entität."];
+  const known = FIELDS[op.entity]!;
   if (!known.includes(op.field)) return ["unknown_field", `Unbekanntes Feld „${op.field}“.`];
-  if (typeof op.hlc !== "string" || !/^\d{13}:\d{5}:[a-z0-9-]{1,36}$/.test(op.hlc)) return ["invalid_hlc", "Ungültiger Zeitstempel."];
-  if (Number(op.hlc.slice(0, 13)) > Date.now() + 24 * 3600 * 1000) return ["hlc_in_future", "Zeitstempel liegt zu weit in der Zukunft."];
-  const allowed = ENUMS[`${op.entity}.${op.field}`];
-  if (allowed && op.value !== null && !allowed.includes(String(op.value))) return ["invalid_value", `Ungültiger Wert für „${op.field}“.`];
-  if ((op.field === "title" || op.field === "name") && (typeof op.value !== "string" || !op.value.trim())) {
-    return ["required", "Pflichtfeld darf nicht leer sein."];
+  if (Number(op.hlc.slice(0, 13)) > Date.now() + 24 * 3600 * 1000) {
+    return ["future_hlc", "Der Zeitstempel liegt mehr als 24 Stunden in der Zukunft. Bitte die Uhr des Geräts prüfen."];
   }
-  if (op.entity === "task" && op.field === "title" && typeof op.value === "string" && op.value.includes("[ablehnen]")) {
-    return ["test_reject", "Vom Testserver abgelehnt."];
+  if (op.value === null) {
+    return REQUIRED[op.entity]!.includes(op.field) ? ["invalid_value", `Pflichtfeld „${op.field}“ kann nicht zurückgesetzt werden.`] : null;
+  }
+  const allowed = ENUMS[`${op.entity}.${op.field}`];
+  if (allowed && !allowed.includes(String(op.value))) return ["invalid_value", `Ungültiger Wert für „${op.field}“.`];
+  if ((op.field === "title" || op.field === "name") && (typeof op.value !== "string" || !op.value.trim())) {
+    return ["invalid_value", `„${op.field}“ darf nicht leer sein.`];
+  }
+  if (op.field === "deleted" && typeof op.value !== "boolean") return ["invalid_value", "„deleted“ muss true oder false sein."];
+  if ((op.field === "parent_id" || op.field === "area_id") && !UUID_RE.test(String(op.value))) {
+    return ["invalid_value", `„${op.field}“ muss eine UUID (klein, mit Bindestrichen) sein.`];
   }
   return null;
 }
 
-function checkEntity(entity: EntityKind, id: string, ops: Op[]): [string, string] | null {
-  const existing = state.get(key(entity, id));
+function fieldsAfter(entity: EntityKind, id: string, pending: Map<string, Op[]>): Record<string, Json> {
   const fields: Record<string, Json> = {};
-  for (const [f, st] of Object.entries(existing?.fields ?? {})) fields[f] = st.value;
-  for (const op of ops) fields[op.field] = op.value;
-  const str = (f: string) => (typeof fields[f] === "string" ? (fields[f] as string) : "");
-  if (entity === "task") {
-    if (!str("title").trim()) return ["required", "Eine Aufgabe braucht einen Titel."];
-    const loc = fields.location;
-    if (loc && typeof loc === "object" && !Array.isArray(loc) && (loc.kind === "area" || loc.kind === "project")) {
-      if (!alive(loc.kind, String(loc.id))) return ["invalid_reference", "Die Stelle existiert nicht."];
+  for (const [f, st] of Object.entries(state.get(key(entity, id))?.fields ?? {})) fields[f] = st.value;
+  for (const op of pending.get(key(entity, id)) ?? []) fields[op.field] = op.value;
+  return fields;
+}
+
+function aliveAfter(entity: EntityKind, id: string, pending: Map<string, Op[]>): boolean {
+  if (!state.has(key(entity, id)) && !pending.has(key(entity, id))) return false;
+  return fieldsAfter(entity, id, pending).deleted !== true;
+}
+
+function effectiveProject(id: string, pending: Map<string, Op[]>): string | null {
+  const seen = new Set<string>();
+  let current = id;
+  for (;;) {
+    const f = fieldsAfter("task", current, pending);
+    const parent = typeof f.parent_id === "string" ? f.parent_id : null;
+    if (parent && !seen.has(parent) && (state.has(key("task", parent)) || pending.has(key("task", parent)))) {
+      seen.add(current);
+      current = parent;
+      continue;
     }
-    if (str("parent_id") && !alive("task", str("parent_id"))) return ["invalid_reference", "Die Elternaufgabe existiert nicht."];
+    const loc = f.location as { kind?: string; id?: string } | null | undefined;
+    return loc?.kind === "project" ? String(loc.id) : null;
+  }
+}
+
+function checkEntity(entity: EntityKind, id: string, pending: Map<string, Op[]>): [string, string] | null {
+  const fields = fieldsAfter(entity, id, pending);
+  if (fields.deleted === true) {
+    // Deleting needs the live dependents gone (deleted in the same push or before).
+    const dependents = [...new Set([...state.keys(), ...pending.keys()])].filter((k) => {
+      const [kind, other] = k.split("/") as [EntityKind, string];
+      if (!aliveAfter(kind, other, pending)) return false;
+      const f = fieldsAfter(kind, other, pending);
+      const loc = f.location as { kind?: string; id?: string } | null | undefined;
+      if (entity === "area") return (kind === "project" && f.area_id === id) || (kind === "task" && !f.parent_id && loc?.kind === "area" && loc.id === id);
+      if (entity === "project") return kind === "task" && !f.parent_id && loc?.kind === "project" && loc.id === id;
+      return kind === "task" && f.parent_id === id;
+    });
+    return dependents.length > 0
+      ? ["has_dependents", "Kann nicht gelöscht werden, solange noch etwas darauf verweist. Bitte zuerst verschieben oder mitlöschen."]
+      : null;
+  }
+  for (const f of REQUIRED[entity]!) if (fields[f] === undefined || fields[f] === null) return ["missing_required", `Pflichtfeld „${f}“ fehlt.`];
+  if (entity === "task") {
+    const loc = fields.location as { kind?: string; id?: string } | null | undefined;
+    const parent = typeof fields.parent_id === "string" ? fields.parent_id : null;
+    if (parent && !aliveAfter("task", parent, pending)) return ["invalid_reference", "Die Aufgabe existiert nicht."];
+    if (!parent && (loc?.kind === "area" || loc?.kind === "project") && !aliveAfter(loc.kind, String(loc.id), pending)) {
+      return ["invalid_reference", loc.kind === "area" ? "Der Bereich existiert nicht." : "Das Projekt existiert nicht."];
+    }
+    if (fields.type === "bug" || fields.type === "feature" || fields.status === "review") {
+      const project = effectiveProject(id, pending);
+      const dev = project && aliveAfter("project", project, pending) && fieldsAfter("project", project, pending).kind === "dev";
+      if (!dev) return ["dev_only", "Bugs, Features und Review gibt es nur in Dev-Projekten."];
+    }
   } else if (entity === "project") {
-    if (!str("name")) return ["required", "Ein Projekt braucht einen Namen."];
-    if (!str("area_id") || !alive("area", str("area_id"))) return ["invalid_reference", "Der Bereich existiert nicht."];
-  } else if (!str("name")) return ["required", "Ein Bereich braucht einen Namen."];
+    if (!aliveAfter("area", String(fields.area_id), pending)) return ["invalid_reference", "Der Bereich existiert nicht."];
+    if (fields.repo && fields.kind !== "dev") return ["dev_only", "Ein Repo ist nur bei Dev-Projekten erlaubt."];
+  }
   return null;
 }
 
@@ -177,38 +249,64 @@ function push(ops: Op[], source: string) {
   const rejected: Rejection[] = [];
   const warnings: { entity_id: string; code: string; message: string }[] = [];
   const groups = new Map<string, Op[]>();
+  const seen = new Set<string>();
   for (const op of ops) {
-    if (opIds.has(op.op_id)) {
-      accepted.push(op.op_id);
-      continue;
-    }
+    if (opIds.has(op.op_id) || seen.has(op.op_id)) continue;
+    seen.add(op.op_id);
     const k = key(op.entity, op.entity_id);
     let group = groups.get(k);
     if (!group) groups.set(k, (group = []));
     group.push(op);
   }
-  for (const group of groups.values()) {
-    const first = group[0]!;
-    let reason: [string, string] | null = null;
-    for (const op of group) if ((reason = checkOp(op))) break;
-    reason ??= checkEntity(first.entity, first.entity_id, group);
+  const verdict = new Map<string, [string, string]>();
+  for (const [k, group] of groups) {
+    for (const op of group) {
+      const reason = checkOp(op);
+      if (reason) {
+        verdict.set(op.op_id, reason);
+        for (const other of group) {
+          if (!verdict.has(other.op_id)) verdict.set(other.op_id, ["entity_rejected", `Abgelehnt, weil eine andere Änderung ungültig ist: ${reason[1]}`]);
+        }
+        groups.delete(k);
+        break;
+      }
+    }
+  }
+  // Entity rules on the state with all remaining groups applied, until stable.
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const [k, group] of groups) {
+      const first = group[0]!;
+      const reason = checkEntity(first.entity, first.entity_id, groups);
+      if (reason) {
+        for (const op of group) verdict.set(op.op_id, reason);
+        groups.delete(k);
+        changed = true;
+      }
+    }
+  }
+  for (const op of ops) {
+    const reason = verdict.get(op.op_id);
     if (reason) {
-      for (const op of group) rejected.push({ op_id: op.op_id, code: reason[0], message: reason[1] });
+      rejected.push({ op_id: op.op_id, code: reason[0], message: reason[1] });
       continue;
     }
-    for (const op of group) {
-      append(op, source);
-      accepted.push(op.op_id);
-    }
+    if (groups.get(key(op.entity, op.entity_id))?.includes(op)) append(op, source);
+    accepted.push(op.op_id);
+  }
+  for (const group of groups.values()) {
+    const first = group[0]!;
     if (first.entity === "task" && group.some((op) => op.field === "status" && op.value === "done")) {
       const open = [...state.values()].filter(
         (e) => e.entity === "task" && e.fields.parent_id?.value === first.entity_id && e.fields.deleted?.value !== true &&
           !["done", "dropped"].includes(String(e.fields.status?.value ?? "open")),
       );
-      if (open.length) warnings.push({ entity_id: first.entity_id, code: "open_subtasks", message: "Es gibt noch offene Unteraufgaben." });
+      if (open.length) {
+        warnings.push({ entity_id: first.entity_id, code: "open_subtasks", message: `Aufgabe ist erledigt, hat aber noch ${open.length} offene Unteraufgabe(n).` });
+      }
     }
   }
-  if (accepted.length) notify();
+  if (groups.size > 0) notify();
   return { accepted, rejected, warnings, cursor: log.length };
 }
 
@@ -252,7 +350,7 @@ function seed(kind: string) {
   let n = 0;
   const op = (entity: EntityKind, id: string, field: string, value: Json) => {
     n += 1;
-    append({ op_id: randomUUID(), entity, entity_id: id, field, value, hlc: `${String(base + n).padStart(13, "0")}:00000:import` }, "import");
+    append({ op_id: randomUUID(), entity, entity_id: id, field, value, hlc: `${String(base + n).padStart(13, "0")}:00000:import` }, "api:import");
   };
   const today = new Date();
   const fire = isoWeek(today);
@@ -320,8 +418,12 @@ const MIME: Record<string, string> = {
 function serveStatic(res: ServerResponse, pathname: string) {
   let file = normalize(join(DIST, decodeURIComponent(pathname)));
   if (!file.startsWith(DIST)) return error(res, 403, "forbidden", "Verboten.");
-  if (!existsSync(file) || statSync(file).isDirectory()) file = join(DIST, "index.html");
-  if (!existsSync(file)) return error(res, 500, "no_dist", "web/dist fehlt – zuerst `npm run build`.");
+  if (!existsSync(file) || statSync(file).isDirectory()) {
+    // SPA fallback only for paths without a file extension (like the server).
+    if (pathname.startsWith("/assets/") || extname(pathname) !== "") return error(res, 404, "not_found", "Datei nicht gefunden.");
+    file = join(DIST, "index.html");
+  }
+  if (!existsSync(file)) return error(res, 500, "internal", "web/dist fehlt – zuerst `npm run build`.");
   const immutable = file.includes(`${join(DIST, "assets")}`);
   res.writeHead(200, {
     "Content-Type": MIME[extname(file)] ?? "application/octet-stream",
@@ -332,10 +434,39 @@ function serveStatic(res: ServerResponse, pathname: string) {
 
 seed("demo");
 
+function isFlameRunning(e: Entity | undefined): boolean {
+  const started = e?.fields.flame_started_at?.value;
+  const ended = e?.fields.flame_ended_at?.value;
+  if (typeof started !== "string") return false;
+  return typeof ended !== "string" || Date.parse(ended) < Date.parse(started);
+}
+
+function flameOutcome(id: string, running: boolean, stopped: string[], unchanged: boolean) {
+  const e = state.get(key("task", id));
+  return {
+    task: { id, title: e?.fields.title?.value ?? "", flame_running: running },
+    running,
+    stopped_task_ids: stopped,
+    unchanged,
+    timing: { configured: false, used: false, entry: null, error: null },
+    warnings: [],
+  };
+}
+
+function tokenNameError(name: unknown): string | null {
+  if (typeof name !== "string" || name.trim() === "" || [...name].length > 64) return "Der Name muss 1 bis 64 Zeichen lang sein.";
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(name)) return "Der Name darf keine Steuerzeichen enthalten.";
+  if (name === "bootstrap") return "Der Name „bootstrap“ ist reserviert.";
+  return null;
+}
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
   const path = url.pathname;
   const method = req.method ?? "GET";
+  const safe = method === "GET" || method === "HEAD" || method === "OPTIONS";
+  const csrfOk = safe || req.headers["x-zunder-client"] === "web";
   try {
     // Test control
     if (path === "/__test/reset" && method === "POST") {
@@ -355,18 +486,26 @@ const server = createServer(async (req, res) => {
     }
 
     if (path === "/healthz") return send(res, 200, { status: "ok", version: "mock" });
-    if (path === "/auth/login") {
+    if (path === "/auth/login" && method === "GET") {
+      // Like dev auth: log in directly and return to a local path.
       authenticated = true;
-      res.writeHead(302, { Location: "/" });
+      const target = url.searchParams.get("return_to") ?? "/";
+      const local = target.startsWith("/") && !target.startsWith("//") && !target.includes("\\") ? target : "/";
+      res.writeHead(303, { Location: local, "Cache-Control": "no-store" });
       return res.end();
     }
     if (path === "/auth/logout" && method === "POST") {
+      if (!csrfOk) return error(res, 403, "forbidden", "Header X-Zunder-Client fehlt.");
       authenticated = false;
       return send(res, 204);
     }
 
     if (path.startsWith("/api/")) {
-      if (!authenticated) return error(res, 401, "unauthorized", "Nicht angemeldet.");
+      if (!authenticated) {
+        res.setHeader("WWW-Authenticate", "Bearer");
+        return error(res, 401, "unauthorized", "Nicht angemeldet.");
+      }
+      if (!csrfOk) return error(res, 403, "forbidden", "Header X-Zunder-Client fehlt.");
 
       if (path === "/api/me") return send(res, 200, { user_id: "mock-user", name: "Testperson", email: "test@example.org" });
 
@@ -374,24 +513,36 @@ const server = createServer(async (req, res) => {
         const entities = [...state.values()].map((e) => ({
           entity: e.entity,
           entity_id: e.id,
-          fields: Object.fromEntries(Object.entries(e.fields).map(([f, s]) => [f, { value: s.value, hlc: s.hlc }])),
+          created_hlc: e.created_hlc,
+          fields: Object.fromEntries(Object.entries(e.fields).map(([f, s]) => [f, { value: s.value, hlc: s.hlc, op_id: s.op_id }])),
         }));
         return send(res, 200, { cursor: log.length, entities });
       }
 
       if (path === "/api/sync/push" && method === "POST") {
-        const body = await readJson(req);
-        if (!Array.isArray(body.ops)) return error(res, 400, "bad_request", "ops fehlt.");
+        let body: Record<string, any>;
+        try {
+          body = await readJson(req);
+        } catch {
+          return error(res, 400, "invalid_request", "Kein gültiges JSON.");
+        }
+        if (!Array.isArray(body.ops)) return error(res, 400, "invalid_request", "ops fehlt.");
+        for (const op of body.ops) {
+          const problem = wireError(op);
+          if (problem) return error(res, 400, "invalid_request", problem);
+        }
         return send(res, 200, push(body.ops, "web"));
       }
 
       if (path === "/api/sync/pull") {
         const since = Number(url.searchParams.get("since") ?? 0);
-        const limit = Number(url.searchParams.get("limit") ?? 1000);
+        const limit = Math.min(Number(url.searchParams.get("limit") ?? 1000), 5000);
+        if (!Number.isInteger(since) || since < 0) return error(res, 400, "invalid_request", "since darf nicht negativ sein");
+        if (!Number.isInteger(limit) || limit < 1) return error(res, 400, "invalid_request", "limit muss mindestens 1 sein");
         const slice = log.slice(since, since + limit);
         return send(res, 200, {
           ops: slice.map((e) => ({ seq: e.seq, op: e.op })),
-          cursor: since + slice.length,
+          cursor: slice.length > 0 ? slice[slice.length - 1]!.seq : log.length,
           has_more: since + slice.length < log.length,
         });
       }
@@ -411,37 +562,51 @@ const server = createServer(async (req, res) => {
       let m = /^\/api\/tasks\/([^/]+)\/history$/.exec(path);
       if (m) {
         const id = decodeURIComponent(m[1]!);
+        if (!UUID_RE.test(id)) return error(res, 400, "invalid_request", "Keine kanonische ID.");
+        if (!state.has(key("task", id))) return error(res, 404, "not_found", "Aufgabe nicht gefunden.");
         return send(res, 200, log.filter((e) => e.op.entity === "task" && e.op.entity_id === id));
       }
 
       m = /^\/api\/tasks\/([^/]+)\/flame\/(start|stop)$/.exec(path);
       if (m && method === "POST") {
         const id = decodeURIComponent(m[1]!);
+        if (!UUID_RE.test(id)) return error(res, 400, "invalid_request", "Keine kanonische ID.");
         if (!alive("task", id)) return error(res, 404, "not_found", "Aufgabe nicht gefunden.");
         const at = new Date().toISOString();
-        if (m[2] === "start") serverOps("task", id, { flame_started_at: at, flame_ended_at: null });
-        else serverOps("task", id, { flame_ended_at: at });
-        return send(res, 200, { ok: true, cursor: log.length });
+        const running = isFlameRunning(state.get(key("task", id)));
+        if (m[2] === "start") {
+          if (running) return send(res, 200, flameOutcome(id, true, [], true));
+          const others = [...state.values()].filter((e) => e.entity === "task" && e.id !== id && e.fields.deleted?.value !== true && isFlameRunning(e));
+          for (const other of others) serverOps("task", other.id, { flame_ended_at: at });
+          serverOps("task", id, { flame_started_at: at, flame_ended_at: null });
+          return send(res, 200, flameOutcome(id, true, others.map((o) => o.id), false));
+        }
+        if (!running) return error(res, 409, "conflict", "Auf dieser Aufgabe läuft keine Flamme.");
+        serverOps("task", id, { flame_ended_at: at });
+        return send(res, 200, flameOutcome(id, false, [], false));
       }
 
       if (path === "/api/tokens" && method === "GET") return send(res, 200, tokens);
       if (path === "/api/tokens" && method === "POST") {
         const body = await readJson(req);
-        if (!body.name?.trim()) return error(res, 400, "required", "Name fehlt.");
-        const token: Token = { id: randomUUID(), name: body.name.trim(), created_at: new Date().toISOString(), last_used_at: null };
+        const problem = tokenNameError(body.name);
+        if (problem) return error(res, 400, "invalid_request", problem);
+        if (tokens.some((t) => t.name === body.name)) return error(res, 409, "conflict", `Es gibt bereits einen Token „${body.name}“.`);
+        const token: Token = { id: randomUUID(), name: body.name, created_at: new Date().toISOString(), last_used_at: null };
         tokens.push(token);
         return send(res, 201, { ...token, token: `zt_${randomBytes(32).toString("base64url")}` });
       }
       m = /^\/api\/tokens\/([^/]+)$/.exec(path);
       if (m && method === "DELETE") {
         const tokenId = decodeURIComponent(m[1]!);
+        if (!tokens.some((t) => t.id === tokenId)) return error(res, 404, "not_found", "Token nicht gefunden.");
         tokens = tokens.filter((t) => t.id !== tokenId);
         return send(res, 204);
       }
-      return error(res, 404, "not_found", "Unbekannter Endpunkt.");
+      return error(res, 404, "not_found", "Unbekannter API-Pfad");
     }
 
-    if (method !== "GET") return error(res, 405, "method_not_allowed", "Methode nicht erlaubt.");
+    if (method !== "GET" && method !== "HEAD") return error(res, 405, "invalid_request", "Methode nicht erlaubt.");
     return serveStatic(res, path);
   } catch (err) {
     console.error(err);

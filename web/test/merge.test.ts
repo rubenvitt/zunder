@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EntityStore, mergeOps, wins } from "../src/sync/merge";
+import { cmpJson, EntityStore, mergeOps, wins } from "../src/sync/merge";
 import { op, permutations, shuffled } from "./helpers";
 
 const T = "01929c3e-0000-7000-8000-000000000001";
@@ -72,7 +72,7 @@ describe("LWW merge", () => {
   });
 
   it("snapshot fields without op_id lose HLC ties against real ops", () => {
-    expect(wins({ hlc: "x", op_id: "01" }, { hlc: "x", op_id: "" })).toBe(true);
+    expect(wins({ value: null, hlc: "x", op_id: "01" }, { value: null, hlc: "x", op_id: "" })).toBe(true);
     const store = new EntityStore();
     store.loadSnapshot({
       cursor: 1,
@@ -80,6 +80,35 @@ describe("LWW merge", () => {
     });
     expect(store.apply(op("task", T, "title", "alt", 999))).toBe(false);
     expect(store.apply(op("task", T, "title", "neu", 1001))).toBe(true);
+  });
+
+  it("identical HLC and op_id fall back to a fixed order on the value", () => {
+    const a = op("task", T, "title", "A", 5, { opId: "0192a000-0000-7000-8000-0000000000ff" });
+    const b = { ...a, value: "B" };
+    expect(mergeOps([a, b]).toValues()).toEqual(mergeOps([b, a]).toValues());
+    expect(mergeOps([a, b]).get("task", T)!.fields.title!.value).toBe("B");
+    expect(cmpJson(null, false)).toBeLessThan(0);
+    expect(cmpJson(true, false)).toBeGreaterThan(0);
+    expect(cmpJson({ b: 1 }, { a: 2 })).toBeGreaterThan(0);
+    expect(cmpJson([1, 2], [1])).toBeGreaterThan(0);
+  });
+
+  it("created_hlc is the smallest HLC ever applied, also from the snapshot", () => {
+    const store = mergeOps([op("task", T, "title", "erst", 100), op("task", T, "title", "später", 200)]);
+    expect(store.get("task", T)!.created_hlc).toBe("0000000000100:00000:test");
+    const snap = new EntityStore();
+    snap.loadSnapshot({
+      cursor: 2,
+      entities: [
+        {
+          entity: "task",
+          entity_id: T,
+          created_hlc: "0000000000100:00000:test",
+          fields: { title: { value: "später", hlc: "0000000000200:00000:test", op_id: "x" } },
+        },
+      ],
+    });
+    expect(snap.get("task", T)!.created_hlc).toBe("0000000000100:00000:test");
   });
 
   it("clone is independent", () => {

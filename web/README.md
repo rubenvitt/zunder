@@ -29,7 +29,7 @@ src/sync/       Protokollschicht ohne UI-Abhängigkeiten
   merge.ts        Last-Writer-Wins je (Entität, Feld), Gleichstand nach op_id
   model.ts        Materialisierung mit Vertrags-Defaults
   derived.ts      wirksame Stelle, Fortschritt, status_changed_at, 3-Tage-Regel
-  validate.ts     clientseitige Spiegelung der wichtigsten Validierungen
+  validate.ts     clientseitige Spiegelung der Kernvalidierung (gleiche Codes) und Lösch-Kaskade
   rank.ts         sortierbare Ränge für Listen und Board
   engine.ts       Sync-Engine: Snapshot, optimistische Änderungen, Push-Warteschlange,
                   Rollback abgelehnter Operationen, Pull über SSE bzw. Polling, Backoff
@@ -56,6 +56,14 @@ Mobil: Sichten als Tabs unten, großes ＋ zum Erfassen, in der Inbox nach recht
 
 ## Tests
 
-- `npm test` prüft HLC, Merge (auch in vielen Permutationen), Ableitungen, Validierung, Sync-Engine und Parser. Die gemeinsamen Testvektoren werden übersprungen, solange `crates/zunder-core/tests/vectors/` fehlt.
-- `npm run e2e` startet standardmäßig den Mock-Server (`ZUNDER_E2E_BACKEND=mock`). Mit `ZUNDER_E2E_BACKEND=real` läuft stattdessen `cargo run -p zunder-server` mit `ZUNDER_DEV_AUTH=true` und einem temporären Datenverzeichnis; Testdaten entstehen in beiden Fällen über `POST /api/sync/push`.
+- `npm test` prüft HLC, Merge (auch in vielen Permutationen), Ableitungen, Validierung, Ränge, Sync-Engine und Parser. Die gemeinsamen Testvektoren aus `crates/zunder-core/tests/vectors/` (Merge, HLC-Ordnung und Validierung gegen den Kern) sind Pflicht: Fehlt das Verzeichnis, schlägt der Test fehl. Ein anderes Verzeichnis lässt sich über `ZUNDER_VECTOR_DIR` setzen.
+- `npm run e2e` startet standardmäßig den Mock-Server (`ZUNDER_E2E_BACKEND=mock`). Mit `ZUNDER_E2E_BACKEND=real` startet Playwright stattdessen die fertig gebaute Binärdatei des Servers (`ZUNDER_SERVER_BIN`, Standard `../target/debug/zunder-server`) mit `ZUNDER_DEV_AUTH=true`, einem frischen temporären Datenverzeichnis und `ZUNDER_WEB_DIR=dist` auf `127.0.0.1:18080`. Testdaten entstehen in beiden Fällen über `POST /api/sync/push` (mit `X-Zunder-Client: web`).
+
+```sh
+cargo build -p zunder-server            # im Repo-Wurzelverzeichnis
+cd web && npm run build
+ZUNDER_E2E_BACKEND=real npx playwright test
+```
+
+- Abgelehnte Änderungen werden in beiden Modi echt provoziert (veralteter Client-Zustand: Pull und SSE werden kurz blockiert, ein anderer Client löscht den Zielbereich, der Server lehnt mit `invalid_reference` ab). Nur der Test der Login-Seite läuft allein gegen den Mock, weil Dev-Auth jede Anfrage ohne Sitzung als angemeldet behandelt.
 - Der Tempo-Test misst den Kaltstart (Navigation bis Daten gerendert, Marke `zunder-ready`) und die Zeit vom Tastendruck bis zum gezeichneten DOM-Update.

@@ -4,7 +4,8 @@
 import { hasOpenChildren, isClosed, sortKey } from "../sync/derived";
 import type { Change } from "../sync/engine";
 import { rankBetween } from "../sync/rank";
-import type { JsonValue, Location, ProjectKind, Task, TaskStatus } from "../sync/types";
+import type { EntityKind, JsonValue, Location, ProjectKind, Task, TaskStatus } from "../sync/types";
+import { deleteCascade as cascadeTargets } from "../sync/validate";
 import { uuidv7 } from "../sync/uuid";
 import { STATUS_LABELS } from "../labels";
 import { api, data, getEngine, taskIndex } from "./store";
@@ -92,10 +93,23 @@ export function setParent(id: string, parentId: string | null): boolean {
   return updateTask(id, { parent_id: parentId });
 }
 
-/** Tombstones a task with all its descendants in one push group. */
+/**
+ * Tombstones an entity with all live dependents in one push group (core:
+ * OpBatch::delete_cascade); the server rejects deleting a still referenced entity.
+ */
+export function deleteCascade(entity: EntityKind, id: string): boolean {
+  const targets = cascadeTargets(getEngine().view, entity, id);
+  return apply(targets.map(([kind, tid]) => ({ entity: kind, id: tid, fields: { deleted: true } })));
+}
+
+/** Number of live dependents a delete of this entity takes along. */
+export function dependentsCount(entity: EntityKind, id: string): number {
+  return cascadeTargets(getEngine().view, entity, id).length - 1;
+}
+
+/** Deletes a task together with its subtasks. */
 export function deleteTask(id: string): boolean {
-  const ids = [id, ...taskIndex().descendantsOf(id).map((t) => t.id)];
-  return apply(ids.map((tid) => ({ entity: "task", id: tid, fields: { deleted: true } })));
+  return deleteCascade("task", id);
 }
 
 /** Places `id` between `before` and `after` (neighbors in the target order) and optionally sets fields. */

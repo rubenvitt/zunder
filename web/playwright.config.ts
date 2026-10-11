@@ -8,22 +8,28 @@ import { defineConfig, devices, type PlaywrightTestConfig } from "@playwright/te
 const backend = process.env.ZUNDER_E2E_BACKEND ?? "mock";
 const port = Number(process.env.ZUNDER_E2E_PORT ?? (backend === "real" ? 18080 : 4173));
 const baseURL = `http://127.0.0.1:${port}`;
-const repoRoot = resolve(import.meta.dirname, "..");
+
+// Contract 5: the real backend is the prebuilt server binary (build it first with
+// `cargo build -p zunder-server`, and the web UI with `npm run build`).
+const serverBin = resolve(import.meta.dirname, process.env.ZUNDER_SERVER_BIN ?? "../target/debug/zunder-server");
 
 const webServer: PlaywrightTestConfig["webServer"] =
   backend === "real"
     ? {
-        command: "cargo run -p zunder-server",
-        cwd: repoRoot,
+        command: JSON.stringify(serverBin),
+        cwd: import.meta.dirname,
         url: `${baseURL}/healthz`,
-        timeout: 600_000,
+        timeout: 60_000,
         reuseExistingServer: false,
+        stdout: "pipe",
+        stderr: "pipe",
         env: {
           ZUNDER_DEV_AUTH: "true",
           ZUNDER_DATA_DIR: mkdtempSync(join(tmpdir(), "zunder-e2e-")),
-          ZUNDER_WEB_DIR: "web/dist",
+          ZUNDER_WEB_DIR: "dist",
           ZUNDER_BIND: `127.0.0.1:${port}`,
           ZUNDER_PUBLIC_URL: baseURL,
+          RUST_LOG: process.env.RUST_LOG ?? "error",
         },
       }
     : {

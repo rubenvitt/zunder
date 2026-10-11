@@ -5,8 +5,8 @@ import { fireOf, formatInstant, fromDatetimeLocalInput, parseDue, toDatetimeLoca
 import { hasOpenChildren, isClaimActive, isClosed, isDevLocation, isFlameRunning } from "../sync/derived";
 import { hlcWallMs } from "../sync/hlc";
 import { PHOENIX_ROLES, TASK_STATUSES, TASK_TYPES, type HistoryEntry, type JsonValue, type Link, type Task, type TaskStatus, type TaskType } from "../sync/types";
-import { FIELD_LABELS, locationLabel, PHOENIX_LABELS, STATUS_LABELS, TYPE_LABELS } from "../labels";
-import { createTask, deleteTask, flame, moveTask, setParent, setStatus, toggleDone, updateTask } from "../state/actions";
+import { FIELD_LABELS, locationLabel, PHOENIX_LABELS, sourceLabel, STATUS_LABELS, TYPE_LABELS } from "../labels";
+import { createTask, deleteTask, dependentsCount, flame, moveTask, setParent, setStatus, toggleDone, updateTask } from "../state/actions";
 import { api, data, now, pendingCount, taskIndex } from "../state/store";
 import { pickLocation, pickTask, setDetailId, setSelectedId } from "../state/ui";
 import { Row, TextField } from "./Fields";
@@ -284,7 +284,7 @@ function DetailBody(props: { task: Task }) {
         <button
           class="btn btn-danger btn-small"
           onClick={() => {
-            const count = index().descendantsOf(t().id).length;
+            const count = dependentsCount("task", t().id);
             const msg = count > 0 ? `„${t().title}“ und ${count} Unteraufgabe(n) löschen?` : `„${t().title}“ löschen?`;
             if (confirm(msg) && deleteTask(t().id)) setDetailId(null);
           }}
@@ -538,7 +538,9 @@ function History(props: { taskId: string; version: string }) {
                 <span>
                   <strong>{FIELD_LABELS[entry.op.field] ?? entry.op.field}</strong> → {describeValue(entry.op.field, entry.op.value)}
                 </span>
-                <span class="history-source">{entry.source}</span>
+                <span class="history-source" title={entry.source}>
+                  {sourceLabel(entry.source)}
+                </span>
               </li>
             )}
           </For>

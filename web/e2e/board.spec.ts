@@ -63,3 +63,33 @@ test("Dev-Sicht zeigt Reservierung, Branch und PR", async ({ page }) => {
   await expect(c).toContainText("feature/agent");
   await expect(c.getByRole("link", { name: "PR" })).toHaveAttribute("href", "https://github.com/example/app/pull/7");
 });
+
+test("Umsortieren zwischen Rängen des ClickUp-Imports", async ({ page }) => {
+  const s = suffix();
+  const seeder = new Seeder();
+  const area = seeder.area(`Import ${s}`);
+  const project = seeder.project(`Altbestand ${s}`, area, { view: "board" });
+  const loc = { kind: "project", id: project };
+  const a = seeder.task(`Eins ${s}`, { location: loc, rank: "0000000000001.000000" });
+  const b = seeder.task(`Zwei ${s}`, { location: loc, rank: "0000000000001.500000" });
+  const c = seeder.task(`Drei ${s}`, { location: loc, rank: "0000000000002.000000" });
+  await seeder.push(page);
+
+  await openApp(page, `#/bereiche/project/${project}`);
+  const open = page.locator('.board-column[data-status="open"] .card .task-title');
+  await expect(open).toHaveText([`Eins ${s}`, `Zwei ${s}`, `Drei ${s}`]);
+
+  await card(page, `Drei ${s}`).click();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Shift+K");
+  await expect(open).toHaveText([`Eins ${s}`, `Drei ${s}`, `Zwei ${s}`]);
+  await page.keyboard.press("Shift+K");
+  await expect(open).toHaveText([`Drei ${s}`, `Eins ${s}`, `Zwei ${s}`]);
+
+  await expect
+    .poll(async () => {
+      const ranks = await Promise.all([c, a, b].map(async (id) => String((await entityFields(page, "task", id)).rank)));
+      return [...ranks].sort().join() === ranks.join() && new Set(ranks).size === 3;
+    })
+    .toBe(true);
+});

@@ -27,6 +27,9 @@ export function newId(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-7${rand.slice(1, 4)}-8${rand.slice(5, 8)}-${rand.slice(8, 20)}`;
 }
 
+/** CSRF header the real server requires for cookie/dev-auth requests that change state. */
+export const WEB_HEADERS = { "X-Zunder-Client": "web" };
+
 export function suffix(): string {
   return Math.random().toString(36).slice(2, 7);
 }
@@ -53,8 +56,13 @@ export class Seeder {
     return this.add("task", newId(), { title, ...extra });
   }
 
+  /** Arbitrary field ops for an existing entity (e.g. a tombstone from "another client"). */
+  raw(entity: string, id: string, fields: Record<string, Json>): string {
+    return this.add(entity, id, fields);
+  }
+
   async push(page: Page): Promise<void> {
-    const res = await page.request.post("/api/sync/push", { data: { client_id: "e2e", ops: this.ops } });
+    const res = await page.request.post("/api/sync/push", { data: { client_id: "e2e", ops: this.ops }, headers: WEB_HEADERS });
     expect(res.ok(), await res.text()).toBe(true);
     const body = (await res.json()) as { rejected: unknown[] };
     expect(body.rejected).toEqual([]);

@@ -64,6 +64,23 @@ export const FIELD_LABELS: Record<string, string> = {
   deleted: "Gelöscht",
 };
 
+/**
+ * Readable origin of a history entry. Sources per contract 3: `web`, `api:<token>`,
+ * `mcp:<token>` (agents) and `server` (e.g. the Timing bridge).
+ */
+export function sourceLabel(source: string): string {
+  if (source === "web") return "Web";
+  if (source === "server") return "Server";
+  const colon = source.indexOf(":");
+  if (colon > 0) {
+    const kind = source.slice(0, colon);
+    const name = source.slice(colon + 1);
+    if (kind === "api") return name === "import" ? "Import" : `API · ${name}`;
+    if (kind === "mcp") return `Agent · ${name}`;
+  }
+  return source;
+}
+
 /** Board columns; "review" only on dev boards. Dropped tasks are not shown on boards. */
 export function boardStatuses(dev: boolean): TaskStatus[] {
   return dev ? ["open", "in_progress", "review", "blocked", "done"] : ["open", "in_progress", "blocked", "done"];

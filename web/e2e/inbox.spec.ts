@@ -65,4 +65,28 @@ test("x markiert die ausgewählte Aufgabe als erledigt, Detail zeigt Protokoll",
   await expect(page.locator(".toast-warning", { hasText: "Unteraufgaben sind noch offen" })).toBeVisible();
   await expect(detail.locator(".notice-warning")).toBeVisible();
   await expect(detail.locator(".history-list li").first()).toContainText("Status");
+  await expect(detail.locator(".history-list li").first().locator(".history-source")).toHaveText("Web");
+});
+
+test("Löschen nimmt Unteraufgaben mit (wie delete_cascade)", async ({ page }) => {
+  const s = suffix();
+  const seeder = new Seeder();
+  const parent = seeder.task(`Weg damit ${s}`, { location: { kind: "loose" } });
+  const child = seeder.task(`Kind ${s}`, { parent_id: parent });
+  const grandchild = seeder.task(`Enkel ${s}`, { parent_id: child });
+  await seeder.push(page);
+  await openApp(page, "#/lose");
+
+  await row(page, `Weg damit ${s}`).locator(".task-main").click();
+  const detail = page.getByRole("complementary", { name: "Aufgabendetail" });
+  page.once("dialog", (d) => {
+    expect(d.message()).toContain("2 Unteraufgabe(n)");
+    void d.accept();
+  });
+  await detail.getByRole("button", { name: "Löschen" }).click();
+  await expect(row(page, `Weg damit ${s}`)).toHaveCount(0);
+  for (const id of [parent, child, grandchild]) {
+    await expect.poll(async () => (await entityFields(page, "task", id)).deleted).toBe(true);
+  }
+  await expect(page.locator(".toast-error")).toHaveCount(0);
 });

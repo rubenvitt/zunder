@@ -67,6 +67,9 @@ export interface ApiClient {
   logout(): Promise<void>;
 }
 
+/** CSRF header required by the server for cookie-authenticated, state-changing requests. */
+export const CLIENT_HEADER = "X-Zunder-Client";
+
 type FetchFn = typeof fetch;
 
 export class HttpTransport implements SyncTransport, ApiClient {
@@ -81,7 +84,11 @@ export class HttpTransport implements SyncTransport, ApiClient {
       response = await this.fetchFn(this.baseUrl + path, {
         method,
         credentials: "same-origin",
-        headers: body === undefined ? { Accept: "application/json" } : { Accept: "application/json", "Content-Type": "application/json" },
+        // Contract 3.1 (CSRF): every API request of the web UI carries X-Zunder-Client: web.
+        headers:
+          body === undefined
+            ? { Accept: "application/json", [CLIENT_HEADER]: "web" }
+            : { Accept: "application/json", "Content-Type": "application/json", [CLIENT_HEADER]: "web" },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch (err) {

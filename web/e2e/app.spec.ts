@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { isMock, openApp, prepare, row, Seeder, suffix } from "./fixtures";
+import { isMock, newId, openApp, prepare, row, Seeder, suffix, WEB_HEADERS } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
   await prepare(page);
@@ -13,6 +13,36 @@ test("Login-Seite bei fehlender Sitzung", async ({ page }) => {
   await expect(login).toHaveAttribute("href", "/auth/login");
   await login.click();
   await expect(page.locator(".app")).toBeVisible();
+});
+
+test("Abmelden über die Befehlspalette", async ({ page }) => {
+  await openApp(page);
+  await page.keyboard.press("Control+k");
+  await page.keyboard.type("abmelden");
+  const logout = page.waitForResponse((r) => r.url().endsWith("/auth/logout") && r.request().method() === "POST");
+  await page.keyboard.press("Enter");
+  expect((await logout).status()).toBe(204);
+  if (isMock) {
+    // Without a session the login page appears.
+    await expect(page.getByRole("link", { name: "Anmelden" })).toHaveAttribute("href", "/auth/login");
+  } else {
+    // Dev auth (contract 3.1) treats requests without credentials as the owner again.
+    await expect(page.locator(".app")).toBeVisible();
+  }
+});
+
+test("Zustandsändernde Anfragen brauchen X-Zunder-Client: web", async ({ page }) => {
+  await openApp(page);
+  const op = { op_id: newId(), entity: "area", entity_id: newId(), field: "name", value: "CSRF", hlc: `${String(Date.now()).padStart(13, "0")}:00000:e2e` };
+  const denied = await page.request.post("/api/sync/push", { data: { client_id: "e2e", ops: [op] } });
+  expect(denied.status()).toBe(403);
+  expect(((await denied.json()) as { error: { code: string } }).error.code).toBe("forbidden");
+  expect((await page.request.post("/auth/logout")).status()).toBe(403);
+  const ok = await page.request.post("/api/sync/push", { data: { client_id: "e2e", ops: [op] }, headers: WEB_HEADERS });
+  expect(ok.status()).toBe(200);
+  const missing = await page.request.get("/api/gibt-es-nicht");
+  expect(missing.status()).toBe(404);
+  expect(((await missing.json()) as { error: { code: string } }).error.code).toBe("not_found");
 });
 
 test("Befehlspalette findet Aufgaben, auch erledigte, und Aktionen", async ({ page }) => {

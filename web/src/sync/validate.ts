@@ -1,9 +1,10 @@
-// Client-side mirror of the most important core validations (contract 2.5) for
-// instant feedback. The server stays the authority; this never replaces it.
+// Client-side mirror of the core validation (contract 2.5, zunder_core::validate)
+// for instant feedback. Codes and rules follow the core; the server stays the
+// authority. Shared validation vectors (kind "validate" in
+// crates/zunder-core/tests/vectors) keep both sides in step.
 
 import { isRfc3339, isValidDue, isValidFire } from "./dates";
-import { entityKey, EntityStore, type EntityState } from "./merge";
-import { parseLocation, toArea, toProject, toTask } from "./model";
+import { entityKey, EntityStore, wins, type EntityState } from "./merge";
 import {
   AREA_STATES,
   FIELDS_BY_ENTITY,
@@ -17,282 +18,669 @@ import {
   type JsonValue,
   type Location,
   type Op,
-  type Task,
 } from "./types";
+import { hlcWallMs } from "./hlc";
+
+/** Rejection codes of the core (contract 2.5). */
+export type RejectCode =
+  | "unknown_field"
+  | "invalid_value"
+  | "missing_required"
+  | "dev_only"
+  | "dev_tasks_present"
+  | "invalid_reference"
+  | "has_dependents"
+  | "cycle"
+  | "future_hlc"
+  | "kind_mismatch"
+  | "entity_rejected";
 
 export interface ValidationIssue {
   op_id?: string;
   entity_id: string;
-  code: string;
+  code: RejectCode;
   message: string;
 }
 
 export const TITLE_MAX = 500;
-const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+export const MAX_FUTURE_MS = 24 * 60 * 60 * 1000;
 
-function isObject(v: JsonValue): v is { [key: string]: JsonValue } {
+export const REQUIRED_FIELDS: Record<EntityKind, readonly string[]> = {
+  area: ["name"],
+  project: ["name", "area_id"],
+  task: ["title"],
+};
+
+const KIND_LABEL: Record<EntityKind, string> = { area: "Bereich", project: "Projekt", task: "Aufgabe" };
+const DEFINITE: Record<EntityKind, string> = { area: "Der", project: "Das", task: "Die" };
+const INDEFINITE_ACC: Record<EntityKind, string> = { area: "einen Bereich", project: "ein Projekt", task: "eine Aufgabe" };
+const DEPENDENT: Record<EntityKind, string> = { area: "noch ein Bereich", project: "noch ein Projekt", task: "noch eine Aufgabe" };
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+export function isCanonicalUuid(v: unknown): v is string {
+  return typeof v === "string" && UUID_RE.test(v);
+}
+
+function isObject(v: JsonValue | undefined): v is { [key: string]: JsonValue } {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
 
-function isUrl(v: string): boolean {
+function onlyKeys(v: { [key: string]: JsonValue }, allowed: readonly string[]): boolean {
+  return Object.keys(v).every((k) => allowed.includes(k));
+}
+
+/** Absolute URL with any scheme (core: url::Url::parse succeeds). */
+export function isAbsoluteUrl(v: string): boolean {
   try {
-    const u = new URL(v);
-    return u.protocol === "http:" || u.protocol === "https:" || u.protocol === "obsidian:";
+    new URL(v);
+    return true;
   } catch {
     return false;
   }
 }
 
-const optString = (v: JsonValue) => v === null || typeof v === "string";
-const optEnum = (allowed: readonly string[]) => (v: JsonValue) =>
-  v === null || (typeof v === "string" && allowed.includes(v));
-const optRfc3339 = (v: JsonValue) => v === null || (typeof v === "string" && isRfc3339(v));
+/** Absolute http(s) URL with a host. */
+export function isHttpUrl(v: string): boolean {
+  try {
+    const u = new URL(v);
+    return (u.protocol === "http:" || u.protocol === "https:") && u.hostname !== "";
+  } catch {
+    return false;
+  }
+}
 
-type Check = (v: JsonValue) => boolean;
+/** `owner/name` in GitHub style (core: model::is_valid_repo). */
+export function isValidRepo(s: string): boolean {
+  const slash = s.indexOf("/");
+  if (slash < 0) return false;
+  const owner = s.slice(0, slash);
+  const name = s.slice(slash + 1);
+  const ownerOk = owner.length >= 1 && owner.length <= 39 && /^[A-Za-z0-9-]+$/.test(owner) && !owner.startsWith("-") && !owner.endsWith("-");
+  const nameOk = name.length >= 1 && name.length <= 100 && /^[A-Za-z0-9._-]+$/.test(name) && name !== "." && name !== "..";
+  return ownerOk && nameOk;
+}
 
-const FIELD_CHECKS: Record<EntityKind, Record<string, Check>> = {
-  area: {
-    name: (v) => typeof v === "string",
-    state: optEnum(AREA_STATES),
-    vault_path: optString,
-    deleted: (v) => typeof v === "boolean",
-  },
+/** Strict location shape (core: RawLocation with deny_unknown_fields). */
+export function parseStrictLocation(v: JsonValue | undefined): Location | null {
+  if (!isObject(v) || !onlyKeys(v, ["kind", "id"])) return null;
+  const id = v.id ?? null;
+  if ((v.kind === "inbox" || v.kind === "loose") && id === null) return { kind: v.kind };
+  if ((v.kind === "area" || v.kind === "project") && isCanonicalUuid(id)) return { kind: v.kind, id };
+  return null;
+}
+
+type Shape =
+  | "title"
+  | "text"
+  | "bool"
+  | "id"
+  | "location"
+  | "due"
+  | "timestamp"
+  | "string_list"
+  | "links"
+  | "phoenix"
+  | "repo"
+  | "http_url"
+  | readonly string[];
+
+const SHAPES: Record<EntityKind, Record<string, Shape>> = {
+  area: { name: "title", state: AREA_STATES, vault_path: "text", deleted: "bool" },
   project: {
-    name: (v) => typeof v === "string",
-    area_id: (v) => typeof v === "string",
-    status: optEnum(PROJECT_STATUSES),
-    kind: optEnum(PROJECT_KINDS),
-    repo: (v) => v === null || (typeof v === "string" && REPO_RE.test(v)),
-    description: optString,
-    view: optEnum(PROJECT_VIEWS),
-    deleted: (v) => typeof v === "boolean",
+    name: "title",
+    area_id: "id",
+    status: PROJECT_STATUSES,
+    kind: PROJECT_KINDS,
+    repo: "repo",
+    description: "text",
+    view: PROJECT_VIEWS,
+    deleted: "bool",
   },
   task: {
-    title: (v) => typeof v === "string",
-    description: optString,
-    type: optEnum(TASK_TYPES),
-    status: optEnum(TASK_STATUSES),
-    location: (v) => v === null || parseLocation(v) !== null,
-    parent_id: optString,
-    due: (v) => v === null || (typeof v === "string" && isValidDue(v)),
-    remind_at: optRfc3339,
-    vault_links: (v) => v === null || (Array.isArray(v) && v.every((x) => typeof x === "string")),
-    links: (v) =>
-      v === null ||
-      (Array.isArray(v) &&
-        v.every(
-          (x) =>
-            isObject(x) &&
-            typeof x.url === "string" &&
-            isUrl(x.url) &&
-            (x.title === undefined || x.title === null || typeof x.title === "string"),
-        )),
-    phoenix: (v) =>
-      v === null ||
-      (isObject(v) &&
-        typeof v.role === "string" &&
-        (PHOENIX_ROLES as readonly string[]).includes(v.role) &&
-        typeof v.fire === "string" &&
-        isValidFire(v.fire)),
-    claimed_by: optString,
-    claim_expires_at: optRfc3339,
-    plan: optString,
-    branch: optString,
-    pr_url: (v) => v === null || (typeof v === "string" && isUrl(v)),
-    timing_ref: optString,
-    flame_started_at: optRfc3339,
-    flame_ended_at: optRfc3339,
-    clickup_id: optString,
-    rank: optString,
-    deleted: (v) => typeof v === "boolean",
+    title: "title",
+    description: "text",
+    type: TASK_TYPES,
+    status: TASK_STATUSES,
+    location: "location",
+    parent_id: "id",
+    due: "due",
+    remind_at: "timestamp",
+    vault_links: "string_list",
+    links: "links",
+    phoenix: "phoenix",
+    claimed_by: "text",
+    claim_expires_at: "timestamp",
+    plan: "text",
+    branch: "text",
+    pr_url: "http_url",
+    timing_ref: "text",
+    flame_started_at: "timestamp",
+    flame_ended_at: "timestamp",
+    clickup_id: "text",
+    rank: "text",
+    deleted: "bool",
   },
 };
 
 const FIELD_LABELS: Record<string, string> = {
+  title: "Titel",
+  name: "Name",
   due: "Fälligkeit (Datum JJJJ-MM-TT oder Zeitpunkt)",
   remind_at: "Erinnerung",
-  links: "Links (gültige URL)",
+  links: "Links (absolute URL)",
   phoenix: "Phönix (Rolle und Feuer wie 2026-W45)",
-  pr_url: "PR-Link (gültige URL)",
+  pr_url: "PR-Link (http(s)-URL)",
   repo: "Repository (owner/name)",
+  location: "Stelle",
+  parent_id: "Elternaufgabe",
+  area_id: "Bereich",
 };
 
-/** Static check of a single field value. */
-export function checkField(entity: EntityKind, field: string, value: JsonValue): { code: string; message: string } | null {
-  if (!FIELDS_BY_ENTITY[entity].includes(field)) {
-    return { code: "unknown_field", message: `Unbekanntes Feld „${field}“.` };
+const label = (field: string) => FIELD_LABELS[field] ?? `„${field}“`;
+
+function shapeOk(shape: Shape, v: JsonValue): boolean {
+  if (typeof shape !== "string") return typeof v === "string" && shape.includes(v);
+  switch (shape) {
+    case "title":
+    case "text":
+      return typeof v === "string";
+    case "bool":
+      return typeof v === "boolean";
+    case "id":
+      return isCanonicalUuid(v);
+    case "location":
+      return parseStrictLocation(v) !== null;
+    case "due":
+      return typeof v === "string" && isValidDue(v);
+    case "timestamp":
+      return typeof v === "string" && isRfc3339(v);
+    case "string_list":
+      return Array.isArray(v) && v.every((x) => typeof x === "string" && x !== "");
+    case "links":
+      return (
+        Array.isArray(v) &&
+        v.every(
+          (x) =>
+            isObject(x) &&
+            onlyKeys(x, ["url", "title"]) &&
+            typeof x.url === "string" &&
+            isAbsoluteUrl(x.url) &&
+            (x.title === undefined || x.title === null || typeof x.title === "string"),
+        )
+      );
+    case "phoenix":
+      return (
+        isObject(v) &&
+        onlyKeys(v, ["role", "fire"]) &&
+        typeof v.role === "string" &&
+        (PHOENIX_ROLES as readonly string[]).includes(v.role) &&
+        typeof v.fire === "string" &&
+        isValidFire(v.fire)
+      );
+    case "repo":
+      return typeof v === "string" && isValidRepo(v);
+    case "http_url":
+      return typeof v === "string" && isHttpUrl(v);
   }
-  const check = FIELD_CHECKS[entity][field];
-  if (check && !check(value)) {
-    return { code: "invalid_value", message: `Ungültiger Wert für ${FIELD_LABELS[field] ?? `„${field}“`}.` };
+}
+
+/** Static check of a single field value (core: model::validate_field_value). */
+export function checkField(entity: EntityKind, field: string, value: JsonValue): { code: RejectCode; message: string } | null {
+  const shape = FIELDS_BY_ENTITY[entity].includes(field) ? SHAPES[entity][field] : undefined;
+  if (!shape) return { code: "unknown_field", message: `Unbekanntes Feld „${field}“ für ${KIND_LABEL[entity]}.` };
+  if (value === null) {
+    if (REQUIRED_FIELDS[entity].includes(field)) {
+      return { code: "invalid_value", message: `Pflichtfeld ${label(field)} kann nicht zurückgesetzt werden.` };
+    }
+    return null;
   }
+  if (shape === "title") {
+    if (typeof value !== "string") return { code: "invalid_value", message: `${label(field)} muss ein Text sein.` };
+    if (value.trim() === "") {
+      return { code: "invalid_value", message: entity === "task" ? "Eine Aufgabe braucht einen Titel." : `${DEFINITE[entity]} ${KIND_LABEL[entity]} braucht einen Namen.` };
+    }
+    if ([...value].length > TITLE_MAX) {
+      return { code: "invalid_value", message: `${label(field)} darf höchstens ${TITLE_MAX} Zeichen lang sein.` };
+    }
+    return null;
+  }
+  if (!shapeOk(shape, value)) return { code: "invalid_value", message: `Ungültiger Wert für ${label(field)}.` };
   return null;
 }
 
-/** View over the base state with the proposed ops applied to copies of touched entities. */
-class Overlay {
-  private readonly touched = new Map<string, EntityState>();
+// ---- Entity checks over a scratch state --------------------------------------
 
-  constructor(private readonly base: EntityStore) {}
+/** Read access to a state: the base store, optionally with touched entities overlaid. */
+class View {
+  private childIndex: Map<string, string[]> | null = null;
 
-  apply(op: Op): void {
-    const key = entityKey(op.entity, op.entity_id);
-    let e = this.touched.get(key);
-    if (!e) {
-      const orig = this.base.getByKey(key);
-      e = { entity: op.entity, id: op.entity_id, fields: orig ? { ...orig.fields } : {} };
-      this.touched.set(key, e);
-    }
-    const current = e.fields[op.field];
-    if (!current || op.hlc > current.hlc || (op.hlc === current.hlc && op.op_id > current.op_id)) {
-      e.fields[op.field] = { value: op.value, hlc: op.hlc, op_id: op.op_id };
-    }
-  }
+  constructor(
+    private readonly base: EntityStore,
+    private readonly touched: ReadonlyMap<string, EntityState> = new Map(),
+  ) {}
 
-  get(entity: EntityKind, id: string): EntityState | undefined {
-    const key = entityKey(entity, id);
+  entity(kind: EntityKind, id: string): EntityState | undefined {
+    const key = entityKey(kind, id);
     return this.touched.get(key) ?? this.base.getByKey(key);
   }
 
-  task(id: string): Task | undefined {
-    const e = this.get("task", id);
-    return e ? toTask(e) : undefined;
+  live(kind: EntityKind, id: string): EntityState | undefined {
+    const e = this.entity(kind, id);
+    return e && !isDeleted(e) ? e : undefined;
   }
 
-  existsAlive(entity: EntityKind, id: string): boolean {
-    const e = this.get(entity, id);
-    return !!e && e.fields.deleted?.value !== true;
+  *entities(kind?: EntityKind): Generator<EntityState> {
+    for (const e of this.touched.values()) if (!kind || e.entity === kind) yield e;
+    for (const e of this.base.values()) {
+      if ((!kind || e.entity === kind) && !this.touched.has(entityKey(e.entity, e.id))) yield e;
+    }
   }
 
-  isDevProject(id: string): boolean {
-    const e = this.get("project", id);
-    return !!e && e.fields.deleted?.value !== true && toProject(e).kind === "dev";
-  }
-
-  effectiveLocation(task: Task): Location {
-    let current = task;
-    const seen = new Set([task.id]);
-    while (current.parent_id) {
-      const parent = this.task(current.parent_id);
-      if (!parent || seen.has(parent.id)) break;
+  /** Root task id, or null when the chain is cyclic or the task is unknown. */
+  rootTask(id: string): string | null {
+    let current = this.entity("task", id);
+    if (!current) return null;
+    const seen = new Set([id]);
+    for (;;) {
+      const pid = parentId(current);
+      const parent = pid ? this.entity("task", pid) : undefined;
+      if (!parent) return current.id;
+      if (seen.has(parent.id)) return null;
       seen.add(parent.id);
       current = parent;
     }
-    return current.location;
   }
 
-  hasCycle(task: Task): boolean {
-    const seen = new Set([task.id]);
-    let parentId = task.parent_id;
-    while (parentId) {
-      if (seen.has(parentId)) return true;
-      seen.add(parentId);
-      parentId = this.task(parentId)?.parent_id ?? null;
+  effectiveLocation(id: string): Location | null {
+    const root = this.rootTask(id);
+    const e = root ? this.entity("task", root) : undefined;
+    return e ? ownLocation(e) : null;
+  }
+
+  isDevLocation(loc: Location): boolean {
+    if (loc.kind !== "project") return false;
+    const p = this.live("project", loc.id);
+    return !!p && strValue(p, "kind") === "dev";
+  }
+
+  /** Live direct children (winning parent_id). */
+  children(id: string): string[] {
+    if (!this.childIndex) {
+      this.childIndex = new Map();
+      for (const e of this.entities("task")) {
+        const pid = parentId(e);
+        if (!pid) continue;
+        let list = this.childIndex.get(pid);
+        if (!list) this.childIndex.set(pid, (list = []));
+        list.push(e.id);
+      }
     }
-    return false;
+    return (this.childIndex.get(id) ?? []).filter((c) => this.live("task", c));
   }
 
-  touchedEntities(): EntityState[] {
-    return [...this.touched.values()];
-  }
-
-  /** Tasks (from base and overlay) whose effective location is the given project. */
-  tasksInProject(projectId: string): Task[] {
-    const out: Task[] = [];
-    const seen = new Set<string>();
-    const consider = (e: EntityState) => {
-      if (e.entity !== "task" || seen.has(e.id)) return;
-      seen.add(e.id);
-      const t = toTask(e);
-      if (t.deleted) return;
-      const loc = this.effectiveLocation(t);
-      if (loc.kind === "project" && loc.id === projectId) out.push(t);
-    };
-    for (const e of this.touched.values()) consider(e);
-    for (const e of this.base.values()) if (!this.touched.has(entityKey(e.entity, e.id))) consider(e);
+  /** All live descendants, cycle safe (core: State::descendants). */
+  descendants(id: string): string[] {
+    const out: string[] = [];
+    const seen = new Set([id]);
+    const stack = [...this.children(id)].reverse();
+    while (stack.length > 0) {
+      const c = stack.pop()!;
+      if (seen.has(c)) continue;
+      seen.add(c);
+      out.push(c);
+      stack.push(...[...this.children(c)].reverse());
+    }
     return out;
   }
 }
 
-function isDevOnly(task: Task): boolean {
-  return task.type === "bug" || task.type === "feature" || task.status === "review";
+function value(e: EntityState, field: string): JsonValue | undefined {
+  const v = e.fields[field]?.value;
+  return v === null ? undefined : v;
 }
 
-/**
- * Validates one commit (ops for one or more entities) against the current state.
- * Mirrors the per-entity granularity of the server: issues name the entity.
- */
-export function validateOps(base: EntityStore, ops: readonly Op[]): ValidationIssue[] {
-  const issues: ValidationIssue[] = [];
-  const overlay = new Overlay(base);
-  const touchedFields = new Map<string, Set<string>>();
+function strValue(e: EntityState, field: string): string | undefined {
+  const v = value(e, field);
+  return typeof v === "string" ? v : undefined;
+}
 
-  for (const op of ops) {
-    const issue = checkField(op.entity, op.field, op.value);
-    if (issue) issues.push({ op_id: op.op_id, entity_id: op.entity_id, ...issue });
-    overlay.apply(op);
-    const key = entityKey(op.entity, op.entity_id);
-    let set = touchedFields.get(key);
-    if (!set) touchedFields.set(key, (set = new Set()));
-    set.add(op.field);
+function isDeleted(e: EntityState): boolean {
+  return value(e, "deleted") === true;
+}
+
+function parentId(e: EntityState): string | null {
+  if (e.entity !== "task") return null;
+  const v = strValue(e, "parent_id");
+  return isCanonicalUuid(v) ? v : null;
+}
+
+function areaId(e: EntityState): string | null {
+  if (e.entity !== "project") return null;
+  const v = strValue(e, "area_id");
+  return isCanonicalUuid(v) ? v : null;
+}
+
+function ownLocation(e: EntityState): Location {
+  return parseStrictLocation(value(e, "location")) ?? { kind: "inbox" };
+}
+
+function target(loc: Location): [EntityKind, string] | null {
+  return loc.kind === "area" || loc.kind === "project" ? [loc.kind, loc.id] : null;
+}
+
+function taskType(e: EntityState): string {
+  return strValue(e, "type") ?? "aufgabe";
+}
+
+function taskStatus(e: EntityState): string {
+  return strValue(e, "status") ?? "open";
+}
+
+type Key = string; // "kind/id"
+const keyOf = (kind: EntityKind, id: string): Key => entityKey(kind, id);
+
+class Checker {
+  readonly blamed = new Map<Key, { code: RejectCode; message: string }>();
+
+  constructor(
+    private readonly before: View,
+    private readonly scratch: View,
+    private readonly changed: ReadonlyMap<Key, ReadonlySet<string>>,
+  ) {}
+
+  private touched(key: Key): boolean {
+    return this.changed.has(key);
   }
-  if (issues.length > 0) return issues;
 
-  for (const e of overlay.touchedEntities()) {
-    const fields = touchedFields.get(entityKey(e.entity, e.id)) ?? new Set<string>();
-    const isNew = !base.has(e.entity, e.id);
-    const push = (code: string, message: string) => issues.push({ entity_id: e.id, code, message });
+  /** Restoring an entity counts as changing every field (all rules apply anew). */
+  private changedAny(kind: EntityKind, id: string, names: readonly string[]): boolean {
+    const set = this.changed.get(keyOf(kind, id));
+    if (!set) return false;
+    return names.some((n) => set.has(n)) || (set.has("deleted") && !!this.scratch.live(kind, id));
+  }
 
-    if (e.entity === "area") {
-      const area = toArea(e);
-      if (area.name.trim() === "") push("required", "Ein Bereich braucht einen Namen.");
-    } else if (e.entity === "project") {
-      const project = toProject(e);
-      if (project.name.trim() === "") push("required", "Ein Projekt braucht einen Namen.");
-      if (!project.area_id) push("required", "Ein Projekt gehört immer zu einem Bereich.");
-      else if ((isNew || fields.has("area_id")) && !overlay.existsAlive("area", project.area_id)) {
-        push("invalid_reference", "Der Bereich existiert nicht.");
-      }
-      if (fields.has("kind") && project.kind === "standard" && !isNew) {
-        if (overlay.tasksInProject(project.id).some(isDevOnly)) {
-          push("project_has_dev_tasks", "Das Projekt enthält noch Bugs, Features oder Review-Aufgaben.");
-        }
-      }
-    } else {
-      const task = toTask(e);
-      const titleLength = [...task.title].length;
-      if (task.title.trim() === "") push("required", "Eine Aufgabe braucht einen Titel.");
-      else if (titleLength > TITLE_MAX) push("title_too_long", `Der Titel ist länger als ${TITLE_MAX} Zeichen.`);
+  private blame(key: Key, code: RejectCode, message: string): void {
+    if (this.touched(key) && !this.blamed.has(key)) this.blamed.set(key, { code, message });
+  }
 
-      if ((isNew || fields.has("location")) && (task.location.kind === "area" || task.location.kind === "project")) {
-        if (!overlay.existsAlive(task.location.kind, task.location.id)) {
-          push("invalid_reference", task.location.kind === "area" ? "Der Bereich existiert nicht." : "Das Projekt existiert nicht.");
-        }
-      }
-      if (fields.has("parent_id") && task.parent_id) {
-        if (task.parent_id === task.id || overlay.hasCycle(task)) {
-          push("parent_cycle", "Eine Aufgabe kann nicht unter sich selbst hängen.");
-        } else if (!overlay.existsAlive("task", task.parent_id)) {
-          push("invalid_reference", "Die Elternaufgabe existiert nicht.");
-        }
-      }
-      const relevant = isNew || ["type", "status", "location", "parent_id"].some((f) => fields.has(f));
-      if (relevant && isDevOnly(task) && !task.deleted) {
-        const loc = overlay.effectiveLocation(task);
-        const inDev = loc.kind === "project" && overlay.isDevProject(loc.id);
-        if (!inDev) {
-          const moved = !isNew && (fields.has("location") || fields.has("parent_id"));
-          if (moved) {
-            push("dev_task_move", "Bugs, Features und Review-Aufgaben können ein Dev-Projekt nicht verlassen.");
-          } else if (task.status === "review") {
-            push("dev_only_status", "Den Status „Review“ gibt es nur in Dev-Projekten.");
-          } else {
-            push("dev_only_type", "Bugs und Features gibt es nur in Dev-Projekten.");
-          }
+  check(kind: EntityKind, id: string): void {
+    const e = this.scratch.entity(kind, id);
+    if (!e || isDeleted(e)) return;
+    const key = keyOf(kind, id);
+    if (this.touched(key)) {
+      for (const field of REQUIRED_FIELDS[kind]) {
+        if (value(e, field) === undefined) {
+          const message =
+            kind === "task" && field === "title"
+              ? "Eine Aufgabe braucht einen Titel."
+              : kind === "project" && field === "area_id"
+                ? "Ein Projekt gehört immer zu einem Bereich."
+                : `Pflichtfeld „${field}“ fehlt für ${INDEFINITE_ACC[kind]}.`;
+          this.blame(key, "missing_required", message);
+          return;
         }
       }
     }
+    if (kind === "project") this.checkProject(e);
+    else if (kind === "task") this.checkTask(e);
   }
+
+  private brokenReference(kind: EntityKind, id: string, via: readonly string[], targetKind: EntityKind, targetId: string): void {
+    if (this.scratch.live(targetKind, targetId)) return;
+    const key = keyOf(kind, id);
+    const targetKey = keyOf(targetKind, targetId);
+    if (this.changedAny(kind, id, via)) {
+      const what = `${DEFINITE[targetKind]} ${KIND_LABEL[targetKind]}`;
+      const message = this.scratch.entity(targetKind, targetId) ? `${what} ist gelöscht.` : `${what} existiert nicht.`;
+      this.blame(key, "invalid_reference", message);
+    } else if (this.touched(targetKey)) {
+      this.blame(
+        targetKey,
+        "has_dependents",
+        `${DEFINITE[targetKind]} ${KIND_LABEL[targetKind]} kann nicht gelöscht werden, solange ${DEPENDENT[kind]} darauf verweist. Bitte zuerst verschieben oder mitlöschen.`,
+      );
+    } else {
+      this.blame(key, "invalid_reference", `${DEFINITE[targetKind]} referenzierte ${KIND_LABEL[targetKind]} existiert nicht mehr.`);
+    }
+  }
+
+  private checkProject(p: EntityState): void {
+    const area = areaId(p);
+    if (area) this.brokenReference("project", p.id, ["area_id", "deleted"], "area", area);
+    if (value(p, "repo") !== undefined && strValue(p, "kind") !== "dev" && this.changedAny("project", p.id, ["repo", "kind"])) {
+      this.blame(
+        keyOf("project", p.id),
+        "dev_only",
+        "Ein Repo ist nur bei Dev-Projekten erlaubt. Bitte „repo“ zurücksetzen oder die Art „dev“ wählen.",
+      );
+    }
+  }
+
+  private checkTask(t: EntityState): void {
+    const key = keyOf("task", t.id);
+    const refFields = ["parent_id", "location", "deleted"];
+    const parent = parentId(t);
+    if (parent) {
+      this.brokenReference("task", t.id, refFields, "task", parent);
+      if (this.inCycle(t.id) && this.changedAny("task", t.id, ["parent_id"])) {
+        this.blame(key, "cycle", "Die Aufgabe kann nicht unter sich selbst oder eine ihrer Unteraufgaben gehängt werden.");
+        return;
+      }
+    } else {
+      const tgt = target(ownLocation(t));
+      if (tgt) this.brokenReference("task", t.id, refFields, tgt[0], tgt[1]);
+    }
+
+    const type = taskType(t);
+    const devType = type === "bug" || type === "feature";
+    const devStatus = taskStatus(t) === "review";
+    if (!devType && !devStatus) return;
+    const effective = this.scratch.effectiveLocation(t.id);
+    if (!effective || this.scratch.isDevLocation(effective)) return;
+    const what = devType ? `Typ „${type}“` : "Status „review“";
+    const isRoot = parent === null;
+    const ownCause =
+      this.changedAny("task", t.id, ["type", "status", "parent_id", "deleted"]) || (isRoot && this.changedAny("task", t.id, ["location"]));
+    if (ownCause) {
+      const beforeLoc = this.before.effectiveLocation(t.id);
+      const wasDev = !!beforeLoc && this.before.isDevLocation(beforeLoc);
+      this.blame(
+        key,
+        "dev_only",
+        wasDev ? `Eine Aufgabe mit ${what} darf nicht aus einem Dev-Projekt heraus verschoben werden.` : `${what} ist nur in Dev-Projekten erlaubt.`,
+      );
+      return;
+    }
+
+    const title = strValue(t, "title") ?? "";
+    let responsible = false;
+    const seen = new Set([t.id]);
+    let current = parent;
+    while (current) {
+      if (seen.has(current)) break;
+      seen.add(current);
+      const ancestor = this.scratch.entity("task", current);
+      if (!ancestor) break;
+      const ancestorIsRoot = parentId(ancestor) === null;
+      if (this.changedAny("task", current, ["parent_id"]) || (ancestorIsRoot && this.changedAny("task", current, ["location"]))) {
+        responsible = true;
+        this.blame(
+          keyOf("task", current),
+          "dev_tasks_present",
+          `Unteraufgabe „${title}“ hat ${what} und darf nicht aus einem Dev-Projekt heraus verschoben werden.`,
+        );
+      }
+      current = parentId(ancestor);
+    }
+    if (effective.kind === "project") {
+      const pid = effective.id;
+      if (this.changedAny("project", pid, ["deleted"]) && !this.scratch.live("project", pid)) {
+        responsible = true;
+      } else if (this.changedAny("project", pid, ["kind"])) {
+        responsible = true;
+        this.blame(
+          keyOf("project", pid),
+          "dev_tasks_present",
+          `Das Projekt enthält noch die Aufgabe „${title}“ mit ${what} und kann deshalb kein Standard-Projekt werden.`,
+        );
+      }
+    }
+    if (!responsible && this.touched(key)) this.blame(key, "dev_only", `${what} ist nur in Dev-Projekten erlaubt.`);
+  }
+
+  private inCycle(id: string): boolean {
+    const seen = new Set<string>();
+    let e = this.scratch.entity("task", id);
+    let current = e ? parentId(e) : null;
+    while (current) {
+      if (current === id) return true;
+      if (seen.has(current)) return false;
+      seen.add(current);
+      e = this.scratch.entity("task", current);
+      current = e ? parentId(e) : null;
+    }
+    return false;
+  }
+}
+
+/** Touched entities plus every live entity whose validity may depend on them. */
+function neighbourhood(scratch: View, changed: ReadonlyMap<Key, ReadonlySet<string>>): [EntityKind, string][] {
+  const out = new Map<Key, [EntityKind, string]>();
+  const touchedAreas = new Set<string>();
+  const touchedProjects = new Set<string>();
+  const touchedTasks: string[] = [];
+  for (const key of changed.keys()) {
+    const [kind, id] = key.split("/") as [EntityKind, string];
+    out.set(key, [kind, id]);
+    if (kind === "area") touchedAreas.add(id);
+    else if (kind === "project") touchedProjects.add(id);
+    else touchedTasks.push(id);
+  }
+  if (touchedAreas.size > 0) {
+    for (const p of scratch.entities("project")) {
+      const a = areaId(p);
+      if (!isDeleted(p) && a && touchedAreas.has(a)) out.set(keyOf("project", p.id), ["project", p.id]);
+    }
+  }
+  if (touchedAreas.size > 0 || touchedProjects.size > 0) {
+    for (const t of scratch.entities("task")) {
+      if (isDeleted(t)) continue;
+      const own = ownLocation(t);
+      const inArea = parentId(t) === null && own.kind === "area" && touchedAreas.has(own.id);
+      let inProject = false;
+      if (!inArea && touchedProjects.size > 0) {
+        const eff = scratch.effectiveLocation(t.id);
+        inProject = eff?.kind === "project" && touchedProjects.has(eff.id);
+      }
+      if (inArea || inProject) out.set(keyOf("task", t.id), ["task", t.id]);
+    }
+  }
+  for (const id of touchedTasks) for (const d of scratch.descendants(id)) out.set(keyOf("task", d), ["task", d]);
+  return [...out.values()];
+}
+
+/**
+ * Validates one commit (ops for one or more entities) against the current state
+ * like zunder_core::validate_push: per-op checks first, then entity rules on the
+ * state with the commit applied. Returns at most one issue per entity (the
+ * cause); the caller refuses the whole commit when there are any.
+ */
+export function validateOps(base: EntityStore, ops: readonly Op[], nowMs: number = Date.now()): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const kindsInPush = new Map<string, Set<EntityKind>>();
+  for (const op of ops) {
+    let set = kindsInPush.get(op.entity_id);
+    if (!set) kindsInPush.set(op.entity_id, (set = new Set()));
+    set.add(op.entity);
+  }
+  const failed = new Set<Key>();
+  const otherKinds = (kind: EntityKind, id: string) => (["area", "project", "task"] as const).filter((k) => k !== kind && base.has(k, id));
+  for (const op of ops) {
+    const key = keyOf(op.entity, op.entity_id);
+    if (failed.has(key)) continue;
+    let issue: { code: RejectCode; message: string } | null = null;
+    if (hlcWallMs(op.hlc) > nowMs + MAX_FUTURE_MS) {
+      issue = { code: "future_hlc", message: "Der Zeitstempel liegt mehr als 24 Stunden in der Zukunft. Bitte die Uhr des Geräts prüfen." };
+    }
+    issue ??= checkField(op.entity, op.field, op.value);
+    if (!issue) {
+      const other = otherKinds(op.entity, op.entity_id)[0];
+      if (other) {
+        issue = {
+          code: "kind_mismatch",
+          message: `Die ID ist bereits als ${KIND_LABEL[other]} vergeben und kann nicht für ${INDEFINITE_ACC[op.entity]} verwendet werden.`,
+        };
+      } else if ((kindsInPush.get(op.entity_id)?.size ?? 0) > 1) {
+        issue = { code: "kind_mismatch", message: "Dieselbe ID wird in diesem Push für verschiedene Entitätsarten verwendet." };
+      }
+    }
+    if (issue) {
+      failed.add(key);
+      issues.push({ op_id: op.op_id, entity_id: op.entity_id, ...issue });
+    }
+  }
+  if (issues.length > 0) return issues;
+
+  // Apply the commit to copies of the touched entities.
+  const touched = new Map<Key, EntityState>();
+  const changed = new Map<Key, Set<string>>();
+  for (const op of ops) {
+    const key = keyOf(op.entity, op.entity_id);
+    let e = touched.get(key);
+    if (!e) {
+      const orig = base.getByKey(key);
+      e = { entity: op.entity, id: op.entity_id, fields: orig ? { ...orig.fields } : {}, created_hlc: orig?.created_hlc ?? op.hlc };
+      touched.set(key, e);
+    }
+    const candidate = { value: op.value, hlc: op.hlc, op_id: op.op_id };
+    const current = e.fields[op.field];
+    if (!current || wins(candidate, current)) e.fields[op.field] = candidate;
+    if (op.hlc < e.created_hlc) e.created_hlc = op.hlc;
+    let set = changed.get(key);
+    if (!set) changed.set(key, (set = new Set()));
+    set.add(op.field);
+  }
+  const scratch = new View(base, touched);
+  const checker = new Checker(new View(base), scratch, changed);
+  for (const [kind, id] of neighbourhood(scratch, changed)) checker.check(kind, id);
+  for (const [key, v] of checker.blamed) issues.push({ entity_id: key.slice(key.indexOf("/") + 1), ...v });
   return issues;
 }
 
+/**
+ * Entity plus all live dependents, dependents last (core: OpBatch::delete_cascade):
+ * a task with its descendants; a project with the tasks located in it; an area
+ * with its projects (and their tasks) and the tasks located directly in it.
+ */
+export function deleteCascade(base: EntityStore, kind: EntityKind, id: string): [EntityKind, string][] {
+  const view = new View(base);
+  const out: [EntityKind, string][] = [[kind, id]];
+  if (kind === "task") {
+    for (const d of view.descendants(id)) out.push(["task", d]);
+  } else if (kind === "project") {
+    for (const t of view.entities("task")) {
+      if (isDeleted(t)) continue;
+      const eff = view.effectiveLocation(t.id);
+      if (eff?.kind === "project" && eff.id === id) out.push(["task", t.id]);
+    }
+  } else {
+    for (const p of view.entities("project")) {
+      if (!isDeleted(p) && areaId(p) === id) out.push(...deleteCascade(base, "project", p.id));
+    }
+    for (const t of view.entities("task")) {
+      if (isDeleted(t)) continue;
+      const own = ownLocation(t);
+      if (parentId(t) === null && own.kind === "area" && own.id === id) {
+        out.push(["task", t.id], ...view.descendants(t.id).map((d): [EntityKind, string] => ["task", d]));
+      }
+    }
+  }
+  const seen = new Set<string>();
+  return out.filter(([k, i]) => {
+    const key = keyOf(k, i);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}

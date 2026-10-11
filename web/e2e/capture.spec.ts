@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { entityFields, isMock, openApp, prepare, row, Seeder, suffix } from "./fixtures";
+import { entityFields, openApp, prepare, row, Seeder, suffix } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
   await prepare(page);
@@ -48,13 +48,32 @@ test("Schnellerfassung mit Kurzschreibweise setzt Fälligkeit, Erinnerung und Be
 });
 
 test("Abgelehnte Operation wird zurückgerollt und gemeldet", async ({ page }) => {
-  test.skip(!isMock, "Nutzt die Testregel des Mock-Servers");
+  // A genuine core rejection: the client still shows an area that another client has
+  // deleted meanwhile (pulls are held back), so its own validation lets the move pass
+  // and the server refuses it (invalid_reference).
+  const s = suffix();
+  const seeder = new Seeder();
+  const areaId = seeder.area(`Bald weg ${s}`);
+  const taskId = seeder.task(`Zuordnen ${s}`);
+  await seeder.push(page);
   await openApp(page, "#/inbox");
-  await page.keyboard.press("n");
-  await page.getByLabel("Titel der neuen Aufgabe").fill("Darf nicht bleiben [ablehnen]");
+  await expect(row(page, `Zuordnen ${s}`)).toBeVisible();
+
+  await page.route("**/api/sync/pull**", (route) => route.abort());
+  await page.route("**/api/sync/events", (route) => route.abort());
+  const other = new Seeder();
+  other.raw("area", areaId, { deleted: true });
+  await other.push(page);
+
+  await row(page, `Zuordnen ${s}`).locator(".task-main").focus();
+  await page.keyboard.press("a");
+  await page.keyboard.type(`Bald weg ${s}`);
   await page.keyboard.press("Enter");
   await expect(page.locator(".toast-error", { hasText: "Änderung abgelehnt" })).toBeVisible();
-  await expect(row(page, "Darf nicht bleiben")).toHaveCount(0);
+  // Rolled back: the task is back in the inbox, the server kept it there.
+  await expect(row(page, `Zuordnen ${s}`)).toBeVisible();
+  expect((await entityFields(page, "task", taskId)).location).toBeUndefined();
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
 test("Clientseitige Validierung verhindert leere Titel im Detail", async ({ page }) => {

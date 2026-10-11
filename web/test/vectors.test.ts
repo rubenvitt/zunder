@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { compareHlc, isValidHlc } from "../src/sync/hlc";
 import { mergeOps } from "../src/sync/merge";
+import { validateOps } from "../src/sync/validate";
 import type { JsonValue, Op } from "../src/sync/types";
 import { permutations, shuffled } from "./helpers";
 
@@ -26,7 +27,17 @@ interface HlcOrderVector {
   sorted: string[];
 }
 
-type Vector = MergeVector | HlcOrderVector;
+interface ValidateVector {
+  name: string;
+  kind: "validate";
+  now_ms: number;
+  state: Op[];
+  push: Op[];
+  /** entity id → code of the cause; empty = everything accepted. */
+  expected_rejected: Record<string, string>;
+}
+
+type Vector = MergeVector | HlcOrderVector | ValidateVector;
 
 function orderings<T>(items: readonly T[]): T[][] {
   const result = [items.slice(), items.slice().reverse()];
@@ -45,27 +56,35 @@ function canonical(value: unknown): string {
 
 const files = existsSync(VECTOR_DIR) ? readdirSync(VECTOR_DIR).filter((f) => f.endsWith(".json")).sort() : [];
 
-if (files.length === 0) {
-  describe("shared test vectors", () => {
-    it.skip(`no vectors found in ${VECTOR_DIR} (created by zunder-core); skipped`, () => {});
+describe("shared test vectors", () => {
+  it(`finds the vectors in ${VECTOR_DIR}`, () => {
+    // The vectors are part of the repository (zunder-core); a missing directory is an error, not a skip.
+    expect(files.length).toBeGreaterThan(0);
   });
-} else {
-  describe("shared test vectors", () => {
-    for (const file of files) {
-      const vector = JSON.parse(readFileSync(join(VECTOR_DIR, file), "utf8")) as Vector;
-      const known = vector.kind === "merge" || vector.kind === "hlc_order";
-      // Other vector kinds (e.g. core-only validation vectors) are not covered by the web client.
-      (known ? it : it.skip)(`${file}: ${vector.name}`, () => {
-        if (vector.kind === "hlc_order") {
-          for (const hlc of vector.sorted) expect(isValidHlc(hlc), hlc).toBe(true);
-          for (const order of orderings(vector.sorted)) expect([...order].sort(compareHlc)).toEqual(vector.sorted);
-          return;
-        }
-        const expected = canonical(vector.expected);
-        for (const order of orderings(vector.ops)) {
-          expect(canonical(mergeOps(order).toValues())).toBe(expected);
-        }
-      });
-    }
-  });
-}
+
+  for (const file of files) {
+    const vector = JSON.parse(readFileSync(join(VECTOR_DIR, file), "utf8")) as Vector;
+    it(`${file}: ${vector.name}`, () => {
+      expect(file).toContain(vector.name);
+      if (vector.kind === "hlc_order") {
+        for (const hlc of vector.sorted) expect(isValidHlc(hlc), hlc).toBe(true);
+        for (const order of orderings(vector.sorted)) expect([...order].sort(compareHlc)).toEqual(vector.sorted);
+        return;
+      }
+      if (vector.kind === "validate") {
+        // The client refuses a commit as a whole and names the cause per entity, which must match
+        // the core's cause per rejected entity.
+        const issues = validateOps(mergeOps(vector.state), vector.push, vector.now_ms);
+        const got = Object.fromEntries(issues.map((i) => [i.entity_id, i.code]));
+        expect(issues).toHaveLength(Object.keys(got).length);
+        expect(got).toEqual(vector.expected_rejected);
+        return;
+      }
+      expect(vector.kind).toBe("merge");
+      const expected = canonical(vector.expected);
+      for (const order of orderings(vector.ops)) {
+        expect(canonical(mergeOps(order).toValues())).toBe(expected);
+      }
+    });
+  }
+});

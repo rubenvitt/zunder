@@ -137,12 +137,36 @@ describe("ranks", () => {
       ["az", "b"],
       ["abc", "abd"],
       [defaultRank(1000), defaultRank(1001)],
+      // Fixed-width decimal ranks of the ClickUp import (contract 6).
+      ["0000000000001.000000", "0000000000001.500000"],
+      ["0000000000001.500000", "0000000000002.000000"],
+      ["0000000000001.999999", "0000000000002.000000"],
+      [null, "0000000000000.000000"],
+      ["0000000000099.000000", null],
+      ["0000000000099.000000", defaultRank(1_760_000_000_000)],
+      ["a.", "a.0"],
+      ["", "0.5"],
+      ["z", null],
+      ["zz~", null],
     ];
     for (const [a, b] of cases) {
       const r = rankBetween(a, b);
       if (a !== null) expect(r > a, `${r} > ${a}`).toBe(true);
       if (b !== null) expect(r < b, `${r} < ${b}`).toBe(true);
+      // Below a rank made only of "0" and "." there is no rank ending in [1-9a-z].
+      if (b === null || /[1-9a-z]/.test(b.slice((a ?? "").length))) expect(r.endsWith("0"), r).toBe(false);
+    }
+  });
+
+  it("inserts repeatedly between import ranks", () => {
+    let lo = "0000000000001.000000";
+    let hi = "0000000000001.000001";
+    for (let i = 0; i < 100; i++) {
+      const r = rankBetween(lo, hi);
+      expect(r > lo && r < hi, `${lo} < ${r} < ${hi}`).toBe(true);
       expect(r.endsWith("0")).toBe(false);
+      if (i % 2 === 0) lo = r;
+      else hi = r;
     }
   });
 

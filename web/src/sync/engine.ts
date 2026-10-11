@@ -346,6 +346,7 @@ export class SyncEngine {
     return [...this.confirmed.values()].map((e) => ({
       entity: e.entity,
       entity_id: e.id,
+      created_hlc: e.created_hlc,
       fields: Object.fromEntries(Object.entries(e.fields).map(([k, f]) => [k, { value: f.value, hlc: f.hlc, op_id: f.op_id }])),
     }));
   }

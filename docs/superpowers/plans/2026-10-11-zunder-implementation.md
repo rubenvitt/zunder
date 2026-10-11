@@ -161,6 +161,8 @@ Ablehnungsgründe sind maschinenlesbar (`code`) plus deutscher Text (`message`).
 
 `expected` enthält je Entität die gewinnenden Werte aller gesetzten Felder (`null`-Werte erscheinen als `null`). Ein optionales Feld `description` erklärt den Fall in Worten. Eine Datei mit `"kind": "hlc_order"` enthält statt `ops`/`expected` das Feld `"sorted": [hlc, …]` in aufsteigender Ordnung. Rust- und TypeScript-Tests wenden die Operationen in mehreren Permutationen an und vergleichen mit `expected`.
 
+Validierungsvektoren (`"kind": "validate"`) prüfen die clientseitige Spiegelung der Validierung gegen den Kern: `state` (Operationen, die vorher gemergt werden), `push` (zu prüfende Operationen), `now_ms` (physische Zeit) und `expected_rejected` (`{"<entity_id>": "<code>"}`: je abgelehnter Entität der Code der Ursache, also der erste Code außer `entity_rejected`; leer = alles angenommen). Rust prüft zusätzlich, dass genau die Operationen dieser Entitäten abgelehnt werden; die Web-UI (`validateOps`) muss je Entität dieselbe Ursache melden. Fehlt das Verzeichnis, schlagen die TypeScript-Tests fehl (kein Überspringen).
+
 ## 3. HTTP-API (Server)
 
 Basis: `ZUNDER_PUBLIC_URL`. JSON, UTF-8. Fehler: `{"error":{"code":…,"message":…}}`.
@@ -323,21 +325,23 @@ SolidJS + Vite + TypeScript (strict). Kein UI-Framework mit großem Laufzeitante
 - **Mobil:** Tabs unten, Wisch-Gesten in der Inbox.
 - Erledigte/verworfene Aufgaben verschwinden **3 Tage** nach `status_changed_at` aus den Standardansichten, bleiben in der Suche.
 - Playwright-Abläufe: erfassen, Inbox abarbeiten, Board verschieben, Flamme starten; Tempo-Budget (Interaktion < 100 ms, Kaltstart < 1 s) wird gemessen.
-- Mit `ZUNDER_E2E_BACKEND=real` startet die Playwright-Konfiguration (`webServer`) den echten Server: Binärdatei aus `ZUNDER_SERVER_BIN` (Default `../target/debug/zunder-server`), mit `ZUNDER_DEV_AUTH=true`, einem frischen temporären `ZUNDER_DATA_DIR` und `ZUNDER_WEB_DIR=dist` (vorher `npm run build`). Die CI baut den Server im Release-Profil und setzt `ZUNDER_SERVER_BIN` entsprechend.
+- Mit `ZUNDER_E2E_BACKEND=real` startet die Playwright-Konfiguration (`webServer`) den echten Server: Binärdatei aus `ZUNDER_SERVER_BIN` (Default `../target/debug/zunder-server`, relativ zu `web/`), mit `ZUNDER_DEV_AUTH=true`, einem frischen temporären `ZUNDER_DATA_DIR`, `ZUNDER_WEB_DIR=dist` (vorher `npm run build`), `ZUNDER_BIND=127.0.0.1:18080` und passender `ZUNDER_PUBLIC_URL`. Die CI baut den Server im Release-Profil und setzt `ZUNDER_SERVER_BIN` entsprechend.
 
 ### 5.1 Präzisierungen aus der Web-UI
 
 Lücken, die beim Bau von `zunder-web` geschlossen wurden. Der Server darf mehr liefern, muss aber mindestens dies erfüllen.
 
-- **Snapshot:** Ein Feld darf zusätzlich `op_id` tragen (`{"value","hlc","op_id"}`). Fehlt es, behandelt der Client die `op_id` als leer; bei identischem HLC gewinnt dann jede echte Operation.
+- **Snapshot:** Ein Feld darf zusätzlich `op_id` tragen (`{"value","hlc","op_id"}`). Fehlt es, behandelt der Client die `op_id` als leer; bei identischem HLC gewinnt dann jede echte Operation. `created_hlc` übernimmt der Client als Erstellzeit (Standardrang, Sortierung); ohne das Feld gilt der kleinste Feld-HLC. Sind HLC und `op_id` gleich, entscheidet wie im Kern die feste Ordnung auf dem JSON-Wert.
 - **Knoten-ID der Web-UI:** `web-<12 hex>`, je Browser in `localStorage` gespeichert; `client_id` im Push ist dieselbe Kennung. Die Push-Warteschlange liegt ebenfalls in `localStorage`, ein Reload verliert nichts (Idempotenz über `op_id`).
 - **Tokens:** `GET /api/tokens` → `[{"id","name","created_at","last_used_at"}]`; `POST /api/tokens` mit `{"name"}` → dasselbe Objekt plus `"token"` (nur in dieser Antwort); `DELETE /api/tokens/{id}` → 204. Der Client akzeptiert auch `{"tokens":[…]}`.
-- **Änderungsprotokoll:** `GET /api/tasks/{id}/history` → Array `[{"seq","op","source"}]` (auch `{"entries":[…]}` wird akzeptiert).
+- **Änderungsprotokoll:** `GET /api/tasks/{id}/history` → Array `[{"seq","op","source","received_at"}]` (auch `{"entries":[…]}` wird akzeptiert). Die UI zeigt die Quelle lesbar: `web` → „Web“, `api:import` → „Import“, `api:<name>` → „API · name“, `mcp:<name>` → „Agent · name“, `server` → „Server“.
 - **Flamme:** Der Antwortkörper von `flame/start|stop` wird ignoriert. Der Server schreibt die Änderungen als Operationen (`flame_started_at`, `flame_ended_at`, ggf. `timing_ref`); der Client holt sie per `pull`.
 - **Abmelden:** `POST /auth/logout`, danach lädt die UI neu; `GET /api/me` mit 401 zeigt die Login-Seite (Knopf auf `/auth/login`).
-- **Rang:** Aufgaben ohne `rank` sortieren nach einem Standardrang aus der Erstellzeit: `wall_ms` des kleinsten HLC in Basis 36, auf 9 Stellen mit `0` aufgefüllt, plus Suffix `i`. Erzeugte Ränge nutzen `[0-9a-z]` und enden nie auf `0`. Erledigte/verworfene Aufgaben stehen in Listen unten, neueste Statusänderung zuerst.
+- **Rang:** Aufgaben ohne `rank` sortieren nach einem Standardrang aus der Erstellzeit: `wall_ms` des kleinsten HLC in Basis 36, auf 9 Stellen mit `0` aufgefüllt, plus Suffix `i`. Erzeugte Ränge nutzen `[0-9a-z]` und enden nie auf `0`. Beim Einsortieren zählt nur die Stringordnung der Nachbarn, deshalb funktioniert das auch zwischen fremden Rängen wie den Dezimalrängen des Imports (`"0000000000001.500000"`); diese sortieren vor allen Standardrängen neuer Aufgaben. Nur unterhalb eines Rangs, der ab der Abweichung nur aus `0` und `.` besteht, darf ein erzeugter Rang auf `0` enden. Erledigte/verworfene Aufgaben stehen in Listen unten, neueste Statusänderung zuerst.
 - **Kurzschreibweise:** Ein Wochentag allein meint das nächste Vorkommen (1–7 Tage voraus), `nächsten <Wochentag>` den Tag in der folgenden Kalenderwoche (Montag als Wochenbeginn). `12.10.` in der Vergangenheit meint das nächste Jahr. Eine Uhrzeit ohne Datum, die heute schon vorbei ist, meint morgen. `am` vor einem Datum und `um` vor einer Uhrzeit werden mit entfernt. Unbekannte `#tags` bleiben im Titel stehen und werden in der Vorschau markiert.
 - **Inbox:** Erledigte oder verworfene Aufgaben verlassen die Inbox sofort (Ziel: null); die übrigen Sichten folgen der 3-Tage-Regel.
+- **Validierung im Client:** `web/src/sync/validate.ts` spiegelt `zunder_core::validate` mit denselben Codes (Abschnitt 2.5) und Regeln (Wertformen, Pflichtfelder nicht `null`, `repo` nur bei `dev`, Dev-Regeln inkl. Verursacher-Zuordnung, Referenzen, `has_dependents`, Wiederherstellen per `deleted: false`/`null`). Eine Änderung wird bei einem Befund ganz verworfen, die Meldung zeigt die erste Ursache. Löschen in der UI nimmt die lebenden Abhängigen mit (`deleteCascade`, wie `OpBatch::delete_cascade`).
+- **Mock-Server:** `web/e2e/mock-server.ts` bildet für die UI relevante Serverregeln nach (Fehlerformat, CSRF-Header, Snapshot mit `created_hlc`/`op_id`, Verlauf, Flammen inkl. 409, Token-Regeln, eine Teilmenge der Kernvalidierung mit Kerncodes). Ablehnungen in E2E-Tests entstehen in beiden Modi echt (z. B. veralteter Client-Zustand, Verweis auf eine inzwischen gelöschte Entität).
 
 ### 5.1 App-Befehle (Tauri, E4)
 

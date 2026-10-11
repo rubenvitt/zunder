@@ -33,14 +33,11 @@ function oneOf<T extends string>(v: JsonValue | undefined, allowed: readonly T[]
   return typeof v === "string" && (allowed as readonly string[]).includes(v) ? (v as T) : fallback;
 }
 
+/** created = smallest HLC ever applied (contract 2.4), updated = largest field HLC. */
 function hlcRange(e: EntityState): { min: Hlc; max: Hlc } {
-  let min = "";
-  let max = "";
-  for (const f of Object.values(e.fields)) {
-    if (min === "" || f.hlc < min) min = f.hlc;
-    if (f.hlc > max) max = f.hlc;
-  }
-  return { min, max };
+  let max = e.created_hlc;
+  for (const f of Object.values(e.fields)) if (f.hlc > max) max = f.hlc;
+  return { min: e.created_hlc, max };
 }
 
 export function parseLocation(v: JsonValue | undefined): Location | null {

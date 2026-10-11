@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use serde_json::{Map, Value};
-use zunder_core::{Hlc, Op, State};
+use zunder_core::{validate_push, Hlc, Op, State};
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -20,6 +20,17 @@ enum Vector {
     HlcOrder {
         name: String,
         sorted: Vec<String>,
+    },
+    /// `state` is merged first, then `push` is validated at `now_ms`.
+    /// `expected_rejected` maps each rejected entity ID to the code of its
+    /// cause (the first rejection that is not `entity_rejected`); every
+    /// operation of such an entity must be rejected, all others accepted.
+    Validate {
+        name: String,
+        now_ms: u64,
+        state: Vec<Op>,
+        push: Vec<Op>,
+        expected_rejected: BTreeMap<String, String>,
     },
 }
 
@@ -99,6 +110,7 @@ fn shared_vectors() {
     let files = vector_files();
     let mut merge_count = 0;
     let mut hlc_count = 0;
+    let mut validate_count = 0;
     for path in &files {
         let file_name = path.file_name().unwrap().to_string_lossy().into_owned();
         match load(path) {
@@ -125,6 +137,42 @@ fn shared_vectors() {
                 let state = State::from_ops(&ops);
                 let restored = State::from_snapshot(&state.to_snapshot());
                 assert_eq!(materialize(&restored), expected, "vector {name}: snapshot");
+            }
+            Vector::Validate {
+                name,
+                now_ms,
+                state,
+                push,
+                expected_rejected,
+            } => {
+                validate_count += 1;
+                assert!(
+                    file_name.contains(&name),
+                    "{file_name}: name {name:?} does not match"
+                );
+                let state = State::from_ops(&state);
+                let outcome = validate_push(&state, &push, now_ms);
+                let mut causes: BTreeMap<String, String> = BTreeMap::new();
+                for r in &outcome.rejected {
+                    let op = push.iter().find(|o| o.op_id == r.op_id).unwrap();
+                    let code = r.code.as_str();
+                    if code != "entity_rejected" {
+                        causes
+                            .entry(op.entity_id.to_string())
+                            .or_insert_with(|| code.to_owned());
+                    }
+                }
+                assert_eq!(causes, expected_rejected, "vector {name}: {outcome:?}");
+                for op in &push {
+                    let rejected = outcome.rejected.iter().any(|r| r.op_id == op.op_id);
+                    assert_eq!(
+                        rejected,
+                        expected_rejected.contains_key(&op.entity_id.to_string()),
+                        "vector {name}: op {} ({})",
+                        op.op_id,
+                        op.field
+                    );
+                }
             }
             Vector::HlcOrder { name, sorted } => {
                 hlc_count += 1;
@@ -158,4 +206,8 @@ fn shared_vectors() {
         "expected at least 10 merge vectors, found {merge_count}"
     );
     assert!(hlc_count >= 1, "expected at least one hlc_order vector");
+    assert!(
+        validate_count >= 10,
+        "expected at least 10 validate vectors, found {validate_count}"
+    );
 }
