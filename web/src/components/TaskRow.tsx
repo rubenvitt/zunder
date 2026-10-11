@@ -10,6 +10,8 @@ import { Icon } from "./Icon";
 export interface RowAction {
   label: string;
   key?: string;
+  /** Also shown on phones, where the other row actions are hidden (swipes cover them). */
+  mobile?: boolean;
   run: () => void;
 }
 
@@ -171,7 +173,12 @@ export function TaskRow(props: TaskRowProps) {
           <span class="row-actions">
             <For each={props.actions}>
               {(action) => (
-                <button class="btn btn-small btn-ghost" title={action.key ? `${action.label} (${action.key})` : action.label} onClick={() => action.run()}>
+                <button
+                  class="btn btn-small btn-ghost"
+                  classList={{ "row-action-mobile": !!action.mobile }}
+                  title={action.key ? `${action.label} (${action.key})` : action.label}
+                  onClick={() => action.run()}
+                >
                   {action.label}
                 </button>
               )}

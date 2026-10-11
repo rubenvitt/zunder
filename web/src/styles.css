@@ -17,6 +17,10 @@
   --success: #2e7d32;
   --success-soft: #e3f3e4;
   --info: #2a5db0;
+  /* Text on solid danger/warning/info backgrounds (toasts, swipe hints). */
+  --on-danger: #ffffff;
+  --on-warning: #ffffff;
+  --on-info: #ffffff;
   --focus: #2a5db0;
   --shadow: 0 8px 30px rgb(0 0 0 / 0.12);
   --radius: 10px;
@@ -47,6 +51,10 @@
     --success: #6fcf73;
     --success-soft: #1d3320;
     --info: #7aa7ff;
+    /* The dark theme's signal colors are light: dark text keeps them readable (> 7:1). */
+    --on-danger: #16130f;
+    --on-warning: #16130f;
+    --on-info: #16130f;
     --focus: #7aa7ff;
     --shadow: 0 8px 30px rgb(0 0 0 / 0.5);
   }
@@ -663,12 +671,13 @@ select.field {
   justify-content: flex-end;
   padding: 0 1rem;
   background: var(--danger);
-  color: #fff;
+  color: var(--on-danger);
   font-weight: 600;
 }
 .swipe-hint.right {
   justify-content: flex-start;
   background: var(--info);
+  color: var(--on-info);
 }
 .task-main {
   flex: 1;
@@ -1190,11 +1199,11 @@ select.field {
 }
 .toast-error {
   background: var(--danger);
-  color: #fff;
+  color: var(--on-danger);
 }
 .toast-warning {
   background: var(--warning);
-  color: #fff;
+  color: var(--on-warning);
 }
 .toast .btn {
   color: inherit;
@@ -1308,6 +1317,9 @@ select.field {
     border: 0;
   }
   .row-actions {
+    opacity: 1;
+  }
+  .row-actions .btn:not(.row-action-mobile) {
     display: none;
   }
   .board {

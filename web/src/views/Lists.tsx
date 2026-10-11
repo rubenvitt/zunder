@@ -6,6 +6,7 @@ import type { Task } from "../sync/types";
 import { moveTask, setStatus, shorten } from "../state/actions";
 import { inboxTasks, tasksAt, todayGroups } from "../state/selectors";
 import { activeList, pickLocation, registerList, selectedId, setSelectedId, toast } from "../state/ui";
+import { now } from "../state/store";
 import { locationLabel } from "../labels";
 
 export function TodayView() {
@@ -21,7 +22,7 @@ export function TodayView() {
     <div class="view">
       <header class="view-head">
         <h1>Heute</h1>
-        <span class="muted">{new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })}</span>
+        <span class="muted">{new Date(now()).toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })}</span>
       </header>
       <Show when={groups().flames.length > 0}>
         <section class="group group-flame">
@@ -97,7 +98,9 @@ export function InboxView() {
         label="Inbox"
         empty="Inbox leer. Alles eingeordnet."
         actions={(task) => [
-          { label: "Zuordnen", key: "a", run: () => inboxActions.assign(task) },
+          // Spec 7: assign, loose, drop with one key or one swipe each; on the phone the
+          // swipes cover loose (right) and drop (left), assigning stays a visible button.
+          { label: "Zuordnen", key: "a", mobile: true, run: () => inboxActions.assign(task) },
           { label: "Lose", key: "l", run: () => inboxActions.loose(task) },
           { label: "Verwerfen", key: "d", run: () => inboxActions.drop(task) },
         ]}
