@@ -117,15 +117,18 @@ export function sameLocation(a: Location, b: Location): boolean {
   return true;
 }
 
-/** Index over all tasks: children lists (sorted) and lookup. Built once per state change. */
+/**
+ * Index over all tasks: children lists (sorted), effective locations and deletion
+ * state, computed eagerly once per state change (so a reactive wrapper tracks
+ * every field it depends on).
+ */
 export class TaskIndex {
-  readonly byId: Map<string, Task>;
-  readonly children = new Map<string, Task[]>();
+  readonly byId = new Map<string, Task>();
+  private readonly children = new Map<string, Task[]>();
   private readonly effective = new Map<string, Location>();
   private readonly deleted = new Map<string, boolean>();
 
   constructor(tasks: Iterable<Task>) {
-    this.byId = new Map();
     for (const t of tasks) this.byId.set(t.id, t);
     for (const t of this.byId.values()) {
       if (!t.parent_id || !this.byId.has(t.parent_id)) continue;
@@ -134,10 +137,16 @@ export class TaskIndex {
       list.push(t);
     }
     for (const list of this.children.values()) list.sort(compareTasks);
+    for (const t of this.byId.values()) {
+      const loc = effectiveLocation(t, this.lookup);
+      this.effective.set(t.id, loc.kind === "area" || loc.kind === "project" ? { kind: loc.kind, id: loc.id } : { kind: loc.kind });
+      this.deleted.set(t.id, isEffectivelyDeleted(t, this.lookup));
+    }
   }
 
   readonly lookup: TaskLookup = (id) => this.byId.get(id);
 
+  /** Direct, non-deleted children in rank order. */
   childrenOf(id: string): Task[] {
     return (this.children.get(id) ?? []).filter((t) => !t.deleted);
   }
@@ -159,21 +168,11 @@ export class TaskIndex {
   }
 
   location(task: Task): Location {
-    let loc = this.effective.get(task.id);
-    if (!loc) {
-      loc = effectiveLocation(task, this.lookup);
-      this.effective.set(task.id, loc);
-    }
-    return loc;
+    return this.effective.get(task.id) ?? effectiveLocation(task, this.lookup);
   }
 
   isDeleted(task: Task): boolean {
-    let d = this.deleted.get(task.id);
-    if (d === undefined) {
-      d = isEffectivelyDeleted(task, this.lookup);
-      this.deleted.set(task.id, d);
-    }
-    return d;
+    return this.deleted.get(task.id) ?? isEffectivelyDeleted(task, this.lookup);
   }
 
   progress(id: string): Progress {
