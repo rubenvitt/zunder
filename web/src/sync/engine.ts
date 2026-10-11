@@ -24,6 +24,8 @@ export interface EngineListener {
 export interface EngineOptions {
   pollIntervalMs?: number;
   maxBatchOps?: number;
+  /** Rough JSON size limit of one push, well below the server's body limit (contract 3.1). */
+  maxBatchBytes?: number;
   backoffMs?: readonly number[];
   physicalNow?: () => number;
 }
@@ -35,6 +37,16 @@ export interface Change {
 }
 
 const DEFAULT_BACKOFF = [1_000, 2_000, 5_000, 10_000, 30_000];
+
+/** Lone UTF-16 surrogates would be serialized as "\ud800", which the server refuses (400). */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+function wellFormed(value: JsonValue): JsonValue {
+  if (typeof value === "string") return value.replace(LONE_SURROGATE, "\uFFFD");
+  if (Array.isArray(value)) return value.map(wellFormed);
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, wellFormed(v)]));
+  return value;
+}
 
 export class SyncEngine {
   readonly confirmed = new EntityStore();
@@ -56,12 +68,15 @@ export class SyncEngine {
   private pushEpoch = 0;
   private live = false;
   private failures = 0;
+  /** After a whole-request refusal: push one group at a time until the queue is empty. */
+  private isolating = false;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private unsubscribe: (() => void) | null = null;
 
   private readonly pollIntervalMs: number;
   private readonly maxBatchOps: number;
+  private readonly maxBatchBytes: number;
   private readonly backoffMs: readonly number[];
 
   constructor(
@@ -74,6 +89,7 @@ export class SyncEngine {
     this.clock = new HlcClock(this.clientId, options.physicalNow);
     this.pollIntervalMs = options.pollIntervalMs ?? 15_000;
     this.maxBatchOps = options.maxBatchOps ?? 1000;
+    this.maxBatchBytes = options.maxBatchBytes ?? 4 * 1024 * 1024;
     this.backoffMs = options.backoffMs ?? DEFAULT_BACKOFF;
   }
 
@@ -166,7 +182,7 @@ export class SyncEngine {
     const ops: Op[] = [];
     for (const change of changes) {
       for (const [field, value] of Object.entries(change.fields)) {
-        ops.push({ op_id: uuidv7(), entity: change.entity, entity_id: change.id, field, value, hlc: this.clock.now() });
+        ops.push({ op_id: uuidv7(), entity: change.entity, entity_id: change.id, field, value: wellFormed(value), hlc: this.clock.now() });
       }
     }
     return ops;
@@ -292,13 +308,7 @@ export class SyncEngine {
     if (this.pushing || this.stopped || !this.started || this.pending.length === 0) return;
     if (this.statusValue === "unauthorized") return;
     this.pushing = true;
-    let groupCount = 0;
-    const ops: Op[] = [];
-    for (const group of this.pending) {
-      if (groupCount > 0 && ops.length + group.length > this.maxBatchOps) break;
-      ops.push(...group);
-      groupCount += 1;
-    }
+    const { groupCount, ops } = this.nextBatch();
     let again = false;
     try {
       const res = await this.transport.push({ client_id: this.clientId, ops });
@@ -310,8 +320,13 @@ export class SyncEngine {
     } catch (err) {
       if (isUnauthorized(err) || isTransient(err)) {
         this.handleTransportError(err);
+      } else if (groupCount > 1) {
+        // The server refused the whole request (400, 413 …), possibly because of a single
+        // group: drop nothing yet, retry group by group so only the culprit is rejected.
+        this.isolating = true;
+        again = true;
       } else {
-        // The server refused the whole request (e.g. 400): nothing of it can succeed later.
+        // The server refused this group on its own: it cannot succeed later.
         const message = err instanceof Error ? err.message : "Änderung abgelehnt.";
         const code = (err as { code?: string }).code ?? "push_failed";
         this.applyPushResult(
@@ -327,12 +342,40 @@ export class SyncEngine {
     if (again) void this.flush();
   }
 
+  /**
+   * The next push: whole groups from the front of the queue. The server rejects all ops
+   * of an entity in a push when one of them is invalid (contract 2.5), so a group that
+   * touches an entity of an earlier group in the batch goes into a later push. Otherwise
+   * a later invalid group would also take down earlier, valid edits of that entity.
+   */
+  private nextBatch(): { groupCount: number; ops: Op[] } {
+    let groupCount = 0;
+    let bytes = 0;
+    const ops: Op[] = [];
+    const touched = new Set<string>();
+    for (const group of this.pending) {
+      const keys = group.map((op) => entityKey(op.entity, op.entity_id));
+      const size = group.reduce((sum, op) => sum + JSON.stringify(op).length, 0);
+      if (groupCount > 0) {
+        if (this.isolating) break;
+        if (ops.length + group.length > this.maxBatchOps || bytes + size > this.maxBatchBytes) break;
+        if (keys.some((k) => touched.has(k))) break;
+      }
+      ops.push(...group);
+      for (const k of keys) touched.add(k);
+      bytes += size;
+      groupCount += 1;
+    }
+    return { groupCount, ops };
+  }
+
   private applyPushResult(groupCount: number, ops: Op[], rejected: readonly Rejection[]): void {
     // Everything not rejected is stored by the server (accepted, or already known by op_id).
     const rejectedIds = new Set(rejected.map((r) => r.op_id));
     for (const op of ops) if (!rejectedIds.has(op.op_id)) this.confirmed.apply(op);
     this.pushEpoch += 1;
     this.pending = this.pending.slice(groupCount);
+    if (this.pending.length === 0) this.isolating = false;
     void this.store.savePending(this.pending);
     this.listener.pending?.(this.pendingOps.length);
     if (rejected.length > 0) {
