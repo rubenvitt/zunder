@@ -56,7 +56,7 @@ Liest Spaces, Ordner, Listen und deren Status (auch archivierte) und schreibt ei
 | Ordner | Projekt im Bereich des Spaces; alle Listen des Ordners landen dort |
 | Liste ohne Ordner | eigenes Projekt; heißt sie wie der Space oder allgemein („Allgemein“, „Tasks“, „Liste“ …), direkt der Bereich; „Inbox“/„Eingang“ → Zunder-Inbox |
 | archivierter Ordner / archivierte Liste | Projekt mit `status = "completed"` |
-| Status | `to do`, `open`, `backlog` → `open`; `in progress`, `doing` → `in_progress`; `review`, `qa` → `review`; `blocked`, `waiting`, `on hold` → `blocked`; `complete`, `done`, `closed` → `done`; `cancelled`, `verworfen` → `dropped`; sonst nach ClickUp-Statustyp (`open` → `open`, `closed`/`done` → `done`) |
+| Status | ClickUp-Statustyp `closed`/`done` → immer `done` (`dropped`, wenn der Name nach Abbruch klingt: `cancelled`, `verworfen` …), auch bei Namen wie „Reviewed“; sonst nach Namen: `to do`, `open`, `backlog` → `open`; `in progress`, `doing` → `in_progress`; `review`, `qa` → `review`; `blocked`, `waiting`, `on hold` → `blocked`; `complete`, `done`, `closed` → `done`; `cancelled`, `verworfen` → `dropped`; übrige Status vom Typ `open` → `open` |
 
 Unbekannte Status bleiben leer und sind mit `# UNBEKANNT` markiert. Eine vorhandene Datei wird nur mit `--force` überschrieben.
 

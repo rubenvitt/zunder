@@ -467,6 +467,10 @@ const INBOX_LIST_NAMES: &[&str] = &["inbox", "eingang", "posteingang", "eingangs
 
 /// Proposes a Zunder status for a ClickUp status name and type
 /// (`open`/`custom`/`done`/`closed`). `None` = no confident guess.
+///
+/// A status of type `done` or `closed` is always proposed as `done` or
+/// `dropped` (spec section 8: closed tasks are imported as done/dropped),
+/// whatever its name suggests ("Reviewed", "In Progress done").
 pub fn propose_status(name: &str, kind: &str) -> Option<TaskStatus> {
     let norm: String = name
         .to_lowercase()
@@ -476,6 +480,27 @@ pub fn propose_status(name: &str, kind: &str) -> Option<TaskStatus> {
         .join(" ");
     let exact = |words: &[&str]| words.contains(&norm.as_str());
     let contains = |parts: &[&str]| parts.iter().any(|p| norm.contains(p));
+    let dropped = exact(&[
+        "cancelled",
+        "canceled",
+        "verworfen",
+        "abgebrochen",
+        "dropped",
+        "won't do",
+        "wont do",
+        "obsolete",
+        "rejected",
+        "abgelehnt",
+        "storniert",
+    ]) || contains(&["cancel", "verworfen", "abgebrochen", "won't", "obsolet"]);
+
+    if matches!(kind, "done" | "closed") {
+        return Some(if dropped {
+            TaskStatus::Dropped
+        } else {
+            TaskStatus::Done
+        });
+    }
 
     if exact(&[
         "to do",
@@ -558,26 +583,14 @@ pub fn propose_status(name: &str, kind: &str) -> Option<TaskStatus> {
     ]) {
         return Some(TaskStatus::Done);
     }
-    if exact(&[
-        "cancelled",
-        "canceled",
-        "verworfen",
-        "abgebrochen",
-        "dropped",
-        "won't do",
-        "wont do",
-        "obsolete",
-        "rejected",
-        "abgelehnt",
-        "storniert",
-    ]) {
-        return Some(TaskStatus::Dropped);
-    }
     // Looser keyword matches.
-    if contains(&["cancel", "verworfen", "abgebrochen", "won't", "obsolet"]) {
+    if dropped {
         return Some(TaskStatus::Dropped);
     }
-    if contains(&["block", "waiting", "wartet", "warten auf", "on hold"]) {
+    // "unblocked" / "entblockt" mean the opposite of blocked.
+    if contains(&["block", "waiting", "wartet", "warten auf", "on hold"])
+        && !contains(&["unblock", "entblock"])
+    {
         return Some(TaskStatus::Blocked);
     }
     if contains(&["review", "prüfung"]) {
@@ -588,7 +601,6 @@ pub fn propose_status(name: &str, kind: &str) -> Option<TaskStatus> {
     }
     match kind {
         "open" => Some(TaskStatus::Open),
-        "done" | "closed" => Some(TaskStatus::Done),
         _ => None,
     }
 }
@@ -963,6 +975,15 @@ mod tests {
             ("eingefroren", "custom", None),
             ("Abgehakt", "closed", Some(Done)),
             ("Startklar", "open", Some(Open)),
+            // A done/closed type always wins over keywords in the name.
+            ("Reviewed", "done", Some(Done)),
+            ("Reviewed", "closed", Some(Done)),
+            ("Review", "closed", Some(Done)),
+            ("In Progress done", "closed", Some(Done)),
+            ("Blocked (closed)", "closed", Some(Done)),
+            ("Cancelled - won't fix", "closed", Some(Dropped)),
+            ("verworfen", "done", Some(Dropped)),
+            ("Unblocked", "custom", None),
         ];
         for (name, kind, expected) in cases {
             assert_eq!(propose_status(name, kind), expected, "{name}");
