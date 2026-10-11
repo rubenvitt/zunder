@@ -7,6 +7,7 @@ use std::path::Path;
 use common::{ClickUpMock, CLICKUP_TOKEN};
 use serde_json::Value;
 use zunder_import::backup::{self, BackupOptions};
+use zunder_import::fetch::{self, CommentParent};
 
 /// 2024-01-01T00:00:00Z
 const SINCE: i64 = 1_704_067_200_000;
@@ -82,6 +83,43 @@ async fn writes_complete_raw_backup() {
     assert_eq!(read(&root.join("tasks/parents.json"))[0]["id"], "86a900");
     let entries = read(&root.join("teams/9000001/time_entries.json"));
     assert_eq!(entries.as_array().unwrap().len(), 3);
+
+    // Comments (with threaded replies) and the full task detail with its
+    // attachment metadata: neither is part of GET /list/{id}/task.
+    assert_eq!(manifest["task_details"], 18);
+    assert_eq!(manifest["task_details_missing"], serde_json::json!([]));
+    assert_eq!(manifest["attachments"], 1);
+    assert_eq!(manifest["tasks_with_comments"], 1);
+    assert_eq!(manifest["lists_with_comments"], 1);
+    assert_eq!(manifest["comments"], 3);
+    assert_eq!(manifest["comment_replies"], 1);
+    let detail = read(&root.join("tasks/86a002/task.json"));
+    assert_eq!(detail["attachments"][0]["title"], "beleg-muster.pdf");
+    assert!(root.join("tasks/86e001/task.json").exists());
+    let comments = read(&root.join("tasks/86a002/comments.json"));
+    assert_eq!(comments.as_array().unwrap().len(), 2);
+    assert_eq!(
+        comments[0]["comment_text"],
+        "Agenten-Ergebnis: Belege für 2025 vollständig"
+    );
+    assert_eq!(
+        comments[0]["replies"][0]["comment_text"],
+        "Danke, übernommen"
+    );
+    assert!(comments[1].get("replies").is_none(), "no replies requested");
+    assert_eq!(mock.requests_to("/comment/90000000001/reply").len(), 0);
+    assert!(
+        !root.join("tasks/86e001/comments.json").exists(),
+        "only tasks with comments get a file"
+    );
+    assert_eq!(
+        read(&root.join("lists/9001001/comments.json"))[0]["comment_text"],
+        "Notiz zur Liste"
+    );
+    // The parent outside the lists is a full detail already; its comments
+    // are requested all the same.
+    assert_eq!(mock.requests_to("/task/86a900").len(), 1);
+    assert_eq!(mock.requests_to("/task/86a900/comment").len(), 1);
 
     #[cfg(unix)]
     {
@@ -195,4 +233,67 @@ async fn cli_backup_defaults_to_home_and_refuses_repo_paths() {
     let root = stamps[0].as_ref().unwrap().path();
     assert!(root.join("manifest.json").exists());
     assert!(String::from_utf8_lossy(&out.stdout).contains("Sicherung geschrieben"));
+}
+
+fn comments(prefix: &str, range: std::ops::RangeInclusive<u32>) -> Value {
+    let list: Vec<Value> = range
+        .map(|n| {
+            serde_json::json!({
+                "id": format!("{prefix}{n:02}"),
+                "comment_text": format!("Kommentar {n}"),
+                // Newest first: the date falls with n.
+                "date": (1_790_000_100_000u64 - u64::from(n) * 1000).to_string(),
+                "reply_count": 0
+            })
+        })
+        .collect();
+    serde_json::json!({ "comments": list })
+}
+
+#[tokio::test]
+async fn comments_are_paged_from_the_oldest_comment() {
+    let mock = ClickUpMock::start().await;
+    {
+        let mut routes = mock.state.routes.lock().unwrap();
+        routes.insert("/task/86f001/comment".into(), comments("c", 1..=25));
+        // ClickUp may repeat the start comment; it is kept once.
+        routes.insert(
+            "/task/86f001/comment?start_id=c25".into(),
+            comments("c", 25..=27),
+        );
+        // A full page that never advances must not loop.
+        routes.insert("/task/86f003/comment".into(), comments("d", 1..=25));
+        routes.insert(
+            "/task/86f003/comment?start_id=d25".into(),
+            comments("d", 1..=25),
+        );
+    }
+    let client = mock.client();
+
+    let all = fetch::fetch_comments(&client, CommentParent::Task("86f001"))
+        .await
+        .unwrap();
+    let ids: Vec<&str> = all.iter().map(|c| c["id"].as_str().unwrap()).collect();
+    assert_eq!(ids.len(), 27);
+    assert_eq!((ids[0], ids[26]), ("c01", "c27"));
+    let requests = mock.requests_to("/task/86f001/comment");
+    assert_eq!(requests.len(), 2);
+    assert!(
+        requests[1].contains("start=1790000075000") && requests[1].contains("start_id=c25"),
+        "{requests:?}"
+    );
+
+    let stuck = fetch::fetch_comments(&client, CommentParent::Task("86f003"))
+        .await
+        .unwrap();
+    assert_eq!(stuck.len(), 25);
+    assert_eq!(mock.requests_to("/task/86f003/comment").len(), 2);
+
+    // Unknown tasks have no comments.
+    assert!(
+        fetch::fetch_comments(&client, CommentParent::Task("86zz404"))
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }

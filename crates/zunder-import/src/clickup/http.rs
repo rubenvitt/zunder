@@ -159,6 +159,23 @@ fn archived_query(archived: bool) -> (&'static str, String) {
     ("archived", archived.to_string())
 }
 
+/// `start` and `start_id` of a comment page after the first.
+fn start_query(start: Option<(&str, &str)>) -> Vec<(&'static str, String)> {
+    match start {
+        Some((date, id)) => vec![("start", date.to_owned()), ("start_id", id.to_owned())],
+        None => Vec::new(),
+    }
+}
+
+/// HTTP 404 → `None` (ClickUp does not know the object).
+fn not_found_as_none(result: Result<Value>) -> Result<Option<Value>> {
+    match result {
+        Ok(v) => Ok(Some(v)),
+        Err(ClickUpError::Status { status: 404, .. }) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
 impl ClickUpApi for HttpClickUp {
     async fn teams(&self) -> Result<Value> {
         self.get("/team", &[]).await
@@ -215,17 +232,39 @@ impl ClickUpApi for HttpClickUp {
     }
 
     async fn task(&self, task_id: &str) -> Result<Option<Value>> {
-        match self
-            .get(
+        not_found_as_none(
+            self.get(
                 &format!("/task/{task_id}"),
                 &[("include_markdown_description", "true".into())],
             )
-            .await
-        {
-            Ok(v) => Ok(Some(v)),
-            Err(ClickUpError::Status { status: 404, .. }) => Ok(None),
-            Err(e) => Err(e),
-        }
+            .await,
+        )
+    }
+
+    async fn task_comments(
+        &self,
+        task_id: &str,
+        start: Option<(&str, &str)>,
+    ) -> Result<Option<Value>> {
+        not_found_as_none(
+            self.get(&format!("/task/{task_id}/comment"), &start_query(start))
+                .await,
+        )
+    }
+
+    async fn list_comments(
+        &self,
+        list_id: &str,
+        start: Option<(&str, &str)>,
+    ) -> Result<Option<Value>> {
+        not_found_as_none(
+            self.get(&format!("/list/{list_id}/comment"), &start_query(start))
+                .await,
+        )
+    }
+
+    async fn comment_replies(&self, comment_id: &str) -> Result<Option<Value>> {
+        not_found_as_none(self.get(&format!("/comment/{comment_id}/reply"), &[]).await)
     }
 
     async fn time_entries(&self, team_id: &str, start_ms: i64, end_ms: i64) -> Result<Value> {

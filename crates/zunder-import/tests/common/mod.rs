@@ -196,6 +196,9 @@ fn clickup_handler(state: &ClickUpState, uri: &Uri, headers: &HeaderMap) -> Resp
     if let Some(page) = params.get("page") {
         parts.push(format!("page={page}"));
     }
+    if let Some(start_id) = params.get("start_id") {
+        parts.push(format!("start_id={start_id}"));
+    }
     let key = if parts.is_empty() {
         path.clone()
     } else {
@@ -203,6 +206,22 @@ fn clickup_handler(state: &ClickUpState, uri: &Uri, headers: &HeaderMap) -> Resp
     };
     if let Some(body) = state.routes.lock().unwrap().get(&key) {
         return Json(body.clone()).into_response();
+    }
+    // No comments unless a route says otherwise.
+    if path.ends_with("/comment") || path.ends_with("/reply") {
+        return Json(json!({"comments": []})).into_response();
+    }
+    // GET /task/{id} for a task that a list route contains.
+    if let Some(id) = path.strip_prefix("/task/").filter(|id| !id.contains('/')) {
+        let routes = state.routes.lock().unwrap();
+        let task = routes
+            .values()
+            .filter_map(|body| body.get("tasks")?.as_array())
+            .flatten()
+            .find(|t| t["id"] == id);
+        if let Some(task) = task {
+            return Json(task.clone()).into_response();
+        }
     }
     if archived {
         let body = if path.ends_with("/task") {

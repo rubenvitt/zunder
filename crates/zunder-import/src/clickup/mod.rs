@@ -13,6 +13,9 @@ use serde_json::Value;
 
 pub use http::{HttpClickUp, RetryPolicy, DEFAULT_BASE_URL};
 
+/// Comments per page of `GET /task/{id}/comment` and `GET /list/{id}/comment`.
+pub const COMMENTS_PAGE_SIZE: usize = 25;
+
 /// Errors of the ClickUp client.
 #[derive(Debug, thiserror::Error)]
 pub enum ClickUpError {
@@ -83,6 +86,30 @@ pub trait ClickUpApi {
     /// `GET /task/{task_id}`; `None` if ClickUp does not know the task (or it
     /// is not accessible).
     fn task(&self, task_id: &str) -> impl Future<Output = Result<Option<Value>>> + Send;
+
+    /// `GET /task/{task_id}/comment` → `{"comments":[…]}`: at most
+    /// [`COMMENTS_PAGE_SIZE`] comments, newest first. The next page is
+    /// requested with `start = (date, id)` of the oldest comment so far.
+    /// `None` if ClickUp does not know the task.
+    fn task_comments(
+        &self,
+        task_id: &str,
+        start: Option<(&str, &str)>,
+    ) -> impl Future<Output = Result<Option<Value>>> + Send;
+
+    /// `GET /list/{list_id}/comment`, paged like [`Self::task_comments`].
+    fn list_comments(
+        &self,
+        list_id: &str,
+        start: Option<(&str, &str)>,
+    ) -> impl Future<Output = Result<Option<Value>>> + Send;
+
+    /// `GET /comment/{comment_id}/reply` → `{"comments":[…]}` (threaded
+    /// replies); `None` if ClickUp does not know the comment.
+    fn comment_replies(
+        &self,
+        comment_id: &str,
+    ) -> impl Future<Output = Result<Option<Value>>> + Send;
 
     /// `GET /team/{team_id}/time_entries?start_date=…&end_date=…` →
     /// `{"data":[…]}`. Both bounds are Unix milliseconds.

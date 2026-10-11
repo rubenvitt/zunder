@@ -12,8 +12,16 @@
 //! folders/<folder>/lists.json         lists of a folder
 //! lists/<list>/list.json              GET /list/{id} (statuses etc.)
 //! lists/<list>/tasks.json             all tasks incl. closed, archived, subtasks
+//! lists/<list>/comments.json          list comments (only if there are any)
 //! tasks/parents.json                  parents outside the lists (GET /task/{id})
+//! tasks/<task>/task.json              GET /task/{id}: full detail incl. attachments
+//! tasks/<task>/comments.json          task comments with threaded replies
+//!                                     (only if there are any)
 //! ```
+//!
+//! Comments are raw ClickUp objects, newest first; a comment with replies
+//! carries them under the added key `"replies"`. Attachments are saved as
+//! metadata (title, URL, size …) inside `task.json`, not the files.
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -97,6 +105,18 @@ pub struct Manifest {
     pub teams: Vec<TeamCounts>,
     pub parents_fetched: usize,
     pub missing_parents: Vec<String>,
+    /// Tasks saved with their full detail (`tasks/<id>/task.json`).
+    pub task_details: usize,
+    /// Tasks ClickUp did not return a detail for (deleted meanwhile).
+    pub task_details_missing: Vec<String>,
+    /// Attachments listed in the task details (metadata only).
+    pub attachments: usize,
+    pub tasks_with_comments: usize,
+    pub lists_with_comments: usize,
+    /// Top-level comments of tasks and lists.
+    pub comments: usize,
+    /// Threaded replies to those comments.
+    pub comment_replies: usize,
 }
 
 struct Writer {
@@ -164,6 +184,9 @@ pub async fn backup(api: &impl ClickUpApi, options: &BackupOptions) -> Result<Pa
         model::items(&teams_body, "teams").map_err(anyhow::Error::msg)?;
 
     let mut all_tasks: Vec<Raw<Task>> = Vec::new();
+    // IDs of all tasks from the lists, in backup order, deduplicated.
+    let mut task_ids: Vec<String> = Vec::new();
+    let mut seen_ids: HashSet<String> = HashSet::new();
     for team in teams {
         let team_id = team.item.id.clone();
         eprintln!("Sichere Workspace {} ({team_id}) …", team.item.name);
@@ -200,7 +223,19 @@ pub async fn backup(api: &impl ClickUpApi, options: &BackupOptions) -> Result<Pa
             out.write(&format!("lists/{list_id}/tasks.json"), &tasks)?;
             counts.lists += 1;
             counts.tasks += tasks.len();
+            let list_comments =
+                fetch::fetch_comments(api, fetch::CommentParent::List(list_id)).await?;
+            if !list_comments.is_empty() {
+                manifest.lists_with_comments += 1;
+                count_comments(&mut manifest, &list_comments);
+                out.write(&format!("lists/{list_id}/comments.json"), &list_comments)?;
+            }
             for value in tasks {
+                if let Some(id) = value.get("id").and_then(scalar_id) {
+                    if seen_ids.insert(id.clone()) {
+                        task_ids.push(id);
+                    }
+                }
                 // Only for finding missing parents; unreadable tasks stay raw.
                 if let Ok(task) = model::item::<Task>(value) {
                     all_tasks.push(task);
@@ -217,8 +252,77 @@ pub async fn backup(api: &impl ClickUpApi, options: &BackupOptions) -> Result<Pa
     manifest.parents_fetched = parents.len();
     manifest.missing_parents = missing.into_iter().collect();
     out.write("tasks/parents.json", &raws(&parents))?;
+
+    // Per task: the full detail (attachments, checklists … are not in the
+    // list response) and all comments. Parents already are full details.
+    let parent_ids: Vec<String> = parents.iter().map(|p| p.item.id.clone()).collect();
+    let total = task_ids.len() + parent_ids.len();
+    eprintln!("Sichere Details und Kommentare von {total} Aufgaben (zwei Anfragen je Aufgabe) …");
+    let all_ids = task_ids
+        .iter()
+        .map(|id| (id, true))
+        .chain(parent_ids.iter().map(|id| (id, false)));
+    for (n, (id, needs_detail)) in all_ids.enumerate() {
+        if !is_safe_id(id) {
+            bail!("ClickUp-Aufgaben-ID {id:?} ist als Verzeichnisname ungeeignet");
+        }
+        if needs_detail {
+            match api.task(id).await? {
+                Some(detail) => {
+                    manifest.task_details += 1;
+                    manifest.attachments += detail
+                        .get("attachments")
+                        .and_then(Value::as_array)
+                        .map_or(0, Vec::len);
+                    out.write(&format!("tasks/{id}/task.json"), &detail)?;
+                }
+                None => manifest.task_details_missing.push(id.clone()),
+            }
+        }
+        let comments = fetch::fetch_comments(api, fetch::CommentParent::Task(id)).await?;
+        if !comments.is_empty() {
+            manifest.tasks_with_comments += 1;
+            count_comments(&mut manifest, &comments);
+            out.write(&format!("tasks/{id}/comments.json"), &comments)?;
+        }
+        if (n + 1) % 100 == 0 {
+            eprintln!("  {}/{total} Aufgaben", n + 1);
+        }
+    }
+    eprintln!(
+        "  {} Kommentare und {} Antworten an {} Aufgaben, {} Anhänge (Metadaten)",
+        manifest.comments,
+        manifest.comment_replies,
+        manifest.tasks_with_comments,
+        manifest.attachments
+    );
     out.write("manifest.json", &manifest)?;
     Ok(root)
+}
+
+fn count_comments(manifest: &mut Manifest, comments: &[Value]) {
+    manifest.comments += comments.len();
+    manifest.comment_replies += comments
+        .iter()
+        .filter_map(|c| c.get("replies").and_then(Value::as_array))
+        .map(Vec::len)
+        .sum::<usize>();
+}
+
+fn scalar_id(value: &Value) -> Option<String> {
+    match value {
+        Value::String(s) if !s.is_empty() => Some(s.clone()),
+        Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    }
+}
+
+/// ClickUp IDs are alphanumeric; anything else must not become a path.
+fn is_safe_id(id: &str) -> bool {
+    !id.is_empty()
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
 /// All time entries of a workspace between `since_ms` and `until_ms`.

@@ -3,7 +3,7 @@
 Kommandozeilenwerkzeug für den einmaligen Umzug von ClickUp nach Zunder: Komplettsicherung, Zuordnungsvorschlag, Bericht und Import. Grundlage sind Abschnitt 8 der [Spec](../../docs/superpowers/specs/2026-10-11-zunder-design.md) und Abschnitt 6 des [Implementierungsvertrags](../../docs/superpowers/plans/2026-10-11-zunder-implementation.md).
 
 ```
-zunder-import backup   Roh-JSON aller ClickUp-Daten inkl. Zeiteinträgen
+zunder-import backup   Roh-JSON: Struktur, Aufgaben, Kommentare, Anhang-Metadaten, Zeiteinträge
 zunder-import plan     ClickUp-Struktur lesen, mapping.toml vorschlagen
 zunder-import report   zeigen, was ein Import täte (Mengen, Lücken)
 zunder-import run      nach Zunder schreiben (idempotent)
@@ -34,7 +34,17 @@ Sieht der ClickUp-Token mehrere Workspaces, wählt `plan --team <id>` einen aus;
 zunder-import backup
 ```
 
-Schreibt alles als Roh-JSON nach `~/zunder-import-backup/<Zeitstempel>/`: Workspaces, Spaces, Ordner, Listen (mit Status), alle Aufgaben inklusive geschlossener, archivierter und Unteraufgaben, Eltern-Aufgaben außerhalb der Listen sowie alle Zeiteinträge. Das Verzeichnis ist nur für den eigenen Benutzer lesbar; `manifest.json` fasst die Mengen zusammen.
+Schreibt Roh-JSON nach `~/zunder-import-backup/<Zeitstempel>/`:
+
+- Workspaces, Spaces, Ordner, Listen (mit Status) und Kommentare an Listen,
+- alle Aufgaben inklusive geschlossener, archivierter und Unteraufgaben sowie Eltern-Aufgaben außerhalb der Listen,
+- je Aufgabe die vollständige Antwort von `GET /task/{id}` (`tasks/<id>/task.json`, darin Checklisten und die Metadaten der Anhänge: Titel, Größe, URL),
+- je Aufgabe alle Kommentare samt Antworten in Threads (`tasks/<id>/comments.json`, nur wenn es welche gibt; Antworten stehen unter `"replies"` am jeweiligen Kommentar),
+- alle Zeiteinträge.
+
+Nicht gesichert werden die Dateien der Anhänge selbst (nur ihre Metadaten; die URLs verfallen mit dem Workspace), ClickUp Docs, Chat, Whiteboards und Ziele. Kommentare übernimmt der Import nicht nach Zunder (Zunder hat keine Kommentare); sie stehen nur in der Sicherung.
+
+Das Verzeichnis ist nur für den eigenen Benutzer lesbar; `manifest.json` fasst die Mengen zusammen (u. a. `comments`, `comment_replies`, `tasks_with_comments`, `attachments`). Details und Kommentare kosten zwei Anfragen je Aufgabe; bei ClickUps Limit von 100 Anfragen pro Minute dauern 3000 Aufgaben rund eine Stunde.
 
 - `--out <dir>` wählt ein anderes Basisverzeichnis (der Unterordner mit Zeitstempel kommt dazu).
 - Liegt das Ziel in einem Git-Repository, bricht der Befehl ab, denn die Sicherung enthält private Daten. `--force` hebt das auf.
@@ -165,7 +175,7 @@ Aufbau:
 | Modul | Inhalt |
 |---|---|
 | `clickup` | Trait `ClickUpApi` (Rohdaten als JSON), `HttpClickUp` mit Rate-Limit-Behandlung, typisierte Sichten |
-| `fetch` | Hierarchie, Aufgaben über alle Seiten, fehlende Eltern |
+| `fetch` | Hierarchie, Aufgaben über alle Seiten, fehlende Eltern, Kommentare (Seiten, Antworten) |
 | `mapping` | Zuordnungsdatei: Vorschlag, TOML-Ausgabe, Prüfung |
 | `convert` | ClickUp-Aufgaben → gewünschter Zunder-Zustand und Befunde für den Bericht |
 | `ops` | Abgleich mit dem Snapshot, Operationen mit HLC-Knoten `import`, Pakete |

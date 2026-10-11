@@ -202,6 +202,48 @@
     "list": {"id": "9001001"},
     "url": "https://app.clickup.com/t/86a900"
   },
+  "/task/86a002": {
+    "id": "86a002", "name": "Steuererklärung vorbereiten",
+    "text_content": "Belege sammeln", "description": "Belege sammeln",
+    "markdown_description": "**Belege** sammeln",
+    "status": {"status": "In Progress", "type": "custom"},
+    "orderindex": "2.50000000000000000000000000000000",
+    "archived": false, "tags": [{"name": "bug", "tag_fg": "#fff", "tag_bg": "#f00"}],
+    "parent": null,
+    "due_date": "1791790200000", "due_date_time": true,
+    "list": {"id": "9001001"},
+    "url": "https://app.clickup.com/t/86a002",
+    "checklists": [],
+    "attachments": [
+      {"id": "att-0001", "title": "beleg-muster.pdf", "extension": "pdf", "size": 12345,
+       "date": "1790500000000", "url": "https://attachments.example.invalid/beleg-muster.pdf"}
+    ]
+  },
+  "/task/86a002/comment": {
+    "comments": [
+      {"id": "90000000002", "comment_text": "Agenten-Ergebnis: Belege für 2025 vollständig",
+       "comment": [{"text": "Agenten-Ergebnis: Belege für 2025 vollständig"}],
+       "user": {"id": 1, "username": "Beispielperson"}, "date": "1790600000000",
+       "reply_count": "1", "resolved": false},
+      {"id": "90000000001", "comment_text": "Plan: erst scannen, dann sortieren",
+       "comment": [{"text": "Plan: erst scannen, dann sortieren"}],
+       "user": {"id": 1, "username": "Beispielperson"}, "date": "1790500000000",
+       "reply_count": 0, "resolved": true}
+    ]
+  },
+  "/comment/90000000002/reply": {
+    "comments": [
+      {"id": "90000000003", "comment_text": "Danke, übernommen",
+       "user": {"id": 1, "username": "Beispielperson"}, "date": "1790700000000"}
+    ]
+  },
+  "/list/9001001/comment": {
+    "comments": [
+      {"id": "90000000010", "comment_text": "Notiz zur Liste",
+       "user": {"id": 1, "username": "Beispielperson"}, "date": "1790400000000",
+       "reply_count": 0}
+    ]
+  },
 
   "/list/9001002/task?page=0": {
     "last_page": true,
