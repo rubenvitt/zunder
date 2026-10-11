@@ -40,6 +40,7 @@ enum Command {
     },
     /// Zeigt, was ein Import mit dieser Zuordnung täte (Mengen, Lücken).
     Report {
+        /// Zuordnungsdatei (von `plan` erzeugt, danach bearbeitet).
         #[arg(long, default_value = "mapping.toml")]
         mapping: PathBuf,
         /// Maschinenlesbare Ausgabe (JSON).
@@ -50,6 +51,7 @@ enum Command {
     },
     /// Importiert alle Aufgaben nach Zunder (idempotent, erneuter Lauf aktualisiert).
     Run {
+        /// Zuordnungsdatei (von `plan` erzeugt, danach bearbeitet).
         #[arg(long, default_value = "mapping.toml")]
         mapping: PathBuf,
         /// URL des Zunder-Servers.
