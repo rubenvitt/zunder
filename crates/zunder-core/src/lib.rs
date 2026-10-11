@@ -31,3 +31,8 @@ pub use model::{
 pub use op::{EntityKind, Op};
 pub use state::{Progress, SnapshotEntity, State};
 pub use validate::{validate_push, PushOutcome, RejectCode, Rejection, Warning, WarningCode};
+
+/// Compiles and runs the code examples of the crate README.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;

@@ -321,9 +321,9 @@ fn check_op(
         return Some(Violation::new(
             RejectCode::KindMismatch,
             format!(
-                "Die ID gehört bereits zu einem {} und kann nicht als {} verwendet werden.",
+                "Die ID ist bereits als {} vergeben und kann nicht für {} verwendet werden.",
                 other.label_de(),
-                op.entity.label_de()
+                indefinite_accusative(op.entity)
             ),
         ));
     }
@@ -446,9 +446,8 @@ impl Checker<'_> {
                         key,
                         RejectCode::MissingRequired,
                         format!(
-                            "Pflichtfeld „{field}“ fehlt für {} {}.",
-                            indefinite_article(key.0),
-                            key.0.label_de()
+                            "Pflichtfeld „{field}“ fehlt für {}.",
+                            indefinite_accusative(key.0)
                         ),
                     );
                     return;
@@ -675,11 +674,11 @@ fn definite_article(kind: EntityKind) -> &'static str {
     }
 }
 
-fn indefinite_article(kind: EntityKind) -> &'static str {
+fn indefinite_accusative(kind: EntityKind) -> &'static str {
     match kind {
-        EntityKind::Area => "einen",
-        EntityKind::Project => "ein",
-        EntityKind::Task => "eine",
+        EntityKind::Area => "einen Bereich",
+        EntityKind::Project => "ein Projekt",
+        EntityKind::Task => "eine Aufgabe",
     }
 }
 

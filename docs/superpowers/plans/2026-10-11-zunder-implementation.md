@@ -26,7 +26,9 @@ Code-Bezeichner sind englisch, Doku und UI deutsch.
 
 ### 2.1 IDs
 
-UUIDv7 als kleingeschriebener Bindestrich-String. Clients erzeugen IDs selbst.
+UUIDv7 als kleingeschriebener Bindestrich-String. Clients erzeugen IDs selbst. Nur diese kanonische Form ist gültig (36 Zeichen, klein, mit Bindestrichen); andere Schreibweisen werden schon beim Einlesen abgelehnt.
+
+Deterministische Import-IDs: UUIDv5 im Zunder-Namespace `f9d16046-2e7f-4f97-b1be-e789d21e4fec` über den Namen `clickup:<entity>:<clickup_id>` (z. B. `clickup:task:86abc123`), siehe `zunder_core::ids::clickup_entity_id`.
 
 ### 2.2 Hybrid Logical Clock
 
@@ -38,7 +40,7 @@ String `"<wall_ms>:<counter>:<node>"`:
 
 Ordnung = **lexikografischer Vergleich des ganzen Strings** (durch feste Breiten identisch mit Tupelvergleich). Gleichstand ist bei verschiedenen Knoten unmöglich; bei identischem HLC entscheidet `op_id` lexikografisch (größer gewinnt).
 
-Regeln: `now()` liefert `max(physisch, letzter)`; gleicher `wall_ms` → `counter + 1`. `receive(remote)` hebt die lokale Uhr auf `max(lokal, remote)` an. Der Server lehnt Operationen ab, deren `wall_ms` mehr als 24 h in der Zukunft liegt.
+Regeln: `now()` liefert `max(physisch, letzter)`; gleicher `wall_ms` → `counter + 1`. `receive(remote)` hebt die lokale Uhr auf `max(lokal, remote)` an. Läuft der Zähler über (99999), rückt `wall_ms` um 1 vor und der Zähler beginnt bei 0. Der Server lehnt Operationen ab, deren `wall_ms` mehr als 24 h in der Zukunft liegt.
 
 ### 2.3 Operation
 
@@ -55,17 +57,17 @@ Regeln: `now()` liefert `max(physisch, letzter)`; gleicher `wall_ms` → `counte
 
 - `entity` ∈ `area` | `project` | `task`
 - Eine Entität entsteht durch ihre erste Operation. Anlegen = mehrere Feld-Operationen mit derselben `entity_id` in einem Push.
-- Löschen = Feld `deleted` mit Wert `true` (Tombstone). Gelöschte Entitäten bleiben im Zustand, werden aber nirgends angezeigt.
-- `value: null` setzt ein optionales Feld zurück.
-- Merge: **Last-Writer-Wins pro (Entität, Feld)** nach HLC, Gleichstand nach `op_id`. Merge ist kommutativ, assoziativ und idempotent.
+- Löschen = Feld `deleted` mit Wert `true` (Tombstone). Gelöschte Entitäten bleiben im Zustand, werden aber nirgends angezeigt. `deleted: false` (oder `null`) stellt eine Entität wieder her (Rückgängig); danach gelten alle Regeln erneut.
+- `value: null` setzt ein optionales Feld zurück. Der Schlüssel `value` muss immer vorhanden sein. Pflichtfelder lassen sich nicht auf `null` setzen.
+- Merge: **Last-Writer-Wins pro (Entität, Feld)** nach HLC, Gleichstand nach `op_id`. Merge ist kommutativ, assoziativ und idempotent. (Sind sogar HLC und `op_id` gleich, entscheidet eine feste Ordnung auf dem JSON-Wert, damit auch fehlerhafte Duplikate konvergieren.)
 
 ### 2.4 Felder
 
-**area**: `name` (String, Pflicht), `state` (`active`|`archived`, Default `active`), `vault_path` (optional, nur Info), `deleted`.
+**area**: `name` (String, Pflicht, nicht leer, ≤ 500 Zeichen), `state` (`active`|`archived`, Default `active`), `vault_path` (optional, nur Info), `deleted`.
 
 Die Area-`id` **ist** die `zunder_id` im Vault-Frontmatter. Gleiches gilt für Projekte.
 
-**project**: `name` (Pflicht), `area_id` (Pflicht, existierende Area), `status` (`active`|`paused`|`completed`, Default `active`), `kind` (`standard`|`dev`, Default `standard`), `repo` (`owner/name`, nur bei `dev`, optional), `description` (Markdown), `view` (`list`|`board`, Default: `board` bei dev, sonst `list`), `deleted`.
+**project**: `name` (Pflicht, nicht leer, ≤ 500 Zeichen), `area_id` (Pflicht, existierende Area), `status` (`active`|`paused`|`completed`, Default `active`), `kind` (`standard`|`dev`, Default `standard`), `repo` (`owner/name` im GitHub-Format, nur bei `dev`, optional; bei `standard` abgelehnt), `description` (Markdown), `view` (`list`|`board`, Default: `board` bei dev, sonst `list`), `deleted`.
 
 **task**:
 
@@ -79,22 +81,24 @@ Die Area-`id` **ist** die `zunder_id` im Vault-Frontmatter. Gleiches gilt für P
 | `parent_id` | Task-ID oder `null` |
 | `due` | `"YYYY-MM-DD"` oder RFC 3339 mit Offset |
 | `remind_at` | RFC 3339 |
-| `vault_links` | Array von Strings (Vault-Pfade oder `obsidian://`-URIs) |
-| `links` | Array von `{"url": String, "title"?: String}` |
-| `phoenix` | `null` oder `{"role":"feuer_schritt"\|"flamme","fire":"2026-W45"}` |
+| `vault_links` | Array nicht-leerer Strings (Vault-Pfade oder `obsidian://`-URIs) |
+| `links` | Array von `{"url": String, "title"?: String}`; `url` absolut (beliebiges Schema), keine weiteren Schlüssel |
+| `phoenix` | `null` oder `{"role":"feuer_schritt"\|"flamme","fire":"2026-W45"}`; `fire` ist eine gültige ISO-Woche `JJJJ-Www` |
 | `claimed_by`, `claim_expires_at` | String, RFC 3339 |
 | `plan` | Markdown-String |
 | `branch` | String |
-| `pr_url` | URL-String |
+| `pr_url` | http(s)-URL |
 | `timing_ref` | String (ID des Timing-Eintrags) |
 | `flame_started_at`, `flame_ended_at` | RFC 3339 (Fallback, Abschnitt 6 der Spec) |
 | `clickup_id` | String |
 | `rank` | String, lexikografisch sortierbar (Reihenfolge in Liste/Spalte) |
-| `deleted` | `true` |
+| `deleted` | `true` (Tombstone); `false`/`null` = wiederherstellen |
 
 Unteraufgaben: Die wirksame Stelle einer Unteraufgabe ist die Stelle ihrer Wurzel-Aufgabe; das eigene `location` einer Unteraufgabe wird ignoriert.
 
-Abgeleitet (nicht als Feld gespeichert): `created_at` (kleinster HLC der Entität), `updated_at` (größter HLC), `status_changed_at` (HLC der gewinnenden `status`-Operation), Fortschritt der Unteraufgaben (`done`/`gesamt`, `dropped` zählt nicht mit).
+`location` erlaubt genau die gezeigten Schlüssel. Bei Unteraufgaben wird das eigene `location` weder ausgewertet noch auf gültige Referenzen geprüft.
+
+Abgeleitet (nicht als Feld gespeichert): `created_at` (kleinster HLC aller je angewendeten Operationen der Entität; im Snapshot als `created_hlc` mitgeliefert), `updated_at` (größter HLC), `status_changed_at` (HLC der gewinnenden `status`-Operation, ohne `status`-Operation = `created_at`), Fortschritt der Unteraufgaben (`done`/`gesamt`, `dropped` zählt nicht mit).
 
 ### 2.5 Validierung (im Kern)
 
@@ -108,6 +112,34 @@ Der Server validiert jeden Push gegen seinen aktuellen Zustand. Der Merge selbst
 - Statusübergänge sind frei (auch `done → open`), außer den Dev-Regeln.
 - **Hinweise statt Ablehnung:** `done` bei offenen Unteraufgaben erzeugt eine Warnung.
 - Granularität: Ist eine Entität nach dem Push ungültig, werden **alle** Operationen dieses Pushs für diese Entität abgelehnt, jede mit Grund. Andere Entitäten sind nicht betroffen.
+
+Präzisierungen (umgesetzt in `zunder_core::validate`):
+
+- Pflichtfelder gelten für jede berührte, nicht gelöschte Entität (bestehende haben sie ohnehin). Gelöschte Entitäten werden nicht weiter geprüft.
+- **Löschen** ist nur erlaubt, wenn danach keine lebende Entität mehr auf das Gelöschte verweist (Projekte eines Bereichs, Aufgaben eines Bereichs/Projekts, Unteraufgaben). Die Abhängigen werden im selben Push mitgelöscht (`OpBatch::delete_cascade`) oder vorher verschoben. So zeigen Referenzen nach jedem Push auf lebende Entitäten.
+- Verschieben einer `bug`/`feature`/`review`-Aufgabe in ein **anderes** Dev-Projekt ist erlaubt; verboten ist nur, dass sie danach außerhalb eines Dev-Projekts liegt.
+- Verletzungen an nicht berührten Nachbarn (z. B. Bug-Unteraufgabe, deren Eltern verschoben werden; Aufgaben eines Projekts, das auf `standard` wechselt; Unteraufgaben einer gelöschten Aufgabe) werden der berührten Entität zugeordnet, die sie verursacht hat. Bereits vorher bestehende, nicht durch den Push verursachte Inkonsistenzen blockieren keine fremden Änderungen.
+- Wird eine Entität abgelehnt, wird der Push ohne sie erneut geprüft (z. B. wird eine Aufgabe in einem abgelehnten neuen Projekt ebenfalls abgelehnt).
+- Eine ID gehört genau einer Entitätsart.
+- Bereits bekannte `op_id`s (auch Wiederholungen innerhalb des Pushs) gelten als angenommen und werden nicht erneut angewendet.
+
+Ablehnungscodes (`code`):
+
+| Code | Bedeutung |
+|---|---|
+| `unknown_field` | Feld gibt es für diese Entitätsart nicht |
+| `invalid_value` | falscher Typ oder ungültiger Wert (auch `null` für Pflichtfelder) |
+| `missing_required` | Pflichtfeld fehlt nach dem Push |
+| `dev_only` | `bug`/`feature`/`review` außerhalb eines Dev-Projekts, Verschieben aus einem Dev-Projekt heraus, `repo` bei `standard` |
+| `dev_tasks_present` | Projekt `dev → standard` oder Verschieben einer Eltern-Aufgabe würde Dev-Aufgaben außerhalb eines Dev-Projekts zurücklassen |
+| `invalid_reference` | `location`, `area_id` oder `parent_id` zeigt auf eine fehlende, gelöschte oder falsche Entitätsart |
+| `has_dependents` | Löschen, obwohl noch lebende Entitäten darauf verweisen |
+| `cycle` | `parent_id` erzeugt einen Zyklus |
+| `future_hlc` | `wall_ms` mehr als 24 h in der Zukunft |
+| `kind_mismatch` | ID gehört bereits zu einer anderen Entitätsart |
+| `entity_rejected` | andere Operation derselben Entität in diesem Push war ungültig |
+
+Warnungscodes: `open_subtasks` (Aufgabe auf `done` gesetzt, obwohl Unteraufgaben weder `done` noch `dropped` sind).
 
 Ablehnungsgründe sind maschinenlesbar (`code`) plus deutscher Text (`message`).
 
@@ -124,7 +156,7 @@ Ablehnungsgründe sind maschinenlesbar (`code`) plus deutscher Text (`message`).
 }
 ```
 
-`expected` enthält je Entität die gewinnenden Werte aller gesetzten Felder (`null`-Werte erscheinen als `null`). Eine Datei mit `"kind": "hlc_order"` enthält statt `ops`/`expected` das Feld `"sorted": [hlc, …]` in aufsteigender Ordnung. Rust- und TypeScript-Tests wenden die Operationen in mehreren Permutationen an und vergleichen mit `expected`.
+`expected` enthält je Entität die gewinnenden Werte aller gesetzten Felder (`null`-Werte erscheinen als `null`). Ein optionales Feld `description` erklärt den Fall in Worten. Eine Datei mit `"kind": "hlc_order"` enthält statt `ops`/`expected` das Feld `"sorted": [hlc, …]` in aufsteigender Ordnung. Rust- und TypeScript-Tests wenden die Operationen in mehreren Permutationen an und vergleichen mit `expected`.
 
 ## 3. HTTP-API (Server)
 
@@ -137,7 +169,7 @@ Basis: `ZUNDER_PUBLIC_URL`. JSON, UTF-8. Fehler: `{"error":{"code":…,"message"
 | `GET /auth/callback` | OIDC-Callback, setzt Session-Cookie `zunder_session` (HttpOnly, Secure, SameSite=Lax) |
 | `POST /auth/logout` | Session beenden |
 | `GET /api/me` | `{"user_id","name","email"}` |
-| `GET /api/snapshot` | `{"cursor":N,"entities":[{"entity","entity_id","fields":{f:{"value","hlc"}}}]}` |
+| `GET /api/snapshot` | `{"cursor":N,"entities":[{"entity","entity_id","created_hlc","fields":{f:{"value","hlc","op_id"}}}]}` (Format von `zunder_core::state::SnapshotEntity`; `op_id` für den Gleichstand nach `op_id`, `created_hlc` für `created_at`) |
 | `POST /api/sync/push` | Body `{"client_id","ops":[Op]}` → `{"accepted":[op_id],"rejected":[{"op_id","code","message"}],"warnings":[{"entity_id","code","message"}],"cursor":N}` |
 | `GET /api/sync/pull?since=N&limit=M` | `{"ops":[{"seq":N,"op":Op}],"cursor":N,"has_more":bool}`; `limit` Default 1000 |
 | `GET /api/sync/events` | Server-Sent Events, Ereignis `cursor` mit neuem Cursor bei jeder Änderung |
