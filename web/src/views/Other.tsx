@@ -4,6 +4,7 @@ import { createMemo, createResource, createSignal, For, onMount, Show } from "so
 import { Board } from "../components/Board";
 import { Icon } from "../components/Icon";
 import { TaskList } from "../components/TaskList";
+import { isTauri } from "../platform/runtime";
 import { fireOf, formatInstant, isValidFire, shiftFire } from "../sync/dates";
 import { isFlameRunning } from "../sync/derived";
 import type { ApiToken, CreatedToken, Task } from "../sync/types";
@@ -98,6 +99,25 @@ export function PhoenixView() {
 }
 
 export function TokensView() {
+  return isTauri() ? <TokensInApp /> : <TokenManager />;
+}
+
+/** Tauri app: token management needs a browser session on the server. */
+function TokensInApp() {
+  return (
+    <div class="view">
+      <header class="view-head">
+        <h1>API-Tokens</h1>
+      </header>
+      <p class="muted">API-Tokens verwaltest du in der Web-Oberfläche deines Zunder-Servers; dafür ist die Anmeldung im Browser nötig. Die App selbst nutzt den Token aus der Verbindung.</p>
+      <a class="btn" href="#/verbindung">
+        Zur Verbindung
+      </a>
+    </div>
+  );
+}
+
+function TokenManager() {
   const [tokens, { refetch }] = createResource(async (): Promise<ApiToken[] | null> => {
     try {
       return await api().listTokens();

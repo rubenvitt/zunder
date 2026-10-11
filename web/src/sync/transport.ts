@@ -1,5 +1,5 @@
-// Pluggable transport. HTTP is the implementation today; the Tauri app (E4)
-// can provide the same interface backed by Tauri commands.
+// Pluggable transport. HttpTransport talks to the server (browser); the Tauri
+// app provides the same interfaces backed by its commands (platform/tauri.ts).
 
 import type {
   ApiToken,
@@ -45,6 +45,12 @@ export function isTransient(err: unknown): boolean {
 export interface SubscriptionHandlers {
   onCursor(cursor: number): void;
   onConnection(connected: boolean): void;
+  /**
+   * The source state changed in a way a pull cannot express (Tauri app: its
+   * own background sync pulled or rolled back operations). The engine then
+   * reloads the whole snapshot.
+   */
+  onReset?(): void;
 }
 
 /** What the sync engine needs from the outside world. */

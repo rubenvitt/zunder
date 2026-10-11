@@ -5,9 +5,10 @@ import { createMemo, createSignal, For, onMount, Show } from "solid-js";
 import { isClosed } from "../sync/derived";
 import type { Location } from "../sync/types";
 import { locationLabel, STATUS_LABELS } from "../labels";
+import { isTauri } from "../platform/runtime";
 import { navigate } from "../state/router";
 import { api, areaList, data, projectList, taskIndex } from "../state/store";
-import { setCaptureOpen, setDetailId, setHelpOpen, setPalette, setSelectedId, setStructureEdit, type PaletteRequest } from "../state/ui";
+import { setCaptureOpen, setDetailId, setHelpOpen, setPalette, setSelectedId, setStructureEdit, toast, type PaletteRequest } from "../state/ui";
 import { Modal } from "./Modal";
 
 interface Item {
@@ -63,6 +64,25 @@ export function CommandPalette(props: { request: PaletteRequest }) {
       rank: 0,
       run,
     });
+    // In the Tauri app there is no session: tokens and logout give way to the connection settings.
+    const account = isTauri()
+      ? [
+          go("Verbindung zum Server", () => navigate({ view: "verbindung" })),
+          go("Jetzt abgleichen", () => {
+            void import("../state/desktop")
+              .then((m) => m.syncNow())
+              .then((r) => toast(r.ok ? "Abgeglichen." : (r.message ?? "Abgleich fehlgeschlagen."), r.ok ? "info" : "error"));
+          }),
+        ]
+      : [
+          go("API-Tokens verwalten", () => navigate({ view: "tokens" })),
+          go("Abmelden", () => {
+            void api()
+              .logout()
+              .catch(() => undefined)
+              .finally(() => location.reload());
+          }),
+        ];
     return [
       go("Neue Aufgabe", () => setCaptureOpen(true), "n"),
       go("Gehe zu Heute", () => navigate({ view: "heute" }), "g h"),
@@ -73,14 +93,8 @@ export function CommandPalette(props: { request: PaletteRequest }) {
       go("Gehe zu Phönix", () => navigate({ view: "phoenix" }), "g p"),
       go("Neuer Bereich", () => setStructureEdit({ kind: "area" })),
       go("Neues Projekt", () => setStructureEdit({ kind: "project" })),
-      go("API-Tokens verwalten", () => navigate({ view: "tokens" })),
       go("Tastenkürzel anzeigen", () => setHelpOpen(true), "?"),
-      go("Abmelden", () => {
-        void api()
-          .logout()
-          .catch(() => undefined)
-          .finally(() => location.reload());
-      }),
+      ...account,
     ];
   };
 

@@ -9,7 +9,8 @@ export type Route =
   | { view: "bereiche"; kind?: "area" | "project"; id?: string }
   | { view: "dev" }
   | { view: "phoenix"; fire?: string }
-  | { view: "tokens" };
+  | { view: "tokens" }
+  | { view: "verbindung" };
 
 export type ViewName = Route["view"];
 
@@ -29,6 +30,8 @@ export function parseRoute(hash: string): Route {
       return parts[1] ? { view: "phoenix", fire: parts[1] } : { view: "phoenix" };
     case "tokens":
       return { view: "tokens" };
+    case "verbindung":
+      return { view: "verbindung" };
     default:
       return { view: "heute" };
   }
