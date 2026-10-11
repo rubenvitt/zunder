@@ -110,6 +110,18 @@ pub struct Task {
     pub due_date_time: Option<bool>,
     #[serde(default, deserialize_with = "null_default")]
     pub tags: Vec<Tag>,
+    /// Unix milliseconds.
+    #[serde(default, deserialize_with = "opt_millis")]
+    pub date_created: Option<i64>,
+    /// Unix milliseconds; set while the status has type `closed`.
+    #[serde(default, deserialize_with = "opt_millis")]
+    pub date_closed: Option<i64>,
+    /// Unix milliseconds; set while the status has type `done`.
+    #[serde(default, deserialize_with = "opt_millis")]
+    pub date_done: Option<i64>,
+    /// Unix milliseconds.
+    #[serde(default, deserialize_with = "opt_millis")]
+    pub date_updated: Option<i64>,
 }
 
 /// One item of a collection response together with its raw JSON.
@@ -195,7 +207,9 @@ mod tests {
             "parent": null,
             "list": {"id": 9001},
             "due_date": "1760000000000",
-            "tags": null
+            "tags": null,
+            "date_created": "1750000000000",
+            "date_closed": null
         });
         let task: Task = item(raw).unwrap().item;
         assert_eq!(task.list.id, "9001");
@@ -205,6 +219,9 @@ mod tests {
         assert_eq!(task.status.key(), "in progress");
         assert!(task.tags.is_empty());
         assert!(task.parent.is_none());
+        assert_eq!(task.date_created, Some(1_750_000_000_000));
+        assert_eq!(task.date_closed, None);
+        assert_eq!(task.date_done, None);
     }
 
     #[test]

@@ -124,6 +124,8 @@ Lehnt der Server dennoch etwas ab, bricht der Lauf nach dem Paket ab; bereits ge
 
 Übernommen werden je Aufgabe: Titel, Beschreibung (Markdown, sonst Klartext), Status laut Zuordnung, Typ (Tags), Stelle (Ziel der Liste; Unteraufgaben über `parent_id`), Fälligkeit, ein Link „ClickUp“ zur Original-Aufgabe, `clickup_id` und die Reihenfolge (`rank` aus dem ClickUp-`orderindex`). Fälligkeiten mit Uhrzeit werden zu Datum und Uhrzeit in der eingestellten Zeitzone, reine Datumsangaben zum Kalenderdatum. Fehlt in der ClickUp-Antwort die Angabe `due_date_time`, gilt 00:00 oder 04:00 Ortszeit als „nur Datum“.
 
+Neu angelegte Aufgaben tragen ihre ClickUp-Zeitpunkte: Die Operationen sind auf `date_created` datiert, der Status geschlossener Aufgaben auf `date_closed` (sonst `date_done`, sonst `date_updated`), jeweils höchstens auf den Importzeitpunkt. So bleibt die Erstellungszeit erhalten, und eine vor Monaten erledigte Aufgabe gilt nicht drei Tage lang als „gerade erledigt“ (sie erscheint also nicht in den Standardansichten und nicht in `filter_tasks` ohne `include_closed`). Änderungen an schon vorhandenen Aufgaben tragen dagegen den Importzeitpunkt, damit sie gegen den Stand in Zunder gewinnen.
+
 ### 6. Erneut importieren
 
 Aufgaben-IDs werden aus der ClickUp-ID abgeleitet (UUIDv5), daher aktualisiert ein erneuter Lauf statt zu duplizieren:

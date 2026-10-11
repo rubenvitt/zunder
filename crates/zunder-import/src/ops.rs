@@ -4,9 +4,12 @@
 use serde_json::Value;
 use uuid::Uuid;
 use zunder_core::hlc::{Clock, NodeId};
+use zunder_core::model::fields;
 use zunder_core::{EntityKind, Op, OpBatch, State};
 
 use crate::convert::{Desired, IMPORT_NODE};
+
+const STATUS_FIELD: &str = fields::task::STATUS;
 
 /// The operations of one entity. Batches never split an entity, so a new
 /// entity always arrives together with its required fields.
@@ -54,6 +57,14 @@ pub fn import_clock(state: Option<&State>) -> Clock {
 /// - existing entities only get fields whose value differs (`null` resets
 ///   a field the import owns),
 /// - entities tombstoned in Zunder are skipped (deleted on purpose).
+///
+/// Operations on existing entities use `clock` at `physical_ms`, so they win
+/// against everything in `state`. A new entity with source timestamps
+/// ([`Desired::created_ms`], [`Desired::closed_ms`]) is dated back instead:
+/// its fields to the creation time and its status to the closing time
+/// (never later than `physical_ms`). Nothing else has written to the ID of a
+/// new entity, so the older HLCs cannot lose; `created_at` keeps the ClickUp
+/// history and a task closed long ago is not shown as just closed.
 pub fn plan_ops<'a>(
     desired: impl IntoIterator<Item = &'a Desired>,
     state: Option<&State>,
@@ -62,42 +73,82 @@ pub fn plan_ops<'a>(
 ) -> (Vec<EntityOps>, DiffStats) {
     let mut stats = DiffStats::default();
     let mut out = Vec::new();
-    let mut batch = OpBatch::new(clock, physical_ms);
     for entity in desired {
         let current = state.and_then(|s| s.entity(entity.kind, entity.id));
         if current.is_some_and(|e| e.is_deleted()) {
             stats.deleted_in_zunder += 1;
             continue;
         }
-        let start = batch.ops().len();
-        for (field, value) in &entity.fields {
-            let have = current.and_then(|e| e.value(field));
-            let write = match (current, value) {
-                (None, Value::Null) => false,
-                (None, _) => true,
-                (Some(_), Value::Null) => have.is_some(),
-                (Some(_), v) => have != Some(v),
-            };
-            if write {
-                batch.set(entity.kind, entity.id, field, value.clone());
-            }
-        }
-        let count = batch.ops().len() - start;
-        match (current, count) {
+        let writes: Vec<(&str, &Value)> = entity
+            .fields
+            .iter()
+            .filter(|(field, value)| {
+                let have = current.and_then(|e| e.value(field));
+                match (current, value) {
+                    (None, Value::Null) => false,
+                    (None, _) => true,
+                    (Some(_), Value::Null) => have.is_some(),
+                    (Some(_), v) => have != Some(v),
+                }
+            })
+            .map(|(field, value)| (field.as_str(), value))
+            .collect();
+        match (current, writes.len()) {
             (None, _) => stats.created += 1,
             (Some(_), 0) => stats.unchanged += 1,
             (Some(_), _) => stats.updated += 1,
         }
-        if count > 0 {
-            out.push(EntityOps {
-                kind: entity.kind,
-                id: entity.id,
-                label: entity.label.clone(),
-                ops: batch.ops()[start..].to_vec(),
-            });
+        if writes.is_empty() {
+            continue;
         }
+        let created = entity.created_ms.or(entity.closed_ms);
+        let ops = match created {
+            Some(created_ms) if current.is_none() => {
+                backdated_ops(entity, &writes, created_ms, physical_ms)
+            }
+            _ => {
+                let mut batch = OpBatch::new(clock, physical_ms);
+                for (field, value) in &writes {
+                    batch.set(entity.kind, entity.id, field, (*value).clone());
+                }
+                batch.into_ops()
+            }
+        };
+        out.push(EntityOps {
+            kind: entity.kind,
+            id: entity.id,
+            label: entity.label.clone(),
+            ops,
+        });
     }
     (out, stats)
+}
+
+/// Operations of a new entity dated to its source timestamps: the status
+/// at `closed_ms` (if any), everything else at `created_ms`, both capped at
+/// `now_ms`. Uses a clock of its own, so the import clock stays ahead.
+fn backdated_ops(
+    entity: &Desired,
+    writes: &[(&str, &Value)],
+    created_ms: u64,
+    now_ms: u64,
+) -> Vec<Op> {
+    let mut own = Clock::new(NodeId::new(IMPORT_NODE).expect("valid node"));
+    let (status, rest): (Vec<_>, Vec<_>) = writes
+        .iter()
+        .partition(|(field, _)| entity.closed_ms.is_some() && *field == STATUS_FIELD);
+    let mut ops = Vec::with_capacity(writes.len());
+    for (fields, at) in [
+        (rest, created_ms),
+        (status, entity.closed_ms.unwrap_or(created_ms)),
+    ] {
+        let mut batch = OpBatch::new(&mut own, at.min(now_ms));
+        for (field, value) in fields {
+            batch.set(entity.kind, entity.id, field, (*value).clone());
+        }
+        ops.extend(batch.into_ops());
+    }
+    ops
 }
 
 /// Splits entity groups into push batches of at most `max_ops` operations
@@ -134,6 +185,8 @@ mod tests {
                 .iter()
                 .map(|(f, v)| ((*f).to_owned(), v.clone()))
                 .collect(),
+            created_ms: None,
+            closed_ms: None,
         }
     }
 
@@ -187,6 +240,65 @@ mod tests {
         let (groups, stats) = plan_ops([&d1b], Some(&state), &mut clock, 1_500);
         assert!(groups.is_empty());
         assert_eq!(stats.unchanged, 1);
+    }
+
+    const DAY: u64 = 24 * 60 * 60 * 1000;
+
+    #[test]
+    fn new_tasks_are_dated_to_their_clickup_history() {
+        let now = 1_791_676_800_000;
+        let task = |id: u128, status: &str, created: u64, closed: Option<u64>| Desired {
+            created_ms: Some(created),
+            closed_ms: closed,
+            ..desired(
+                id,
+                &[
+                    ("title", json!("x")),
+                    ("location", json!({"kind": "inbox"})),
+                    ("status", json!(status)),
+                ],
+            )
+        };
+        let old = task(1, "done", now - 30 * DAY, Some(now - 10 * DAY));
+        let recent = task(2, "dropped", now - 30 * DAY, Some(now - DAY));
+        let open = task(3, "open", now - 5 * DAY, None);
+        let future = task(4, "done", now + 5 * DAY, Some(now + 6 * DAY));
+        let mut clock = import_clock(None);
+        let (groups, _) = plan_ops([&old, &recent, &open, &future], None, &mut clock, now);
+        let ops: Vec<Op> = groups.iter().flat_map(|g| g.ops.clone()).collect();
+        let state = State::from_ops(&ops);
+
+        // Closed ten days ago: hidden from the default views right away.
+        assert!(!state.is_visible_by_default(old.id, now));
+        assert_eq!(state.status_changed_at(old.id).unwrap().wall_ms(), now - 10 * DAY);
+        assert_eq!(
+            state.created_at(EntityKind::Task, old.id).unwrap().wall_ms(),
+            now - 30 * DAY
+        );
+        // Closed yesterday: still visible for the rest of the 3 days.
+        assert!(state.is_visible_by_default(recent.id, now));
+        assert!(!state.is_visible_by_default(recent.id, now + 2 * DAY));
+        assert!(state.is_visible_by_default(open.id, now));
+        assert_eq!(
+            state.created_at(EntityKind::Task, open.id).unwrap().wall_ms(),
+            now - 5 * DAY
+        );
+        // Timestamps from the future are capped at the import time.
+        assert!(groups
+            .iter()
+            .flat_map(|g| &g.ops)
+            .all(|op| op.hlc.wall_ms() <= now));
+
+        // Updates of existing entities use the import clock again, so they
+        // win against what is in Zunder.
+        let reopened = Desired {
+            fields: vec![("status".into(), json!("open"))],
+            ..old.clone()
+        };
+        let mut clock = import_clock(Some(&state));
+        let (groups, stats) = plan_ops([&reopened], Some(&state), &mut clock, now);
+        assert_eq!(stats.updated, 1);
+        assert_eq!(groups[0].ops[0].hlc.wall_ms(), now);
     }
 
     #[test]

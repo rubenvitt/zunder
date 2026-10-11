@@ -187,6 +187,26 @@ async fn imports_everything_with_correct_fields() {
     );
     assert_eq!(state.task(task_id("86b001")).unwrap().rank, None);
 
+    // ClickUp history: a task closed in ClickUp days ago is dated to its
+    // date_closed and stays out of the default views (3-day rule); the
+    // creation is dated to date_created.
+    let now = zunder_core::hlc::system_time_ms();
+    let paper = task_id("86a003");
+    assert_eq!(
+        state.status_changed_at(paper).unwrap().wall_ms(),
+        1_790_900_000_000
+    );
+    assert!(!state.is_visible_by_default(paper, now));
+    assert_eq!(
+        state
+            .created_at(EntityKind::Task, windows.id)
+            .unwrap()
+            .wall_ms(),
+        1_790_000_000_000
+    );
+    // Without ClickUp dates the import time applies.
+    assert!(state.is_visible_by_default(scanner.id, now));
+
     // The closed archived parent has an open subtask: a warning, no rejection.
     assert_eq!(summary.warnings.len(), 1);
     assert_eq!(summary.warnings[0].code, "open_subtasks");

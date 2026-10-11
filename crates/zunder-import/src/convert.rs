@@ -54,6 +54,14 @@ pub struct Desired {
     /// Human-readable name for messages.
     pub label: String,
     pub fields: Vec<(String, Value)>,
+    /// When the entity was created at the source (Unix ms). A new entity's
+    /// operations are dated to this time instead of the import time, so
+    /// `created_at` keeps the ClickUp history (see [`crate::ops::plan_ops`]).
+    pub created_ms: Option<u64>,
+    /// When a closed (done/dropped) task was closed at the source (Unix ms).
+    /// The status operation of a new task is dated to this time, so tasks
+    /// closed long ago do not count as "just closed" (3-day rule).
+    pub closed_ms: Option<u64>,
 }
 
 impl Desired {
@@ -480,13 +488,20 @@ pub fn convert(
         };
         let mut batch = OpBatch::new(&mut scratch_clock, 0);
         batch.create_task(new);
-        conv.tasks.push(desired(
+        let mut entity = desired(
             EntityKind::Task,
             id,
             format!("Aufgabe „{title}“ (ClickUp {})", task.id),
             batch,
             OWNED_OPTIONAL_TASK_FIELDS,
-        ));
+        );
+        entity.created_ms = unix_ms(task.date_created);
+        if status.is_closed() {
+            entity.closed_ms = unix_ms(task.date_closed)
+                .or(unix_ms(task.date_done))
+                .or(unix_ms(task.date_updated));
+        }
+        conv.tasks.push(entity);
 
         // Counts per effective target.
         let (order_key, kind, key, name) = match root_target {
@@ -560,7 +575,14 @@ fn desired(
         id,
         label,
         fields,
+        created_ms: None,
+        closed_ms: None,
     }
+}
+
+/// A positive ClickUp timestamp as Unix milliseconds.
+fn unix_ms(ms: Option<i64>) -> Option<u64> {
+    ms.and_then(|ms| u64::try_from(ms).ok()).filter(|ms| *ms > 0)
 }
 
 /// Trimmed title, never empty, at most [`MAX_TITLE_CHARS`] characters.
