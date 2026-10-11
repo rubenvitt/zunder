@@ -1,6 +1,6 @@
 // UI state shared across views: selection, overlays, toasts, picker requests.
 
-import { createSignal, type Accessor } from "solid-js";
+import { createSignal, getOwner, onCleanup, type Accessor } from "solid-js";
 import type { Location, Task } from "../sync/types";
 
 export type ToastKind = "info" | "warning" | "error";
@@ -32,11 +32,22 @@ export const [selectedId, setSelectedId] = createSignal<string | null>(null);
 export const [detailId, setDetailId] = createSignal<string | null>(null);
 
 /** The keyboard-navigable task list of the current view (registered by the view). */
-const [activeList, setActiveListSignal] = createSignal<Accessor<Task[]>>(() => []);
+const NO_LIST: Accessor<Task[]> = () => [];
+const [activeList, setActiveListSignal] = createSignal<Accessor<Task[]>>(NO_LIST);
 export { activeList };
 
+/**
+ * Registers the list j/k/Enter/x work on. It is unregistered when the registering
+ * component goes away, so a view without a list (empty Bereiche, tokens, Dev
+ * without projects) never acts on the invisible tasks of the previous view.
+ */
 export function registerList(list: Accessor<Task[]>): void {
   setActiveListSignal(() => list);
+  if (getOwner()) {
+    onCleanup(() => {
+      if (activeList() === list) setActiveListSignal(() => NO_LIST);
+    });
+  }
 }
 
 /** Board views register column navigation so h/l and Shift+H/L work. */
