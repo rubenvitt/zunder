@@ -1,0 +1,192 @@
+//! `/api` handlers (all behind [`crate::auth::middleware::require_auth`]).
+
+use std::convert::Infallible;
+
+use axum::extract::{DefaultBodyLimit, Path, State};
+use axum::http::{HeaderValue, StatusCode};
+use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::response::{IntoResponse, Response};
+use axum::routing::{delete, get, post};
+use axum::{Json, Router};
+use futures_util::{stream, Stream, StreamExt};
+use serde::Deserialize;
+use serde_json::json;
+use tokio_stream::wrappers::BroadcastStream;
+use zunder_core::Op;
+
+use super::extract::{parse_id, ApiJson, ApiQuery};
+use crate::app::{App, CreatedToken, HistoryEntry, PullPage, PushResult, Snapshot, TokenInfo};
+use crate::auth::Principal;
+use crate::error::{AppError, AppResult};
+
+/// Body limit of `/api` requests except push.
+pub const API_BODY_LIMIT: usize = 64 * 1024;
+/// Body limit of `POST /api/sync/push` (imports send large batches).
+pub const PUSH_BODY_LIMIT: usize = 8 * 1024 * 1024;
+/// Maximum length of `client_id`.
+const MAX_CLIENT_ID_CHARS: usize = 128;
+
+/// The `/api` routes (without auth layer).
+pub fn routes() -> Router<App> {
+    Router::new()
+        .route("/me", get(me))
+        .route("/snapshot", get(snapshot))
+        .route(
+            "/sync/push",
+            post(push).layer(DefaultBodyLimit::max(PUSH_BODY_LIMIT)),
+        )
+        .route("/sync/pull", get(pull))
+        .route("/sync/events", get(events))
+        .route("/tasks/{id}/history", get(history))
+        .route("/tokens", get(list_tokens).post(create_token))
+        .route("/tokens/{id}", delete(revoke_token))
+        .layer(DefaultBodyLimit::max(API_BODY_LIMIT))
+}
+
+async fn me(State(app): State<App>, principal: Principal) -> AppResult<Json<serde_json::Value>> {
+    let user = app
+        .user(principal.user_id)
+        .await?
+        .ok_or(AppError::Unauthorized)?;
+    Ok(Json(json!({
+        "user_id": user.id,
+        "name": user.name,
+        "email": user.email,
+    })))
+}
+
+async fn snapshot(State(app): State<App>, _principal: Principal) -> Json<Snapshot> {
+    Json(app.snapshot())
+}
+
+#[derive(Deserialize)]
+struct PushBody {
+    #[serde(default)]
+    client_id: Option<String>,
+    ops: Vec<Op>,
+}
+
+async fn push(
+    State(app): State<App>,
+    principal: Principal,
+    ApiJson(body): ApiJson<PushBody>,
+) -> AppResult<Json<PushResult>> {
+    if body
+        .client_id
+        .as_ref()
+        .is_some_and(|c| c.chars().count() > MAX_CLIENT_ID_CHARS)
+    {
+        return Err(AppError::bad_request(format!(
+            "client_id darf höchstens {MAX_CLIENT_ID_CHARS} Zeichen lang sein"
+        )));
+    }
+    let result = app
+        .push(body.ops, principal.sync_source(), body.client_id)
+        .await?;
+    Ok(Json(result))
+}
+
+#[derive(Deserialize)]
+struct PullQuery {
+    #[serde(default)]
+    since: i64,
+    limit: Option<u32>,
+}
+
+async fn pull(
+    State(app): State<App>,
+    _principal: Principal,
+    ApiQuery(q): ApiQuery<PullQuery>,
+) -> AppResult<Json<PullPage>> {
+    if q.since < 0 {
+        return Err(AppError::bad_request("since darf nicht negativ sein"));
+    }
+    if q.limit == Some(0) {
+        return Err(AppError::bad_request("limit muss mindestens 1 sein"));
+    }
+    let limit = q.limit.unwrap_or(crate::app::DEFAULT_PULL_LIMIT);
+    Ok(Json(app.pull(q.since, limit).await?))
+}
+
+/// Server-Sent Events: `event: cursor` with the current cursor right away
+/// and after every change. Ends on shutdown.
+async fn events(State(app): State<App>, _principal: Principal) -> Response {
+    // Subscribe before reading the cursor, so no change is missed.
+    let rx = app.subscribe();
+    let initial = app.cursor();
+    let lagged_app = app.clone();
+    let cursors =
+        stream::once(async move { initial }).chain(BroadcastStream::new(rx).map(move |item| {
+            match item {
+                Ok(cursor) => cursor,
+                // Missed notifications collapse into the current cursor.
+                Err(_) => lagged_app.cursor(),
+            }
+        }));
+    let events: std::pin::Pin<Box<dyn Stream<Item = Result<Event, Infallible>> + Send>> = Box::pin(
+        cursors
+            .map(|cursor| Ok(Event::default().event("cursor").data(cursor.to_string())))
+            .take_until(app.shutdown_token().cancelled_owned()),
+    );
+    let mut response = Sse::new(events)
+        .keep_alive(KeepAlive::default())
+        .into_response();
+    // Ask reverse proxies not to buffer the stream.
+    response
+        .headers_mut()
+        .insert("x-accel-buffering", HeaderValue::from_static("no"));
+    response
+}
+
+async fn history(
+    State(app): State<App>,
+    _principal: Principal,
+    Path(id): Path<String>,
+) -> AppResult<Json<Vec<HistoryEntry>>> {
+    let id = parse_id(&id)?;
+    Ok(Json(app.task_history(id).await?))
+}
+
+fn require_browser(principal: &Principal) -> AppResult<()> {
+    if principal.is_browser() {
+        Ok(())
+    } else {
+        Err(AppError::Forbidden(
+            "API-Tokens lassen sich nur mit einer Browser-Sitzung verwalten".into(),
+        ))
+    }
+}
+
+async fn list_tokens(
+    State(app): State<App>,
+    principal: Principal,
+) -> AppResult<Json<Vec<TokenInfo>>> {
+    require_browser(&principal)?;
+    Ok(Json(app.list_tokens(principal.user_id).await?))
+}
+
+#[derive(Deserialize)]
+struct CreateTokenBody {
+    name: String,
+}
+
+async fn create_token(
+    State(app): State<App>,
+    principal: Principal,
+    ApiJson(body): ApiJson<CreateTokenBody>,
+) -> AppResult<(StatusCode, Json<CreatedToken>)> {
+    require_browser(&principal)?;
+    let token = app.create_token(principal.user_id, &body.name).await?;
+    Ok((StatusCode::CREATED, Json(token)))
+}
+
+async fn revoke_token(
+    State(app): State<App>,
+    principal: Principal,
+    Path(id): Path<String>,
+) -> AppResult<StatusCode> {
+    require_browser(&principal)?;
+    let id = parse_id(&id)?;
+    app.revoke_token(principal.user_id, id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}

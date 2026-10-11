@@ -1,0 +1,8 @@
+{
+  "kty": "RSA",
+  "use": "sig",
+  "alg": "RS256",
+  "kid": "oidc-test-key",
+  "n": "223m1ypVYlDtp2rcceYCFpNxsF6Iowd3P7-f6TZizBrJ7lhEO6nuPv1w5TV_RE6spBvezwng6xm09dYGwS5lHAooHRfI5dOpWK-XZ2jgrAyeG8aDL5LlgGPMDwCnu7qikoIiMR94J8K7mFKOazx2eM_atV0PgT8RA5370UQXI1gEmtZHBWrznnHaqq97MU9VLTE3S3gbuOxytyAtIcDKY0jrq6ZvH4bhzd24hk3d5TWY2BX_Wkhz9vkkz0skcoAtTfiUbHJTYjjUbJcV2YzTJSR8XrZTgHGzgTBeTS49Oqu9BZGxtVze81Qp45sgL8uRKmyW_yL5GOCGBb_12A1rBQ",
+  "e": "AQAB"
+}

@@ -173,15 +173,15 @@ Basis: `ZUNDER_PUBLIC_URL`. JSON, UTF-8. Fehler: `{"error":{"code":…,"message"
 | `POST /api/sync/push` | Body `{"client_id","ops":[Op]}` → `{"accepted":[op_id],"rejected":[{"op_id","code","message"}],"warnings":[{"entity_id","code","message"}],"cursor":N}` |
 | `GET /api/sync/pull?since=N&limit=M` | `{"ops":[{"seq":N,"op":Op}],"cursor":N,"has_more":bool}`; `limit` Default 1000 |
 | `GET /api/sync/events` | Server-Sent Events, Ereignis `cursor` mit neuem Cursor bei jeder Änderung |
-| `GET /api/tasks/{id}/history` | Änderungsprotokoll: `[{"seq","op","source"}]` |
+| `GET /api/tasks/{id}/history` | Änderungsprotokoll: `[{"seq","op","source","received_at"}]` |
 | `POST /api/tasks/{id}/flame/start` | Flamme starten (Timing-Brücke, Fallback-Zeitstempel) |
 | `POST /api/tasks/{id}/flame/stop` | Flamme beenden |
-| `GET /api/tokens` / `POST /api/tokens` / `DELETE /api/tokens/{id}` | API-Tokens verwalten (nur Session-Auth) |
+| `GET /api/tokens` / `POST /api/tokens` / `DELETE /api/tokens/{id}` | API-Tokens verwalten (nur Session-Auth): Liste `[{"id","name","created_at","last_used_at"}]`; Anlegen mit `{"name"}` → `201` `{"id","name","created_at","last_used_at","token"}` (Token nur in dieser Antwort); Widerruf → `204` |
 | `POST /mcp` (+ `GET`, `DELETE`) | MCP Streamable HTTP |
 
 - Idempotenz: Eine bereits bekannte `op_id` gilt als `accepted`, wird aber nicht erneut gespeichert.
 - `seq` ist ein monotoner Server-Zähler; der Cursor ist das größte vergebene `seq`.
-- Operationen, die der Server selbst erzeugt (MCP, Timing, Import über API), laufen durch dieselbe Validierung und dasselbe Log und tragen eine `source` (`web`, `mcp:<token-name>`, `import`, `server`).
+- Operationen, die der Server selbst erzeugt (MCP, Timing), und alle gepushten Operationen laufen durch dieselbe Validierung und dasselbe Log und tragen eine `source`: `web` (Browser-Sitzung), `api:<token-name>` (Sync-API mit API-Token, z. B. `api:import`, wenn der Import einen Token namens `import` nutzt; `api:bootstrap` für `ZUNDER_BOOTSTRAP_TOKEN`), `mcp:<token-name>`, `server`.
 
 **Auth:** Session-Cookie (Browser) oder `Authorization: Bearer zt_<32 Byte base64url>` (API-Token, in der DB nur als SHA-256 gespeichert, einzeln widerrufbar, `last_used_at`). Konfiguration über Umgebungsvariablen:
 
@@ -200,6 +200,40 @@ Basis: `ZUNDER_PUBLIC_URL`. JSON, UTF-8. Fehler: `{"error":{"code":…,"message"
 | `ZUNDER_BACKUP_HOUR` | Stunde (lokal) für das nächtliche Backup, Default 3 |
 
 **Persistenz:** SQLite im WAL-Modus. Tabellen mindestens `users`, `ops` (seq, op_id unique, entity, entity_id, field, value_json, hlc, source, received_at, owner_id), `entities` (materialisierter Zustand je Entität als JSON inkl. Feld-HLCs), `api_tokens`, `sessions`. Der Server hält den materialisierten Zustand zusätzlich im Speicher. Nächtliches Backup per `VACUUM INTO` nach `data/backups/`, 14 Stück aufbewahren.
+
+### 3.1 Präzisierungen (umgesetzt in `zunder-server`)
+
+**Fehler.** Format `{"error":{"code","message"}}` mit `code` ∈ `unauthorized` (401, mit `WWW-Authenticate: Bearer`), `forbidden` (403), `not_found` (404), `invalid_request` (400), `conflict` (409, z. B. Token-Name doppelt), `payload_too_large` (413), `unavailable` (503), `internal` (500). Unbekannte Pfade unter `/api/` liefern `not_found` als JSON.
+
+**Push.** `client_id` ist optional (≤ 128 Zeichen) und wird je Operation gespeichert. Ist der Body kein gültiges JSON oder hat eine Operation nicht das Wire-Format (z. B. keine kanonische UUID, ungültiger HLC, fehlendes `value`), wird der ganze Push mit `400 invalid_request` abgelehnt; inhaltliche Fehler meldet der Kern je Operation in `rejected`. Ein Push ohne neue Operationen ändert den Cursor nicht und löst kein SSE-Ereignis aus. Body-Limit: 8 MiB für `POST /api/sync/push`, 64 KiB für alle anderen Anfragen.
+
+**Pull.** `since` Default 0, nicht negativ; `limit` Default 1000, höchstens 5000 (größere Werte werden gekappt), mindestens 1. `cursor` ist das `seq` der letzten gelieferten Operation; ohne Operationen der aktuelle Server-Cursor. `has_more` heißt: direkt mit `since=cursor` weiterholen.
+
+**SSE.** `GET /api/sync/events` sendet sofort `event: cursor` mit dem aktuellen Cursor und danach bei jeder Änderung; Keep-Alive-Kommentare alle 15 s. SSE-Antworten werden nie komprimiert. Beim Herunterfahren endet der Stream.
+
+**Snapshot.** Enthält auch gelöschte Entitäten (Tombstones), damit Clients sie mergen können.
+
+**Verlauf.** `GET /api/tasks/{id}/history` liefert alle Operationen der Aufgabe in `seq`-Reihenfolge, `received_at` als RFC 3339 (UTC). Unbekannte Aufgabe → 404, keine kanonische ID → 400.
+
+**Besitzer.** Eine Instanz hat genau einen Besitzer. Beim ersten Start legt der Server die Zeile in `users` an (nötig für `owner_id` an Operationen, auch vor dem ersten Login, z. B. für einen Import per Bootstrap-Token). Der erste erfolgreiche OIDC-Login hinterlegt dort Subject, E-Mail und Namen, spätere Logins aktualisieren E-Mail und Namen. Alle Zugangswege (Sitzung, Token, Bootstrap-Token, Dev-Auth) handeln als dieser Besitzer.
+
+**Sitzungen.** Cookie `zunder_session` mit 32 Zufallsbytes (base64url), in der DB nur als HMAC-SHA256 mit `ZUNDER_SESSION_SECRET` (mindestens 32 Zeichen; Pflicht, sobald OIDC konfiguriert und Dev-Auth aus ist). `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` außer bei `http://localhost`/`127.0.0.1`/`[::1]`. Gültigkeit 30 Tage, gleitend: Ist die letzte Verlängerung älter als ein Tag, verlängert der Server sie und sendet das Cookie neu. `POST /auth/logout` löscht die Sitzung (→ 204).
+
+**CSRF.** Mit Cookie (oder Dev-Auth) authentifizierte Anfragen, die Zustand ändern (alles außer `GET`/`HEAD`/`OPTIONS`, auch `POST /auth/logout`), brauchen den Header **`X-Zunder-Client: web`**; sonst 403 `forbidden`. Die Web-UI sendet ihn bei jeder API-Anfrage. Bearer-Token-Anfragen brauchen ihn nicht. Der Server erlaubt kein CORS.
+
+**API-Tokens.** Format `zt_` + 32 Zufallsbytes base64url (43 Zeichen), gespeichert als SHA-256 (hex). Namen 1–64 Zeichen, ohne Steuerzeichen, eindeutig unter den aktiven Tokens, `bootstrap` ist reserviert. Widerrufen = `revoked_at` setzen (der Name bleibt im Verlauf nachvollziehbar). `last_used_at` wird höchstens einmal pro Minute geschrieben. Ein ungültiger Bearer-Token ist immer 401, auch wenn zusätzlich ein Cookie mitkommt. `ZUNDER_BOOTSTRAP_TOKEN` gilt zusätzlich als Token mit dem Namen `bootstrap`.
+
+**OIDC.** `GET /auth/login?return_to=/pfad` (nur lokale Pfade) leitet mit `state`, `nonce` und PKCE (S256) zum Anbieter; Scope `openid email profile`. Der Server merkt sich laufende Logins 10 Minuten im Speicher und bindet sie per Cookie `zunder_login` (Pfad `/auth`) an den Browser. Der Callback tauscht den Code (`client_secret_post`, ohne Secret als öffentlicher Client), prüft das ID-Token (Signatur per JWKS, keine HS-Algorithmen, `iss`, `aud`, bei mehreren Audiences `azp`, `exp`/`iat` mit 60 s Toleranz, `nonce`) und setzt die Sitzung. Unbekannte Schlüssel-IDs lösen ein erneutes Laden der JWKS aus. Erlaubt ist: das Subject aus `ZUNDER_OIDC_ALLOWED_SUBJECT`, falls gesetzt, sonst die E-Mail aus `ZUNDER_OIDC_ALLOWED_EMAIL` (Groß-/Kleinschreibung egal, `email_verified` darf nicht `false` sein). Fehler zeigt eine deutsche HTML-Seite. Ohne konfigurierten Anbieter antwortet `/auth/login` mit 503.
+
+**Dev-Auth.** `ZUNDER_DEV_AUTH=true` ist nur mit lokaler `ZUNDER_PUBLIC_URL` erlaubt (sonst startet der Server nicht) und wird beim Start laut geloggt. Anfragen ohne Zugangsdaten gelten dann als der Besitzer (Name „Entwicklung“, E-Mail `dev@localhost`, solange kein OIDC-Login erfolgt ist); `/auth/login` legt direkt eine Sitzung an und leitet zurück. Die CSRF-Regel gilt auch hier.
+
+**Weitere Variablen.** `ZUNDER_PUBLIC_URL` Default `http://localhost:<Port aus ZUNDER_BIND>`; OIDC-Redirect-URI ist `<ZUNDER_PUBLIC_URL>/auth/callback`. `ZUNDER_OIDC_CLIENT_SECRET` ist optional. `RUST_LOG` steuert das Log (Default `info`). Das Backup läuft zur lokalen Stunde `ZUNDER_BACKUP_HOUR` (Zeitzone über `TZ`), Dateiname `zunder-JJJJMMTT-HHMMSS.db`; dabei werden abgelaufene Sitzungen entfernt.
+
+**Gesundheitsprüfung.** `zunder-server healthcheck` fragt `http://127.0.0.1:<Port aus ZUNDER_BIND>/healthz` ab (bzw. die gebundene IP, wenn nicht `0.0.0.0`/`::`) und endet mit Exit-Code 0 bei `{"status":"ok"}`, sonst 1. Gedacht für `HEALTHCHECK` im Dockerfile. `/healthz` prüft die Datenbank und antwortet bei Fehlern mit 503 `{"status":"error"}`.
+
+**Statische Dateien.** `ZUNDER_WEB_DIR` wird unter `/` ausgeliefert. `/assets/*` (Vite-Ausgabe mit Hash im Namen) mit `Cache-Control: public, max-age=31536000, immutable`, alles andere mit `no-cache`. Unbekannte Pfade ohne Dateiendung liefern `index.html` (SPA-Fallback); fehlende Dateien unter `/assets/` oder mit Endung sind 404. Antworten werden mit gzip oder Brotli komprimiert, wenn der Client es anbietet.
+
+**Schema.** Migrationen sind eingebettetes SQL, versioniert über `PRAGMA user_version`; ein Server verweigert eine Datenbank mit neuerer Version. Zeitstempel sind Unix-Millisekunden. `meta.materialized_seq:<owner_id>` hält fest, bis zu welchem `seq` die Tabelle `entities` aktuell ist; stimmt das (oder die Anzahl der Entitäten) beim Start nicht mit dem Log überein, baut der Server `entities` aus dem Log neu auf.
 
 ## 4. MCP
 
