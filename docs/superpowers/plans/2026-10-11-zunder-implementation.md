@@ -223,7 +223,7 @@ Leere Werte gelten als nicht gesetzt (Compose und Portainer reichen optionale Va
 
 **SSE.** `GET /api/sync/events` sendet sofort `event: cursor` mit dem aktuellen Cursor und danach bei jeder Änderung; Keep-Alive-Kommentare alle 15 s. SSE-Antworten werden nie komprimiert. Beim Herunterfahren endet der Stream.
 
-**Snapshot.** Enthält auch gelöschte Entitäten (Tombstones), damit Clients sie mergen können.
+**Snapshot.** Enthält auch gelöschte Entitäten (Tombstones), damit Clients sie mergen können. Kopieren, Serialisieren und Komprimieren (Brotli vor gzip, je nach `Accept-Encoding`) laufen im Blocking-Pool, nicht auf den async-Workern; ebenso die vollständigen Durchläufe der MCP-Lesewerkzeuge (`filter_tasks`, `search`, `list_structure`).
 
 **Verlauf.** `GET /api/tasks/{id}/history` liefert alle Operationen der Aufgabe in `seq`-Reihenfolge, `received_at` als RFC 3339 (UTC). Unbekannte Aufgabe → 404, keine kanonische ID → 400.
 

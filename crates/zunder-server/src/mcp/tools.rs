@@ -103,17 +103,17 @@ fn tool_result(result: AppResult<Value>) -> Value {
 
 async fn dispatch(app: &App, source: Source, name: &str, args: &Args) -> AppResult<Value> {
     match name {
-        "filter_tasks" => filter_tasks(app, args),
+        "filter_tasks" => filter_tasks(app, args).await,
         "get_task" => get_task(app, args),
         "create_task" => create_task(app, source, args).await,
         "update_task" => update_task(app, source, args).await,
         "move_task" => move_task(app, source, args).await,
         "delete_task" => delete_task(app, source, args).await,
-        "search" => search_all(app, args),
+        "search" => search_all(app, args).await,
         "claim_task" => claim_task(app, source, args).await,
         "release_task" => release_task(app, source, args).await,
         "decompose_task" => decompose_task(app, source, args).await,
-        "list_structure" => list_structure(app, args),
+        "list_structure" => list_structure(app, args).await,
         "create_area" => create_area(app, source, args).await,
         "update_area" => update_area(app, source, args).await,
         "create_project" => create_project(app, source, args).await,
@@ -318,35 +318,39 @@ impl TaskFilter {
     }
 }
 
-fn filter_tasks(app: &App, args: &Args) -> AppResult<Value> {
+// The full scans below run on the blocking pool (`read_blocking`).
+
+async fn filter_tasks(app: &App, args: &Args) -> AppResult<Value> {
     let filter = TaskFilter::parse(args)?;
     let now = system_time_ms();
-    let (tasks, total) = app.read(|state| {
-        let mut hits: Vec<_> = state
-            .live_tasks()
-            .filter(|t| filter.matches(state, t, now))
-            .map(|t| {
-                let created = state.created_at(EntityKind::Task, t.id).cloned();
-                (t.due.map(|d| d.date()), created, t.id)
-            })
-            .collect();
-        hits.sort_by(|a, b| {
-            let due = match (a.0, b.0) {
-                (Some(x), Some(y)) => x.cmp(&y),
-                (Some(_), None) => std::cmp::Ordering::Less,
-                (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => std::cmp::Ordering::Equal,
-            };
-            due.then_with(|| a.1.cmp(&b.1)).then_with(|| a.2.cmp(&b.2))
-        });
-        let total = hits.len();
-        let tasks: Vec<TaskView> = hits
-            .into_iter()
-            .take(filter.limit)
-            .filter_map(|(_, _, id)| TaskView::build(state, id, now, false))
-            .collect();
-        (tasks, total)
-    });
+    let (tasks, total) = app
+        .read_blocking(move |state| {
+            let mut hits: Vec<_> = state
+                .live_tasks()
+                .filter(|t| filter.matches(state, t, now))
+                .map(|t| {
+                    let created = state.created_at(EntityKind::Task, t.id).cloned();
+                    (t.due.map(|d| d.date()), created, t.id)
+                })
+                .collect();
+            hits.sort_by(|a, b| {
+                let due = match (a.0, b.0) {
+                    (Some(x), Some(y)) => x.cmp(&y),
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (None, None) => std::cmp::Ordering::Equal,
+                };
+                due.then_with(|| a.1.cmp(&b.1)).then_with(|| a.2.cmp(&b.2))
+            });
+            let total = hits.len();
+            let tasks: Vec<TaskView> = hits
+                .into_iter()
+                .take(filter.limit)
+                .filter_map(|(_, _, id)| TaskView::build(state, id, now, false))
+                .collect();
+            (tasks, total)
+        })
+        .await?;
     Ok(json!({
         "tasks": tasks,
         "count": tasks.len(),
@@ -366,58 +370,60 @@ fn get_task(app: &App, args: &Args) -> AppResult<Value> {
     })
 }
 
-fn search_all(app: &App, args: &Args) -> AppResult<Value> {
+async fn search_all(app: &App, args: &Args) -> AppResult<Value> {
     let query = args
         .non_empty_str("query")?
         .ok_or_else(|| invalid("Parameter „query“ fehlt."))?
         .to_owned();
     let limit = args.int("limit", 1, 200, 20)? as usize;
     let now = system_time_ms();
-    let hits: Vec<Value> = app.read(|state| {
-        search(state, &query, limit)
-            .into_iter()
-            .map(|hit| {
-                let mut v = json!({
-                    "entity": hit.entity,
-                    "id": hit.entity_id,
-                    "title": hit.title,
-                    "score": hit.score,
-                });
-                match hit.entity {
-                    EntityKind::Task => {
-                        if let Some(t) = TaskView::build(state, hit.entity_id, now, false) {
-                            v["status"] = json!(t.status);
-                            v["type"] = json!(t.task_type);
-                            v["location"] = json!(t.location);
-                            v["parent_id"] = json!(t.parent_id);
-                            v["due"] = json!(t.due);
-                            v["clickup_id"] = json!(t.clickup_id);
+    let hits: Vec<Value> = app
+        .read_blocking(move |state| {
+            search(state, &query, limit)
+                .into_iter()
+                .map(|hit| {
+                    let mut v = json!({
+                        "entity": hit.entity,
+                        "id": hit.entity_id,
+                        "title": hit.title,
+                        "score": hit.score,
+                    });
+                    match hit.entity {
+                        EntityKind::Task => {
+                            if let Some(t) = TaskView::build(state, hit.entity_id, now, false) {
+                                v["status"] = json!(t.status);
+                                v["type"] = json!(t.task_type);
+                                v["location"] = json!(t.location);
+                                v["parent_id"] = json!(t.parent_id);
+                                v["due"] = json!(t.due);
+                                v["clickup_id"] = json!(t.clickup_id);
+                            }
+                        }
+                        EntityKind::Project => {
+                            if let Some(p) = ProjectView::build(state, hit.entity_id) {
+                                v["area_id"] = json!(p.area_id);
+                                v["area_name"] = json!(p.area_name);
+                                v["status"] = json!(p.status);
+                                v["kind"] = json!(p.kind);
+                            }
+                        }
+                        EntityKind::Area => {
+                            if let Some(a) = AreaView::build(state, hit.entity_id) {
+                                v["state"] = json!(a.state);
+                            }
                         }
                     }
-                    EntityKind::Project => {
-                        if let Some(p) = ProjectView::build(state, hit.entity_id) {
-                            v["area_id"] = json!(p.area_id);
-                            v["area_name"] = json!(p.area_name);
-                            v["status"] = json!(p.status);
-                            v["kind"] = json!(p.kind);
-                        }
-                    }
-                    EntityKind::Area => {
-                        if let Some(a) = AreaView::build(state, hit.entity_id) {
-                            v["state"] = json!(a.state);
-                        }
-                    }
-                }
-                v
-            })
-            .collect()
-    });
+                    v
+                })
+                .collect()
+        })
+        .await?;
     Ok(json!({"hits": hits, "count": hits.len()}))
 }
 
-fn list_structure(app: &App, args: &Args) -> AppResult<Value> {
+async fn list_structure(app: &App, args: &Args) -> AppResult<Value> {
     let include_archived = args.bool("include_archived")?.unwrap_or(false);
-    app.read(|state| {
+    app.read_blocking(move |state| {
         let mut inbox = 0usize;
         let mut loose = 0usize;
         let mut open: HashMap<Uuid, usize> = HashMap::new();
@@ -456,6 +462,7 @@ fn list_structure(app: &App, args: &Args) -> AppResult<Value> {
         }
         Ok(json!({"areas": out, "inbox_open": inbox, "loose_open": loose}))
     })
+    .await?
 }
 
 async fn task_history(app: &App, args: &Args) -> AppResult<Value> {

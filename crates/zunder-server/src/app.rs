@@ -413,6 +413,19 @@ impl App {
         f(&self.inner.read_materialized().state)
     }
 
+    /// Like [`App::read`], on the blocking pool: for full scans of the state
+    /// that would otherwise hold up an async worker thread.
+    pub async fn read_blocking<R, F>(&self, f: F) -> AppResult<R>
+    where
+        R: Send + 'static,
+        F: FnOnce(&State) -> R + Send + 'static,
+    {
+        let app = self.clone();
+        tokio::task::spawn_blocking(move || app.read(f))
+            .await
+            .map_err(|e| AppError::Internal(e.into()))
+    }
+
     /// The current cursor (largest `seq`).
     pub fn cursor(&self) -> i64 {
         self.inner.read_materialized().cursor
