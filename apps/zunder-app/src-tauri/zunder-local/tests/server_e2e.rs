@@ -165,6 +165,8 @@ async fn devices_sync_through_the_real_server() {
     let report = syncer_phone.sync(&phone, now()).await.unwrap();
     assert_eq!(report.pulled, rename.len());
     assert!(report.changed);
+    // The overlapping pull found the phone's own last op at its cursor.
+    assert!(!report.resynced);
     assert_eq!(
         lock(&phone).state().task(task).unwrap().title,
         "Zahnarzt anrufen (dringend)"
@@ -200,7 +202,11 @@ async fn devices_sync_through_the_real_server() {
 
     // A wrong token is reported as such.
     let stranger = device(&dir, "stranger", &server, "zt_wrong-token");
-    let err = Syncer::new().sync(&stranger, now()).await.unwrap_err();
+    let err = Syncer::new()
+        .sync(&stranger, now())
+        .await
+        .unwrap_err()
+        .error;
     assert_eq!(err.code(), "unauthorized");
 }
 

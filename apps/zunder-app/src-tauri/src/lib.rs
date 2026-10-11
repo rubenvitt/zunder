@@ -29,7 +29,9 @@ pub mod events {
     /// `{"cursor": N, "pending": N}`. Reload with `local_snapshot`.
     pub const CHANGED: &str = "zunder://changed";
     /// A sync attempt finished; payload `{"ok": true, "report": SyncReport}`
-    /// or `{"ok": false, "error": {"code", "message"}}`.
+    /// or `{"ok": false, "error": {"code", "message"}, "report": SyncReport}`
+    /// (what the failed round committed before the error). Not sent for a
+    /// round cut short by a server switch (`reconfigured`).
     pub const SYNC: &str = "zunder://sync";
 }
 
@@ -66,6 +68,13 @@ pub fn run() {
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
+            // The database holds the API token: owner only (also for
+            // directories created by older versions).
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
+            }
             let store = LocalStore::open(dir.join(DB_FILE))?;
             app.manage(AppState {
                 store: Mutex::new(store),

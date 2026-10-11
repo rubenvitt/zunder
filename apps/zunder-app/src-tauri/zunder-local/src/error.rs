@@ -38,6 +38,8 @@ pub enum Error {
     Protocol(String),
     #[error("Benachrichtigung: {0}")]
     Notification(String),
+    #[error("Der Server wurde während des Abgleichs gewechselt; der Abgleich beginnt neu")]
+    Reconfigured,
 }
 
 impl Error {
@@ -55,6 +57,7 @@ impl Error {
             Error::Server { .. } => "server",
             Error::Protocol(_) => "protocol",
             Error::Notification(_) => "notification",
+            Error::Reconfigured => "reconfigured",
         }
     }
 

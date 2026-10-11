@@ -9,35 +9,44 @@ use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager};
 use zunder_core::hlc::system_time_ms;
 use zunder_local::sync::{lock, retry_delay, SYNC_INTERVAL};
-use zunder_local::{Error, SyncReport};
+use zunder_local::{Error, SyncFailure, SyncReport};
 
 use crate::{events, notify, AppState};
 
 /// Collects further local changes before pushing.
 const DEBOUNCE: Duration = Duration::from_millis(500);
 
-/// Runs one sync round and tells the webview about the outcome.
+/// Runs one sync round and tells the webview about the outcome. A round
+/// that fails halfway still reports what it committed before (rejections,
+/// a changed view), so the UI and the reminders never miss it.
 pub async fn sync(app: &AppHandle) -> Result<SyncReport, Error> {
     let state = app.state::<AppState>();
     let now_ms = i64::try_from(system_time_ms()).unwrap_or(i64::MAX);
-    let result = state.syncer.sync(&state.store, now_ms).await;
-
-    let payload = match &result {
-        Ok(report) => json!({ "ok": true, "report": report }),
-        Err(error) => json!({ "ok": false, "error": error }),
+    let (report, error) = match state.syncer.sync(&state.store, now_ms).await {
+        Ok(report) => (report, None),
+        Err(SyncFailure { error, report }) => (report, Some(error)),
     };
-    emit(app, events::SYNC, payload);
-    if let Ok(report) = &result {
-        if report.changed {
-            emit(
-                app,
-                events::CHANGED,
-                json!({ "cursor": report.cursor, "pending": report.pending }),
-            );
-            notify::refresh(app);
-        }
+
+    match &error {
+        None => emit(app, events::SYNC, json!({ "ok": true, "report": report })),
+        // The round belonged to the previous server; `set_config` has
+        // already woken the loop for a round with the new one.
+        Some(Error::Reconfigured) => {}
+        Some(error) => emit(
+            app,
+            events::SYNC,
+            json!({ "ok": false, "error": error, "report": report }),
+        ),
     }
-    result
+    if report.changed {
+        emit(
+            app,
+            events::CHANGED,
+            json!({ "cursor": report.cursor, "pending": report.pending }),
+        );
+        notify::refresh(app);
+    }
+    error.map_or(Ok(report), Err)
 }
 
 fn emit(app: &AppHandle, event: &str, payload: serde_json::Value) {
@@ -64,7 +73,7 @@ pub fn start(app: AppHandle) {
                 continue;
             }
             match sync(&app).await {
-                Ok(_) => failures = 0,
+                Ok(_) | Err(Error::Reconfigured) => failures = 0,
                 Err(e) if e.is_network() => failures = failures.saturating_add(1),
                 Err(e) => {
                     log::warn!("sync failed: {e}");

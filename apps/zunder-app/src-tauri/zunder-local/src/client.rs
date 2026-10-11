@@ -47,6 +47,8 @@ impl HttpClient {
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(60))
             .user_agent(concat!("zunder-app/", env!("CARGO_PKG_VERSION")))
+            // No redirect from https down to plain http.
+            .https_only(base.scheme() == "https")
             .build()
             .map_err(|e| Error::Network(e.to_string()))?;
         Ok(Self {

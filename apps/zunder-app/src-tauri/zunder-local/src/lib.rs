@@ -30,5 +30,5 @@ pub use reminders::{plan_schedule, upcoming_reminders, Reminder, SchedulePlan, S
 pub use store::{
     ApplyResult, ConfigUpdate, ConfigView, LastSync, LocalSnapshot, LocalStore, Remote,
 };
-pub use sync::{sync_once, SyncReport, Syncer};
+pub use sync::{sync_once, SyncFailure, SyncReport, Syncer};
 pub use wire::HistoryEntry;

@@ -469,3 +469,202 @@ fn a_newer_schema_is_refused() {
     let err = LocalStore::open(&path).err().unwrap();
     assert_eq!(err.code(), "schema_too_new");
 }
+
+#[test]
+fn clearing_the_url_does_not_hide_a_server_switch() {
+    let mut store = LocalStore::open_in_memory().unwrap();
+    let set_url = |url: Option<&str>, discard_pending: bool| ConfigUpdate {
+        server_url: Some(url.map(Into::into)),
+        discard_pending,
+        ..ConfigUpdate::default()
+    };
+    store
+        .set_config(&set_url(Some("https://a.example.org"), false))
+        .unwrap();
+    let mut web = Author::new("web-a");
+    let (_, synced) = web.create(|b| b.create_task(NewTask::new("Synchron")));
+    store.apply_pull_page(&page(&synced, 1, false)).unwrap();
+    let (_, pending) = web.create(|b| b.create_task(NewTask::new("Offen")));
+    store.apply_local(&pending, now()).unwrap();
+
+    // Clearing the address keeps the data (it still belongs to server A).
+    store.set_config(&set_url(None, false)).unwrap();
+    assert_eq!(store.cursor(), synced.len() as i64);
+    assert_eq!(store.pending_count(), pending.len());
+
+    let err = store
+        .set_config(&set_url(Some("https://b.example.org"), false))
+        .unwrap_err();
+    assert_eq!(err.code(), "pending_ops");
+    assert_eq!(store.config().unwrap().server_url, None);
+
+    let config = store
+        .set_config(&set_url(Some("https://b.example.org"), true))
+        .unwrap();
+    assert_eq!(config.cursor, 0);
+    assert_eq!(config.pending, 0);
+    assert!(store.state().is_empty());
+}
+
+#[test]
+fn data_created_before_any_server_goes_to_the_first_one() {
+    let mut store = LocalStore::open_in_memory().unwrap();
+    let mut web = Author::new("web-a");
+    let (id, pending) = web.create(|b| b.create_task(NewTask::new("Offline zuerst")));
+    store.apply_local(&pending, now()).unwrap();
+    store
+        .set_config(&ConfigUpdate {
+            server_url: Some(Some("https://a.example.org".into())),
+            ..ConfigUpdate::default()
+        })
+        .unwrap();
+    assert_eq!(store.pending_count(), pending.len());
+    assert!(store.state().task(id).is_some());
+}
+
+#[test]
+fn switching_servers_bumps_the_generation() {
+    let mut store = LocalStore::open_in_memory().unwrap();
+    let set = |url: &str| ConfigUpdate {
+        server_url: Some(Some(url.into())),
+        ..ConfigUpdate::default()
+    };
+    let start = store.generation();
+    store.set_config(&set("https://a.example.org")).unwrap();
+    assert_eq!(store.generation(), start, "first server: no switch");
+    store
+        .set_config(&ConfigUpdate {
+            api_token: Some(Some("zt_neu".into())),
+            ..ConfigUpdate::default()
+        })
+        .unwrap();
+    assert_eq!(store.generation(), start, "new token, same server");
+    store.set_config(&set("https://b.example.org")).unwrap();
+    assert!(store.generation() > start);
+}
+
+/// Makes every write to `entities` fail, like a full disk would.
+fn break_entity_writes(store: &LocalStore) {
+    store
+        .conn
+        .execute_batch(
+            "CREATE TRIGGER fail_insert BEFORE INSERT ON entities
+             BEGIN SELECT RAISE(ABORT, 'database or disk is full'); END;
+             CREATE TRIGGER fail_update BEFORE UPDATE ON entities
+             BEGIN SELECT RAISE(ABORT, 'database or disk is full'); END;",
+        )
+        .unwrap();
+}
+
+fn repair_entity_writes(store: &LocalStore) {
+    store
+        .conn
+        .execute_batch("DROP TRIGGER fail_insert; DROP TRIGGER fail_update;")
+        .unwrap();
+}
+
+#[test]
+fn a_failed_pull_commit_is_retried_completely() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("zunder.db");
+    let mut other = Author::new("web-b");
+    let (id, ops) = other.create(|b| b.create_task(NewTask::new("Von woanders")));
+    {
+        let mut store = LocalStore::open(&path).unwrap();
+        break_entity_writes(&store);
+        assert!(store.apply_pull_page(&page(&ops, 1, false)).is_err());
+        assert_eq!(store.cursor(), 0);
+        assert!(store.state().task(id).is_none(), "memory follows the disk");
+        repair_entity_writes(&store);
+        assert!(store.apply_pull_page(&page(&ops, 1, false)).unwrap());
+    }
+    let store = LocalStore::open(&path).unwrap();
+    assert_eq!(store.cursor(), ops.len() as i64);
+    assert_eq!(title(&store, id).as_deref(), Some("Von woanders"));
+    assert!(store.confirmed_state().task(id).is_some());
+}
+
+#[test]
+fn a_failed_push_commit_is_retried_completely() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("zunder.db");
+    let mut web = Author::new("web-a");
+    let (id, ops) = web.create(|b| b.create_task(NewTask::new("Eigene")));
+    {
+        let mut store = LocalStore::open(&path).unwrap();
+        store.apply_local(&ops, now()).unwrap();
+        break_entity_writes(&store);
+        assert!(store
+            .apply_push_response(&ops, &accept_all(&ops, 3))
+            .is_err());
+        assert!(store.confirmed_state().task(id).is_none());
+        assert_eq!(store.pending_count(), ops.len());
+        assert_eq!(title(&store, id).as_deref(), Some("Eigene"));
+        repair_entity_writes(&store);
+        store
+            .apply_push_response(&ops, &accept_all(&ops, 3))
+            .unwrap();
+    }
+    let store = LocalStore::open(&path).unwrap();
+    assert_eq!(store.pending_count(), 0);
+    assert!(store.confirmed_state().task(id).is_some());
+}
+
+#[cfg(unix)]
+#[test]
+fn database_files_are_private() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("zunder.db");
+    let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    {
+        let mut store = LocalStore::open(&path).unwrap();
+        store
+            .set_config(&ConfigUpdate {
+                api_token: Some(Some("zt_geheim".into())),
+                ..ConfigUpdate::default()
+            })
+            .unwrap();
+        for p in [path.clone(), dir.path().join("zunder.db-wal")] {
+            assert_eq!(mode(&p) & 0o077, 0, "{}: {:o}", p.display(), mode(&p));
+        }
+    }
+    // An existing, too open file is tightened on the next start.
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+    drop(LocalStore::open(&path).unwrap());
+    assert_eq!(mode(&path), 0o600);
+}
+
+#[test]
+fn plain_http_only_for_local_hosts() {
+    for url in [
+        "http://localhost:8080",
+        "http://zunder.localhost",
+        "http://127.0.0.1:8080",
+        "http://[::1]:8080",
+        "http://192.168.1.5",
+        "http://10.0.0.2:8080/zunder",
+        "http://172.16.4.1",
+        "http://100.101.102.103",
+        "http://169.254.1.1",
+        "http://[fd00::5]",
+        "http://nas:8080",
+        "http://nas.local",
+        "http://zunder.home.arpa",
+        "https://zunder.example.org",
+        "https://8.8.8.8",
+    ] {
+        assert!(normalize_server_url(url).is_ok(), "{url}");
+    }
+    for url in [
+        "http://zunder.example.org",
+        "http://8.8.8.8",
+        "http://[2001:db8::1]",
+        "http://zunder.rubeen.dev",
+    ] {
+        let err = normalize_server_url(url).unwrap_err();
+        assert_eq!(err.code(), "invalid_config", "{url}");
+        assert!(err.to_string().contains("https"), "{err}");
+    }
+}

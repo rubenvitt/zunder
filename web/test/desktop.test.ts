@@ -140,6 +140,23 @@ describe("desktop state", () => {
     expect(rejected).toEqual([[rejection]]);
   });
 
+  it("shows rejections of a sync round that failed later on", async () => {
+    const rejected: Rejection[][] = [];
+    setNotifier({ rejected: (r) => void rejected.push([...r]), warnings: () => {} });
+    const fake = fakeApp({ server_url: "https://zunder.example.org", has_api_token: true, pending: 3 });
+    await initDesktop(fake.backend);
+
+    const rejection = { op_id: "o1", code: "invalid_reference", message: "Bereich gibt es nicht mehr." };
+    fake.emit(EVENTS.sync, {
+      ok: false,
+      error: { code: "network", message: "Server nicht erreichbar: timeout" },
+      report: { pushed: 0, rejected: [rejection], warnings: [], pulled: 0, cursor: 4, pending: 0, changed: true, resynced: false },
+    });
+    expect(desktopSync().state).toBe("offline");
+    expect(pendingCount()).toBe(0);
+    expect(rejected).toEqual([[rejection]]);
+  });
+
   it("syncNow reports errors with their code", async () => {
     const fake = fakeApp({ server_url: "https://zunder.example.org", has_api_token: true });
     await initDesktop(fake.backend);

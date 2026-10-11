@@ -226,7 +226,7 @@ Manuelle Kopien bewusst nicht nach `/data/backups/` legen, damit die Rotation si
    ```
 
 3. Stack wieder starten und `/healthz` prüfen.
-4. Alle offenen Browser-Tabs neu laden. Änderungen nach dem Zeitpunkt des Backups sind weg, außer ein Client hat sie noch ungesendet in seiner Warteschlange und schickt sie erneut.
+4. Alle offenen Browser-Tabs neu laden. Änderungen nach dem Zeitpunkt des Backups sind weg, außer ein Client hat sie noch ungesendet in seiner Warteschlange und schickt sie erneut. Die Tauri-App merkt beim nächsten Abgleich selbst, dass das Operations-Log des Servers nicht mehr zu ihrem passt, verwirft ihre bestätigten Daten, behält ihre noch nicht gesendeten Änderungen und lädt den Snapshot neu; dazu muss sie nur einmal mit dem Server abgleichen.
 5. Wenn alles passt, `/data/vor-wiederherstellung/` löschen.
 
 ## Updates

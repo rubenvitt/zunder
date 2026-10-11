@@ -114,8 +114,7 @@ mod desktop {
 mod mobile {
     use tauri::{AppHandle, Manager};
     use tauri_plugin_notification::{NotificationExt, PermissionState, Schedule};
-    use time::OffsetDateTime;
-    use zunder_local::schedule::{reschedule, scheduler_error, NotificationScheduler};
+    use zunder_local::schedule::{plugin_time, reschedule, scheduler_error, NotificationScheduler};
     use zunder_local::ScheduledReminder;
 
     use std::sync::PoisonError;
@@ -134,9 +133,8 @@ mod mobile {
         }
 
         fn schedule(&self, s: &ScheduledReminder) -> zunder_local::Result<()> {
-            let date =
-                OffsetDateTime::from_unix_timestamp_nanos(i128::from(s.reminder.at_ms) * 1_000_000)
-                    .map_err(scheduler_error)?;
+            let at_ms = s.reminder.at_ms;
+            let date = plugin_time(at_ms, local_offset_secs(at_ms))?;
             self.0
                 .notification()
                 .builder()
@@ -151,6 +149,23 @@ mod mobile {
                 .show()
                 .map_err(scheduler_error)
         }
+    }
+
+    /// The device's UTC offset at `at_ms` (iOS reads the plugin's date as
+    /// local wall-clock time, see `plugin_time`). `time`'s own local offset
+    /// lookup refuses to work in a multi-threaded process, so chrono reads
+    /// the time zone database; without one it falls back to UTC.
+    #[cfg(target_os = "ios")]
+    fn local_offset_secs(at_ms: i64) -> Option<i32> {
+        use chrono::{Local, Offset, TimeZone};
+        let local = Local.timestamp_millis_opt(at_ms).single();
+        Some(local.map_or(0, |t| t.offset().fix().local_minus_utc()))
+    }
+
+    /// Android parses the plugin's date as UTC.
+    #[cfg(not(target_os = "ios"))]
+    fn local_offset_secs(_at_ms: i64) -> Option<i32> {
+        None
     }
 
     pub fn start(app: AppHandle) {
