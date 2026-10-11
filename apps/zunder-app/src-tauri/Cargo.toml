@@ -1,0 +1,55 @@
+# Standalone workspace: the Tauri shell needs webkit2gtk on Linux and is
+# therefore excluded from the root workspace. `zunder-local` (store, sync,
+# reminder planning) builds and tests without any webview.
+[workspace]
+resolver = "2"
+members = [".", "zunder-local"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+zunder-core = { path = "../../../crates/zunder-core" }
+zunder-local = { path = "zunder-local" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v7", "serde"] }
+thiserror = "2"
+time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
+tokio = { version = "1", features = ["rt", "macros", "sync", "time"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[package]
+name = "zunder-app"
+description = "Zunder als Tauri-2-App für Desktop, iOS und Android"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+# The `_lib` suffix avoids a name clash with the binary on Windows.
+name = "zunder_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+zunder-core.workspace = true
+zunder-local.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tauri = { version = "2", features = [] }
+tauri-plugin-notification = "2"
+log = "0.4"
+
+[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
+time.workspace = true
+
+[lints]
+workspace = true
