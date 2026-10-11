@@ -17,7 +17,7 @@ Wie man an Zunder arbeitet: Aufbau, lokaler Start, Tests und die Qualitätsschra
 | `crates/zunder-server` | axum, SQLite, Sync-API, `/mcp`, OIDC, Timing-Brücke |
 | `crates/zunder-import` | CLI für den ClickUp-Import |
 | `web/` | SolidJS + Vite + TypeScript, Vitest, Playwright |
-| `apps/zunder-app` | Tauri 2 (E4), nicht Teil des Cargo-Workspace |
+| `apps/zunder-app` | Tauri 2 (E4): eigener Cargo-Workspace in `src-tauri` mit der Hülle `zunder-app` und der webview-freien Crate `zunder-local` (Speicher, Sync, Erinnerungen) |
 | `deploy/` | Portainer-Stack ([`betrieb.md`](betrieb.md)) |
 | `Dockerfile`, `.github/workflows/ci.yml` | Image und CI |
 
@@ -25,7 +25,8 @@ Wie man an Zunder arbeitet: Aufbau, lokaler Start, Tests und die Qualitätsschra
 
 - Rust **1.97** (dieselbe Version wie `RUST_VERSION` im `Dockerfile` und `RUST_TOOLCHAIN` in der CI; beim Anheben beide Stellen ändern)
 - Node **22** mit npm
-- für E2E-Tests: Chromium für Playwright (`npx playwright install chromium`, passend zu `@playwright/test` in `web/package.json`)
+- für E2E-Tests: Chromium für Playwright (`npx playwright install chromium`, passend zu `@playwright/test` in `web/package.json`; entfällt, wenn die Umgebung den Browser schon mitbringt, z. B. über `PLAYWRIGHT_BROWSERS_PATH`)
+- für die Tauri-Hülle unter Linux: webkit2gtk und Co. (siehe [`apps/zunder-app/README.md`](../apps/zunder-app/README.md)); `zunder-local` braucht sie nicht
 - optional: Docker mit Buildx für Image-Builds
 
 ## Lokal starten
@@ -59,23 +60,40 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace            # oder gezielt: cargo test -p zunder-core
 
+# Tauri-Workspace (zunder-local; clippy für zunder-app braucht webkit2gtk)
+cd apps/zunder-app/src-tauri
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings   # ohne webkit2gtk: -p zunder-local
+cargo test -p zunder-local
+cd -
+
 # Web
 cd web
 npm run typecheck
-npm test
+npm test                          # inkl. gemeinsamer Testvektoren aus crates/zunder-core/tests/vectors
 npm run build
 ```
 
-E2E gegen den echten Server:
+E2E (Playwright), gegen den Mock-Server und gegen den echten Server:
+
+```sh
+cargo build -p zunder-server      # im Repo-Wurzelverzeichnis
+cd web
+npm run build
+npx playwright test                              # Mock (Standard)
+ZUNDER_E2E_BACKEND=real npx playwright test      # echter Server
+```
+
+Mit `ZUNDER_E2E_BACKEND=real` startet die Playwright-Konfiguration den Server aus `ZUNDER_SERVER_BIN` (Default `../target/debug/zunder-server`, relativ zu `web/`) mit frischem Datenordner, `ZUNDER_DEV_AUTH=true` und `ZUNDER_WEB_DIR=dist` auf `127.0.0.1:18080`. `npm run e2e` baut vorher zusätzlich die Web-UI. Die CI nutzt einen Release-Build, weil sie das Tempo-Budget misst.
+
+Ende-zu-Ende-Tests anderer Clients gegen den echten Server (ignoriert, solange `ZUNDER_SERVER_BIN` fehlt):
 
 ```sh
 cargo build -p zunder-server
-cd web
-npm run build
-ZUNDER_E2E_BACKEND=real npm run e2e
+export ZUNDER_SERVER_BIN=$PWD/target/debug/zunder-server
+cargo test -p zunder-import --test server_e2e -- --ignored
+cargo test --manifest-path apps/zunder-app/src-tauri/Cargo.toml -p zunder-local --test server_e2e -- --ignored
 ```
-
-Die Playwright-Konfiguration startet den Server aus `ZUNDER_SERVER_BIN` (Default `../target/debug/zunder-server`) mit frischem Datenordner und `ZUNDER_DEV_AUTH=true`. Die CI nutzt einen Release-Build, weil sie das Tempo-Budget misst.
 
 Shell-Skripte (z. B. `deploy/generate-secrets.sh`) mit `shellcheck` prüfen.
 
@@ -85,18 +103,21 @@ Shell-Skripte (z. B. `deploy/generate-secrets.sh`) mit `shellcheck` prüfen.
 
 | Job | Inhalt |
 |---|---|
-| `rust` | `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` (mit Cache) |
-| `web` | `npm ci`, `typecheck`, `test`, `build` in `web/` |
-| `e2e` | Server (Release) und Web-UI bauen, Chromium installieren, Playwright mit `ZUNDER_E2E_BACKEND=real`; bei Fehlern wird der Report hochgeladen |
+| `rust` | `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` (mit Cache), danach `zunder-import run` gegen den echten Server |
+| `local` | `zunder-local` im Tauri-Workspace: `fmt`, `clippy -p zunder-local`, Tests, Sync gegen den echten Server |
+| `web` | `npm ci`, `typecheck`, `test` (inkl. gemeinsamer Testvektoren), `build` in `web/` |
+| `e2e` | Server (Release) und Web-UI bauen, Chromium installieren, Playwright mit `ZUNDER_E2E_BACKEND=real` (Binärdatei aus `ZUNDER_SERVER_BIN`), danach gegen den Mock; bei Fehlern wird der Report hochgeladen |
 | `image` | nur `main` und Tags, nach grünen Checks: Multi-Arch-Image (amd64 + arm64) nach `ghcr.io/<owner>/zunder` mit den Tags `latest`, `sha-<commit>` und SemVer |
 
-Die Tauri-App wird in der CI nicht gebaut: `src-tauri` gehört nicht zum Workspace, braucht unter Linux webkit2gtk/GTK und für Mobile Xcode bzw. Android-SDK und ist nicht Teil des ausgelieferten Containers. Die gemeinsame Logik steckt in `zunder-core` und wird im Job `rust` getestet.
+Die Tauri-Hülle (`zunder-app`) wird in der CI nicht gebaut: `src-tauri` gehört nicht zum Root-Workspace, braucht unter Linux webkit2gtk/GTK und für Mobile Xcode bzw. Android-SDK und ist nicht Teil des ausgelieferten Containers. Ihre Logik steckt in `zunder-core` (Job `rust`) und `zunder-local` (Job `local`).
 
 ## Image lokal bauen
 
 ```sh
 docker build -t zunder .
 docker run --rm -p 8080:8080 -e ZUNDER_DEV_AUTH=true -v zunder-dev:/data zunder
+curl -fsS http://localhost:8080/healthz                  # {"status":"ok",…}
+docker inspect --format '{{.State.Health.Status}}' <container>   # HEALTHCHECK: zunder-server healthcheck
 ```
 
 Mehr zum Image (Cross-Kompilierung, Caching, Laufzeit) in [`betrieb.md`](betrieb.md#image-selbst-bauen) und als Kommentar im `Dockerfile`.

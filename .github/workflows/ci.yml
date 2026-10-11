@@ -22,11 +22,13 @@ env:
   RUST_TOOLCHAIN: "1.97"
   NODE_VERSION: "22"
 
-# The Tauri app (apps/zunder-app) is intentionally not built here: its
-# src-tauri crate is not a workspace member, needs webkit2gtk/GTK system
-# libraries on Linux and Xcode/Android SDKs for the mobile targets, and is
-# not part of the deployed artifact. Its shared logic lives in zunder-core,
-# which the rust job tests.
+# The Tauri app shell (apps/zunder-app/src-tauri, package zunder-app) is
+# intentionally not built here: it is not a member of the root workspace,
+# needs webkit2gtk/GTK system libraries on Linux and Xcode/Android SDKs for
+# the mobile targets, and is not part of the deployed artifact. Its logic
+# lives in zunder-core and in the webview-free crate zunder-local (second
+# member of the src-tauri workspace), which the `local` job checks and
+# tests, including a sync run against the real server.
 
 jobs:
   rust:
@@ -45,6 +47,44 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: cargo test
         run: cargo test --workspace --locked
+      # zunder-import run (the real CLI) against the real server binary.
+      - name: Import gegen echten Server
+        env:
+          ZUNDER_SERVER_BIN: ${{ github.workspace }}/target/debug/zunder-server
+        run: |
+          cargo build --locked -p zunder-server
+          cargo test --locked -p zunder-import --test server_e2e -- --ignored
+
+  local:
+    name: zunder-local (fmt, clippy, test, Sync gegen Server)
+    runs-on: ubuntu-24.04
+    env:
+      TAURI_MANIFEST: apps/zunder-app/src-tauri/Cargo.toml
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: local
+          workspaces: |
+            . -> target
+            apps/zunder-app/src-tauri -> target
+      - name: cargo fmt
+        run: cargo fmt --manifest-path "$TAURI_MANIFEST" --all --check
+      # Only zunder-local: the zunder-app package needs webkit2gtk.
+      - name: cargo clippy
+        run: cargo clippy --manifest-path "$TAURI_MANIFEST" -p zunder-local --all-targets --locked -- -D warnings
+      - name: cargo test
+        run: cargo test --manifest-path "$TAURI_MANIFEST" -p zunder-local --locked
+      - name: Sync gegen echten Server
+        env:
+          ZUNDER_SERVER_BIN: ${{ github.workspace }}/target/debug/zunder-server
+        run: |
+          cargo build --locked -p zunder-server
+          cargo test --manifest-path "$TAURI_MANIFEST" -p zunder-local --test server_e2e --locked -- --ignored
 
   web:
     name: Web (typecheck, test, build)
@@ -63,6 +103,8 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
+      # Includes the shared vectors from crates/zunder-core/tests/vectors
+      # (merge, HLC order, validation); a missing directory fails the run.
       - run: npm test
       - run: npm run build
 
@@ -96,12 +138,19 @@ jobs:
       - name: Install Playwright Chromium
         working-directory: web
         run: npx playwright install --with-deps chromium
-      - name: Run Playwright
+      # The UI is already built (dist/); the real server serves it via ZUNDER_WEB_DIR=dist.
+      - name: Run Playwright (echter Server)
         working-directory: web
         env:
           ZUNDER_E2E_BACKEND: real
           ZUNDER_SERVER_BIN: ${{ github.workspace }}/target/release/zunder-server
-        run: npm run e2e
+        run: npx playwright test
+      # The mock server is used for UI development; keep it in step with the real one.
+      - name: Run Playwright (Mock)
+        working-directory: web
+        env:
+          ZUNDER_E2E_BACKEND: mock
+        run: npx playwright test
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v7
@@ -116,7 +165,7 @@ jobs:
   image:
     name: Container-Image (GHCR, amd64 + arm64)
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-    needs: [rust, web, e2e]
+    needs: [rust, local, web, e2e]
     runs-on: ubuntu-24.04
     permissions:
       contents: read

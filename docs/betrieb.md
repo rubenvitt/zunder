@@ -90,7 +90,7 @@ Dann `https://zunder.rubeen.dev` im Browser öffnen, über Pocket-ID anmelden un
 | `ZUNDER_DATA_DIR` | `/data` | statisch (auch Image-Default) |
 | `ZUNDER_WEB_DIR` | `/app/web` | statisch (auch Image-Default) |
 | `ZUNDER_BACKUP_HOUR` | `3` | statisch; Stunde in der Zeitzone `TZ` |
-| `TZ` | `Europe/Berlin` | statisch; bestimmt, was „3 Uhr“ heißt |
+| `TZ` | `Europe/Berlin` | statisch (auch Image-Default, `tzdata` ist im Image); bestimmt, was „3 Uhr“ heißt |
 | `ZUNDER_OIDC_ISSUER` | Pocket-ID-URL | `stack.env`, manuell |
 | `ZUNDER_OIDC_CLIENT_ID` | aus Pocket-ID | `stack.env`, manuell |
 | `ZUNDER_OIDC_CLIENT_SECRET` | aus Pocket-ID | `stack.env`, manuell |
@@ -162,14 +162,14 @@ Ohne gültigen Token antwortet der Endpoint mit `401`.
 ## Health-Endpoint
 
 - `GET /healthz` ohne Anmeldung → `{"status":"ok","version":"…"}` mit HTTP 200, sobald die Datenbank offen ist.
-- Das Image hat einen Docker-`HEALTHCHECK` (`curl` gegen `http://127.0.0.1:8080/healthz`, alle 30 s). Status abfragen:
+- Das Image hat einen Docker-`HEALTHCHECK` (`zunder-server healthcheck` fragt `/healthz` auf dem Port aus `ZUNDER_BIND` ab, alle 30 s). Status abfragen:
 
   ```sh
   docker inspect --format '{{.State.Health.Status}}' zunder
   ```
 
 - Für ein externes Monitoring (z. B. Uptime Kuma) `https://zunder.rubeen.dev/healthz` prüfen und auf das Schlüsselwort `"ok"` achten.
-- Der Healthcheck geht vom Standard-Port 8080 aus. Wer `ZUNDER_BIND` ändert, muss ihn in der Compose-Datei überschreiben.
+- Der Healthcheck liest `ZUNDER_BIND` und folgt damit einem geänderten Port; ein eigener Healthcheck in der Compose-Datei ist nicht nötig.
 
 ## Backups
 
@@ -233,7 +233,7 @@ Manuelle Kopien bewusst nicht nach `/data/backups/` legen, damit die Rotation si
 | „Nicht berechtigt“ nach erfolgreichem Pocket-ID-Login | `ZUNDER_OIDC_ALLOWED_EMAIL` stimmt nicht mit der E-Mail im Pocket-ID-Konto überein |
 | MCP `401` | Token widerrufen oder falsch kopiert; Header `Authorization: Bearer zt_…` |
 | Backup fehlt | Logs um `ZUNDER_BACKUP_HOUR`, Zeitzone `TZ`, freier Platz im Volume |
-| `unhealthy` | `docker exec zunder curl -sS http://127.0.0.1:8080/healthz` |
+| `unhealthy` | `docker exec zunder zunder-server healthcheck` (Exit-Code und Meldung), dazu `docker logs zunder` |
 
 ## Image selbst bauen
 

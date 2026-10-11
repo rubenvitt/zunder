@@ -10,12 +10,13 @@ Zunder ersetzt ClickUp; Stichtag für den Umstieg ist Ende November 2026. Das De
 
 | Etappe | Inhalt | Stand |
 |---|---|---|
-| **E1 Fundament** | `zunder-core` (Modell, HLC, Operationen, LWW-Merge, Validierung, gemeinsame Testvektoren) | umgesetzt |
-| | `zunder-server` (Sync-API, Login, API-Tokens, MCP, Backups), `zunder-import` (Probelauf) | in Arbeit |
+| **E1 Fundament** | [`zunder-core`](crates/zunder-core) (Modell, HLC, Operationen, LWW-Merge, Validierung, gemeinsame Testvektoren für Rust und TypeScript) | umgesetzt |
+| | [`zunder-server`](crates/zunder-server) (Sync-API, OIDC-Login, API-Tokens, SSE, Backups, Auslieferung der Web-UI) | umgesetzt |
+| | [`zunder-import`](crates/zunder-import) (Sicherung, Zuordnung, Bericht, idempotenter Import; Ende-zu-Ende gegen den echten Server getestet) | umgesetzt |
 | | Container-Image, CI, Portainer-Stack, Betriebsdoku | umgesetzt |
-| **E2 Oberfläche** | Web-UI mit allen Sichten, Timing-Brücke, MCP-Parität | in Arbeit (Sync-Schicht und Schnellerfassung im Web stehen) |
+| **E2 Oberfläche** | [Web-UI](web) mit allen Sichten, MCP-Endpunkt für Agenten, Timing-Brücke für Flammen; Playwright gegen Mock und echten Server | umgesetzt |
 | **E3 Umstieg** | Import, Skill-Umstellung, Umschalten, Sicherheitsnetz | Runbook in [`docs/umstieg.md`](docs/umstieg.md); offen: Entscheidung zu Funke, OAuth für claude.ai |
-| **E4 Apps** | Tauri 2 für Desktop, iOS und Android | geplant |
+| **E4 Apps** | [Tauri 2](apps/zunder-app) für Desktop, iOS und Android | Gerüst: lokaler Speicher, Sync und Erinnerungen in `zunder-local` (gegen den echten Server getestet); Web-UI noch ohne Tauri-Transport, Mobile-Builds nicht verifiziert |
 
 ## Schnellstart (lokale Entwicklung)
 
@@ -33,6 +34,8 @@ npm run dev
 
 Dann `http://localhost:5173` öffnen. Die Web-UI leitet `/api`, `/auth`, `/mcp` und `/healthz` an den Server auf `127.0.0.1:8080` weiter.
 
+Ohne Vite: `(cd web && npm install && npm run build)`, danach liefert der Server die gebaute Oberfläche selbst unter `http://localhost:8080` aus (`ZUNDER_WEB_DIR`, Standard `./web/dist`).
+
 ## Dokumentation
 
 - [Entwicklung](docs/entwicklung.md): Aufbau, lokaler Start, Tests, Qualitätsschranken, CI
@@ -49,6 +52,9 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 (cd web && npm run typecheck && npm test && npm run build)
+# E2E gegen Mock und echten Server
+cargo build -p zunder-server
+(cd web && npx playwright test && ZUNDER_E2E_BACKEND=real npx playwright test)
 ```
 
 ## Stack

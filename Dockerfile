@@ -102,13 +102,13 @@ RUN set -eux; \
 # ---------------------------------------------------------------------------
 FROM debian:${DEBIAN_RELEASE}-slim AS runtime
 # ca-certificates: outgoing HTTPS (Pocket-ID, Timing)
-# curl:            HEALTHCHECK against /healthz
 # sqlite3:         integrity checks and manual backups/restores (docs/betrieb.md)
 # tini:            PID 1, forwards SIGTERM and reaps zombies
-# tzdata:          local time for ZUNDER_BACKUP_HOUR (set TZ, e.g. Europe/Berlin)
+# tzdata:          local time for ZUNDER_BACKUP_HOUR (TZ, default Europe/Berlin)
+# The HEALTHCHECK uses the server's own `zunder-server healthcheck`, no curl.
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends ca-certificates curl sqlite3 tini tzdata; \
+    apt-get install -y --no-install-recommends ca-certificates sqlite3 tini tzdata; \
     rm -rf /var/lib/apt/lists/*; \
     groupadd --system --gid 10001 zunder; \
     useradd --system --uid 10001 --gid zunder --home-dir /data --no-create-home \
@@ -121,16 +121,17 @@ COPY --from=builder /out/zunder-server /out/zunder-import /usr/local/bin/
 
 ENV ZUNDER_BIND=0.0.0.0:8080 \
     ZUNDER_DATA_DIR=/data \
-    ZUNDER_WEB_DIR=/app/web
+    ZUNDER_WEB_DIR=/app/web \
+    TZ=Europe/Berlin
 
 USER zunder
 WORKDIR /data
 VOLUME ["/data"]
 EXPOSE 8080
 
-# The health check assumes the default port; adjust it when ZUNDER_BIND changes.
+# `zunder-server healthcheck` reads ZUNDER_BIND, so it follows a changed port.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD curl -fsS http://127.0.0.1:8080/healthz || exit 1
+  CMD ["zunder-server", "healthcheck"]
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["zunder-server"]
