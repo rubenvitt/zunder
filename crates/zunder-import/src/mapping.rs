@@ -885,7 +885,9 @@ pub fn render(mapping: &Mapping, team_name: &str, generated_on: &str) -> String 
         w,
         "\n# ── Projekte ────────────────────────────────────────────────────────────────\n\
          # kind = \"dev\" für Entwicklungsprojekte (Board, bug/feature/review erlaubt),\n\
-         # dann optional repo = \"owner/name\". status: active, paused, completed."
+         # dann optional repo = \"owner/name\". status: active, paused, completed.\n\
+         # Mit existing_id wird nichts angelegt; kind muss dann der Art des vorhandenen\n\
+         # Zunder-Projekts entsprechen (run prüft das)."
     );
     for (key, project) in &mapping.projects {
         let _ = writeln!(w, "\n[projects.{}]", toml_key(key));

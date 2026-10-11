@@ -9,7 +9,7 @@ use uuid::Uuid;
 use zunder_core::hlc::{Clock, NodeId};
 use zunder_core::ids::clickup_entity_id;
 use zunder_core::{
-    AreaState, EntityKind, Location, NewArea, NewTask, OpBatch, ProjectKind, ProjectStatus,
+    AreaState, EntityKind, Location, NewArea, NewProject, NewTask, OpBatch, ProjectKind, ProjectStatus,
     TaskStatus, TaskType,
 };
 use zunder_import::convert::Conversion;
@@ -407,6 +407,51 @@ async fn existing_ids_map_onto_existing_entities() {
         .await
         .unwrap_err();
     assert!(err.to_string().contains("existing_id"), "{err}");
+}
+
+#[tokio::test]
+async fn existing_projects_must_declare_their_real_kind() {
+    let clickup = ClickUpMock::start().await;
+    let zunder = ZunderMock::start().await;
+    let mut web = Clock::new(NodeId::new("web-test").unwrap());
+    let mut batch = OpBatch::new(&mut web, zunder_core::hlc::system_time_ms());
+    let area = batch.create_area(NewArea::new("Werkstatt"));
+    let dev = batch.create_project(NewProject {
+        kind: ProjectKind::Dev,
+        ..NewProject::new("Werkzeugkiste", area)
+    });
+    zunder.apply(batch.ops());
+    let before = zunder.log_len();
+
+    // The proposal says kind = "standard"; with existing_id nothing is
+    // written, so the dev rules would silently turn bug/feature/review
+    // into aufgabe/in_progress although the real project is a dev project.
+    let mut mapping = mapping(&clickup).await;
+    let tools = mapping.projects.get_mut("werkzeugkiste").unwrap();
+    tools.existing_id = Some(dev.to_string());
+    tools.kind = Some("standard".into());
+    tools.repo = None;
+    let err = import(&clickup, &zunder, &mapping, &opts(500))
+        .await
+        .unwrap_err();
+    let message = err.to_string();
+    assert!(message.contains("existing_id"), "{message}");
+    assert!(message.contains("kind = \"dev\""), "{message}");
+    assert_eq!(zunder.log_len(), before, "nothing written");
+
+    // With the real kind the dev types and statuses survive.
+    let tools = mapping.projects.get_mut("werkzeugkiste").unwrap();
+    tools.kind = Some("dev".into());
+    let summary = import(&clickup, &zunder, &mapping, &opts(500))
+        .await
+        .unwrap();
+    assert!(summary.rejected.is_empty(), "{:?}", summary.rejected);
+    let state = zunder.state();
+    let feature = state.task(task_id("86f001")).unwrap();
+    assert_eq!(feature.location, Location::Project { id: dev });
+    assert_eq!(feature.task_type, TaskType::Feature);
+    assert_eq!(feature.status, TaskStatus::Review);
+    assert_eq!(state.task(task_id("86f003")).unwrap().task_type, TaskType::Bug);
 }
 
 #[tokio::test]

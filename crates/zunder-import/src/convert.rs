@@ -73,6 +73,10 @@ pub struct Conversion {
     pub tasks: Vec<Desired>,
     /// Zunder IDs of areas/projects mapped via `existing_id`.
     pub existing_refs: Vec<(EntityKind, Uuid, String)>,
+    /// Projects mapped via `existing_id` with the `kind` the mapping file
+    /// declares. The dev rules of the conversion use that kind, so `run`
+    /// checks it against the real project in Zunder.
+    pub existing_project_kinds: Vec<(Uuid, String, ProjectKind)>,
     pub diagnostics: Diagnostics,
 }
 
@@ -353,6 +357,8 @@ pub fn convert(
         if project.existing {
             conv.existing_refs
                 .push((EntityKind::Project, project.id, project.name.clone()));
+            conv.existing_project_kinds
+                .push((project.id, project.name.clone(), project.kind));
             continue;
         }
         let mut batch = OpBatch::new(&mut scratch_clock, 0);

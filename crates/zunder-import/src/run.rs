@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use anyhow::{bail, Result};
 use serde::Serialize;
 use zunder_core::hlc::system_time_ms;
-use zunder_core::{validate_push, Op, State};
+use zunder_core::{validate_push, EntityKind, Op, State};
 
 use crate::convert::Conversion;
 use crate::ops::{self, DiffStats};
@@ -100,6 +100,7 @@ pub async fn run(
                 missing.join(", ")
             );
         }
+        check_existing_project_kinds(conversion, state)?;
     }
 
     let now = system_time_ms();
@@ -168,6 +169,38 @@ pub async fn run(
         }
     }
     Ok(summary)
+}
+
+/// The conversion applies the dev rules (bug/feature/review only in dev
+/// projects) with the `kind` from the mapping file. For projects mapped via
+/// `existing_id` nothing is written, so a `kind` that differs from the real
+/// project would silently downgrade (or wrongly keep) dev types and
+/// statuses. Refuse instead.
+fn check_existing_project_kinds(conversion: &Conversion, state: &State) -> Result<()> {
+    let mismatched: Vec<String> = conversion
+        .existing_project_kinds
+        .iter()
+        .filter_map(|(id, name, kind)| {
+            let actual = state
+                .live_entity(EntityKind::Project, *id)?
+                .project_kind();
+            (actual != *kind).then(|| {
+                format!(
+                    "Projekt „{name}“ ({id}) ist in Zunder kind = \"{actual}\", \
+                     in der Zuordnung kind = \"{kind}\""
+                )
+            })
+        })
+        .collect();
+    if !mismatched.is_empty() {
+        bail!(
+            "Bei Projekten mit existing_id muss kind der Art des Zunder-Projekts entsprechen \
+             (davon hängt ab, ob bug/feature/review erhalten bleiben). Bitte in der \
+             Zuordnungsdatei anpassen:\n  - {}",
+            mismatched.join("\n  - ")
+        );
+    }
+    Ok(())
 }
 
 fn summary_from(stats: DiffStats) -> RunSummary {
