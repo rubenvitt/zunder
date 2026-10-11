@@ -122,6 +122,12 @@ async fn parse<T: serde::de::DeserializeOwned>(
 ) -> Result<T> {
     let status = response.status();
     let body = response.text().await?;
+    if status == reqwest::StatusCode::PAYLOAD_TOO_LARGE {
+        bail!(
+            "{what}: HTTP 413 – die Anfrage ist zu groß für Zunder. Mit einer kleineren \
+             --batch-size erneut versuchen; bereits geschriebene Pakete bleiben erhalten."
+        );
+    }
     if !status.is_success() {
         if let Ok(err) = serde_json::from_str::<ErrorBody>(&body) {
             bail!(

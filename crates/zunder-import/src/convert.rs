@@ -582,7 +582,8 @@ fn desired(
 
 /// A positive ClickUp timestamp as Unix milliseconds.
 fn unix_ms(ms: Option<i64>) -> Option<u64> {
-    ms.and_then(|ms| u64::try_from(ms).ok()).filter(|ms| *ms > 0)
+    ms.and_then(|ms| u64::try_from(ms).ok())
+        .filter(|ms| *ms > 0)
 }
 
 /// Trimmed title, never empty, at most [`MAX_TITLE_CHARS`] characters.

@@ -117,10 +117,11 @@ Der Import
 
 1. liest alle Aufgaben samt Unteraufgaben (beliebige Tiefe) und geschlossener Aufgaben,
 2. holt den aktuellen Stand aus Zunder (`GET /api/snapshot`) und berechnet nur die nötigen Änderungen,
-3. prüft alle Operationen vorab mit denselben Regeln wie der Server; lehnt die Prüfung etwas ab, wird **nichts** geschrieben,
-4. schreibt in Paketen (`--batch-size`, Standard 500) über `POST /api/sync/push`: zuerst Bereiche und Projekte, dann Aufgaben, Eltern vor ihren Unteraufgaben; eine Entität wird nie auf zwei Pakete verteilt.
+3. teilt die Operationen in Pakete (`--batch-size`, Standard 500 Operationen, höchstens 7 MiB je Anfrage): zuerst Typ- und Statusänderungen vorhandener Aufgaben, die überall erlaubt sind (etwa `bug` → `aufgabe`, wenn ein Projekt kein Dev-Projekt mehr ist), dann Bereiche, Projekte und Aufgaben, Eltern vor ihren Unteraufgaben; eine neu angelegte Entität wird nie auf zwei Pakete verteilt,
+4. prüft vorab jedes Paket mit denselben Regeln wie der Server, in derselben Reihenfolge auf einer Kopie des Snapshots (der Server prüft jedes Paket für sich); lehnt die Prüfung etwas ab oder ist ein einzelner Eintrag größer als 7 MiB (meist eine sehr lange Beschreibung), wird **nichts** geschrieben,
+5. schreibt die Pakete über `POST /api/sync/push`.
 
-Lehnt der Server dennoch etwas ab, bricht der Lauf nach dem Paket ab; bereits geschriebene Pakete bleiben, ein neuer Lauf setzt fort. `--keep-going` schreibt trotz Ablehnungen weiter. Hinweise des Servers (z. B. „erledigt, aber Unteraufgaben offen“) werden am Ende gezeigt.
+Lehnt der Server dennoch etwas ab, bricht der Lauf nach dem Paket ab; bereits geschriebene Pakete bleiben, ein neuer Lauf setzt fort. `--keep-going` schreibt trotz Ablehnungen weiter und lässt zu große Einträge aus. Antwortet der Server mit HTTP 413, hilft eine kleinere `--batch-size`. Hinweise des Servers (z. B. „erledigt, aber Unteraufgaben offen“) werden am Ende gezeigt.
 
 Übernommen werden je Aufgabe: Titel, Beschreibung (Markdown, sonst Klartext), Status laut Zuordnung, Typ (Tags), Stelle (Ziel der Liste; Unteraufgaben über `parent_id`), Fälligkeit, ein Link „ClickUp“ zur Original-Aufgabe, `clickup_id` und die Reihenfolge (`rank` aus dem ClickUp-`orderindex`). Fälligkeiten mit Uhrzeit werden zu Datum und Uhrzeit in der eingestellten Zeitzone, reine Datumsangaben zum Kalenderdatum. Fehlt in der ClickUp-Antwort die Angabe `due_date_time`, gilt 00:00 oder 04:00 Ortszeit als „nur Datum“.
 

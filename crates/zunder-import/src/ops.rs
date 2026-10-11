@@ -5,11 +5,16 @@ use serde_json::Value;
 use uuid::Uuid;
 use zunder_core::hlc::{Clock, NodeId};
 use zunder_core::model::fields;
-use zunder_core::{EntityKind, Op, OpBatch, State};
+use zunder_core::{EntityKind, Op, OpBatch, State, TaskStatus, TaskType};
 
 use crate::convert::{Desired, IMPORT_NODE};
 
 const STATUS_FIELD: &str = fields::task::STATUS;
+const TYPE_FIELD: &str = fields::task::TYPE;
+
+/// Upper bound for the serialized operations of one push. The server accepts
+/// request bodies up to 8 MiB; the rest is headroom for the envelope.
+pub const MAX_PUSH_BYTES: usize = 7 * 1024 * 1024;
 
 /// The operations of one entity. Batches never split an entity, so a new
 /// entity always arrives together with its required fields.
@@ -58,6 +63,14 @@ pub fn import_clock(state: Option<&State>) -> Clock {
 ///   a field the import owns),
 /// - entities tombstoned in Zunder are skipped (deleted on purpose).
 ///
+/// Push order: first the operations that only relax the dev rules on
+/// existing tasks (a `type` or `status` that is allowed everywhere, e.g.
+/// `bug` → `aufgabe`), then all other operations in the order of `desired`
+/// (areas, projects, tasks with parents first). Rules that span entities
+/// (a project becoming standard, a parent moving out of a dev project) only
+/// hold once those tasks are downgraded, and the server checks every push
+/// batch on its own.
+///
 /// Operations on existing entities use `clock` at `physical_ms`, so they win
 /// against everything in `state`. A new entity with source timestamps
 /// ([`Desired::created_ms`], [`Desired::closed_ms`]) is dated back instead:
@@ -72,6 +85,7 @@ pub fn plan_ops<'a>(
     physical_ms: u64,
 ) -> (Vec<EntityOps>, DiffStats) {
     let mut stats = DiffStats::default();
+    let mut relaxing = Vec::new();
     let mut out = Vec::new();
     for entity in desired {
         let current = state.and_then(|s| s.entity(entity.kind, entity.id));
@@ -114,14 +128,42 @@ pub fn plan_ops<'a>(
                 batch.into_ops()
             }
         };
-        out.push(EntityOps {
-            kind: entity.kind,
-            id: entity.id,
-            label: entity.label.clone(),
-            ops,
-        });
+        let (early, ops): (Vec<Op>, Vec<Op>) = if current.is_some() {
+            ops.into_iter().partition(relaxes_dev_rules)
+        } else {
+            (Vec::new(), ops)
+        };
+        for (target, ops) in [(&mut relaxing, early), (&mut out, ops)] {
+            if !ops.is_empty() {
+                target.push(EntityOps {
+                    kind: entity.kind,
+                    id: entity.id,
+                    label: entity.label.clone(),
+                    ops,
+                });
+            }
+        }
     }
-    (out, stats)
+    relaxing.extend(out);
+    (relaxing, stats)
+}
+
+/// A task `type` or `status` that is valid outside dev projects. Such an
+/// operation never breaks a rule on its own, but may be what makes another
+/// entity's change legal.
+fn relaxes_dev_rules(op: &Op) -> bool {
+    if op.entity != EntityKind::Task {
+        return false;
+    }
+    match op.field.as_str() {
+        TYPE_FIELD => {
+            serde_json::from_value::<TaskType>(op.value.clone()).is_ok_and(|t| !t.is_dev_only())
+        }
+        STATUS_FIELD => {
+            serde_json::from_value::<TaskStatus>(op.value.clone()).is_ok_and(|s| !s.is_dev_only())
+        }
+        _ => false,
+    }
 }
 
 /// Operations of a new entity dated to its source timestamps: the status
@@ -151,19 +193,35 @@ fn backdated_ops(
     ops
 }
 
+/// Serialized size of a group's operations in a push body.
+pub fn group_bytes(group: &EntityOps) -> usize {
+    group
+        .ops
+        .iter()
+        .map(|op| serde_json::to_vec(op).map_or(0, |v| v.len()) + 1)
+        .sum()
+}
+
 /// Splits entity groups into push batches of at most `max_ops` operations
-/// (a single entity larger than `max_ops` gets its own batch). Order is
-/// preserved, so areas and projects precede tasks and parents precede
-/// subtasks.
-pub fn batches(groups: &[EntityOps], max_ops: usize) -> Vec<Vec<Op>> {
+/// and `max_bytes` serialized bytes (a single entity larger than that gets
+/// its own batch, which the caller must not send if it exceeds `max_bytes`;
+/// see [`group_bytes`]). Order is preserved, so areas and
+/// projects precede tasks and parents precede subtasks.
+pub fn batches(groups: &[EntityOps], max_ops: usize, max_bytes: usize) -> Vec<Vec<Op>> {
     let max_ops = max_ops.max(1);
     let mut out: Vec<Vec<Op>> = Vec::new();
     let mut current: Vec<Op> = Vec::new();
+    let mut current_bytes = 0;
     for group in groups {
-        if !current.is_empty() && current.len() + group.ops.len() > max_ops {
+        let bytes = group_bytes(group);
+        if !current.is_empty()
+            && (current.len() + group.ops.len() > max_ops || current_bytes + bytes > max_bytes)
+        {
             out.push(std::mem::take(&mut current));
+            current_bytes = 0;
         }
         current.extend(group.ops.iter().cloned());
+        current_bytes += bytes;
     }
     if !current.is_empty() {
         out.push(current);
@@ -270,9 +328,15 @@ mod tests {
 
         // Closed ten days ago: hidden from the default views right away.
         assert!(!state.is_visible_by_default(old.id, now));
-        assert_eq!(state.status_changed_at(old.id).unwrap().wall_ms(), now - 10 * DAY);
         assert_eq!(
-            state.created_at(EntityKind::Task, old.id).unwrap().wall_ms(),
+            state.status_changed_at(old.id).unwrap().wall_ms(),
+            now - 10 * DAY
+        );
+        assert_eq!(
+            state
+                .created_at(EntityKind::Task, old.id)
+                .unwrap()
+                .wall_ms(),
             now - 30 * DAY
         );
         // Closed yesterday: still visible for the rest of the 3 days.
@@ -280,7 +344,10 @@ mod tests {
         assert!(!state.is_visible_by_default(recent.id, now + 2 * DAY));
         assert!(state.is_visible_by_default(open.id, now));
         assert_eq!(
-            state.created_at(EntityKind::Task, open.id).unwrap().wall_ms(),
+            state
+                .created_at(EntityKind::Task, open.id)
+                .unwrap()
+                .wall_ms(),
             now - 5 * DAY
         );
         // Timestamps from the future are capped at the import time.
@@ -302,15 +369,83 @@ mod tests {
     }
 
     #[test]
+    fn batches_respect_the_byte_limit() {
+        let mut clock = import_clock(None);
+        let text = "x".repeat(1000);
+        let ds: Vec<Desired> = (0..6)
+            .map(|i| desired(i, &[("title", json!("t")), ("description", json!(text))]))
+            .collect();
+        let (groups, _) = plan_ops(&ds, None, &mut clock, 1);
+        let size = group_bytes(&groups[0]);
+        assert!(size > 1000);
+        // Far below the op limit, but only two groups fit into the bytes.
+        let b = batches(&groups, 500, 2 * size + size / 2);
+        assert_eq!(b.iter().map(Vec::len).collect::<Vec<_>>(), [4, 4, 4]);
+        // A group larger than the limit still gets a batch of its own.
+        let b = batches(&groups, 500, size / 2);
+        assert_eq!(b.len(), 6);
+    }
+
+    #[test]
+    fn relaxing_changes_of_existing_tasks_come_first() {
+        let project = Desired {
+            kind: EntityKind::Project,
+            ..desired(100, &[("kind", json!("standard"))])
+        };
+        let task = desired(
+            1,
+            &[
+                ("title", json!("B")),
+                ("type", json!("aufgabe")),
+                ("status", json!("in_progress")),
+            ],
+        );
+        let mut web = Clock::new(NodeId::new("web").unwrap());
+        let mut b = OpBatch::new(&mut web, 1_000);
+        b.set(EntityKind::Project, project.id, "kind", "dev");
+        b.set_task(task.id, "title", "A");
+        b.set_task(task.id, "type", "bug");
+        b.set_task(task.id, "status", "review");
+        let state = State::from_ops(b.ops());
+        let new_task = desired(2, &[("title", json!("C")), ("type", json!("aufgabe"))]);
+
+        let mut clock = import_clock(Some(&state));
+        let (groups, _) = plan_ops(
+            [&project, &task, &new_task],
+            Some(&state),
+            &mut clock,
+            2_000,
+        );
+        let order: Vec<(u128, Vec<&str>)> = groups
+            .iter()
+            .map(|g| {
+                (
+                    g.id.as_u128(),
+                    g.ops.iter().map(|o| o.field.as_str()).collect(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            order,
+            [
+                (1, vec!["type", "status"]),
+                (100, vec!["kind"]),
+                (1, vec!["title"]),
+                (2, vec!["title", "type"]),
+            ]
+        );
+    }
+
+    #[test]
     fn batches_never_split_an_entity() {
         let mut clock = import_clock(None);
         let ds: Vec<Desired> = (0..5)
             .map(|i| desired(i, &[("title", json!("x")), ("status", json!("open"))]))
             .collect();
         let (groups, _) = plan_ops(&ds, None, &mut clock, 1);
-        let b = batches(&groups, 3);
+        let b = batches(&groups, 3, MAX_PUSH_BYTES);
         assert_eq!(b.iter().map(Vec::len).collect::<Vec<_>>(), [2, 2, 2, 2, 2]);
-        let b = batches(&groups, 4);
+        let b = batches(&groups, 4, MAX_PUSH_BYTES);
         assert_eq!(b.iter().map(Vec::len).collect::<Vec<_>>(), [4, 4, 2]);
         let flat: Vec<Op> = b.concat();
         assert_eq!(
