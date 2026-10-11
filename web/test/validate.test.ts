@@ -75,6 +75,10 @@ describe("entity rules", () => {
     expect(codes(validateOps(base(), [op("task", T1, "title", "  ", 100)]))).toEqual(["invalid_value"]);
     expect(validateOps(base(), [op("task", T1, "title", "  ", 100)])[0]!.message).toBe("Eine Aufgabe braucht einen Titel.");
     expect(codes(validateOps(base(), [op("task", NEW, "title", "ä".repeat(500), 100)]))).toEqual([]);
+    // Same whitespace set as Rust's str::trim (Unicode White_Space), not JS trim().
+    for (const blank of ["\u0085", "\u2028", " \t", "\u3000"]) expect(checkField("task", "title", blank)?.code).toBe("invalid_value");
+    expect(checkField("task", "title", "\ufeff")).toBeNull();
+    expect(checkField("area", "name", "\u0085")?.code).toBe("invalid_value");
     expect(codes(validateOps(base(), [op("task", NEW, "title", "ä".repeat(501), 100)]))).toEqual(["invalid_value"]);
   });
 
