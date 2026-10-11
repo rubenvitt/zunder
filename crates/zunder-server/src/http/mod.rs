@@ -1,7 +1,7 @@
 //! HTTP layer: router, middleware stack and handlers.
 //!
-//! Further route groups (MCP under `/mcp`, the Timing bridge under
-//! `/api/tasks/{id}/flame/*`) plug into [`router`]; protected routes use
+//! MCP lives under `/mcp` ([`crate::mcp`], bearer tokens only), the flame
+//! endpoints under `/api/tasks/{id}/flame/*`. Protected routes use
 //! [`crate::auth::middleware::require_auth`] and the [`crate::auth::Principal`]
 //! extractor and call into [`App`].
 
@@ -37,6 +37,7 @@ pub fn router(app: App, oidc: Option<Arc<OidcClient>>) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
         .nest("/api", api)
+        .merge(crate::mcp::routes())
         .merge(auth_routes::routes(auth_routes::AuthState {
             app: app.clone(),
             oidc,

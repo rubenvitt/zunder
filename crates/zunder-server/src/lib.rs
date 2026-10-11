@@ -5,6 +5,10 @@
 //! - [`app`]: application service (the only way to read or change data)
 //! - [`auth`]: principals, API tokens, sessions, CSRF rule, OIDC
 //! - [`http`]: router and handlers
+//! - [`mcp`]: MCP endpoint (`/mcp`, Streamable HTTP, JSON-RPC 2.0)
+//! - [`views`]: task, area and project representations for tools
+//! - [`flame`]: starting and stopping flames (shared by HTTP and MCP)
+//! - [`timing`]: client for the Timing web API
 //! - [`backup`]: nightly `VACUUM INTO` backups
 //! - [`healthcheck`]: client for the `healthcheck` subcommand
 
@@ -14,8 +18,12 @@ pub mod backup;
 pub mod config;
 pub mod db;
 pub mod error;
+pub mod flame;
 pub mod healthcheck;
 pub mod http;
+pub mod mcp;
+pub mod timing;
+pub mod views;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -29,7 +37,7 @@ pub use error::{AppError, AppResult};
 
 use auth::oidc::OidcClient;
 
-/// The default HTTP client for outgoing requests (OIDC provider).
+/// The default HTTP client for outgoing requests (OIDC provider, Timing).
 pub fn default_http_client() -> anyhow::Result<reqwest::Client> {
     reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
@@ -48,11 +56,12 @@ pub async fn build_with_http_client(
     config: Config,
     http: reqwest::Client,
 ) -> anyhow::Result<(App, Router)> {
+    let timing = timing::TimingClient::from_config(config.timing.as_ref(), http.clone());
     let oidc = config
         .oidc
         .clone()
         .map(|c| Arc::new(OidcClient::new(c, config.oidc_redirect_uri(), http)));
-    let app = App::open(config).await?;
+    let app = App::open_with_timing(config, timing).await?;
     let router = http::router(app.clone(), oidc);
     Ok((app, router))
 }

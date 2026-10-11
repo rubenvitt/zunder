@@ -195,3 +195,85 @@ pub fn ops(clock: &mut Clock, build: impl FnOnce(&mut OpBatch<'_>)) -> Vec<Op> {
     build(&mut batch);
     batch.into_ops()
 }
+
+// ----- MCP ---------------------------------------------------------------------------
+
+/// Sends one JSON-RPC body to `/mcp` with a bearer token.
+pub async fn mcp_post(server: &TestServer, token: &str, body: Value) -> TestResponse {
+    let req = Request::builder()
+        .method(Method::POST)
+        .uri("/mcp")
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::ACCEPT, "application/json, text/event-stream")
+        .header("mcp-protocol-version", "2025-06-18")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    server.send(req).await
+}
+
+/// Calls a tool and returns the `tools/call` result object.
+pub async fn mcp_call(server: &TestServer, token: &str, name: &str, args: Value) -> Value {
+    let r = mcp_post(
+        server,
+        token,
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": name, "arguments": args},
+        }),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    let body = r.json();
+    assert!(body.get("error").is_none(), "JSON-RPC error: {body}");
+    body["result"].clone()
+}
+
+/// The structured content of a successful tool result (panics on errors).
+pub fn tool_ok(result: &Value) -> Value {
+    assert_eq!(result["isError"], false, "tool failed: {result}");
+    let structured = result["structuredContent"].clone();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(text).unwrap(),
+        structured,
+        "text content mirrors structuredContent"
+    );
+    structured
+}
+
+/// `(code, message)` of a failed tool result (panics on success).
+pub fn tool_err(result: &Value) -> (String, String) {
+    assert_eq!(result["isError"], true, "tool should fail: {result}");
+    let error = &result["structuredContent"]["error"];
+    let message = error["message"].as_str().unwrap().to_owned();
+    assert_eq!(result["content"][0]["text"], message.as_str());
+    (error["code"].as_str().unwrap().to_owned(), message)
+}
+
+/// Calls a tool that must succeed.
+pub async fn mcp_ok(server: &TestServer, token: &str, name: &str, args: Value) -> Value {
+    tool_ok(&mcp_call(server, token, name, args).await)
+}
+
+/// Calls a tool that must fail.
+pub async fn mcp_err(
+    server: &TestServer,
+    token: &str,
+    name: &str,
+    args: Value,
+) -> (String, String) {
+    tool_err(&mcp_call(server, token, name, args).await)
+}
+
+/// Creates an API token of the owner and returns the raw token.
+pub async fn api_token(server: &TestServer, name: &str) -> String {
+    server
+        .app
+        .create_token(server.app.owner_id(), name)
+        .await
+        .unwrap()
+        .token
+}

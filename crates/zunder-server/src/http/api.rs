@@ -18,6 +18,7 @@ use super::extract::{parse_id, ApiJson, ApiQuery};
 use crate::app::{App, CreatedToken, HistoryEntry, PullPage, PushResult, Snapshot, TokenInfo};
 use crate::auth::Principal;
 use crate::error::{AppError, AppResult};
+use crate::flame::{self, FlameOutcome};
 
 /// Body limit of `/api` requests except push.
 pub const API_BODY_LIMIT: usize = 64 * 1024;
@@ -38,6 +39,8 @@ pub fn routes() -> Router<App> {
         .route("/sync/pull", get(pull))
         .route("/sync/events", get(events))
         .route("/tasks/{id}/history", get(history))
+        .route("/tasks/{id}/flame/start", post(flame_start))
+        .route("/tasks/{id}/flame/stop", post(flame_stop))
         .route("/tokens", get(list_tokens).post(create_token))
         .route("/tokens/{id}", delete(revoke_token))
         .layer(DefaultBodyLimit::max(API_BODY_LIMIT))
@@ -145,6 +148,24 @@ async fn history(
 ) -> AppResult<Json<Vec<HistoryEntry>>> {
     let id = parse_id(&id)?;
     Ok(Json(app.task_history(id).await?))
+}
+
+async fn flame_start(
+    State(app): State<App>,
+    _principal: Principal,
+    Path(id): Path<String>,
+) -> AppResult<Json<FlameOutcome>> {
+    let id = parse_id(&id)?;
+    Ok(Json(flame::start(&app, id).await?))
+}
+
+async fn flame_stop(
+    State(app): State<App>,
+    _principal: Principal,
+    Path(id): Path<String>,
+) -> AppResult<Json<FlameOutcome>> {
+    let id = parse_id(&id)?;
+    Ok(Json(flame::stop(&app, id).await?))
 }
 
 fn require_browser(principal: &Principal) -> AppResult<()> {

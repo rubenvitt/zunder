@@ -35,7 +35,11 @@ pub struct OidcConfig {
 #[derive(Debug, Clone)]
 pub struct TimingConfig {
     pub token: String,
+    /// Project for new time entries (self link like `/projects/1` or title).
     pub project: Option<String>,
+    /// Base URL of the API. Always [`crate::timing::DEFAULT_BASE_URL`] from
+    /// the environment; tests point it at a mock server.
+    pub base_url: Url,
 }
 
 #[derive(Debug, Clone)]
@@ -146,6 +150,7 @@ impl Config {
         let timing = get("ZUNDER_TIMING_TOKEN").map(|token| TimingConfig {
             token,
             project: get("ZUNDER_TIMING_PROJECT"),
+            base_url: Url::parse(crate::timing::DEFAULT_BASE_URL).expect("static URL is valid"),
         });
 
         let backup_hour = match get("ZUNDER_BACKUP_HOUR") {

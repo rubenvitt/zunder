@@ -174,8 +174,8 @@ Basis: `ZUNDER_PUBLIC_URL`. JSON, UTF-8. Fehler: `{"error":{"code":…,"message"
 | `GET /api/sync/pull?since=N&limit=M` | `{"ops":[{"seq":N,"op":Op}],"cursor":N,"has_more":bool}`; `limit` Default 1000 |
 | `GET /api/sync/events` | Server-Sent Events, Ereignis `cursor` mit neuem Cursor bei jeder Änderung |
 | `GET /api/tasks/{id}/history` | Änderungsprotokoll: `[{"seq","op","source","received_at"}]` |
-| `POST /api/tasks/{id}/flame/start` | Flamme starten (Timing-Brücke, Fallback-Zeitstempel) |
-| `POST /api/tasks/{id}/flame/stop` | Flamme beenden |
+| `POST /api/tasks/{id}/flame/start` | Flamme starten (Timing-Brücke, Fallback-Zeitstempel), Details in 4.2 |
+| `POST /api/tasks/{id}/flame/stop` | Flamme beenden (409, wenn keine läuft) |
 | `GET /api/tokens` / `POST /api/tokens` / `DELETE /api/tokens/{id}` | API-Tokens verwalten (nur Session-Auth): Liste `[{"id","name","created_at","last_used_at"}]`; Anlegen mit `{"name"}` → `201` `{"id","name","created_at","last_used_at","token"}` (Token nur in dieser Antwort); Widerruf → `204` |
 | `POST /mcp` (+ `GET`, `DELETE`) | MCP Streamable HTTP |
 
@@ -259,6 +259,40 @@ Werkzeuge (Namen und Schemas sind Vertrag, per Snapshot-Test eingefroren):
 | `get_task_history` | Änderungsprotokoll |
 
 Jedes Werkzeug, das eine Aufgabe adressiert, akzeptiert `task_id` **oder** `clickup_id`. Statusnamen im Werkzeug sind die englischen Codes. Werkzeugergebnisse enthalten `structuredContent` und einen kompakten JSON-Text in `content`.
+
+### 4.1 Präzisierungen (umgesetzt in `zunder-server`)
+
+**Transport.** `POST /mcp` nimmt eine JSON-RPC-Nachricht oder einen Batch (Array) an. Anfragen → `200 application/json` (Batch → Array der Antworten); nur Benachrichtigungen bzw. Client-Antworten → `202` ohne Body. Kein serverseitiger Stream: `GET /mcp` und `DELETE /mcp` → `405`. Zustandslos: Der Server vergibt keine `Mcp-Session-Id`, eine mitgeschickte wird ignoriert. Ein vorhandener Header `MCP-Protocol-Version` muss `2025-06-18` oder `2025-03-26` sein (sonst `400`). `initialize` antwortet mit der angefragten Version, falls unterstützt, sonst mit `2025-06-18`; dazu `serverInfo {name:"zunder", title, version}`, `capabilities {tools:{listChanged:false}}` und deutsche `instructions` (Datenmodell, Status, Stellen). Methoden: `initialize`, `ping`, `tools/list` (ohne Paging), `tools/call`; Benachrichtigungen (`notifications/initialized` u. a.) werden angenommen. Body-Limit 1 MiB.
+
+**Auth und Herkunft.** Nur Bearer-Token (API-Token oder `ZUNDER_BOOTSTRAP_TOKEN`); Session-Cookie und Dev-Auth gelten für `/mcp` nicht (→ `401` mit `WWW-Authenticate: Bearer`). Ein vorhandener `Origin`-Header muss dem Origin von `ZUNDER_PUBLIC_URL` entsprechen (→ sonst `403`). Operationen tragen die Quelle `mcp:<token-name>`.
+
+**Fehler.** Protokollfehler sind JSON-RPC-Fehler: `-32700` (kein JSON, HTTP 400), `-32600` (keine gültige Nachricht, leerer Batch, `id` weder Text noch Zahl), `-32601` (unbekannte Methode), `-32602` (`params` kein Objekt, `name` fehlt, `arguments` kein Objekt, unbekanntes Werkzeug). Alle anderen Fehler eines Werkzeugs sind Ergebnisse mit `isError: true`, deutschem Text in `content` und `structuredContent: {"error":{"code","message"}}`. `code` ist `invalid_arguments` (unbekannter/fehlender Parameter, falscher Typ), `not_found`, `conflict` (fremde Reservierung, ID vergeben, keine laufende Flamme), ein Ablehnungscode des Kerns (Abschnitt 2.5, mit dessen deutscher Meldung) oder `internal`.
+
+**Änderungen sind atomar.** Jeder Werkzeugaufruf erzeugt einen Push mit der Server-Uhr (Knoten `server`), der unter der Schreibsperre vorab validiert wird: Wird irgendeine Operation abgelehnt, wird nichts gespeichert (z. B. `decompose_task` legt alle oder keine Unteraufgaben an). Warnungen (`open_subtasks`) stehen im Ergebnis unter `warnings`. Werte, die der Kern prüft (Datum, Stelle, Links, Phönix …), werden unverändert durchgereicht, damit seine Meldungen ankommen. `update_*` schreibt nur Felder, deren Wert sich tatsächlich ändert.
+
+**Darstellung einer Aufgabe** (`task` in Ergebnissen): `id`, `title`, `description`, `type`, `status`, `location` (wirksam, mit aufgelösten Namen: `{"kind":"project","id","name","area_id","area_name"}`, `{"kind":"area","id","name"}`, `{"kind":"inbox"}`, `{"kind":"loose"}`), `parent_id`, `due`, `remind_at`, `links`, `vault_links`, `phoenix`, `claimed_by`, `claim_expires_at`, `claim_active`, `plan`, `branch`, `pr_url`, `timing_ref`, `flame_started_at`, `flame_ended_at`, `flame_running`, `clickup_id`, `created_at`, `updated_at`, `status_changed_at` (RFC 3339 UTC aus den HLCs), `progress {done,total}`; bei `get_task` und `decompose_task` zusätzlich `subtasks` (Baum, je Knoten wieder mit `subtasks`).
+
+**Werkzeuge im Detail** (Schemas: `crates/zunder-server/tests/snapshots/mcp_tools.json`):
+
+- Adressierung: genau eines von `task_id` (UUID) oder `clickup_id`. Die `clickup_id` wird unter den lebenden Aufgaben gesucht, sonst über die deterministische Import-ID. Gelöschte Aufgaben gelten als nicht gefunden, außer bei `get_task_history`.
+- `filter_tasks`: alle Filter mit UND; `area_id` = direkt im Bereich oder in einem seiner Projekte; `location` = Art der wirksamen Stelle; `due_before`/`due_after` inklusive, Vergleich nach Kalendertag, Aufgaben ohne `due` fallen dann heraus; `claimed_by` nur gültige Reservierungen; ohne `include_closed` gilt die 3-Tage-Regel; Unteraufgaben erscheinen wie andere Aufgaben (mit `parent_id`). `limit` Default 100, höchstens 500. Sortierung: `due` aufsteigend (ohne zuletzt), dann `created_at`. Ergebnis `{tasks, count, total, truncated}`.
+- `create_task`: `title` Pflicht, dazu `description`, `type`, `status`, `location` (Default inbox), `parent_id`, `due`, `remind_at`, `links`, `vault_links`, `phoenix`, `plan`, `branch`, `pr_url`. `update_task`: dieselben Felder außer `location`/`parent_id`; `null` setzt zurück. Ergebnis `{task, warnings}`.
+- `move_task`: nur `location` → an diese Stelle, von einer Elternaufgabe gelöst; `parent_id` (Text) → Unteraufgabe (eine zusätzlich angegebene `location` wird als eigene Stelle gespeichert); `parent_id: null` → eigenständig, behält ohne `location` die bisherige wirksame Stelle.
+- `delete_task`: löscht samt Unteraufgaben (`OpBatch::delete_cascade`), Ergebnis `{deleted:[id], count}`.
+- `search`: `query` Pflicht, `limit` Default 20 (höchstens 200); Treffer `{entity, id, title, score}`, bei Aufgaben zusätzlich `status`, `type`, `location`, `parent_id`, `due`, `clickup_id`, bei Projekten `area_id`, `area_name`, `status`, `kind`, bei Bereichen `state`.
+- `claim_task`: `agent` Pflicht (≤ 200 Zeichen), `ttl_minutes` 1–10080, Default 120. Atomar unter der Schreibsperre: Fehler `conflict`, wenn ein anderer Agent eine nicht abgelaufene Reservierung hält; derselbe Agent verlängert. `release_task`: `agent` (Pflicht ohne `force`), `force`; fremde, gültige Reservierung nur mit `force`; Ergebnis mit `released` (false, wenn nichts reserviert war).
+- `decompose_task`: `subtasks` 1–50 Einträge mit `title` (Pflicht), `description`, `type` (Default `aufgabe`), `status`, `due`, `remind_at`, `plan`; ein Push, alles oder nichts. Ergebnis `{task (mit Baum), created:[id], warnings}`.
+- `list_structure`: `include_archived` (archivierte Bereiche, abgeschlossene Projekte); Ergebnis `{areas:[{…Bereich, open_tasks, projects:[{…Projekt, open_tasks}]}], inbox_open, loose_open}`, nach Namen sortiert.
+- `create_area` (`name`, `state`, `vault_path`, optional `id` = vorhandene `zunder_id`; vergebene ID → `conflict`), `update_area` (`area_id`, `name`, `state`, `vault_path`), `create_project` (`name`, `area_id`, `status`, `kind`, `repo`, `description`, `view`, optional `id`), `update_project` (`project_id` + Felder; `repo`/`description`/`view` mit `null` zurücksetzbar).
+- `get_task_history`: `limit` Default 100 (höchstens 1000, die neuesten); Einträge `{seq, field, value, hlc, source, received_at}`.
+
+### 4.2 Flammen und Timing-Brücke
+
+- `POST /api/tasks/{id}/flame/start|stop` (Session mit `X-Zunder-Client` oder Bearer-Token) und die Werkzeuge `start_flame`/`stop_flame` nutzen dieselbe Funktion (`zunder_server::flame`). Antwort: `{task, running, stopped_task_ids, unchanged, timing:{configured, used, entry, error}, warnings}`.
+- Start schreibt immer `flame_started_at` (jetzt) und setzt `flame_ended_at` zurück; Stopp schreibt `flame_ended_at`. Eine Flamme läuft, solange `flame_started_at` gesetzt und `flame_ended_at` leer oder älter ist. Es läuft höchstens eine Flamme: Start beendet alle anderen laufenden Flammen (`stopped_task_ids`). Start einer schon laufenden Flamme ändert nichts (`unchanged: true`). Stopp ohne laufende Flamme → `409 conflict`.
+- Mit `ZUNDER_TIMING_TOKEN`: Start ruft `POST https://web.timingapp.com/api/v1/time-entries/start` mit `{"title": <Aufgabentitel>, "project": ZUNDER_TIMING_PROJECT (falls gesetzt; Self-Link wie /projects/1 oder Titel), "replace_existing": false}` und speichert `data.self` (z. B. `/time-entries/2`) als `timing_ref` (Timing beendet einen laufenden Timer beim Start selbst; `replace_existing: false`, damit nie fremde Einträge gekürzt oder gelöscht werden). Stopp fragt `GET /time-entries/running` und ruft `PUT /time-entries/stop` nur, wenn der laufende Timer der eigene ist (ein in Timing inzwischen gestarteter fremder Timer bleibt unangetastet). `timing_ref` bleibt nach dem Stopp als Verweis erhalten.
+- Scheitert Timing (nicht erreichbar, Fehlerstatus), läuft die Flamme trotzdem mit Zeitstempeln: `timing.used: false`, `timing.error` mit deutscher Meldung, `timing_ref` leer. Ohne Token: `timing.configured: false`.
+- Flammen-Operationen tragen die Quelle `server` (Timing-Brücke), unabhängig davon, ob HTTP oder MCP sie ausgelöst hat.
 
 ## 5. Web-UI
 

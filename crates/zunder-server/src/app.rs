@@ -34,6 +34,7 @@ use crate::auth::{self, Principal, PrincipalKind};
 use crate::config::Config;
 use crate::db::{self, TokenRow, User};
 use crate::error::{AppError, AppResult};
+use crate::timing::{TimingApi, TimingClient};
 
 /// Node ID of the server's own clock.
 pub const SERVER_NODE: &str = "server";
@@ -172,6 +173,7 @@ struct Inner {
     events: broadcast::Sender<i64>,
     shutdown: CancellationToken,
     bootstrap_hash: Option<String>,
+    timing: Option<Arc<dyn TimingApi>>,
 }
 
 struct Writer {
@@ -201,12 +203,24 @@ pub fn format_ms(ms: i64) -> String {
 
 impl App {
     /// Opens (and migrates) the database in `config.data_dir`, loads the
-    /// state and resumes the server clock.
+    /// state and resumes the server clock. The Timing bridge is built from
+    /// `config.timing` with the default HTTP client.
     pub async fn open(config: Config) -> anyhow::Result<App> {
-        tokio::task::spawn_blocking(move || Self::open_blocking(config)).await?
+        let timing =
+            TimingClient::from_config(config.timing.as_ref(), crate::default_http_client()?);
+        Self::open_with_timing(config, timing).await
     }
 
-    fn open_blocking(config: Config) -> anyhow::Result<App> {
+    /// Like [`App::open`] with an explicit Timing bridge (`None` = flames
+    /// only record their timestamps).
+    pub async fn open_with_timing(
+        config: Config,
+        timing: Option<Arc<dyn TimingApi>>,
+    ) -> anyhow::Result<App> {
+        tokio::task::spawn_blocking(move || Self::open_blocking(config, timing)).await?
+    }
+
+    fn open_blocking(config: Config, timing: Option<Arc<dyn TimingApi>>) -> anyhow::Result<App> {
         std::fs::create_dir_all(&config.data_dir).with_context(|| {
             format!(
                 "Datenverzeichnis {} lässt sich nicht anlegen",
@@ -259,6 +273,7 @@ impl App {
                 events,
                 shutdown: CancellationToken::new(),
                 bootstrap_hash,
+                timing,
                 config,
             }),
         })
@@ -271,6 +286,11 @@ impl App {
     /// The owner of this instance (all data belongs to this user).
     pub fn owner_id(&self) -> Uuid {
         self.inner.owner_id
+    }
+
+    /// The Timing bridge, if configured.
+    pub fn timing(&self) -> Option<&Arc<dyn TimingApi>> {
+        self.inner.timing.as_ref()
     }
 
     /// Cancelled on shutdown; long-running streams and tasks stop then.
@@ -331,6 +351,38 @@ impl App {
             Ok((value, result))
         })
         .await
+    }
+
+    /// Like [`App::mutate`], but all or nothing: the batch is validated
+    /// against the same state before it is committed, and any rejection
+    /// aborts the whole batch with the core's message (code = rejection
+    /// code, e.g. `invalid_value`). Returns `build`'s value and the
+    /// warnings. Used by MCP tools and the Timing bridge.
+    pub async fn mutate_atomic<T, F>(
+        &self,
+        source: Source,
+        build: F,
+    ) -> AppResult<(T, Vec<Warning>)>
+    where
+        T: Send + 'static,
+        F: FnOnce(&State, &mut OpBatch<'_>) -> AppResult<T> + Send + 'static,
+    {
+        let (value, result) = self
+            .mutate(source, move |state, batch| {
+                let value = build(state, batch)?;
+                let outcome = validate_push(state, batch.ops(), system_time_ms());
+                match rejection_error(&outcome.rejected) {
+                    Some(e) => Err(e),
+                    None => Ok(value),
+                }
+            })
+            .await?;
+        // Validation ran on the same state under the write lock, so the
+        // commit cannot reject anything; stay defensive nonetheless.
+        if let Some(e) = rejection_error(&result.rejected) {
+            return Err(e);
+        }
+        Ok((value, result.warnings))
     }
 
     /// Read access to the current state (do not hold it across `.await`).
@@ -636,6 +688,31 @@ impl App {
         })
         .await
     }
+}
+
+/// The error for rejected operations: the code of the first real rejection
+/// (not `entity_rejected`) and all distinct messages.
+fn rejection_error(rejected: &[Rejection]) -> Option<AppError> {
+    let primary = rejected
+        .iter()
+        .find(|r| r.code != zunder_core::RejectCode::EntityRejected)
+        .or(rejected.first())?;
+    let mut messages: Vec<&str> = Vec::new();
+    for r in rejected
+        .iter()
+        .filter(|r| r.code != zunder_core::RejectCode::EntityRejected)
+    {
+        if !messages.contains(&r.message.as_str()) {
+            messages.push(&r.message);
+        }
+    }
+    if messages.is_empty() {
+        messages.push(&primary.message);
+    }
+    Some(AppError::BadRequest {
+        code: primary.code.as_str(),
+        message: messages.join(" "),
+    })
 }
 
 fn token_info(row: &TokenRow) -> TokenInfo {
