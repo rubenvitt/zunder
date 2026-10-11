@@ -149,6 +149,14 @@ cargo test -p zunder-import
 
 Die Tests laufen gegen synthetische, frei erfundene ClickUp-Antworten (`tests/fixtures/clickup/`), die ein lokaler Mock-Server ausliefert (Seiten, Rate-Limit mit 429, archivierte Einträge, fehlende Eltern), und gegen einen Zunder-Mock, der die echte Validierung aus `zunder-core` anwendet. Echte Daten gehören nicht ins Repository.
 
+Gegen den echten Server (ignoriert, solange nicht ausdrücklich angefordert): `tests/server_e2e.rs` startet die gebaute `zunder-server`-Binärdatei mit `ZUNDER_BOOTSTRAP_TOKEN`, legt wie die Web-UI einen API-Token namens `import` an, ruft die echte CLI `zunder-import run` gegen den ClickUp-Mock auf und prüft Mengen, Felder, die Quelle `api:import` im Verlauf, `api:bootstrap` für den Bootstrap-Token und dass ein zweiter Lauf nichts schreibt.
+
+```sh
+cargo build -p zunder-server -p zunder-import
+ZUNDER_SERVER_BIN=$PWD/target/debug/zunder-server \
+  cargo test -p zunder-import --test server_e2e -- --ignored
+```
+
 Aufbau:
 
 | Modul | Inhalt |
