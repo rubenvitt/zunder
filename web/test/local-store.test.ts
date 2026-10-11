@@ -88,10 +88,12 @@ function tab(server: Server, store: BrowserLocalStore) {
   return new SyncEngine(server, store, { changed: () => {} }, { backoffMs: [60_000], pollIntervalMs: 60_000 });
 }
 
-describe.each([
+const variants: [string, () => FakeLocks | null][] = [
   ["Web Locks", () => new FakeLocks()],
   ["heartbeats", () => null],
-] as const)("BrowserLocalStore across tabs (%s)", (_, makeLocks) => {
+];
+
+describe.each(variants)("BrowserLocalStore across tabs (%s)", (_, makeLocks) => {
   it("keeps the unpushed edits of a closed tab and pushes them from the next one", async () => {
     const storage = new FakeStorage();
     const locks = makeLocks();
