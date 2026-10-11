@@ -1,0 +1,223 @@
+import { createSignal, For, Match, onCleanup, onMount, Show, Switch } from "solid-js";
+import { CommandPalette } from "./components/CommandPalette";
+import { Icon, type IconName } from "./components/Icon";
+import { ShortcutHelp, Toasts } from "./components/Overlays";
+import { QuickCapture } from "./components/QuickCapture";
+import { StructureForm } from "./components/StructureForm";
+import { TaskDetail } from "./components/TaskDetail";
+import { installKeyboard } from "./keys";
+import { isUnauthorized } from "./sync/transport";
+import { navigate, parseRoute, route, type ViewName } from "./state/router";
+import { inboxCount } from "./state/selectors";
+import { api, pendingCount, ready, setNotifier, startSync, syncStatus } from "./state/store";
+import { captureOpen, detailId, helpOpen, openSearch, palette, setCaptureOpen, setHelpOpen, structureEdit, toast } from "./state/ui";
+import { InboxView, LooseView, TodayView } from "./views/Lists";
+import { DevView, LoginView, PhoenixView, TokensView } from "./views/Other";
+import { StructureView } from "./views/Structure";
+
+interface NavItem {
+  view: ViewName;
+  label: string;
+  icon: IconName;
+  keys: string;
+}
+
+const NAV: NavItem[] = [
+  { view: "heute", label: "Heute", icon: "sun", keys: "g h" },
+  { view: "inbox", label: "Inbox", icon: "inbox", keys: "g i" },
+  { view: "lose", label: "Lose", icon: "loose", keys: "g l" },
+  { view: "bereiche", label: "Bereiche", icon: "folder", keys: "g b" },
+  { view: "dev", label: "Dev", icon: "code", keys: "g d" },
+  { view: "phoenix", label: "Phönix", icon: "flame", keys: "g p" },
+];
+
+setNotifier({
+  rejected(rejections) {
+    const messages = [...new Set(rejections.map((r) => r.message))];
+    toast(`Änderung abgelehnt: ${messages.join(" ")}`, "error");
+  },
+  warnings(warnings) {
+    for (const message of new Set(warnings.map((w) => w.message))) toast(message, "warning");
+  },
+});
+
+type AuthState = "checking" | "ok" | "login";
+
+export function App() {
+  const [auth, setAuth] = createSignal<AuthState>("checking");
+
+  onMount(async () => {
+    try {
+      await api().me();
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        setAuth("login");
+        markReady();
+        return;
+      }
+      // Server unreachable: the sync engine keeps retrying with backoff.
+    }
+    setAuth("ok");
+    const ok = await startSync();
+    if (!ok && syncStatus() === "unauthorized") setAuth("login");
+    markReady();
+  });
+
+  return (
+    <Switch fallback={<div class="splash" aria-busy="true" />}>
+      <Match when={auth() === "login" || syncStatus() === "unauthorized"}>
+        <LoginView />
+      </Match>
+      <Match when={auth() === "ok" && ready()}>
+        <Shell />
+      </Match>
+      <Match when={auth() === "ok" && syncStatus() === "offline"}>
+        <div class="splash">
+          <p class="muted">Server nicht erreichbar. Neuer Versuch läuft …</p>
+        </div>
+      </Match>
+    </Switch>
+  );
+}
+
+function markReady(): void {
+  requestAnimationFrame(() => {
+    document.documentElement.dataset.ready = "true";
+    performance.mark("zunder-ready");
+  });
+}
+
+function Shell() {
+  onMount(() => onCleanup(installKeyboard()));
+  const active = (view: ViewName) => route().view === view;
+
+  return (
+    <div class="app" classList={{ "detail-open": !!detailId() }}>
+      <nav class="sidebar" aria-label="Sichten">
+        <div class="brand">
+          <Icon name="flame" size={22} />
+          <span>Zunder</span>
+        </div>
+        <button class="search-button" onClick={openSearch} title="Suche (⌘K)">
+          <Icon name="search" size={16} />
+          <span>Suchen</span>
+          <kbd>⌘K</kbd>
+        </button>
+        <ul class="nav">
+          <For each={NAV}>
+            {(item) => (
+              <li>
+                <a href={`#/${item.view}`} class="nav-item" classList={{ active: active(item.view) }} title={`${item.label} (${item.keys})`} aria-current={active(item.view) ? "page" : undefined}>
+                  <Icon name={item.icon} />
+                  <span>{item.label}</span>
+                  <Show when={item.view === "inbox" && inboxCount() > 0}>
+                    <span class="nav-count">{inboxCount()}</span>
+                  </Show>
+                </a>
+              </li>
+            )}
+          </For>
+        </ul>
+        <div class="sidebar-foot">
+          <button class="btn btn-primary capture-button" onClick={() => setCaptureOpen(true)} title="Neue Aufgabe (n)">
+            <Icon name="plus" size={16} /> Neue Aufgabe
+          </button>
+          <a href="#/tokens" class="nav-item small" classList={{ active: active("tokens") }}>
+            <Icon name="key" size={16} />
+            <span>API-Tokens</span>
+          </a>
+          <button class="nav-item small" onClick={() => setHelpOpen(true)}>
+            <Icon name="keyboard" size={16} />
+            <span>Tastenkürzel</span>
+          </button>
+          <SyncIndicator />
+        </div>
+      </nav>
+
+      <header class="topbar">
+        <span class="brand">
+          <Icon name="flame" size={20} /> Zunder
+        </span>
+        <SyncIndicator />
+        <button class="btn btn-ghost btn-icon" aria-label="Suchen" onClick={openSearch}>
+          <Icon name="search" />
+        </button>
+        <a class="btn btn-ghost btn-icon" aria-label="API-Tokens" href="#/tokens">
+          <Icon name="key" />
+        </a>
+      </header>
+
+      <main class="main" id="main">
+        <Switch>
+          <Match when={route().view === "heute"}>
+            <TodayView />
+          </Match>
+          <Match when={route().view === "inbox"}>
+            <InboxView />
+          </Match>
+          <Match when={route().view === "lose"}>
+            <LooseView />
+          </Match>
+          <Match when={route().view === "bereiche"}>
+            <StructureView />
+          </Match>
+          <Match when={route().view === "dev"}>
+            <DevView />
+          </Match>
+          <Match when={route().view === "phoenix"}>
+            <PhoenixView />
+          </Match>
+          <Match when={route().view === "tokens"}>
+            <TokensView />
+          </Match>
+        </Switch>
+      </main>
+
+      <Show when={detailId()}>{(id) => <TaskDetail id={id()} />}</Show>
+
+      <button class="fab" aria-label="Neue Aufgabe" onClick={() => setCaptureOpen(true)}>
+        <Icon name="plus" size={28} />
+      </button>
+
+      <nav class="tabbar" aria-label="Sichten">
+        <For each={NAV}>
+          {(item) => (
+            <button class="tab" classList={{ active: active(item.view) }} onClick={() => navigate(parseRoute(`#/${item.view}`))} aria-current={active(item.view) ? "page" : undefined}>
+              <Icon name={item.icon} size={20} />
+              <span>{item.label}</span>
+              <Show when={item.view === "inbox" && inboxCount() > 0}>
+                <span class="tab-count">{inboxCount()}</span>
+              </Show>
+            </button>
+          )}
+        </For>
+      </nav>
+
+      <Show when={captureOpen()}>
+        <QuickCapture />
+      </Show>
+      <Show when={palette()}>{(req) => <CommandPalette request={req()} />}</Show>
+      <Show when={structureEdit()}>{(edit) => <StructureForm edit={edit()} />}</Show>
+      <Show when={helpOpen()}>
+        <ShortcutHelp />
+      </Show>
+      <Toasts />
+    </div>
+  );
+}
+
+function SyncIndicator() {
+  const label = () => {
+    if (syncStatus() === "offline") return pendingCount() > 0 ? `Offline · ${pendingCount()} ausstehend` : "Offline";
+    if (pendingCount() > 0) return "Synchronisiert …";
+    return "Synchron";
+  };
+  return (
+    <span class="sync" classList={{ offline: syncStatus() === "offline", pending: pendingCount() > 0 }} data-sync={syncStatus()} title={label()}>
+      <Show when={syncStatus() === "offline"} fallback={<span class="sync-dot" />}>
+        <Icon name="offline" size={14} />
+      </Show>
+      <span class="sync-label">{label()}</span>
+    </span>
+  );
+}

@@ -324,6 +324,20 @@ SolidJS + Vite + TypeScript (strict). Kein UI-Framework mit großem Laufzeitante
 - Playwright-Abläufe: erfassen, Inbox abarbeiten, Board verschieben, Flamme starten; Tempo-Budget (Interaktion < 100 ms, Kaltstart < 1 s) wird gemessen.
 - Mit `ZUNDER_E2E_BACKEND=real` startet die Playwright-Konfiguration (`webServer`) den echten Server: Binärdatei aus `ZUNDER_SERVER_BIN` (Default `../target/debug/zunder-server`), mit `ZUNDER_DEV_AUTH=true`, einem frischen temporären `ZUNDER_DATA_DIR` und `ZUNDER_WEB_DIR=dist` (vorher `npm run build`). Die CI baut den Server im Release-Profil und setzt `ZUNDER_SERVER_BIN` entsprechend.
 
+### 5.1 Präzisierungen aus der Web-UI
+
+Lücken, die beim Bau von `zunder-web` geschlossen wurden. Der Server darf mehr liefern, muss aber mindestens dies erfüllen.
+
+- **Snapshot:** Ein Feld darf zusätzlich `op_id` tragen (`{"value","hlc","op_id"}`). Fehlt es, behandelt der Client die `op_id` als leer; bei identischem HLC gewinnt dann jede echte Operation.
+- **Knoten-ID der Web-UI:** `web-<12 hex>`, je Browser in `localStorage` gespeichert; `client_id` im Push ist dieselbe Kennung. Die Push-Warteschlange liegt ebenfalls in `localStorage`, ein Reload verliert nichts (Idempotenz über `op_id`).
+- **Tokens:** `GET /api/tokens` → `[{"id","name","created_at","last_used_at"}]`; `POST /api/tokens` mit `{"name"}` → dasselbe Objekt plus `"token"` (nur in dieser Antwort); `DELETE /api/tokens/{id}` → 204. Der Client akzeptiert auch `{"tokens":[…]}`.
+- **Änderungsprotokoll:** `GET /api/tasks/{id}/history` → Array `[{"seq","op","source"}]` (auch `{"entries":[…]}` wird akzeptiert).
+- **Flamme:** Der Antwortkörper von `flame/start|stop` wird ignoriert. Der Server schreibt die Änderungen als Operationen (`flame_started_at`, `flame_ended_at`, ggf. `timing_ref`); der Client holt sie per `pull`.
+- **Abmelden:** `POST /auth/logout`, danach lädt die UI neu; `GET /api/me` mit 401 zeigt die Login-Seite (Knopf auf `/auth/login`).
+- **Rang:** Aufgaben ohne `rank` sortieren nach einem Standardrang aus der Erstellzeit: `wall_ms` des kleinsten HLC in Basis 36, auf 9 Stellen mit `0` aufgefüllt, plus Suffix `i`. Erzeugte Ränge nutzen `[0-9a-z]` und enden nie auf `0`. Erledigte/verworfene Aufgaben stehen in Listen unten, neueste Statusänderung zuerst.
+- **Kurzschreibweise:** Ein Wochentag allein meint das nächste Vorkommen (1–7 Tage voraus), `nächsten <Wochentag>` den Tag in der folgenden Kalenderwoche (Montag als Wochenbeginn). `12.10.` in der Vergangenheit meint das nächste Jahr. Eine Uhrzeit ohne Datum, die heute schon vorbei ist, meint morgen. `am` vor einem Datum und `um` vor einer Uhrzeit werden mit entfernt. Unbekannte `#tags` bleiben im Titel stehen und werden in der Vorschau markiert.
+- **Inbox:** Erledigte oder verworfene Aufgaben verlassen die Inbox sofort (Ziel: null); die übrigen Sichten folgen der 3-Tage-Regel.
+
 ## 6. Import
 
 `zunder-import` (CLI, clap): `plan` (Probelauf → `mapping.toml`), `report` (Mengen, unbekannte Status, Aufgaben ohne Ziel), `run --mapping mapping.toml` (schreibt über `POST /api/sync/push` mit API-Token, Knoten `import`), `backup --out <dir>` (Roh-JSON inkl. Zeiteinträgen, Standard-Ziel außerhalb des Repos). Idempotent über `clickup_id` (erneuter Lauf aktualisiert statt dupliziert; IDs werden deterministisch aus der `clickup_id` abgeleitet: UUIDv5 im Zunder-Namespace oder Lookup).
