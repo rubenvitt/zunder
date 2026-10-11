@@ -1,0 +1,22 @@
+# Rust
+/target/
+**/target/
+
+# Node
+node_modules/
+dist/
+
+# Lokale Daten und Geheimnisse
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+!.env.example
+/data/
+/import-backup/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
