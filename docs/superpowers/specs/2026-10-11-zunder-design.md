@@ -196,6 +196,10 @@ Modi sind Sichten auf dieselben Daten, keine getrennten Apps.
 - Zeiteinträge ziehen auf Timing um.
 - Die Umstellung passiert in einem eigenen Branch und wird gegen die echte Zunder-Instanz getestet.
 
+**Weitere ClickUp-Clients**
+
+- Die bestehende iOS/watchOS-Capture-App **Funke** schreibt heute direkt nach ClickUp und bricht beim harten Schnitt. Vor E3 wird entschieden: Task-Pfad auf die Zunder-Sync-API umhängen oder Funke durch die Tauri-App (E4) ablösen.
+
 **Ablauf am Umstiegstag**
 
 1. ClickUp einfrieren (nichts Neues mehr anlegen).
