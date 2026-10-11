@@ -97,6 +97,8 @@ Der API-Token liegt im Klartext in `meta` (App-Sandbox bzw. Benutzerverzeichnis)
 
 Ausgelöst wird der Sync beim Start, alle 30 s, 0,5 s nach lokalen Änderungen (`local_apply`), bei Rückkehr in den Vordergrund, wenn der Webview das Ereignis `online` meldet, und per `sync_now`. Nach Netzwerkfehlern versucht es die App nach 5, 10 und 20 s erneut, danach wieder alle 30 s. Ein verlorener Push ist harmlos: Operationen sind über `op_id` idempotent.
 
+HTTP läuft über `reqwest` mit rustls und den eingebauten Mozilla-Wurzelzertifikaten (gleich auf allen Plattformen, ohne System-TLS). Ein Server mit selbst signiertem Zertifikat wird deshalb nicht akzeptiert; lokal geht `http://`.
+
 ## Befehle für die Web-UI
 
 Die Web-UI ruft sie mit `invoke` aus `@tauri-apps/api/core` auf (ein späterer `TauriTransport`). Argumentnamen sind die hier gezeigten Schlüssel. Fehler kommen als abgelehntes Promise mit `{"code": "...", "message": "..."}` (Meldung deutsch).
