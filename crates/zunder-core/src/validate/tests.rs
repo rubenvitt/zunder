@@ -6,6 +6,11 @@ use crate::testutil::{h, op, uid};
 use serde_json::{json, Value};
 
 const NOW: u64 = 1_760_000_000_000;
+
+thread_local! {
+    /// Number of entity-check passes run on this thread.
+    pub(super) static CHECK_PASSES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
 const T: EntityKind = EntityKind::Task;
 const P: EntityKind = EntityKind::Project;
 const A: EntityKind = EntityKind::Area;
@@ -629,6 +634,132 @@ fn rejection_cascades_to_entities_depending_on_rejected_ones() {
 }
 
 #[test]
+fn deep_dependency_chains_are_rejected_in_one_pass() {
+    let (mut state, _) = fixture();
+    // A larger state, so that per-pass costs would show.
+    let filler = batch(|b| {
+        for i in 0..2_000 {
+            b.create_task(NewTask::new(format!("Füller {i}")));
+        }
+    });
+    for op in &filler {
+        state.apply(op);
+    }
+    const DEPTH: usize = 200;
+    let mut ops = batch(|b| {
+        let mut parent = b.create_task(NewTask::new("Wurzel"));
+        for i in 0..DEPTH {
+            parent = b.create_task(NewTask::subtask(format!("Ebene {i}"), parent));
+        }
+    });
+    let root = ops[0].entity_id;
+    // Without a title the root is rejected (missing_required) ...
+    ops.retain(|o| !(o.entity_id == root && o.field == "title"));
+
+    CHECK_PASSES.with(|n| n.set(0));
+    let outcome = push(&state, &ops);
+    let passes = CHECK_PASSES.with(|n| n.get());
+    // ... and with it the whole chain below it.
+    assert!(outcome.accepted.is_empty());
+    assert!(outcome.new_ops.is_empty());
+    assert_eq!(outcome.rejected.len(), ops.len());
+    let mut causes: HashMap<Uuid, RejectCode> = HashMap::new();
+    for r in &outcome.rejected {
+        let entity = ops.iter().find(|o| o.op_id == r.op_id).unwrap().entity_id;
+        causes.entry(entity).or_insert(r.code);
+        if entity != root && r.code == RejectCode::InvalidReference {
+            assert!(
+                r.message.contains("übergeordnete Aufgabe") && r.message.contains("Pflichtfeld"),
+                "{}",
+                r.message
+            );
+        }
+    }
+    assert_eq!(causes.len(), DEPTH + 1);
+    assert_eq!(causes[&root], RejectCode::MissingRequired);
+    assert!(causes
+        .iter()
+        .all(|(id, code)| *id == root || *code == RejectCode::InvalidReference));
+    assert!(passes <= 2, "{passes} check passes");
+
+    // With the title the same chain is accepted in a single pass.
+    let valid = batch(|b| {
+        let mut parent = b.create_task(NewTask::new("Wurzel"));
+        for i in 0..DEPTH {
+            parent = b.create_task(NewTask::subtask(format!("Ebene {i}"), parent));
+        }
+    });
+    CHECK_PASSES.with(|n| n.set(0));
+    assert_accepted(&push(&state, &valid));
+    assert_eq!(CHECK_PASSES.with(|n| n.get()), 1);
+}
+
+#[test]
+fn chains_into_rejected_projects_and_areas_cascade() {
+    let (state, ids) = fixture();
+    let ops = batch(|b| {
+        // Area without name → missing_required; a project in it, a task in
+        // the project and a subtask of that task depend on it.
+        b.set_area(uid(960), "state", "active");
+        b.create_project(NewProject::new("Im Bereich", uid(960)));
+        b.set_task(ids.inbox_task, "title", "unabhängig");
+    });
+    let project = ops
+        .iter()
+        .find(|o| o.entity == P)
+        .map(|o| o.entity_id)
+        .unwrap();
+    let mut ops = ops;
+    ops.extend(batch(|b| {
+        let t = b.create_task(NewTask::new("Im Projekt").at(Location::Project { id: project }));
+        b.create_task(NewTask::subtask("Darunter", t));
+    }));
+    CHECK_PASSES.with(|n| n.set(0));
+    let outcome = push(&state, &ops);
+    assert!(CHECK_PASSES.with(|n| n.get()) <= 2);
+    let accepted: Vec<Uuid> = ops
+        .iter()
+        .filter(|o| o.entity_id == ids.inbox_task)
+        .map(|o| o.op_id)
+        .collect();
+    assert_eq!(outcome.accepted, accepted);
+    let mut causes: HashMap<Uuid, RejectCode> = HashMap::new();
+    for r in &outcome.rejected {
+        let entity = ops.iter().find(|o| o.op_id == r.op_id).unwrap().entity_id;
+        if r.code != RejectCode::EntityRejected {
+            causes.entry(entity).or_insert(r.code);
+        }
+    }
+    assert_eq!(causes[&uid(960)], RejectCode::MissingRequired);
+    assert_eq!(causes.len(), 4);
+    assert!(causes
+        .iter()
+        .all(|(id, code)| *id == uid(960) || *code == RejectCode::InvalidReference));
+}
+
+#[test]
+fn a_small_push_copies_only_what_it_touches() {
+    let (mut state, ids) = fixture();
+    let filler = batch(|b| {
+        for i in 0..500 {
+            b.create_task(NewTask::new(format!("Füller {i}")));
+        }
+    });
+    for op in &filler {
+        state.apply(op);
+    }
+    let ops = batch(|b| {
+        b.set_task(ids.inbox_task, "title", "neu");
+    });
+    let mut overlay = Overlay::new(&state);
+    for op in &ops {
+        overlay.apply(op);
+    }
+    assert_eq!(overlay.copied(), 1);
+    assert_accepted(&push(&state, &ops));
+}
+
+#[test]
 fn done_with_open_subtasks_warns() {
     let (state, ids) = fixture();
     let ops = batch(|b| {
@@ -741,7 +872,8 @@ mod properties {
             .entities()
             .map(|e| ((e.kind(), e.id()), all_fields.clone()))
             .collect();
-        check_entities(state, state, &changed)
+        let seeds: BTreeSet<Key> = changed.keys().copied().collect();
+        check_entities(state, &Overlay::new(state), &changed, &seeds)
     }
 
     const AREAS: [u128; 2] = [1, 2];

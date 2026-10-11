@@ -56,7 +56,52 @@ pub struct Entity {
     created: Hlc,
 }
 
+/// Result of [`Entity::merge`].
+struct Merged {
+    /// Field winner replaced or creation HLC lowered.
+    changed: bool,
+    /// For a task whose winning `parent_id` changed: old and new parent.
+    parent_move: Option<(Option<Uuid>, Option<Uuid>)>,
+}
+
 impl Entity {
+    fn new(kind: EntityKind, id: Uuid, created: Hlc) -> Self {
+        Entity {
+            kind,
+            id,
+            fields: BTreeMap::new(),
+            created,
+        }
+    }
+
+    /// Merges one field register (LWW) and lowers the creation HLC.
+    fn merge(&mut self, field: &str, entry: FieldEntry, created: &Hlc) -> Merged {
+        let mut changed = false;
+        if *created < self.created {
+            self.created = created.clone();
+            changed = true;
+        }
+        let wins = self
+            .fields
+            .get(field)
+            .is_none_or(|current| entry.lww_cmp(current).is_gt());
+        if !wins {
+            return Merged {
+                changed,
+                parent_move: None,
+            };
+        }
+        let tracks_parent = self.kind == EntityKind::Task && field == fields::task::PARENT_ID;
+        let old_parent = self.parent_id();
+        self.fields.insert(field.to_owned(), entry);
+        let new_parent = self.parent_id();
+        Merged {
+            changed: true,
+            parent_move: (tracks_parent && old_parent != new_parent)
+                .then_some((old_parent, new_parent)),
+        }
+    }
+
     pub fn kind(&self) -> EntityKind {
         self.kind
     }
@@ -310,51 +355,26 @@ impl State {
         entry: FieldEntry,
         created: &Hlc,
     ) -> bool {
-        let mut changed = false;
+        let mut created_now = false;
         let entity = self.entities.entry((kind, id)).or_insert_with(|| {
-            changed = true;
-            Entity {
-                kind,
-                id,
-                fields: BTreeMap::new(),
-                created: created.clone(),
-            }
+            created_now = true;
+            Entity::new(kind, id, created.clone())
         });
-        if *created < entity.created {
-            entity.created = created.clone();
-            changed = true;
-        }
-        let wins = entity
-            .fields
-            .get(field)
-            .is_none_or(|current| entry.lww_cmp(current).is_gt());
-        if !wins {
-            return changed;
-        }
-        let tracks_parent = kind == EntityKind::Task && field == fields::task::PARENT_ID;
-        let old_parent = if tracks_parent {
-            entity.parent_id()
-        } else {
-            None
-        };
-        entity.fields.insert(field.to_owned(), entry);
-        if tracks_parent {
-            let new_parent = entity.parent_id();
-            if old_parent != new_parent {
-                if let Some(old) = old_parent {
-                    if let Some(set) = self.children.get_mut(&old) {
-                        set.remove(&id);
-                        if set.is_empty() {
-                            self.children.remove(&old);
-                        }
+        let merged = entity.merge(field, entry, created);
+        if let Some((old, new)) = merged.parent_move {
+            if let Some(old) = old {
+                if let Some(set) = self.children.get_mut(&old) {
+                    set.remove(&id);
+                    if set.is_empty() {
+                        self.children.remove(&old);
                     }
                 }
-                if let Some(new) = new_parent {
-                    self.children.entry(new).or_default().insert(id);
-                }
+            }
+            if let Some(new) = new {
+                self.children.entry(new).or_default().insert(id);
             }
         }
-        true
+        created_now || merged.changed
     }
 
     /// Whether an operation with this ID has been applied (or marked known).
@@ -376,7 +396,7 @@ impl State {
 
     /// The entity if it exists and is not tombstoned.
     pub fn live_entity(&self, kind: EntityKind, id: Uuid) -> Option<&Entity> {
-        self.entity(kind, id).filter(|e| !e.is_deleted())
+        Lookup::live_entity(self, kind, id)
     }
 
     /// All entities (including tombstoned ones) ordered by (kind, id).
@@ -484,25 +504,13 @@ impl State {
     /// Root of a task's parent chain. Stops at a missing parent; `None` if
     /// the task is missing or the chain contains a cycle.
     pub fn root_task(&self, task_id: Uuid) -> Option<Uuid> {
-        let mut current = self.entity(EntityKind::Task, task_id)?;
-        let mut seen = HashSet::from([task_id]);
-        while let Some(parent) = current
-            .parent_id()
-            .and_then(|p| self.entity(EntityKind::Task, p))
-        {
-            if !seen.insert(parent.id) {
-                return None;
-            }
-            current = parent;
-        }
-        Some(current.id)
+        Lookup::root_task(self, task_id)
     }
 
     /// Effective location of a task: the location of its root task (the own
     /// location of subtasks is ignored). `None` if missing or cyclic.
     pub fn effective_location(&self, task_id: Uuid) -> Option<Location> {
-        let root = self.root_task(task_id)?;
-        Some(self.entity(EntityKind::Task, root)?.own_location())
+        Lookup::effective_location(self, task_id)
     }
 
     /// The project a task effectively belongs to, if any.
@@ -515,12 +523,7 @@ impl State {
 
     /// Whether a location is a live dev project.
     pub fn is_dev_location(&self, location: Location) -> bool {
-        match location {
-            Location::Project { id } => self
-                .live_entity(EntityKind::Project, id)
-                .is_some_and(|p| p.project_kind() == ProjectKind::Dev),
-            _ => false,
-        }
+        Lookup::is_dev_location(self, location)
     }
 
     /// IDs of all tasks whose winning `parent_id` is `task_id` (including
@@ -531,49 +534,22 @@ impl State {
 
     /// Live direct subtasks of a task, ordered by ID.
     pub fn children(&self, task_id: Uuid) -> Vec<Uuid> {
-        self.child_ids(task_id)
-            .filter(|c| self.live_entity(EntityKind::Task, *c).is_some())
-            .collect()
+        Lookup::children(self, task_id)
     }
 
     /// All live descendants (depth first, cycle safe), excluding the task.
     pub fn descendants(&self, task_id: Uuid) -> Vec<Uuid> {
-        let mut out = Vec::new();
-        let mut seen = HashSet::from([task_id]);
-        let mut stack: Vec<Uuid> = self.children(task_id).into_iter().rev().collect();
-        while let Some(id) = stack.pop() {
-            if !seen.insert(id) {
-                continue;
-            }
-            out.push(id);
-            stack.extend(self.children(id).into_iter().rev());
-        }
-        out
+        Lookup::descendants(self, task_id)
     }
 
     /// Progress of the direct, live subtasks (dropped ones excluded).
     pub fn progress(&self, task_id: Uuid) -> Progress {
-        let mut progress = Progress::default();
-        for child in self.children(task_id) {
-            let Some(e) = self.entity(EntityKind::Task, child) else {
-                continue;
-            };
-            match e.task_status() {
-                TaskStatus::Dropped => {}
-                TaskStatus::Done => {
-                    progress.done += 1;
-                    progress.total += 1;
-                }
-                _ => progress.total += 1,
-            }
-        }
-        progress
+        Lookup::progress(self, task_id)
     }
 
     /// Number of live direct subtasks that are neither done nor dropped.
     pub fn open_subtask_count(&self, task_id: Uuid) -> usize {
-        let p = self.progress(task_id);
-        p.total - p.done
+        Lookup::open_subtask_count(self, task_id)
     }
 
     /// Whether a task appears in the default views at `now_ms`: tombstoned
@@ -622,12 +598,7 @@ impl State {
                             e.created = created.clone();
                         }
                     })
-                    .or_insert_with(|| Entity {
-                        kind: se.entity,
-                        id: se.entity_id,
-                        fields: BTreeMap::new(),
-                        created: created.clone(),
-                    });
+                    .or_insert_with(|| Entity::new(se.entity, se.entity_id, created.clone()));
             }
             for (field, entry) in &se.fields {
                 self.known_ops.insert(entry.op_id);
@@ -641,6 +612,106 @@ impl State {
         let mut state = Self::new();
         state.merge_snapshot(entities);
         state
+    }
+}
+
+/// Read access to entities and the child index. Implemented by [`State`] and
+/// by the validation [`Overlay`], so derived data is computed the same way on
+/// both.
+pub(crate) trait Lookup {
+    fn entity(&self, kind: EntityKind, id: Uuid) -> Option<&Entity>;
+
+    /// Tasks whose winning `parent_id` is `parent` (including tombstoned
+    /// ones).
+    fn child_set(&self, parent: Uuid) -> Option<&BTreeSet<Uuid>>;
+
+    fn live_entity(&self, kind: EntityKind, id: Uuid) -> Option<&Entity> {
+        self.entity(kind, id).filter(|e| !e.is_deleted())
+    }
+
+    fn root_task(&self, task_id: Uuid) -> Option<Uuid> {
+        let mut current = self.entity(EntityKind::Task, task_id)?;
+        let mut seen = HashSet::from([task_id]);
+        while let Some(parent) = current
+            .parent_id()
+            .and_then(|p| self.entity(EntityKind::Task, p))
+        {
+            if !seen.insert(parent.id) {
+                return None;
+            }
+            current = parent;
+        }
+        Some(current.id)
+    }
+
+    fn effective_location(&self, task_id: Uuid) -> Option<Location> {
+        let root = self.root_task(task_id)?;
+        Some(self.entity(EntityKind::Task, root)?.own_location())
+    }
+
+    fn is_dev_location(&self, location: Location) -> bool {
+        match location {
+            Location::Project { id } => self
+                .live_entity(EntityKind::Project, id)
+                .is_some_and(|p| p.project_kind() == ProjectKind::Dev),
+            _ => false,
+        }
+    }
+
+    fn children(&self, task_id: Uuid) -> Vec<Uuid> {
+        self.child_set(task_id)
+            .into_iter()
+            .flatten()
+            .copied()
+            .filter(|c| self.live_entity(EntityKind::Task, *c).is_some())
+            .collect()
+    }
+
+    fn descendants(&self, task_id: Uuid) -> Vec<Uuid> {
+        let mut out = Vec::new();
+        let mut seen = HashSet::from([task_id]);
+        let mut stack: Vec<Uuid> = self.children(task_id).into_iter().rev().collect();
+        while let Some(id) = stack.pop() {
+            if !seen.insert(id) {
+                continue;
+            }
+            out.push(id);
+            stack.extend(self.children(id).into_iter().rev());
+        }
+        out
+    }
+
+    fn progress(&self, task_id: Uuid) -> Progress {
+        let mut progress = Progress::default();
+        for child in self.children(task_id) {
+            let Some(e) = self.entity(EntityKind::Task, child) else {
+                continue;
+            };
+            match e.task_status() {
+                TaskStatus::Dropped => {}
+                TaskStatus::Done => {
+                    progress.done += 1;
+                    progress.total += 1;
+                }
+                _ => progress.total += 1,
+            }
+        }
+        progress
+    }
+
+    fn open_subtask_count(&self, task_id: Uuid) -> usize {
+        let p = self.progress(task_id);
+        p.total - p.done
+    }
+}
+
+impl Lookup for State {
+    fn entity(&self, kind: EntityKind, id: Uuid) -> Option<&Entity> {
+        self.entities.get(&(kind, id))
+    }
+
+    fn child_set(&self, parent: Uuid) -> Option<&BTreeSet<Uuid>> {
+        self.children.get(&parent)
     }
 }
 
@@ -686,6 +757,9 @@ pub fn cmp_json(a: &Value, b: &Value) -> Ordering {
         _ => rank(a).cmp(&rank(b)),
     }
 }
+
+mod overlay;
+pub(crate) use overlay::Overlay;
 
 #[cfg(test)]
 mod tests;

@@ -10,14 +10,17 @@
 //!    are accepted without being applied again.
 //! 2. Per-operation checks: HLC more than 24 h in the future, unknown field,
 //!    invalid value, entity ID already used by another kind.
-//! 3. The remaining operations are applied to a scratch copy of the state.
-//!    Every touched entity and every affected neighbour (projects and tasks
-//!    of a touched area, tasks of a touched project, descendants of a touched
-//!    task) is checked. Violations are attributed to the touched entity that
-//!    caused them; all operations of that entity in this push are rejected.
-//!    This repeats until no further entity is rejected, because rejecting one
-//!    entity can invalidate another (e.g. a task created inside a rejected
-//!    project).
+//! 3. The remaining operations are applied to a copy-on-write overlay of the
+//!    state (only touched entities are copied). Every touched entity and
+//!    every affected neighbour (projects and tasks of a touched area, tasks
+//!    of a touched project, descendants of a touched task) is checked.
+//!    Violations are attributed to the touched entity that caused them; all
+//!    operations of that entity in this push are rejected. Entities that
+//!    reference a rejected entity which only exists (or is only live)
+//!    through this push are rejected along with it in the same pass, however
+//!    deep the chain. Because rejecting an entity can invalidate others in
+//!    further ways, the neighbourhood of the rejected entities is checked
+//!    again until no further entity is rejected.
 //! 4. Warnings are computed on the final scratch state.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -27,7 +30,7 @@ use uuid::Uuid;
 
 use crate::model::{fields, validate_field_value, Location};
 use crate::op::{EntityKind, Op};
-use crate::state::{Entity, State};
+use crate::state::{Entity, Lookup, Overlay, State};
 
 /// Operations whose `wall_ms` lies further in the future are rejected.
 pub const MAX_FUTURE_MS: u64 = 24 * 60 * 60 * 1000;
@@ -211,14 +214,20 @@ pub fn validate_push(state: &State, ops: &[Op], now_ms: u64) -> PushOutcome {
         .filter(|(key, _)| !failed.contains(key))
         .collect();
 
-    // 3. Entity checks until stable.
-    let scratch = loop {
-        let mut scratch = state.clone();
-        let mut order: Vec<usize> = candidates.values().flatten().copied().collect();
-        order.sort_unstable();
-        for i in order {
-            scratch.apply(&ops[i]);
-        }
+    // 3. Entity checks until stable, on an overlay of the state that copies
+    //    only the touched entities. The first pass checks the neighbourhood
+    //    of every candidate. Rejected entities are reverted in the overlay;
+    //    candidates that depend on them by reference are rejected right away
+    //    (in one pass, however deep the chain), and the next pass re-checks
+    //    only the neighbourhood of what was rejected.
+    let mut scratch = Overlay::new(state);
+    let mut order: Vec<usize> = candidates.values().flatten().copied().collect();
+    order.sort_unstable();
+    for i in order {
+        scratch.apply(&ops[i]);
+    }
+    let mut seeds: BTreeSet<Key> = candidates.keys().copied().collect();
+    while !seeds.is_empty() {
         let changed: HashMap<Key, HashSet<&str>> = candidates
             .iter()
             .map(|(key, indices)| {
@@ -228,18 +237,19 @@ pub fn validate_push(state: &State, ops: &[Op], now_ms: u64) -> PushOutcome {
                 )
             })
             .collect();
-        let blamed = check_entities(state, &scratch, &changed);
-        if blamed.is_empty() {
-            break scratch;
-        }
+        let blamed = check_entities(state, &scratch, &changed, &seeds);
+        let mut rejected: Vec<(Key, String)> = Vec::new();
         for (key, violation) in blamed {
             if let Some(indices) = candidates.remove(&key) {
                 for i in indices {
                     verdicts[i] = Some(violation.clone());
                 }
+                scratch.revert(key);
+                rejected.push((key, violation.message));
             }
         }
-    };
+        seeds = reject_dependents(&mut scratch, &mut candidates, &mut verdicts, rejected);
+    }
 
     // 4. Collect results and warnings.
     let mut outcome = PushOutcome::default();
@@ -286,6 +296,71 @@ pub fn validate_push(state: &State, ops: &[Op], now_ms: u64) -> PushOutcome {
         }
     }
     outcome
+}
+
+/// The entity a live entity references and depends on: a task's parent, or
+/// the location target of a root task; a project's area.
+fn reference_of(scratch: &Overlay<'_>, key: Key) -> Option<Key> {
+    let entity = scratch.live_entity(key.0, key.1)?;
+    match key.0 {
+        EntityKind::Area => None,
+        EntityKind::Project => entity.area_id().map(|a| (EntityKind::Area, a)),
+        EntityKind::Task => match entity.parent_id() {
+            Some(parent) => Some((EntityKind::Task, parent)),
+            None => entity.own_location().target(),
+        },
+    }
+}
+
+/// Rejects every remaining candidate whose reference leads (directly or
+/// through other rejected candidates) to a rejected entity that is not live
+/// without its operations, e.g. the subtasks of a rejected new task. Takes
+/// the entities rejected in this round with their cause; returns them plus
+/// the dependents rejected here, whose neighbourhood must be re-checked.
+fn reject_dependents(
+    scratch: &mut Overlay<'_>,
+    candidates: &mut BTreeMap<Key, Vec<usize>>,
+    verdicts: &mut [Option<Violation>],
+    rejected: Vec<(Key, String)>,
+) -> BTreeSet<Key> {
+    let mut removed: BTreeSet<Key> = rejected.iter().map(|(key, _)| *key).collect();
+    if rejected.is_empty() {
+        return removed;
+    }
+    let mut dependents: HashMap<Key, Vec<Key>> = HashMap::new();
+    for &key in candidates.keys() {
+        if let Some(target) = reference_of(scratch, key) {
+            dependents.entry(target).or_default().push(key);
+        }
+    }
+    // (rejected entity, root cause of its rejection)
+    let mut stack = rejected;
+    while let Some((target, cause)) = stack.pop() {
+        if scratch.live_entity(target.0, target.1).is_some() {
+            continue; // still valid without the rejected operations
+        }
+        for &key in dependents.get(&target).into_iter().flatten() {
+            let Some(indices) = candidates.remove(&key) else {
+                continue;
+            };
+            let what = match (key.0, target.0) {
+                (EntityKind::Task, EntityKind::Task) => "die übergeordnete Aufgabe",
+                (_, EntityKind::Project) => "das Projekt",
+                _ => "der Bereich",
+            };
+            let violation = Violation::new(
+                RejectCode::InvalidReference,
+                format!("Abgelehnt, weil {what} in diesem Push abgelehnt wurde: {cause}"),
+            );
+            for i in indices {
+                verdicts[i] = Some(violation.clone());
+            }
+            scratch.revert(key);
+            removed.insert(key);
+            stack.push((key, cause.clone()));
+        }
+    }
+    removed
 }
 
 fn this_dative(kind: EntityKind) -> &'static str {
@@ -336,30 +411,33 @@ fn check_op(
     None
 }
 
-/// Checks touched entities and their neighbours in `scratch`; returns the
-/// touched entities to reject, each with the reason.
+/// Checks the entities in the neighbourhood of `seeds` in `scratch`; returns
+/// the touched entities (keys of `changed`) to reject, each with the reason.
 fn check_entities(
     before: &State,
-    scratch: &State,
+    scratch: &Overlay<'_>,
     changed: &HashMap<Key, HashSet<&str>>,
+    seeds: &BTreeSet<Key>,
 ) -> BTreeMap<Key, Violation> {
+    #[cfg(test)]
+    tests::CHECK_PASSES.with(|n| n.set(n.get() + 1));
     let mut checker = Checker {
         before,
         scratch,
         changed,
         blamed: BTreeMap::new(),
     };
-    for key in neighbourhood(scratch, changed) {
+    for key in neighbourhood(scratch, seeds) {
         checker.check(key);
     }
     checker.blamed
 }
 
-/// Touched entities plus every live entity whose validity may depend on them.
-fn neighbourhood(scratch: &State, changed: &HashMap<Key, HashSet<&str>>) -> BTreeSet<Key> {
-    let mut keys: BTreeSet<Key> = changed.keys().copied().collect();
-    let touched_areas: HashSet<Uuid> = touched_of(changed, EntityKind::Area);
-    let touched_projects: HashSet<Uuid> = touched_of(changed, EntityKind::Project);
+/// `seeds` plus every live entity whose validity may depend on them.
+fn neighbourhood(scratch: &Overlay<'_>, seeds: &BTreeSet<Key>) -> BTreeSet<Key> {
+    let mut keys: BTreeSet<Key> = seeds.clone();
+    let touched_areas: HashSet<Uuid> = seeds_of(seeds, EntityKind::Area);
+    let touched_projects: HashSet<Uuid> = seeds_of(seeds, EntityKind::Project);
 
     if !touched_areas.is_empty() {
         for p in scratch.entities_of(EntityKind::Project) {
@@ -385,17 +463,23 @@ fn neighbourhood(scratch: &State, changed: &HashMap<Key, HashSet<&str>>) -> BTre
             }
         }
     }
-    for id in touched_of(changed, EntityKind::Task) {
-        for d in scratch.descendants(id) {
-            keys.insert((EntityKind::Task, d));
+    // Live descendants of every seed task, in one traversal.
+    let mut stack: Vec<Uuid> = seeds_of(seeds, EntityKind::Task).into_iter().collect();
+    let mut seen: HashSet<Uuid> = stack.iter().copied().collect();
+    while let Some(id) = stack.pop() {
+        for child in scratch.children(id) {
+            if seen.insert(child) {
+                keys.insert((EntityKind::Task, child));
+                stack.push(child);
+            }
         }
     }
     keys
 }
 
-fn touched_of(changed: &HashMap<Key, HashSet<&str>>, kind: EntityKind) -> HashSet<Uuid> {
-    changed
-        .keys()
+fn seeds_of(seeds: &BTreeSet<Key>, kind: EntityKind) -> HashSet<Uuid> {
+    seeds
+        .iter()
         .filter(|(k, _)| *k == kind)
         .map(|(_, id)| *id)
         .collect()
@@ -403,7 +487,7 @@ fn touched_of(changed: &HashMap<Key, HashSet<&str>>, kind: EntityKind) -> HashSe
 
 struct Checker<'a> {
     before: &'a State,
-    scratch: &'a State,
+    scratch: &'a Overlay<'a>,
     changed: &'a HashMap<Key, HashSet<&'a str>>,
     blamed: BTreeMap<Key, Violation>,
 }
@@ -662,7 +746,7 @@ impl Checker<'_> {
     }
 }
 
-fn task_project_target(state: &State, task_id: Uuid) -> Option<(EntityKind, Uuid)> {
+fn task_project_target(state: &Overlay<'_>, task_id: Uuid) -> Option<(EntityKind, Uuid)> {
     state.effective_location(task_id).and_then(Location::target)
 }
 
