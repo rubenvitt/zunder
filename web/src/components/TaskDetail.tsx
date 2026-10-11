@@ -1,6 +1,6 @@
 // Task detail side panel: everything inline editable, subtask tree, change history.
 
-import { createEffect, createResource, createSignal, For, on, onCleanup, Show } from "solid-js";
+import { createEffect, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { fireOf, formatInstant, fromDatetimeLocalInput, parseDue, toDatetimeLocalInput, toRfc3339Local } from "../sync/dates";
 import { hasOpenChildren, isClaimActive, isClosed, isDevLocation, isFlameRunning } from "../sync/derived";
 import { hlcWallMs } from "../sync/hlc";
@@ -8,16 +8,54 @@ import { PHOENIX_ROLES, TASK_STATUSES, TASK_TYPES, type HistoryEntry, type JsonV
 import { FIELD_LABELS, locationLabel, PHOENIX_LABELS, sourceLabel, STATUS_LABELS, TYPE_LABELS } from "../labels";
 import { createTask, deleteTask, dependentsCount, flame, moveTask, setParent, setStatus, toggleDone, updateTask } from "../state/actions";
 import { api, data, now, pendingCount, taskIndex } from "../state/store";
-import { pickLocation, pickTask, setDetailId, setSelectedId } from "../state/ui";
+import { pickLocation, pickTask, selectedId, setDetailId, setSelectedId } from "../state/ui";
 import { Row, TextField } from "./Fields";
 import { Icon } from "./Icon";
 
+/** Only http(s) and mailto links become clickable; anything else (javascript:, data: …) is shown as text. */
+export function safeHref(url: string): string | undefined {
+  try {
+    return ["http:", "https:", "mailto:"].includes(new URL(url).protocol) ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function focusTaskRow(id: string | null): boolean {
+  if (!id) return false;
+  const row = document.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(id)}"] .task-main`);
+  row?.focus({ preventScroll: true });
+  return !!row;
+}
+
 export function TaskDetail(props: { id: string }) {
-  const task = () => data.tasks[props.id];
+  let aside: HTMLElement | undefined;
+  let previous: Element | null = null;
+  const focusPanel = () => aside?.focus({ preventScroll: true });
+  onMount(() => {
+    // Opening moves the focus into the panel (on phones it covers the list).
+    previous = document.activeElement;
+    if (!aside?.contains(document.activeElement)) focusPanel();
+  });
+  onCleanup(() => {
+    // Closing returns it to the selected row, unless it already went elsewhere (e.g. the palette).
+    const active = document.activeElement;
+    if (active && active !== document.body && !aside?.contains(active)) return;
+    const id = selectedId();
+    // After the update: on phones the list is inert until the panel is gone.
+    queueMicrotask(() => {
+      if (!focusTaskRow(id) && previous instanceof HTMLElement && previous.isConnected) previous.focus({ preventScroll: true });
+    });
+  });
   return (
-    <aside class="detail" aria-label="Aufgabendetail">
-      <Show when={task() && !taskIndex().isDeleted(task()!)} fallback={<MissingTask />}>
-        <DetailBody task={task()!} />
+    <aside ref={aside} class="detail" aria-label="Aufgabendetail" tabIndex={-1}>
+      {/* Keyed: another task gets a fresh body, so unsent drafts never carry over. */}
+      <Show when={props.id} keyed>
+        {(id) => (
+          <Show when={data.tasks[id] && !taskIndex().isDeleted(data.tasks[id]!)} fallback={<MissingTask />}>
+            <DetailBody task={data.tasks[id]!} onMount={() => document.activeElement === document.body && focusPanel()} />
+          </Show>
+        )}
       </Show>
     </aside>
   );
@@ -36,8 +74,10 @@ function MissingTask() {
   );
 }
 
-function DetailBody(props: { task: Task }) {
+function DetailBody(props: { task: Task; onMount: () => void }) {
   const t = () => props.task;
+  // Following a parent/subtask link replaces the body and with it the focused button.
+  onMount(() => props.onMount());
   const index = () => taskIndex();
   const location = () => index().location(t());
   const dev = () => isDevLocation(location(), (id) => data.projects[id]);
@@ -275,6 +315,9 @@ function DetailBody(props: { task: Task }) {
       <section class="detail-section detail-meta">
         <span>Erstellt {hlcLabel(t().created_hlc)}</span>
         <span>Geändert {hlcLabel(t().updated_hlc)}</span>
+        <a href={`#/aufgabe/${t().id}`} title="Dauerhafter Link zu dieser Aufgabe (z. B. für den Vault)">
+          Link
+        </a>
         <Show when={t().clickup_id}>
           <span class="mono">ClickUp {t().clickup_id}</span>
         </Show>
@@ -412,9 +455,13 @@ function LinksEditor(props: { task: Task }) {
           {(link, i) => (
             <li>
               <Icon name="link" size={14} />
-              <a href={link.url} target="_blank" rel="noopener noreferrer">
-                {link.title || link.url}
-              </a>
+              <Show when={safeHref(link.url)} fallback={<span class="mono" title="Kein http(s)- oder mailto-Link">{link.title || link.url}</span>}>
+                {(href) => (
+                  <a href={href()} target="_blank" rel="noopener noreferrer">
+                    {link.title || link.url}
+                  </a>
+                )}
+              </Show>
               <button class="btn btn-ghost btn-small" aria-label="Link entfernen" onClick={() => save(props.task.links.filter((_, j) => j !== i()))}>
                 <Icon name="x" size={12} />
               </button>

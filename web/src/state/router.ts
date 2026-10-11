@@ -1,4 +1,6 @@
 // Tiny hash router: "#/inbox", "#/bereiche/project/<id>", "#/phoenix/2026-W41".
+// "#/aufgabe/<id>" and "#/clickup/<clickup_id>" are links to a single task (e.g. from
+// the vault): they open the task's detail over its home view.
 
 import { createSignal } from "solid-js";
 
@@ -10,7 +12,9 @@ export type Route =
   | { view: "dev" }
   | { view: "phoenix"; fire?: string }
   | { view: "tokens" }
-  | { view: "verbindung" };
+  | { view: "verbindung" }
+  | { view: "aufgabe"; id: string }
+  | { view: "clickup"; id: string };
 
 export type ViewName = Route["view"];
 
@@ -32,6 +36,9 @@ export function parseRoute(hash: string): Route {
       return { view: "tokens" };
     case "verbindung":
       return { view: "verbindung" };
+    case "aufgabe":
+    case "clickup":
+      return parts[1] ? { view: parts[0], id: parts[1] } : { view: "heute" };
     default:
       return { view: "heute" };
   }
@@ -43,6 +50,9 @@ export function routeHash(route: Route): string {
       return route.kind && route.id ? `#/bereiche/${route.kind}/${encodeURIComponent(route.id)}` : "#/bereiche";
     case "phoenix":
       return route.fire ? `#/phoenix/${route.fire}` : "#/phoenix";
+    case "aufgabe":
+    case "clickup":
+      return `#/${route.view}/${encodeURIComponent(route.id)}`;
     default:
       return `#/${route.view}`;
   }
@@ -57,8 +67,11 @@ if (typeof window !== "undefined") {
 
 export { route };
 
-export function navigate(next: Route): void {
+export function navigate(next: Route, options: { replace?: boolean } = {}): void {
   const hash = routeHash(next);
-  if (location.hash !== hash) location.hash = hash;
+  if (location.hash !== hash) {
+    if (options.replace) history.replaceState(history.state, "", hash);
+    else location.hash = hash;
+  }
   setRoute(next);
 }
