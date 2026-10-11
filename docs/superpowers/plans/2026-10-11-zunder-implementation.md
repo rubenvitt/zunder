@@ -124,7 +124,7 @@ Präzisierungen (umgesetzt in `zunder_core::validate`):
 - Verletzungen an nicht berührten Nachbarn (z. B. Bug-Unteraufgabe, deren Eltern verschoben werden; Aufgaben eines Projekts, das auf `standard` wechselt; Unteraufgaben einer gelöschten Aufgabe) werden der berührten Entität zugeordnet, die sie verursacht hat. Bereits vorher bestehende, nicht durch den Push verursachte Inkonsistenzen blockieren keine fremden Änderungen.
 - Wird eine Entität abgelehnt, wird der Push ohne sie erneut geprüft (z. B. wird eine Aufgabe in einem abgelehnten neuen Projekt ebenfalls abgelehnt). Entitäten, deren Referenz (`parent_id`, `location` der Wurzelaufgabe, `area_id`) auf eine abgelehnte Entität zeigt, die ohne den Push nicht (lebend) existiert, werden direkt mit `invalid_reference` abgelehnt, auch über beliebig tiefe Ketten hinweg; die Meldung nennt die Ursache der abgelehnten Entität. Erneut geprüft wird danach nur noch die Nachbarschaft der abgelehnten Entitäten.
 - Eine ID gehört genau einer Entitätsart.
-- Bereits bekannte `op_id`s (auch Wiederholungen innerhalb des Pushs) gelten als angenommen und werden nicht erneut angewendet.
+- Bereits bekannte `op_id`s gelten als angenommen und werden nicht erneut angewendet. Eine Wiederholung derselben `op_id` innerhalb des Pushs teilt das Ergebnis ihres ersten Vorkommens: angenommen (aber nur einmal gespeichert), wenn dieses angenommen wird, sonst mit demselben Code und derselben Meldung abgelehnt. Eine `op_id` steht nie zugleich in `accepted` und `rejected`.
 - Die Validierung arbeitet auf einer Copy-on-write-Sicht des Zustands, die nur die berührten Entitäten kopiert; ihr Aufwand hängt von der Größe des Pushs ab, nicht von der Größe der Datenbank.
 
 Ablehnungscodes (`code`):

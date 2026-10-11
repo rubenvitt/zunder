@@ -6,8 +6,9 @@
 //!
 //! Procedure:
 //!
-//! 1. Operations whose `op_id` is already known (or repeated within the push)
-//!    are accepted without being applied again.
+//! 1. Operations whose `op_id` is already known are accepted without being
+//!    applied again. A repeat of an op ID within the push shares the outcome
+//!    of its first copy (accepted only if that copy is accepted).
 //! 2. Per-operation checks: HLC more than 24 h in the future, unknown field,
 //!    invalid value, entity ID already used by another kind.
 //! 3. The remaining operations are applied to a copy-on-write overlay of the
@@ -23,6 +24,7 @@
 //!    again until no further entity is rejected.
 //! 4. Warnings are computed on the final scratch state.
 
+use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
@@ -163,18 +165,27 @@ impl Violation {
 pub fn validate_push(state: &State, ops: &[Op], now_ms: u64) -> PushOutcome {
     let mut verdicts: Vec<Option<Violation>> = vec![None; ops.len()];
 
-    // 1. Already known op IDs (also repeats within the push).
-    let mut seen = HashSet::new();
-    let duplicate: Vec<bool> = ops
+    // 1. Already known op IDs and repeats within the push. Neither is
+    //    validated again; a repeat shares the outcome of its first copy.
+    let known: Vec<bool> = ops.iter().map(|op| state.knows_op(&op.op_id)).collect();
+    let mut first_copy: HashMap<Uuid, usize> = HashMap::new();
+    let repeat_of: Vec<Option<usize>> = ops
         .iter()
-        .map(|op| state.knows_op(&op.op_id) || !seen.insert(op.op_id))
+        .enumerate()
+        .map(|(i, op)| match first_copy.entry(op.op_id) {
+            Entry::Occupied(first) => Some(*first.get()),
+            Entry::Vacant(slot) => {
+                slot.insert(i);
+                None
+            }
+        })
         .collect();
 
     // Group the new operations by entity, keeping first-seen order.
     let mut groups: BTreeMap<Key, Vec<usize>> = BTreeMap::new();
     let mut kinds_in_push: HashMap<Uuid, BTreeSet<EntityKind>> = HashMap::new();
     for (i, op) in ops.iter().enumerate() {
-        if duplicate[i] {
+        if known[i] || repeat_of[i].is_some() {
             continue;
         }
         groups.entry((op.entity, op.entity_id)).or_default().push(i);
@@ -254,15 +265,19 @@ pub fn validate_push(state: &State, ops: &[Op], now_ms: u64) -> PushOutcome {
     // 4. Collect results and warnings.
     let mut outcome = PushOutcome::default();
     for (i, op) in ops.iter().enumerate() {
-        match verdicts[i].take() {
+        let verdict = match repeat_of[i] {
+            Some(first) if !known[i] => &verdicts[first],
+            _ => &verdicts[i],
+        };
+        match verdict {
             Some(v) => outcome.rejected.push(Rejection {
                 op_id: op.op_id,
                 code: v.code,
-                message: v.message,
+                message: v.message.clone(),
             }),
             None => {
                 outcome.accepted.push(op.op_id);
-                if !duplicate[i] {
+                if !known[i] && repeat_of[i].is_none() {
                     outcome.new_ops.push(op.clone());
                 }
             }

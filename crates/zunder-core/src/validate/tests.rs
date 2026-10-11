@@ -172,6 +172,49 @@ fn known_op_ids_are_accepted_without_reapplying() {
 }
 
 #[test]
+fn repeat_of_a_rejected_op_is_rejected_too() {
+    let (state, _) = fixture();
+    let ops = vec![
+        op(951, T, 950, "title", json!("Irgendwo"), h(NOW, 0, "c")),
+        op(
+            952,
+            T,
+            950,
+            "location",
+            loc(Location::Project { id: uid(999) }),
+            h(NOW, 1, "c"),
+        ),
+    ];
+    let mut pushed = ops.clone();
+    pushed.push(ops[1].clone());
+    let outcome = push(&state, &pushed);
+    assert!(outcome.accepted.is_empty(), "{:?}", outcome.accepted);
+    assert!(outcome.new_ops.is_empty());
+    let rejected: Vec<(Uuid, RejectCode)> =
+        outcome.rejected.iter().map(|r| (r.op_id, r.code)).collect();
+    assert_eq!(
+        rejected,
+        vec![
+            (uid(951), RejectCode::InvalidReference),
+            (uid(952), RejectCode::InvalidReference),
+            (uid(952), RejectCode::InvalidReference),
+        ]
+    );
+    assert_eq!(outcome.rejected[1].message, outcome.rejected[2].message);
+
+    // A repeat of an accepted op is accepted and stored once.
+    let valid = batch(|b| {
+        b.create_task(NewTask::new("Einmal").at(Location::Inbox));
+    });
+    let mut pushed = valid.clone();
+    pushed.push(valid[0].clone());
+    let outcome = push(&state, &pushed);
+    assert_accepted(&outcome);
+    assert_eq!(outcome.accepted.len(), pushed.len());
+    assert_eq!(outcome.new_ops, valid);
+}
+
+#[test]
 fn unknown_field_rejects_whole_entity_only() {
     let (state, ids) = fixture();
     let ops = batch(|b| {
