@@ -105,6 +105,16 @@ impl Entity {
         self.str_value(name).and_then(crate::ids::parse_canonical)
     }
 
+    /// This entity in the snapshot format.
+    pub fn to_snapshot_entity(&self) -> SnapshotEntity {
+        SnapshotEntity {
+            entity: self.kind,
+            entity_id: self.id,
+            created_hlc: Some(self.created.clone()),
+            fields: self.fields.clone(),
+        }
+    }
+
     /// Tombstoned (`deleted: true`).
     pub fn is_deleted(&self) -> bool {
         self.value(fields::DELETED) == Some(&Value::Bool(true))
@@ -586,12 +596,7 @@ impl State {
     pub fn to_snapshot(&self) -> Vec<SnapshotEntity> {
         self.entities
             .values()
-            .map(|e| SnapshotEntity {
-                entity: e.kind,
-                entity_id: e.id,
-                created_hlc: Some(e.created.clone()),
-                fields: e.fields.clone(),
-            })
+            .map(Entity::to_snapshot_entity)
             .collect()
     }
 
