@@ -160,6 +160,7 @@ export class SyncEngine {
       onReset: () => void this.reload(),
     });
     this.pollTimer = setInterval(() => {
+      void this.adoptOrphans();
       if (!this.live) void this.pull();
       if (this.pending.length > 0 && !this.retryTimer) void this.flush();
     }, this.pollIntervalMs);
@@ -220,8 +221,36 @@ export class SyncEngine {
       clearTimeout(this.retryTimer);
       this.retryTimer = null;
     }
+    void this.adoptOrphans();
     void this.flush();
     void this.pull();
+  }
+
+  /**
+   * Takes over push queues of pages that are gone (another tab closed before its
+   * push went through). Their ops were validated there; they go on top of the view.
+   */
+  private async adoptOrphans(): Promise<void> {
+    if (!this.store.adoptOrphans) return;
+    let groups: Op[][];
+    try {
+      groups = await this.store.adoptOrphans();
+    } catch {
+      return;
+    }
+    const known = new Set(this.pending.flat().map((op) => op.op_id));
+    const fresh = groups.filter((g) => !g.some((op) => known.has(op.op_id)));
+    if (fresh.length === 0) return;
+    for (const group of fresh) for (const op of group) this.clock.receive(op.hlc);
+    this.pending.push(...fresh);
+    void this.store.savePending(this.pending);
+    this.listener.pending?.(this.pendingOps.length);
+    if (this.started) {
+      const changed = new Set<string>();
+      for (const group of fresh) for (const key of this.viewStore.applyAll(group)) changed.add(key);
+      if (changed.size > 0) this.listener.changed(changed);
+      void this.flush();
+    }
   }
 
   /** Fetch all ops since the cursor; concurrent calls coalesce into one more round. */
