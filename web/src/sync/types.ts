@@ -217,3 +217,12 @@ export interface ApiToken {
 export interface CreatedToken extends ApiToken {
   token: string;
 }
+
+/** An app connected via OAuth (e.g. a claude.ai connector), see `GET /api/oauth/clients`. */
+export interface OAuthClient {
+  id: string;
+  name: string;
+  redirect_uris: string[];
+  created_at?: string;
+  last_used_at?: string | null;
+}

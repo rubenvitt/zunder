@@ -15,7 +15,7 @@ Zunder ersetzt ClickUp; Stichtag für den Umstieg ist Ende November 2026. Das De
 | | [`zunder-import`](crates/zunder-import) (Sicherung, Zuordnung, Bericht, idempotenter Import; Ende-zu-Ende gegen den echten Server getestet) | umgesetzt |
 | | Container-Image, CI, Portainer-Stack, Betriebsdoku | umgesetzt |
 | **E2 Oberfläche** | [Web-UI](web) mit allen Sichten, MCP-Endpunkt für Agenten, Timing-Brücke für Flammen; Playwright gegen Mock und echten Server | umgesetzt |
-| **E3 Umstieg** | Import, Skill-Umstellung, Umschalten, Sicherheitsnetz | Runbook in [`docs/umstieg.md`](docs/umstieg.md); offen: Entscheidung zu Funke, OAuth für claude.ai |
+| **E3 Umstieg** | Import, Skill-Umstellung, Umschalten, Sicherheitsnetz | Runbook in [`docs/umstieg.md`](docs/umstieg.md); offen: Entscheidung zu Funke |
 | **E4 Apps** | [Tauri 2](apps/zunder-app) für Desktop, iOS und Android | Gerüst: lokaler Speicher, Sync und Erinnerungen in `zunder-local` (gegen den echten Server getestet); Web-UI noch ohne Tauri-Transport, Mobile-Builds nicht verifiziert |
 
 ## Schnellstart (lokale Entwicklung)

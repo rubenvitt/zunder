@@ -108,9 +108,10 @@ Leere Werte gelten als nicht gesetzt. Wer das Session-Secret ändert, meldet all
 
 - Anlegen und widerrufen in der Web-UI unter **Tokens** (nur mit Browser-Session, nicht per Token).
 - Ein Token hat die Form `zt_<43 Zeichen>` und wird **nur einmal** angezeigt. Gespeichert wird nur der SHA-256-Hash.
-- Je Verwendung ein eigener Token mit sprechendem Namen, z. B. `claude-code-laptop`, `claude-ai`, `import`, `funke-iphone`. Der Name erscheint im Änderungsprotokoll als Quelle (`mcp:<name>`), und ein verlorenes Gerät lässt sich einzeln sperren.
+- Je Verwendung ein eigener Token mit sprechendem Namen, z. B. `claude-code-laptop`, `import`, `funke-iphone` (claude.ai braucht keinen Token, siehe [claude.ai](#claudeai)). Der Name erscheint im Änderungsprotokoll als Quelle (`mcp:<name>`), und ein verlorenes Gerät lässt sich einzeln sperren.
 - Die Token-Liste zeigt `last_used_at`. Tokens, die lange nicht benutzt wurden, widerrufen.
 - Verwendung: Header `Authorization: Bearer zt_…`, sowohl für `/api/*` als auch für `/mcp`.
+- Darunter stehen unter **Verbundene Apps** die per OAuth verbundenen Clients (z. B. claude.ai) mit Ziel-Host und letzter Nutzung. **Trennen** widerruft die Verbindung sofort samt allen Tokens.
 
 ## MCP verbinden
 
@@ -143,9 +144,22 @@ Prüfen mit `claude mcp list` bzw. `/mcp` in einer Sitzung.
 
 ### claude.ai
 
-Benutzerdefinierte Connectors in claude.ai (**Einstellungen → Connectors → Benutzerdefinierten Connector hinzufügen**) kennen als Anmeldung nur OAuth oder gar keine; einen festen `Authorization`-Header kann man dort nicht eintragen. Zunder spricht laut Vertrag am MCP-Endpoint bisher nur Bearer-Tokens.
+claude.ai verbindet sich per OAuth (MCP-Authorization); Zunder bringt dafür einen eigenen kleinen Authorization-Server mit, die Anmeldung läuft über den normalen Pocket-ID-Login. Einen Token muss man dafür nicht anlegen.
 
-**Offener Punkt vor E3:** `/mcp` braucht einen OAuth-Weg nach der MCP-Authorization-Spezifikation, damit claude.ai sich verbinden kann. Naheliegend ist ein schlanker Authorization-Endpoint in Zunder, der nach dem Pocket-ID-Login einen API-Token als Access Token ausstellt (Name z. B. `claude-ai`, widerrufbar wie jeder andere Token). Bis dahin funktionieren Claude Code, die Claude-Desktop-App mit lokaler MCP-Konfiguration und eigene Agenten über den Header. Der Punkt steht auch im Vertrag (Abschnitt 4).
+1. In claude.ai **Einstellungen → Connectors → Benutzerdefinierten Connector hinzufügen**.
+2. Name `Zunder`, URL **`https://zunder.rubeen.dev/mcp`**. Die erweiterten Einstellungen (OAuth-Client-ID und -Secret) leer lassen: claude.ai registriert sich selbst.
+3. **Verbinden** öffnet Zunder im Browser. Ohne aktive Sitzung kommt zuerst der Pocket-ID-Login, danach die Freigabeseite „Zugriff erlauben?“ mit dem Namen des Clients (`Claude`) und dem Ziel `claude.ai`. Steht dort ein anderes Ziel, **Ablehnen**.
+4. Nach **Erlauben** ist der Connector verbunden. Änderungen erscheinen im Änderungsprotokoll als „Agent · Claude (OAuth)“ (Quelle `mcp:oauth:Claude`).
+
+Gut zu wissen:
+
+- claude.ai erneuert den Zugriff selbst (Access-Token 1 Stunde, Refresh-Token 30 Tage, bei jeder Erneuerung neu). Wer den Connector 30 Tage nicht nutzt, verbindet ihn neu.
+- Trennen: in Zunder unter **Tokens → Verbundene Apps → Trennen** oder in claude.ai den Connector entfernen. Bei einer erneuten Verbindung registriert sich claude.ai neu und Zunder fragt wieder nach der Freigabe.
+- Voraussetzungen: `ZUNDER_PUBLIC_URL` ist genau `https://zunder.rubeen.dev` (daraus entstehen Issuer, Ressource und alle Endpunkte), und Traefik leitet auch `/.well-known/*` und `/oauth/*` an den Container (die Regel `Host(...)` tut das). Ändert sich die öffentliche URL, werden alle OAuth-Tokens ungültig und der Connector muss neu verbunden werden.
+- Prüfen ohne claude.ai: `curl -s https://zunder.rubeen.dev/.well-known/oauth-protected-resource` muss `"resource":"https://zunder.rubeen.dev/mcp"` liefern, und `curl -si -X POST https://zunder.rubeen.dev/mcp` einen `401` mit `WWW-Authenticate: Bearer resource_metadata=…`.
+- Zeigt claude.ai „Authorization with the MCP server failed“, im Log von Zunder nach `OAuth` suchen (Registrierung, Freigabe, Wiederverwendung eines Refresh-Tokens werden geloggt, Tokens nie).
+
+Claude Code und eigene Agenten nutzen weiter API-Tokens per Header (siehe oben); das bleibt unverändert.
 
 ### Andere Agenten und Handtest
 

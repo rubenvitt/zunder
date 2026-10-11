@@ -51,6 +51,12 @@ pub enum PrincipalKind {
     Token { id: Uuid, name: String },
     /// `ZUNDER_BOOTSTRAP_TOKEN` (bearer).
     Bootstrap,
+    /// OAuth access token of the built-in authorization server (bearer,
+    /// only accepted by `/mcp`). `source_name` is `oauth:<client_name>`.
+    OAuth {
+        client_id: String,
+        source_name: String,
+    },
 }
 
 /// Name used for the bootstrap token in sources and logs.
@@ -63,11 +69,13 @@ impl Principal {
         matches!(self.kind, PrincipalKind::Session | PrincipalKind::DevAuto)
     }
 
-    /// The token name for bearer principals.
+    /// The token name for bearer principals (`oauth:<client_name>` for
+    /// OAuth access tokens).
     pub fn token_name(&self) -> Option<&str> {
         match &self.kind {
             PrincipalKind::Token { name, .. } => Some(name),
             PrincipalKind::Bootstrap => Some(BOOTSTRAP_TOKEN_NAME),
+            PrincipalKind::OAuth { source_name, .. } => Some(source_name),
             PrincipalKind::Session | PrincipalKind::DevAuto => None,
         }
     }
@@ -203,5 +211,14 @@ mod tests {
             kind: PrincipalKind::Bootstrap,
         };
         assert_eq!(boot.sync_source().label(), "api:bootstrap");
+        let oauth = Principal {
+            user_id,
+            kind: PrincipalKind::OAuth {
+                client_id: "c".into(),
+                source_name: "oauth:Claude".into(),
+            },
+        };
+        assert_eq!(oauth.mcp_source().label(), "mcp:oauth:Claude");
+        assert!(!oauth.is_browser());
     }
 }

@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { createHash, randomBytes } from "node:crypto";
+import { expect, test, type Page } from "@playwright/test";
 import { isMock, newId, openApp, prepare, row, Seeder, suffix, WEB_HEADERS } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
@@ -105,6 +106,69 @@ test("API-Tokens anlegen (einmal sichtbar) und widerrufen", async ({ page }) => 
   page.once("dialog", (d) => void d.accept());
   await tokenRow.getByRole("button", { name: "Widerrufen" }).click();
   await expect(tokenRow).toHaveCount(0);
+});
+
+/**
+ * Connects an OAuth app. Real backend: the actual flow of a claude.ai connector
+ * (registration, consent page in the browser, code with PKCE, token exchange).
+ * Mock: a seeded client.
+ */
+async function connectOAuthApp(page: Page, name: string): Promise<void> {
+  if (isMock) {
+    const res = await page.request.post("/__test/oauth-client", { data: { name } });
+    expect(res.ok()).toBe(true);
+    return;
+  }
+  const callback = "https://claude.ai/api/mcp/auth_callback";
+  const reg = await page.request.post("/oauth/register", { data: { client_name: name, redirect_uris: [callback] } });
+  expect(reg.status(), await reg.text()).toBe(201);
+  const clientId = ((await reg.json()) as { client_id: string }).client_id;
+  const verifier = randomBytes(32).toString("base64url");
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  await page.goto("/healthz");
+  const origin = new URL(page.url()).origin;
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: clientId,
+    redirect_uri: callback,
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+    state: "e2e",
+    resource: `${origin}/mcp`,
+  });
+  // The redirect to claude.ai carries the code; it never leaves the test.
+  const toCallback = (url: URL) => url.href.startsWith(callback);
+  await page.route(toCallback, (route) => route.fulfill({ status: 200, contentType: "text/plain", body: "ok" }));
+  await page.goto(`/oauth/authorize?${params.toString()}`);
+  await expect(page.getByRole("heading", { name: "Zugriff erlauben?" })).toBeVisible();
+  await expect(page.locator("code", { hasText: "claude.ai" })).toBeVisible();
+  const redirected = page.waitForRequest((req) => req.url().startsWith(callback));
+  await page.getByRole("button", { name: "Erlauben" }).click();
+  const code = new URL((await redirected).url()).searchParams.get("code") ?? "";
+  expect(code).toMatch(/^zoc_/);
+  await page.unroute(toCallback);
+  const token = await page.request.post("/oauth/token", {
+    form: { grant_type: "authorization_code", code, redirect_uri: callback, client_id: clientId, code_verifier: verifier },
+  });
+  expect(token.ok(), await token.text()).toBe(true);
+  const { access_token } = (await token.json()) as { access_token: string };
+  const mcp = await page.request.post("/mcp", {
+    headers: { Authorization: `Bearer ${access_token}` },
+    data: { jsonrpc: "2.0", id: 1, method: "ping" },
+  });
+  expect(mcp.ok()).toBe(true);
+}
+
+test("Verbundene App (OAuth) auf der Token-Seite trennen", async ({ page }) => {
+  const name = `Claude ${suffix()}`;
+  await connectOAuthApp(page, name);
+  await openApp(page, "#/tokens");
+  const clientRow = page.locator("tr", { hasText: name });
+  await expect(clientRow).toBeVisible();
+  await expect(clientRow).toContainText("claude.ai");
+  page.once("dialog", (d) => void d.accept());
+  await clientRow.getByRole("button", { name: "Trennen" }).click();
+  await expect(clientRow).toHaveCount(0);
 });
 
 test("Tastenkürzel-Übersicht mit ?", async ({ page }) => {

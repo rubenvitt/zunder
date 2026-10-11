@@ -8,7 +8,7 @@ Einen Rückweg nach ClickUp gibt es nicht. Das Sicherheitsnetz sind das Roh-Back
 
 | Wann | Was |
 |---|---|
-| bis Start E3 | Entscheidung Funke (siehe [unten](#funke)), OAuth für claude.ai ([`betrieb.md`](betrieb.md#claudeai)) |
+| bis Start E3 | Entscheidung Funke (siehe [unten](#funke)); claude.ai-Connector verbinden ([`betrieb.md`](betrieb.md#claudeai), OAuth ist umgesetzt) |
 | Vorbereitung | Probelauf, Zuordnung prüfen, Probeimport in eine Testinstanz, Skill-Branch |
 | Umstiegstag | ClickUp einfrieren, Komplettsicherung, finaler Import, Skills umschalten |
 | +1 Woche | Sicherheitsnetz mit Lesezugriff auf ClickUp |

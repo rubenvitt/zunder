@@ -19,6 +19,7 @@ use crate::app::{App, CreatedToken, HistoryEntry, PullPage, PushResult, Snapshot
 use crate::auth::Principal;
 use crate::error::{AppError, AppResult};
 use crate::flame::{self, FlameOutcome};
+use crate::oauth;
 
 /// Body limit of `/api` requests except push.
 pub const API_BODY_LIMIT: usize = 64 * 1024;
@@ -43,6 +44,8 @@ pub fn routes() -> Router<App> {
         .route("/tasks/{id}/flame/stop", post(flame_stop))
         .route("/tokens", get(list_tokens).post(create_token))
         .route("/tokens/{id}", delete(revoke_token))
+        .route("/oauth/clients", get(list_oauth_clients))
+        .route("/oauth/clients/{id}", delete(revoke_oauth_client))
         .layer(DefaultBodyLimit::max(API_BODY_LIMIT))
 }
 
@@ -209,5 +212,25 @@ async fn revoke_token(
     require_browser(&principal)?;
     let id = parse_id(&id)?;
     app.revoke_token(principal.user_id, id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn list_oauth_clients(
+    State(app): State<App>,
+    principal: Principal,
+) -> AppResult<Json<Vec<oauth::ClientInfo>>> {
+    require_browser(&principal)?;
+    Ok(Json(
+        oauth::connected_clients(&app, principal.user_id).await?,
+    ))
+}
+
+async fn revoke_oauth_client(
+    State(app): State<App>,
+    principal: Principal,
+    Path(id): Path<String>,
+) -> AppResult<StatusCode> {
+    require_browser(&principal)?;
+    oauth::revoke_client(&app, principal.user_id, &id).await?;
     Ok(StatusCode::NO_CONTENT)
 }

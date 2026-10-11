@@ -6,7 +6,7 @@ import { Icon } from "../components/Icon";
 import { TaskList } from "../components/TaskList";
 import { fireOf, formatInstant, isValidFire, shiftFire } from "../sync/dates";
 import { isFlameRunning } from "../sync/derived";
-import type { ApiToken, CreatedToken, Task } from "../sync/types";
+import type { ApiToken, CreatedToken, OAuthClient, Task } from "../sync/types";
 import { flame } from "../state/actions";
 import { navigate, route } from "../state/router";
 import { api, now } from "../state/store";
@@ -132,6 +132,26 @@ export function TokensView() {
     }
   }
 
+  const [clients, { refetch: refetchClients }] = createResource(async (): Promise<OAuthClient[] | null> => {
+    try {
+      return await api().listOAuthClients();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Verbundene Apps konnten nicht geladen werden.", "error");
+      return null;
+    }
+  });
+
+  async function disconnect(client: OAuthClient) {
+    if (!confirm(`Verbindung „${client.name}“ trennen? Die App verliert sofort den Zugriff.`)) return;
+    try {
+      await api().revokeOAuthClient(client.id);
+      toast(`Verbindung „${client.name}“ getrennt.`);
+      void refetchClients();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Trennen fehlgeschlagen.", "error");
+    }
+  }
+
   return (
     <div class="view">
       <header class="view-head">
@@ -200,8 +220,61 @@ export function TokensView() {
           </tbody>
         </table>
       </Show>
+      <section class="group">
+        <h2>Verbundene Apps</h2>
+        <p class="muted">
+          Apps, die sich per OAuth mit Zunder verbunden haben, z. B. claude.ai als Connector. Trennen widerruft den Zugriff sofort; beim nächsten
+          Verbinden fragt Zunder wieder nach der Freigabe.
+        </p>
+        <Show when={clients() !== null} fallback={<p class="muted">Verbundene Apps nicht verfügbar.</p>}>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Weiterleitung</th>
+                <th>Verbunden seit</th>
+                <th>Zuletzt benutzt</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              <For
+                each={clients() ?? []}
+                fallback={<tr><td colSpan={5} class="muted">{clients.loading ? "Lädt …" : "Keine verbundenen Apps."}</td></tr>}
+              >
+                {(client) => (
+                  <tr data-oauth-client-id={client.id}>
+                    <td>{client.name}</td>
+                    <td>{redirectHosts(client.redirect_uris)}</td>
+                    <td>{client.created_at ? formatInstant(client.created_at, new Date(now())) : "—"}</td>
+                    <td>{client.last_used_at ? formatInstant(client.last_used_at, new Date(now())) : "nie"}</td>
+                    <td class="right">
+                      <button class="btn btn-danger btn-small" onClick={() => void disconnect(client)}>
+                        Trennen
+                      </button>
+                    </td>
+                  </tr>
+                )}
+              </For>
+            </tbody>
+          </table>
+        </Show>
+      </section>
     </div>
   );
+}
+
+/** Hosts of the redirect URIs of an OAuth client, e.g. `claude.ai`. */
+function redirectHosts(uris: string[]): string {
+  const hosts = new Set<string>();
+  for (const uri of uris) {
+    try {
+      hosts.add(new URL(uri).hostname);
+    } catch {
+      hosts.add(uri);
+    }
+  }
+  return [...hosts].join(", ") || "—";
 }
 
 export function LoginView() {

@@ -7,8 +7,11 @@
 //!   answer `405`.
 //! - Stateless: no `Mcp-Session-Id` is issued; a header sent by the client
 //!   is ignored.
-//! - Auth: bearer token only (API token or bootstrap token); session cookies
-//!   and dev auth are not accepted. Operations carry `mcp:<token-name>`.
+//! - Auth: bearer token only (API token, bootstrap token or OAuth access
+//!   token of [`crate::oauth`]); session cookies and dev auth are not
+//!   accepted. A `401` names the protected resource metadata in
+//!   `WWW-Authenticate` (MCP authorization). Operations carry
+//!   `mcp:<token-name>` (`mcp:oauth:<client_name>` for OAuth clients).
 //! - A present `Origin` header must match `ZUNDER_PUBLIC_URL` (protection
 //!   against DNS rebinding); a present `MCP-Protocol-Version` header must
 //!   name a supported version.
@@ -22,15 +25,18 @@ pub mod tools;
 use axum::body::Bytes;
 use axum::extract::rejection::BytesRejection;
 use axum::extract::{DefaultBodyLimit, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::header::WWW_AUTHENTICATE;
+use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Json, Router};
 use serde_json::{json, Map, Value};
 
 use crate::app::{App, Source};
-use crate::auth::middleware::bearer_principal;
+use crate::auth::middleware::bearer_token;
+use crate::auth::Principal;
 use crate::error::AppError;
+use crate::oauth;
 
 /// The protocol version this server speaks.
 pub const PROTOCOL_VERSION: &str = "2025-06-18";
@@ -92,6 +98,44 @@ fn check_origin(app: &App, headers: &HeaderMap) -> Result<(), AppError> {
     }
 }
 
+/// `401` with the MCP authorization challenge: `WWW-Authenticate: Bearer
+/// resource_metadata="…"` plus `error="invalid_token"` when a token was
+/// presented but not accepted.
+fn challenge(app: &App, error: Option<&str>) -> Response {
+    let mut response = AppError::Unauthorized.into_response();
+    let mut value = format!(
+        "Bearer resource_metadata=\"{}\"",
+        oauth::resource_metadata_url(app.config())
+    );
+    if let Some(error) = error {
+        value.push_str(&format!(", error=\"{error}\""));
+    }
+    if let Ok(v) = HeaderValue::from_str(&value) {
+        response.headers_mut().insert(WWW_AUTHENTICATE, v);
+    }
+    response
+}
+
+/// Authenticates `/mcp`: OAuth access tokens (`zoa_…`) via the built-in
+/// authorization server, everything else as API or bootstrap token.
+async fn authenticate(app: &App, headers: &HeaderMap) -> Result<Principal, Response> {
+    let token = match bearer_token(headers) {
+        Ok(Some(token)) => token,
+        Ok(None) => return Err(challenge(app, None)),
+        Err(_) => return Err(challenge(app, Some("invalid_request"))),
+    };
+    let found = if token.starts_with(oauth::ACCESS_TOKEN_PREFIX) {
+        oauth::authenticate_access(app, token).await
+    } else {
+        app.authenticate_token(token).await
+    };
+    match found {
+        Ok(Some(principal)) => Ok(principal),
+        Ok(None) => Err(challenge(app, Some("invalid_token"))),
+        Err(e) => Err(e.into_response()),
+    }
+}
+
 async fn handle_post(
     State(app): State<App>,
     headers: HeaderMap,
@@ -100,10 +144,9 @@ async fn handle_post(
     if let Err(e) = check_origin(&app, &headers) {
         return e.into_response();
     }
-    let principal = match bearer_principal(&app, &headers).await {
-        Ok(Some(p)) => p,
-        Ok(None) => return AppError::Unauthorized.into_response(),
-        Err(e) => return e.into_response(),
+    let principal = match authenticate(&app, &headers).await {
+        Ok(p) => p,
+        Err(response) => return response,
     };
     if let Some(version) = headers.get("mcp-protocol-version") {
         let supported = version

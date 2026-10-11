@@ -6,6 +6,7 @@
 //! - [`auth`]: principals, API tokens, sessions, CSRF rule, OIDC
 //! - [`http`]: router and handlers
 //! - [`mcp`]: MCP endpoint (`/mcp`, Streamable HTTP, JSON-RPC 2.0)
+//! - [`oauth`]: built-in OAuth 2.1 authorization server for `/mcp`
 //! - [`views`]: task, area and project representations for tools
 //! - [`flame`]: starting and stopping flames (shared by HTTP and MCP)
 //! - [`timing`]: client for the Timing web API
@@ -22,6 +23,7 @@ pub mod flame;
 pub mod healthcheck;
 pub mod http;
 pub mod mcp;
+pub mod oauth;
 pub mod timing;
 pub mod views;
 

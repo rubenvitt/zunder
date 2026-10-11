@@ -1,6 +1,7 @@
 //! HTTP layer: router, middleware stack and handlers.
 //!
-//! MCP lives under `/mcp` ([`crate::mcp`], bearer tokens only), the flame
+//! MCP lives under `/mcp` ([`crate::mcp`], bearer tokens only: API tokens
+//! or OAuth access tokens from [`crate::oauth`]), the flame
 //! endpoints under `/api/tasks/{id}/flame/*`. Protected routes use
 //! [`crate::auth::middleware::require_auth`] and the [`crate::auth::Principal`]
 //! extractor and call into [`App`].
@@ -38,6 +39,9 @@ pub fn router(app: App, oidc: Option<Arc<OidcClient>>) -> Router {
         .route("/healthz", get(healthz))
         .nest("/api", api)
         .merge(crate::mcp::routes())
+        .merge(crate::oauth::routes::routes(
+            crate::oauth::routes::OAuthState::new(app.clone()),
+        ))
         .merge(auth_routes::routes(auth_routes::AuthState {
             app: app.clone(),
             oidc,

@@ -190,7 +190,7 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     i64::try_from(system_time_ms()).unwrap_or(i64::MAX)
 }
 
@@ -307,6 +307,27 @@ impl App {
         tokio::task::spawn_blocking(move || f(&inner))
             .await
             .map_err(|e| AppError::Internal(e.into()))?
+    }
+
+    /// Runs `f` with the writer connection (serialized with every other
+    /// write) on the blocking pool. For subsystems with their own tables,
+    /// such as the OAuth authorization server.
+    pub(crate) async fn with_writer<T, F>(&self, f: F) -> AppResult<T>
+    where
+        T: Send + 'static,
+        F: FnOnce(&mut Connection) -> AppResult<T> + Send + 'static,
+    {
+        self.blocking(move |inner| f(&mut lock(&inner.writer).conn))
+            .await
+    }
+
+    /// Runs `f` with the reader connection on the blocking pool.
+    pub(crate) async fn with_reader<T, F>(&self, f: F) -> AppResult<T>
+    where
+        T: Send + 'static,
+        F: FnOnce(&Connection) -> AppResult<T> + Send + 'static,
+    {
+        self.blocking(move |inner| f(&lock(&inner.reader))).await
     }
 
     // ----- sync ---------------------------------------------------------------
@@ -682,8 +703,20 @@ impl App {
             let conn = Connection::open(inner.config.db_path()).context("Datenbank öffnen")?;
             db::vacuum_into(&conn, &dest)?;
             prune_backups(&dir, BACKUPS_TO_KEEP)?;
-            let purged = db::purge_expired_sessions(&lock(&inner.writer).conn, now_ms())?;
-            tracing::info!(path = %dest.display(), purged_sessions = purged, "backup written");
+            let (purged, purged_clients) = {
+                let writer = lock(&inner.writer);
+                let now = now_ms();
+                (
+                    db::purge_expired_sessions(&writer.conn, now)?,
+                    db::purge_oauth(&writer.conn, now, now - crate::oauth::STALE_CLIENT_MS)?,
+                )
+            };
+            tracing::info!(
+                path = %dest.display(),
+                purged_sessions = purged,
+                purged_oauth_clients = purged_clients,
+                "backup written"
+            );
             Ok(dest)
         })
         .await

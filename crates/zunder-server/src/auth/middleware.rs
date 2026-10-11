@@ -124,6 +124,31 @@ async fn authenticate(
     Err(AppError::Unauthorized)
 }
 
+/// The browser principal of a request (session cookie, or dev auth without
+/// a valid cookie), ignoring bearer tokens, together with a binding string
+/// that identifies the session (to tie in-memory state such as a pending
+/// OAuth consent to it). Does not renew the session cookie.
+pub async fn browser_principal(
+    app: &App,
+    headers: &HeaderMap,
+) -> Result<Option<(Principal, String)>, AppError> {
+    if let Some(id) = cookie_value(headers, SESSION_COOKIE).filter(|v| !v.is_empty()) {
+        if let Some(auth) = app.authenticate_session(id).await? {
+            return Ok(Some((auth.principal, super::sha256_hex(id))));
+        }
+    }
+    if app.config().dev_auth {
+        return Ok(Some((
+            Principal {
+                user_id: app.owner_id(),
+                kind: PrincipalKind::DevAuto,
+            },
+            "dev-auth".to_owned(),
+        )));
+    }
+    Ok(None)
+}
+
 /// Handlers behind [`require_auth`] take the principal as an extractor.
 impl<S: Send + Sync> FromRequestParts<S> for Principal {
     type Rejection = AppError;

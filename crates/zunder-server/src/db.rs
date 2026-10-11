@@ -15,7 +15,10 @@ use zunder_core::state::FieldEntry;
 use zunder_core::{EntityKind, Hlc, Op, SnapshotEntity, State};
 
 /// Embedded migrations; index + 1 is the schema version (`user_version`).
-const MIGRATIONS: &[&str] = &[include_str!("../migrations/0001_init.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("../migrations/0001_init.sql"),
+    include_str!("../migrations/0002_oauth.sql"),
+];
 
 /// The schema version this binary expects.
 pub const SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;
@@ -536,6 +539,350 @@ pub fn delete_session(conn: &Connection, id_hash: &str) -> anyhow::Result<()> {
 /// Removes expired sessions; returns how many.
 pub fn purge_expired_sessions(conn: &Connection, now: i64) -> anyhow::Result<usize> {
     Ok(conn.execute("DELETE FROM sessions WHERE expires_at <= ?1", [now])?)
+}
+
+// ----- OAuth (built-in authorization server for /mcp) ----------------------------
+
+/// A dynamically registered OAuth client.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OAuthClientRow {
+    pub id: String,
+    pub name: String,
+    pub redirect_uris: Vec<String>,
+    pub created_at: i64,
+    pub last_used_at: Option<i64>,
+    pub revoked_at: Option<i64>,
+}
+
+fn row_to_oauth_client(row: &Row<'_>) -> rusqlite::Result<OAuthClientRow> {
+    let uris: String = row.get(2)?;
+    Ok(OAuthClientRow {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        redirect_uris: serde_json::from_str(&uris).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Text, Box::new(e))
+        })?,
+        created_at: row.get(3)?,
+        last_used_at: row.get(4)?,
+        revoked_at: row.get(5)?,
+    })
+}
+
+const OAUTH_CLIENT_COLUMNS: &str =
+    "c.id, c.name, c.redirect_uris_json, c.created_at, c.last_used_at, c.revoked_at";
+
+pub fn insert_oauth_client(conn: &Connection, client: &OAuthClientRow) -> anyhow::Result<()> {
+    conn.execute(
+        "INSERT INTO oauth_clients (id, name, redirect_uris_json, created_at) VALUES (?1, ?2, ?3, ?4)",
+        params![
+            client.id,
+            client.name,
+            serde_json::to_string(&client.redirect_uris)?,
+            client.created_at
+        ],
+    )?;
+    Ok(())
+}
+
+/// The client with this ID (also revoked ones).
+pub fn oauth_client(conn: &Connection, id: &str) -> anyhow::Result<Option<OAuthClientRow>> {
+    Ok(conn
+        .query_row(
+            &format!("SELECT {OAUTH_CLIENT_COLUMNS} FROM oauth_clients c WHERE c.id = ?1"),
+            [id],
+            row_to_oauth_client,
+        )
+        .optional()?)
+}
+
+/// Number of clients registered at or after `since` (all clients for 0).
+pub fn count_oauth_clients_since(conn: &Connection, since: i64) -> anyhow::Result<i64> {
+    Ok(conn.query_row(
+        "SELECT COUNT(*) FROM oauth_clients WHERE created_at >= ?1",
+        [since],
+        |r| r.get(0),
+    )?)
+}
+
+/// Clients of the user that hold a live grant (a token that is neither
+/// revoked nor expired), oldest first.
+pub fn connected_oauth_clients(
+    conn: &Connection,
+    user_id: Uuid,
+    now: i64,
+) -> anyhow::Result<Vec<OAuthClientRow>> {
+    let mut stmt = conn.prepare_cached(&format!(
+        "SELECT {OAUTH_CLIENT_COLUMNS} FROM oauth_clients c
+         WHERE c.revoked_at IS NULL AND EXISTS (
+             SELECT 1 FROM oauth_tokens t
+             WHERE t.client_id = c.id AND t.user_id = ?1
+               AND t.revoked_at IS NULL AND t.expires_at > ?2)
+         ORDER BY c.created_at, c.rowid"
+    ))?;
+    let rows = stmt.query_map(params![user_id.to_string(), now], row_to_oauth_client)?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
+/// Revokes a client that holds a grant of the user, together with all its
+/// tokens. Returns whether a client was revoked.
+pub fn revoke_oauth_client(
+    conn: &mut Connection,
+    user_id: Uuid,
+    id: &str,
+    now: i64,
+) -> anyhow::Result<bool> {
+    let tx = conn.transaction()?;
+    let owned: bool = tx.query_row(
+        "SELECT EXISTS (SELECT 1 FROM oauth_tokens WHERE client_id = ?1 AND user_id = ?2)",
+        params![id, user_id.to_string()],
+        |r| r.get(0),
+    )?;
+    let n = if owned {
+        tx.execute(
+            "UPDATE oauth_clients SET revoked_at = ?2 WHERE id = ?1 AND revoked_at IS NULL",
+            params![id, now],
+        )?
+    } else {
+        0
+    };
+    if n > 0 {
+        tx.execute(
+            "UPDATE oauth_tokens SET revoked_at = ?2 WHERE client_id = ?1 AND revoked_at IS NULL",
+            params![id, now],
+        )?;
+    }
+    tx.commit()?;
+    Ok(n > 0)
+}
+
+pub fn touch_oauth_client(conn: &Connection, id: &str, now: i64) -> anyhow::Result<()> {
+    conn.execute(
+        "UPDATE oauth_clients SET last_used_at = ?2 WHERE id = ?1",
+        params![id, now],
+    )?;
+    Ok(())
+}
+
+/// A stored authorization code (looked up by its hash).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OAuthCodeRow {
+    pub client_id: String,
+    pub user_id: Uuid,
+    pub redirect_uri: String,
+    pub code_challenge: String,
+    pub resource: String,
+    pub scope: Option<String>,
+    pub family_id: String,
+    pub created_at: i64,
+    pub expires_at: i64,
+    pub used_at: Option<i64>,
+}
+
+pub fn insert_oauth_code(conn: &Connection, hash: &str, code: &OAuthCodeRow) -> anyhow::Result<()> {
+    conn.execute(
+        "INSERT INTO oauth_codes (code_hash, client_id, user_id, redirect_uri, code_challenge,
+             resource, scope, family_id, created_at, expires_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![
+            hash,
+            code.client_id,
+            code.user_id.to_string(),
+            code.redirect_uri,
+            code.code_challenge,
+            code.resource,
+            code.scope,
+            code.family_id,
+            code.created_at,
+            code.expires_at
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn oauth_code(conn: &Connection, hash: &str) -> anyhow::Result<Option<OAuthCodeRow>> {
+    Ok(conn
+        .query_row(
+            "SELECT client_id, user_id, redirect_uri, code_challenge, resource, scope, family_id,
+                    created_at, expires_at, used_at
+             FROM oauth_codes WHERE code_hash = ?1",
+            [hash],
+            |row| {
+                Ok(OAuthCodeRow {
+                    client_id: row.get(0)?,
+                    user_id: parse_uuid_col(row, 1)?,
+                    redirect_uri: row.get(2)?,
+                    code_challenge: row.get(3)?,
+                    resource: row.get(4)?,
+                    scope: row.get(5)?,
+                    family_id: row.get(6)?,
+                    created_at: row.get(7)?,
+                    expires_at: row.get(8)?,
+                    used_at: row.get(9)?,
+                })
+            },
+        )
+        .optional()?)
+}
+
+/// Marks a code as used; `false` if it already was (single use).
+pub fn mark_oauth_code_used(conn: &Connection, hash: &str, now: i64) -> anyhow::Result<bool> {
+    let n = conn.execute(
+        "UPDATE oauth_codes SET used_at = ?2 WHERE code_hash = ?1 AND used_at IS NULL",
+        params![hash, now],
+    )?;
+    Ok(n > 0)
+}
+
+/// Kind of an OAuth token.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OAuthTokenKind {
+    Access,
+    Refresh,
+}
+
+impl OAuthTokenKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            OAuthTokenKind::Access => "access",
+            OAuthTokenKind::Refresh => "refresh",
+        }
+    }
+}
+
+/// A stored OAuth token (looked up by its hash).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OAuthTokenRow {
+    pub id: String,
+    pub kind: OAuthTokenKind,
+    pub client_id: String,
+    pub user_id: Uuid,
+    pub family_id: String,
+    pub resource: String,
+    pub scope: Option<String>,
+    pub created_at: i64,
+    pub expires_at: i64,
+    pub used_at: Option<i64>,
+    pub revoked_at: Option<i64>,
+}
+
+pub fn insert_oauth_token(
+    conn: &Connection,
+    hash: &str,
+    token: &OAuthTokenRow,
+) -> anyhow::Result<()> {
+    conn.execute(
+        "INSERT INTO oauth_tokens (id, token_hash, kind, client_id, user_id, family_id, resource,
+             scope, created_at, expires_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![
+            token.id,
+            hash,
+            token.kind.as_str(),
+            token.client_id,
+            token.user_id.to_string(),
+            token.family_id,
+            token.resource,
+            token.scope,
+            token.created_at,
+            token.expires_at
+        ],
+    )?;
+    Ok(())
+}
+
+/// The token with this hash (in any state) together with its client.
+pub fn oauth_token(
+    conn: &Connection,
+    hash: &str,
+) -> anyhow::Result<Option<(OAuthTokenRow, OAuthClientRow)>> {
+    Ok(conn
+        .query_row(
+            &format!(
+                "SELECT t.id, t.kind, t.client_id, t.user_id, t.family_id, t.resource, t.scope,
+                        t.created_at, t.expires_at, t.used_at, t.revoked_at, {OAUTH_CLIENT_COLUMNS}
+                 FROM oauth_tokens t JOIN oauth_clients c ON c.id = t.client_id
+                 WHERE t.token_hash = ?1"
+            ),
+            [hash],
+            |row| {
+                let kind: String = row.get(1)?;
+                let token = OAuthTokenRow {
+                    id: row.get(0)?,
+                    kind: if kind == "refresh" {
+                        OAuthTokenKind::Refresh
+                    } else {
+                        OAuthTokenKind::Access
+                    },
+                    client_id: row.get(2)?,
+                    user_id: parse_uuid_col(row, 3)?,
+                    family_id: row.get(4)?,
+                    resource: row.get(5)?,
+                    scope: row.get(6)?,
+                    created_at: row.get(7)?,
+                    expires_at: row.get(8)?,
+                    used_at: row.get(9)?,
+                    revoked_at: row.get(10)?,
+                };
+                let client = OAuthClientRow {
+                    id: row.get(11)?,
+                    name: row.get(12)?,
+                    redirect_uris: serde_json::from_str(&row.get::<_, String>(13)?).map_err(
+                        |e| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                13,
+                                rusqlite::types::Type::Text,
+                                Box::new(e),
+                            )
+                        },
+                    )?,
+                    created_at: row.get(14)?,
+                    last_used_at: row.get(15)?,
+                    revoked_at: row.get(16)?,
+                };
+                Ok((token, client))
+            },
+        )
+        .optional()?)
+}
+
+/// Marks a refresh token as rotated; `false` if it already was.
+pub fn mark_oauth_token_used(conn: &Connection, id: &str, now: i64) -> anyhow::Result<bool> {
+    let n = conn.execute(
+        "UPDATE oauth_tokens SET used_at = ?2 WHERE id = ?1 AND used_at IS NULL",
+        params![id, now],
+    )?;
+    Ok(n > 0)
+}
+
+pub fn revoke_oauth_token(conn: &Connection, id: &str, now: i64) -> anyhow::Result<()> {
+    conn.execute(
+        "UPDATE oauth_tokens SET revoked_at = ?2 WHERE id = ?1 AND revoked_at IS NULL",
+        params![id, now],
+    )?;
+    Ok(())
+}
+
+/// Revokes every token of a family; returns how many were still active.
+pub fn revoke_oauth_family(conn: &Connection, family_id: &str, now: i64) -> anyhow::Result<usize> {
+    Ok(conn.execute(
+        "UPDATE oauth_tokens SET revoked_at = ?2 WHERE family_id = ?1 AND revoked_at IS NULL",
+        params![family_id, now],
+    )?)
+}
+
+/// Removes expired codes and tokens and clients that can no longer be used
+/// (no live token, registered before `stale_before`). Returns the number of
+/// removed clients.
+pub fn purge_oauth(conn: &Connection, now: i64, stale_before: i64) -> anyhow::Result<usize> {
+    conn.execute("DELETE FROM oauth_codes WHERE expires_at <= ?1", [now])?;
+    conn.execute("DELETE FROM oauth_tokens WHERE expires_at <= ?1", [now])?;
+    Ok(conn.execute(
+        "DELETE FROM oauth_clients
+         WHERE created_at < ?2 AND NOT EXISTS (
+             SELECT 1 FROM oauth_tokens t
+             WHERE t.client_id = oauth_clients.id AND t.revoked_at IS NULL AND t.expires_at > ?1)",
+        params![now, stale_before],
+    )?)
 }
 
 // ----- backup ---------------------------------------------------------------------

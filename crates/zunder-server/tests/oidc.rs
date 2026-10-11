@@ -204,7 +204,12 @@ async fn server_for(base: &str, adjust: impl FnOnce(&mut OidcConfig)) -> TestSer
 /// Starts a login at the server, lets the mock provider "authorize" it and
 /// returns the callback response.
 async fn login(s: &TestServer, idp: &Idp) -> TestResponse {
-    let start = s.get("/auth/login?return_to=/heute", Auth::None).await;
+    login_from(s, idp, "/auth/login?return_to=/heute").await
+}
+
+/// Like [`login`], starting at `start_path` (an `/auth/login` URL).
+async fn login_from(s: &TestServer, idp: &Idp, start_path: &str) -> TestResponse {
+    let start = s.get(start_path, Auth::None).await;
     assert_eq!(start.status, StatusCode::SEE_OTHER, "{}", start.text());
     let location = url::Url::parse(start.header("location").unwrap()).unwrap();
     assert_eq!(location.path(), "/authorize");
@@ -264,6 +269,43 @@ async fn full_login_flow() {
     assert_ne!(second, session);
     let me2 = s.get("/api/me", Auth::Cookie(&second)).await.json();
     assert_eq!(me2["user_id"], me.json()["user_id"]);
+}
+
+#[tokio::test]
+async fn oauth_authorization_survives_the_login_round_trip() {
+    // claude.ai sends the owner to /oauth/authorize; without a session the
+    // server detours via the OIDC login and lands on the consent page.
+    let (idp, base) = Idp::start().await;
+    let s = server_for(&base, |_| {}).await;
+    let r = s
+        .post(
+            "/oauth/register",
+            Auth::None,
+            json!({"client_name": "Claude", "redirect_uris": ["https://claude.ai/api/mcp/auth_callback"]}),
+        )
+        .await;
+    let client_id = r.json()["client_id"].as_str().unwrap().to_owned();
+    let authorize = format!(
+        "/oauth/authorize?response_type=code&client_id={client_id}\
+         &redirect_uri=https%3A%2F%2Fclaude.ai%2Fapi%2Fmcp%2Fauth_callback\
+         &code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256\
+         &state=abc&resource=http%3A%2F%2Flocalhost%3A8080%2Fmcp"
+    );
+    let r = s.get(&authorize, Auth::None).await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER);
+    let to_login = r.header("location").unwrap().to_owned();
+    assert!(to_login.starts_with("/auth/login?return_to="), "{to_login}");
+
+    let r = login_from(&s, &idp, &to_login).await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.text());
+    assert_eq!(r.header("location"), Some(authorize.as_str()));
+    let session = r.cookie("zunder_session").expect("session cookie");
+
+    let r = s.get(&authorize, Auth::Cookie(&session)).await;
+    assert_eq!(r.status, StatusCode::OK);
+    let page = r.text();
+    assert!(page.contains("Zugriff erlauben?"), "{page}");
+    assert!(page.contains("person@example.org"), "{page}");
 }
 
 #[tokio::test]

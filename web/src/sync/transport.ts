@@ -6,6 +6,7 @@ import type {
   CreatedToken,
   HistoryEntry,
   Me,
+  OAuthClient,
   PullResponse,
   PushRequest,
   PushResponse,
@@ -64,6 +65,8 @@ export interface ApiClient {
   listTokens(): Promise<ApiToken[]>;
   createToken(name: string): Promise<CreatedToken>;
   revokeToken(id: string): Promise<void>;
+  listOAuthClients(): Promise<OAuthClient[]>;
+  revokeOAuthClient(id: string): Promise<void>;
   logout(): Promise<void>;
 }
 
@@ -164,6 +167,16 @@ export class HttpTransport implements SyncTransport, ApiClient {
 
   async revokeToken(id: string): Promise<void> {
     await this.request("DELETE", `/api/tokens/${encodeURIComponent(id)}`);
+  }
+
+  listOAuthClients(): Promise<OAuthClient[]> {
+    return this.request<OAuthClient[] | { clients: OAuthClient[] }>("GET", "/api/oauth/clients").then((data) =>
+      Array.isArray(data) ? data : (data?.clients ?? []),
+    );
+  }
+
+  async revokeOAuthClient(id: string): Promise<void> {
+    await this.request("DELETE", `/api/oauth/clients/${encodeURIComponent(id)}`);
   }
 
   async logout(): Promise<void> {

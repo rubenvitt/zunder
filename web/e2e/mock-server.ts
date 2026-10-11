@@ -7,6 +7,7 @@
 //   POST /__test/reset   {"seed": "demo" | "empty", "auth": true | false}
 //   POST /__test/ops     {"ops": [Op], "source": "mcp:test"}   simulate another client
 //   GET  /__test/state   materialized state for assertions
+//   POST /__test/oauth-client {"name": "Claude"}   a connected OAuth app (token page)
 //
 // Mirrors the real server where the UI depends on it (contract 3 and 3.1): error
 // format {"error":{"code","message"}}, CSRF header X-Zunder-Client: web for
@@ -56,6 +57,14 @@ interface Token {
   last_used_at: string | null;
 }
 
+interface OAuthClient {
+  id: string;
+  name: string;
+  redirect_uris: string[];
+  created_at: string;
+  last_used_at: string | null;
+}
+
 interface Rejection {
   op_id: string;
   code: string;
@@ -86,6 +95,7 @@ let log: { seq: number; op: Op; source: string; received_at: string }[] = [];
 let state = new Map<string, Entity>();
 let opIds = new Set<string>();
 let tokens: Token[] = [];
+let oauthClients: OAuthClient[] = [];
 let authenticated = true;
 const sseClients = new Set<ServerResponse>();
 
@@ -345,6 +355,7 @@ function seed(kind: string) {
   state = new Map();
   opIds = new Set();
   tokens = [{ id: randomUUID(), name: "claude-code", created_at: new Date(Date.now() - 86400000 * 3).toISOString(), last_used_at: null }];
+  oauthClients = [];
   if (kind === "empty") return;
   const base = Date.now() - 3600_000;
   let n = 0;
@@ -479,6 +490,18 @@ const server = createServer(async (req, res) => {
       const body = await readJson(req);
       return send(res, 200, push(body.ops ?? [], body.source ?? "mcp:test"));
     }
+    if (path === "/__test/oauth-client" && method === "POST") {
+      const body = await readJson(req);
+      const client: OAuthClient = {
+        id: randomUUID(),
+        name: String(body.name ?? "Claude"),
+        redirect_uris: ["https://claude.ai/api/mcp/auth_callback"],
+        created_at: new Date().toISOString(),
+        last_used_at: new Date().toISOString(),
+      };
+      oauthClients.push(client);
+      return send(res, 201, client);
+    }
     if (path === "/__test/state" && method === "GET") {
       const out: Record<string, Record<string, Json>> = {};
       for (const [k, e] of state) out[k] = Object.fromEntries(Object.entries(e.fields).map(([f, s]) => [f, s.value]));
@@ -601,6 +624,14 @@ const server = createServer(async (req, res) => {
         const tokenId = decodeURIComponent(m[1]!);
         if (!tokens.some((t) => t.id === tokenId)) return error(res, 404, "not_found", "Token nicht gefunden.");
         tokens = tokens.filter((t) => t.id !== tokenId);
+        return send(res, 204);
+      }
+      if (path === "/api/oauth/clients" && method === "GET") return send(res, 200, oauthClients);
+      m = /^\/api\/oauth\/clients\/([^/]+)$/.exec(path);
+      if (m && method === "DELETE") {
+        const clientId = decodeURIComponent(m[1]!);
+        if (!oauthClients.some((c) => c.id === clientId)) return error(res, 404, "not_found", "Verbundener Client nicht gefunden");
+        oauthClients = oauthClients.filter((c) => c.id !== clientId);
         return send(res, 204);
       }
       return error(res, 404, "not_found", "Unbekannter API-Pfad");
