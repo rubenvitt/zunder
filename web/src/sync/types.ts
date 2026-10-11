@@ -201,6 +201,15 @@ export interface HistoryEntry {
   received_at?: string;
 }
 
+/**
+ * Answer of flame/start|stop (contract 4.2), reduced to what the UI reads. The Timing
+ * part tells whether a Timing timer was started/stopped; a failure is not an HTTP error.
+ */
+export interface FlameResult {
+  unchanged?: boolean;
+  timing?: { configured?: boolean; used?: boolean; error?: string | null };
+}
+
 export interface Me {
   user_id: string;
   name: string;

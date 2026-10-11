@@ -4,6 +4,7 @@
 import type {
   ApiToken,
   CreatedToken,
+  FlameResult,
   HistoryEntry,
   Me,
   OAuthClient,
@@ -67,13 +68,19 @@ export interface SyncTransport {
 export interface ApiClient {
   me(): Promise<Me>;
   history(taskId: string): Promise<HistoryEntry[]>;
-  flame(taskId: string, action: "start" | "stop"): Promise<void>;
+  /** Resolves with the server's answer (null when it has none). */
+  flame(taskId: string, action: "start" | "stop"): Promise<FlameResult | null>;
   listTokens(): Promise<ApiToken[]>;
   createToken(name: string): Promise<CreatedToken>;
   revokeToken(id: string): Promise<void>;
   listOAuthClients(): Promise<OAuthClient[]>;
   revokeOAuthClient(id: string): Promise<void>;
   logout(): Promise<void>;
+}
+
+/** Defensive read of a flame answer: anything unexpected counts as "no answer". */
+export function asFlameResult(body: unknown): FlameResult | null {
+  return body && typeof body === "object" && !Array.isArray(body) ? (body as FlameResult) : null;
 }
 
 /** CSRF header required by the server for cookie-authenticated, state-changing requests. */
@@ -157,8 +164,8 @@ export class HttpTransport implements SyncTransport, ApiClient {
     );
   }
 
-  async flame(taskId: string, action: "start" | "stop"): Promise<void> {
-    await this.request("POST", `/api/tasks/${encodeURIComponent(taskId)}/flame/${action}`);
+  async flame(taskId: string, action: "start" | "stop"): Promise<FlameResult | null> {
+    return asFlameResult(await this.request<unknown>("POST", `/api/tasks/${encodeURIComponent(taskId)}/flame/${action}`));
   }
 
   listTokens(): Promise<ApiToken[]> {

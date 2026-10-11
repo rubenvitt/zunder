@@ -149,8 +149,15 @@ export function updateProject(id: string, fields: Record<string, JsonValue>): bo
 
 export async function flame(id: string, action: "start" | "stop"): Promise<void> {
   try {
-    await api().flame(id, action);
-    toast(action === "start" ? "Flamme gestartet." : "Flamme beendet.");
+    const res = await api().flame(id, action);
+    const timing = res?.timing;
+    if (timing?.configured && !timing.used && !res?.unchanged) {
+      // The flame changed, but Timing (the only time tracking) did not follow: say so.
+      const error = typeof timing.error === "string" && timing.error ? timing.error : "nicht erreichbar.";
+      toast(`${action === "start" ? "Flamme läuft" : "Flamme beendet"}, aber Timing: ${error}`, "warning", 10_000);
+    } else {
+      toast(action === "start" ? "Flamme gestartet." : "Flamme beendet.");
+    }
   } catch (err) {
     toast(err instanceof Error ? err.message : "Flamme konnte nicht geändert werden.", "error");
   } finally {
