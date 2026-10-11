@@ -15,7 +15,7 @@
 
 import { MemoryLocalStore } from "../sync/local-store";
 import { HttpError, NetworkError, type ApiClient, type SubscriptionHandlers, type SyncTransport } from "../sync/transport";
-import type { ApiToken, CreatedToken, HistoryEntry, Me, Op, PullResponse, PushRequest, PushResponse, Rejection, Snapshot, Warning } from "../sync/types";
+import type { ApiToken, CreatedToken, HistoryEntry, Me, OAuthClient, Op, PullResponse, PushRequest, PushResponse, Rejection, Snapshot, Warning } from "../sync/types";
 
 // ---- Command and event contract ------------------------------------------
 
@@ -141,7 +141,7 @@ export function appErrorCode(err: unknown): string {
 }
 
 export const TOKENS_UNSUPPORTED =
-  "API-Tokens lassen sich nur in der Web-Oberfläche mit Browser-Anmeldung verwalten.";
+  "API-Tokens und verbundene Apps lassen sich nur in der Web-Oberfläche mit Browser-Anmeldung verwalten.";
 
 // ---- The app's commands ----------------------------------------------------
 
@@ -290,6 +290,14 @@ export class TauriTransport implements SyncTransport, ApiClient {
   }
 
   revokeToken(_id: string): Promise<void> {
+    return Promise.reject(new AppCommandError("unsupported", TOKENS_UNSUPPORTED));
+  }
+
+  listOAuthClients(): Promise<OAuthClient[]> {
+    return Promise.reject(new AppCommandError("unsupported", TOKENS_UNSUPPORTED));
+  }
+
+  revokeOAuthClient(_id: string): Promise<void> {
     return Promise.reject(new AppCommandError("unsupported", TOKENS_UNSUPPORTED));
   }
 
