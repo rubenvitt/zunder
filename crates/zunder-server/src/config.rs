@@ -73,12 +73,32 @@ impl Config {
                 .filter(|v| !v.is_empty())
         };
 
+        let flag = |key: &str| match get(key).as_deref() {
+            None | Some("false") | Some("0") => Ok(false),
+            Some("true") | Some("1") => Ok(true),
+            Some(other) => err(format!("{key} muss true oder false sein: {other}")),
+        };
+        let dev_auth = flag("ZUNDER_DEV_AUTH")?;
+        let dev_auth_allow_remote = flag("ZUNDER_DEV_AUTH_ALLOW_REMOTE")?;
+
+        // Dev auth makes every request the owner, so it listens on loopback
+        // only unless explicitly told otherwise (a container cannot bind its
+        // host's loopback; it publishes the port with `-p 127.0.0.1:…`).
         let bind: SocketAddr = match get("ZUNDER_BIND") {
             Some(v) => v
                 .parse()
                 .map_err(|_| ConfigError(format!("ZUNDER_BIND ist keine Adresse: {v}")))?,
+            None if dev_auth => SocketAddr::from(([127, 0, 0, 1], 8080)),
             None => SocketAddr::from(([0, 0, 0, 0], 8080)),
         };
+        if dev_auth && !bind.ip().is_loopback() && !dev_auth_allow_remote {
+            return err(format!(
+                "ZUNDER_DEV_AUTH=true lauscht nur auf einer lokalen Adresse \
+                 (ZUNDER_BIND ist {bind}); im Container \
+                 ZUNDER_DEV_AUTH_ALLOW_REMOTE=true setzen und den Port nur lokal \
+                 veröffentlichen"
+            ));
+        }
         let data_dir = PathBuf::from(get("ZUNDER_DATA_DIR").unwrap_or_else(|| "./data".into()));
         let web_dir = PathBuf::from(get("ZUNDER_WEB_DIR").unwrap_or_else(|| "./web/dist".into()));
 
@@ -92,15 +112,6 @@ impl Config {
             return err("ZUNDER_PUBLIC_URL muss eine http(s)-URL sein");
         }
 
-        let dev_auth = match get("ZUNDER_DEV_AUTH").as_deref() {
-            None | Some("false") | Some("0") => false,
-            Some("true") | Some("1") => true,
-            Some(other) => {
-                return err(format!(
-                    "ZUNDER_DEV_AUTH muss true oder false sein: {other}"
-                ))
-            }
-        };
         if dev_auth && !is_loopback_url(&public_url) {
             return err(
                 "ZUNDER_DEV_AUTH=true ist nur mit einer lokalen ZUNDER_PUBLIC_URL \
@@ -323,5 +334,30 @@ mod tests {
             ("ZUNDER_PUBLIC_URL", "https://zunder.example.org")
         ])
         .is_err());
+    }
+
+    #[test]
+    fn dev_auth_binds_loopback_only() {
+        let c = cfg(&[("ZUNDER_DEV_AUTH", "true")]).unwrap();
+        assert_eq!(c.bind.to_string(), "127.0.0.1:8080");
+        assert_eq!(c.public_url.as_str(), "http://localhost:8080/");
+        assert!(cfg(&[("ZUNDER_DEV_AUTH", "true"), ("ZUNDER_BIND", "[::1]:9000")]).is_ok());
+        for bind in ["0.0.0.0:8080", "[::]:8080", "192.0.2.2:8080"] {
+            assert!(
+                cfg(&[("ZUNDER_DEV_AUTH", "true"), ("ZUNDER_BIND", bind)]).is_err(),
+                "{bind}"
+            );
+        }
+        // explicit escape hatch for containers
+        let c = cfg(&[
+            ("ZUNDER_DEV_AUTH", "true"),
+            ("ZUNDER_BIND", "0.0.0.0:8080"),
+            ("ZUNDER_DEV_AUTH_ALLOW_REMOTE", "true"),
+        ])
+        .unwrap();
+        assert!(c.dev_auth);
+        assert!(cfg(&[("ZUNDER_DEV_AUTH_ALLOW_REMOTE", "ja")]).is_err());
+        // without dev auth the default stays on all interfaces
+        assert_eq!(cfg(&[]).unwrap().bind.to_string(), "0.0.0.0:8080");
     }
 }

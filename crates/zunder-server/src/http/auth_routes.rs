@@ -12,7 +12,9 @@ use cookie::{Cookie, SameSite};
 use serde::Deserialize;
 
 use crate::app::App;
-use crate::auth::middleware::{clear_session_cookie, cookie_value, session_cookie};
+use crate::auth::middleware::{
+    clear_session_cookie, cookie_value, dev_auth_applies, session_cookie,
+};
 use crate::auth::oidc::{OidcClient, LOGIN_COOKIE, LOGIN_TTL};
 use crate::auth::{has_client_header, missing_client_header, SESSION_COOKIE};
 use crate::error::AppError;
@@ -32,9 +34,20 @@ pub fn routes<S>(state: AuthState) -> Router<S> {
 }
 
 /// Only local paths are allowed as return targets (no open redirect).
+///
+/// Browsers strip TAB, CR and LF anywhere in a URL before parsing it, so
+/// `/\t/evil.example` would become the protocol-relative `//evil.example`.
+/// Any control or whitespace character therefore rejects the value outright.
 fn safe_return_to(raw: Option<&str>) -> String {
     match raw {
-        Some(p) if p.starts_with('/') && !p.starts_with("//") && !p.contains('\\') => p.to_owned(),
+        Some(p)
+            if p.starts_with('/')
+                && !p.starts_with("//")
+                && !p.contains('\\')
+                && !p.chars().any(|c| c.is_control() || c.is_whitespace()) =>
+        {
+            p.to_owned()
+        }
         _ => "/".to_owned(),
     }
 }
@@ -82,10 +95,20 @@ struct LoginQuery {
     return_to: Option<String>,
 }
 
-async fn login(State(state): State<AuthState>, Query(q): Query<LoginQuery>) -> Response {
+async fn login(
+    State(state): State<AuthState>,
+    headers: HeaderMap,
+    Query(q): Query<LoginQuery>,
+) -> Response {
     let return_to = safe_return_to(q.return_to.as_deref());
     let app = &state.app;
     if app.config().dev_auth {
+        if !dev_auth_applies(app, &headers) {
+            return error_page(
+                StatusCode::FORBIDDEN,
+                "Die Anmeldung ohne OIDC (ZUNDER_DEV_AUTH) gilt nur über localhost.",
+            );
+        }
         return match dev_login(app, &return_to).await {
             Ok(response) => response,
             Err(e) => error_page(e.status(), &e.to_string()),
@@ -190,7 +213,8 @@ async fn callback(
     match result {
         Ok(session) => {
             tracing::info!("OIDC login successful");
-            let mut response = redirect(&done.return_to);
+            // Checked again: the pending login may predate a stricter rule.
+            let mut response = redirect(&safe_return_to(Some(&done.return_to)));
             let headers = response.headers_mut();
             headers.append(SET_COOKIE, clear_login);
             headers.append(
@@ -233,5 +257,17 @@ mod tests {
         assert_eq!(safe_return_to(Some("//evil.example")), "/");
         assert_eq!(safe_return_to(Some("https://evil.example")), "/");
         assert_eq!(safe_return_to(Some("/\\evil.example")), "/");
+        assert_eq!(safe_return_to(Some("/inbox?x=1#y")), "/inbox?x=1#y");
+        for evil in [
+            "/\t/evil.example",
+            "/\n/evil.example",
+            "/\r/evil.example",
+            "/ /evil.example",
+            "\t//evil.example",
+            "/\u{0}/evil.example",
+            "/\u{a0}/evil.example",
+        ] {
+            assert_eq!(safe_return_to(Some(evil)), "/", "{evil:?}");
+        }
     }
 }

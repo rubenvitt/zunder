@@ -1,8 +1,11 @@
 //! Request authentication for `/api` (and other protected routes).
 
 use axum::extract::{FromRequestParts, Request, State};
-use axum::http::header::{AUTHORIZATION, COOKIE, SET_COOKIE};
+use std::net::IpAddr;
+
+use axum::http::header::{AUTHORIZATION, COOKIE, HOST, SET_COOKIE};
 use axum::http::request::Parts;
+use axum::http::uri::Authority;
 use axum::http::{HeaderMap, HeaderValue, Method};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
@@ -73,6 +76,34 @@ pub fn clear_session_cookie(app: &App) -> HeaderValue {
     session_cookie(app, "", 0)
 }
 
+/// Whether the `Host` header names a loopback host (`localhost`,
+/// `127.0.0.0/8`, `[::1]`) on any port.
+fn is_loopback_host(headers: &HeaderMap) -> bool {
+    let Some(authority) = headers
+        .get(HOST)
+        .and_then(|v| v.to_str().ok())
+        .filter(|v| !v.contains('@'))
+        .and_then(|v| v.parse::<Authority>().ok())
+    else {
+        return false;
+    };
+    let host = authority.host();
+    let host = host
+        .strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .unwrap_or(host);
+    host.eq_ignore_ascii_case("localhost")
+        || host.parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())
+}
+
+/// Whether dev auth may stand in for credentials on this request: only with
+/// `ZUNDER_DEV_AUTH=true` and only for requests addressed to a loopback host,
+/// so neither another machine nor a DNS-rebinding website (whose requests
+/// carry its own host name) acts as the owner.
+pub fn dev_auth_applies(app: &App, headers: &HeaderMap) -> bool {
+    app.config().dev_auth && is_loopback_host(headers)
+}
+
 fn is_safe_method(method: &Method) -> bool {
     matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS)
 }
@@ -115,7 +146,7 @@ async fn authenticate(
             return Ok(auth.principal);
         }
     }
-    if app.config().dev_auth {
+    if dev_auth_applies(app, headers) {
         return Ok(Principal {
             user_id: app.owner_id(),
             kind: PrincipalKind::DevAuto,
@@ -137,7 +168,7 @@ pub async fn browser_principal(
             return Ok(Some((auth.principal, super::sha256_hex(id))));
         }
     }
-    if app.config().dev_auth {
+    if dev_auth_applies(app, headers) {
         return Ok(Some((
             Principal {
                 user_id: app.owner_id(),

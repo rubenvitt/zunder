@@ -490,6 +490,83 @@ async fn dev_auth_logs_in_without_oidc() {
 }
 
 #[tokio::test]
+async fn dev_auth_only_for_loopback_hosts() {
+    let s = TestServer::with_config(|c| c.dev_auth = true).await;
+    let with_host = |method: Method, path: &str, host: &str| {
+        Request::builder()
+            .method(method)
+            .uri(path)
+            .header(header::HOST, host)
+            .header("x-zunder-client", "web")
+            .header(header::CONTENT_TYPE, "application/json")
+    };
+    for host in [
+        "localhost",
+        "localhost:5173",
+        "127.0.0.1:8080",
+        "[::1]:8080",
+    ] {
+        let r = s
+            .send(
+                with_host(Method::GET, "/api/me", host)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{host}");
+    }
+    // DNS rebinding or a foreign machine: the Host names someone else
+    for host in [
+        "rebind.attacker.example:8080",
+        "192.0.2.2:8080",
+        "localhost.attacker.example",
+        "localhost@evil.example",
+    ] {
+        let r = s
+            .send(
+                with_host(Method::GET, "/api/me", host)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::UNAUTHORIZED, "{host}");
+        let r = s
+            .send(
+                with_host(Method::POST, "/api/tokens", host)
+                    .body(Body::from(json!({"name": "x"}).to_string()))
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::UNAUTHORIZED, "{host}");
+        let r = s
+            .send(
+                with_host(Method::GET, "/auth/login", host)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::FORBIDDEN, "{host}");
+        assert!(r.cookie("zunder_session").is_none());
+    }
+}
+
+#[tokio::test]
+async fn login_rejects_return_to_with_control_characters() {
+    let s = TestServer::with_config(|c| c.dev_auth = true).await;
+    for evil in [
+        "/%09/evil.example",
+        "/%0A/evil.example",
+        "/%0D/evil.example",
+    ] {
+        let r = s
+            .get(&format!("/auth/login?return_to={evil}"), Auth::None)
+            .await;
+        assert_eq!(r.status, StatusCode::SEE_OTHER);
+        assert_eq!(r.header("location"), Some("/"), "{evil}");
+    }
+}
+
+#[tokio::test]
 async fn session_cookie_is_secure_for_https() {
     let s = TestServer::with_config(|c| {
         c.dev_auth = true;
