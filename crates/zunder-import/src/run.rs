@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use anyhow::{bail, Result};
 use serde::Serialize;
 use zunder_core::hlc::system_time_ms;
-use zunder_core::{validate_push, Op, State};
+use zunder_core::{validate_push, EntityKind, State};
 
 use crate::convert::Conversion;
 use crate::ops::{self, DiffStats};
@@ -53,6 +53,8 @@ pub struct RunSummary {
     pub accepted: usize,
     /// Rejections predicted by the local check (same rules as the server).
     pub predicted_rejections: Vec<Rejected>,
+    /// Entities too large for a push body; never sent.
+    pub oversized: Vec<String>,
     pub rejected: Vec<Rejected>,
     pub warnings: Vec<PushWarning>,
 }
@@ -100,34 +102,62 @@ pub async fn run(
                 missing.join(", ")
             );
         }
+        check_existing_project_kinds(conversion, state)?;
     }
 
     let now = system_time_ms();
     let mut clock = ops::import_clock(state.as_ref());
     let (groups, stats) = ops::plan_ops(conversion.entities(), state.as_ref(), &mut clock, now);
-    let all_ops: Vec<Op> = groups.iter().flat_map(|g| g.ops.iter().cloned()).collect();
     let index = OpIndex::new(&groups);
 
     let mut summary = RunSummary {
         dry_run: options.dry_run,
-        ops: all_ops.len(),
         ..summary_from(stats)
     };
 
-    // Local check with the same rules as the server, before anything is
-    // written: avoids half-finished imports.
-    let empty = State::new();
-    let outcome = validate_push(state.as_ref().unwrap_or(&empty), &all_ops, now);
-    summary.predicted_rejections = outcome
-        .rejected
+    // Entities too large for any push body are left out (the server would
+    // answer 413); the check below then also predicts what depends on them.
+    let (oversized, groups): (Vec<_>, Vec<_>) = groups
+        .into_iter()
+        .partition(|g| ops::group_bytes(g) > ops::MAX_PUSH_BYTES);
+    summary.oversized = oversized
         .iter()
-        .map(|r| index.describe(&r.op_id.to_string(), r.code.as_str(), &r.message))
+        .map(|g| format!("{} ({} KiB)", g.label, ops::group_bytes(g) / 1024))
         .collect();
-
-    let batches = ops::batches(&groups, options.batch_size);
+    let batches = ops::batches(&groups, options.batch_size, ops::MAX_PUSH_BYTES);
     summary.batches = batches.len();
+    summary.ops = batches.iter().map(Vec::len).sum();
+
+    // Local check with the same rules as the server, before anything is
+    // written: avoids half-finished imports. The server validates every
+    // batch on its own against its state at that moment, so the check does
+    // the same, batch by batch on a copy of the snapshot.
+    let mut simulated = state.clone().unwrap_or_default();
+    for batch in &batches {
+        let outcome = validate_push(&simulated, batch, now);
+        summary.predicted_rejections.extend(
+            outcome
+                .rejected
+                .iter()
+                .map(|r| index.describe(&r.op_id.to_string(), r.code.as_str(), &r.message)),
+        );
+        for op in &outcome.new_ops {
+            simulated.apply(op);
+        }
+    }
+
     if options.dry_run {
         return Ok(summary);
+    }
+    if !summary.oversized.is_empty() && !options.keep_going {
+        bail!(
+            "{} Einträge sind zu groß für eine Anfrage an Zunder (höchstens {} MiB), es wurde \
+             nichts geschrieben:\n{}\nMeist ist es eine sehr lange Beschreibung: in ClickUp \
+             kürzen oder die Liste überspringen. Mit --keep-going werden sie ausgelassen.",
+            summary.oversized.len(),
+            ops::MAX_PUSH_BYTES / (1024 * 1024),
+            list_oversized(&summary.oversized)
+        );
     }
     if !summary.predicted_rejections.is_empty() && !options.keep_going {
         bail!(
@@ -168,6 +198,36 @@ pub async fn run(
         }
     }
     Ok(summary)
+}
+
+/// The conversion applies the dev rules (bug/feature/review only in dev
+/// projects) with the `kind` from the mapping file. For projects mapped via
+/// `existing_id` nothing is written, so a `kind` that differs from the real
+/// project would silently downgrade (or wrongly keep) dev types and
+/// statuses. Refuse instead.
+fn check_existing_project_kinds(conversion: &Conversion, state: &State) -> Result<()> {
+    let mismatched: Vec<String> = conversion
+        .existing_project_kinds
+        .iter()
+        .filter_map(|(id, name, kind)| {
+            let actual = state.live_entity(EntityKind::Project, *id)?.project_kind();
+            (actual != *kind).then(|| {
+                format!(
+                    "Projekt „{name}“ ({id}) ist in Zunder kind = \"{actual}\", \
+                     in der Zuordnung kind = \"{kind}\""
+                )
+            })
+        })
+        .collect();
+    if !mismatched.is_empty() {
+        bail!(
+            "Bei Projekten mit existing_id muss kind der Art des Zunder-Projekts entsprechen \
+             (davon hängt ab, ob bug/feature/review erhalten bleiben). Bitte in der \
+             Zuordnungsdatei anpassen:\n  - {}",
+            mismatched.join("\n  - ")
+        );
+    }
+    Ok(())
 }
 
 fn summary_from(stats: DiffStats) -> RunSummary {
@@ -234,6 +294,22 @@ pub fn list_rejections(rejected: &[Rejected]) -> String {
     out
 }
 
+fn list_oversized(oversized: &[String]) -> String {
+    let mut out = oversized
+        .iter()
+        .take(MAX_LISTED)
+        .map(|label| format!("  - {label}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if oversized.len() > MAX_LISTED {
+        out.push_str(&format!(
+            "\n  … und {} weitere",
+            oversized.len() - MAX_LISTED
+        ));
+    }
+    out
+}
+
 /// German text summary of a run.
 pub fn render_summary(s: &RunSummary) -> String {
     let mut out = String::new();
@@ -262,6 +338,17 @@ pub fn render_summary(s: &RunSummary) -> String {
         ));
     }
     out.push('\n');
+    if !s.oversized.is_empty() {
+        out.push_str(&format!(
+            "Zu groß für eine Anfrage, {}:\n{}\n",
+            if s.dry_run {
+                "würden ausgelassen"
+            } else {
+                "ausgelassen"
+            },
+            list_oversized(&s.oversized)
+        ));
+    }
     if s.dry_run && !s.predicted_rejections.is_empty() {
         out.push_str(&format!(
             "Die lokale Prüfung würde {} Operationen ablehnen:\n{}\n",

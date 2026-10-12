@@ -58,7 +58,7 @@ Hilfe zu allen Optionen: `zunder-import --help` bzw. `zunder-import <befehl> --h
 zunder-import backup --out ~/zunder-umstieg/backup-$(date +%F)
 ```
 
-Roh-JSON aller Spaces, Ordner, Listen, Aufgaben (auch geschlossene) und Zeiteinträge. Das ist die erste Sicherung; am Umstiegstag folgt die finale. Das Verzeichnis verschlüsselt aufbewahren (z. B. in einem verschlüsselten Archiv im Vault-Backup), nie im Repo.
+Roh-JSON aller Spaces, Ordner, Listen, Aufgaben (auch geschlossene, je Aufgabe mit vollständigen Details und Anhang-Metadaten), Kommentare samt Antworten und Zeiteinträge. Kommentare übernimmt der Import nicht nach Zunder; die Sicherung ist ihr einziger Ort. Das ist die erste Sicherung; am Umstiegstag folgt die finale. Das Verzeichnis verschlüsselt aufbewahren (z. B. in einem verschlüsselten Archiv im Vault-Backup), nie im Repo.
 
 ### Schritt 2: Probelauf → Zuordnungsdatei
 
@@ -215,7 +215,7 @@ Die Übersetzung alter ClickUp-Statusnamen auf diese Codes gehört nicht in die 
 ## 5. Kündigung
 
 - [ ] Sicherheitsnetz-Liste abgearbeitet, nichts fehlt mehr.
-- [ ] Finale Komplettsicherung ist lesbar (Stichprobe: eine Aufgabe und ein Zeiteintrag im JSON gefunden) und verschlüsselt an zwei Orten abgelegt.
+- [ ] Finale Komplettsicherung ist lesbar (Stichprobe: eine Aufgabe, ein Kommentar und ein Zeiteintrag im JSON gefunden; `manifest.json` zählt Kommentare) und verschlüsselt an zwei Orten abgelegt.
 - [ ] Zeiteinträge, die noch gebraucht werden, sind in Timing.
 - [ ] ClickUp-API-Token widerrufen, ClickUp-Connector überall entfernt.
 - [ ] Funke schreibt nicht mehr nach ClickUp.

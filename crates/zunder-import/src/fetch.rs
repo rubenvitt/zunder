@@ -7,7 +7,7 @@ use anyhow::{bail, Context, Result};
 use serde_json::Value;
 
 use crate::clickup::model::{self, Folder, List, Raw, Space, Task, Team};
-use crate::clickup::ClickUpApi;
+use crate::clickup::{ClickUpApi, COMMENTS_PAGE_SIZE};
 
 /// Safety net against an API that never reports its last page.
 const MAX_PAGES: u32 = 10_000;
@@ -327,4 +327,93 @@ pub async fn fetch_parents(
         }
     }
     Ok((extra, missing))
+}
+
+/// What comments belong to.
+#[derive(Debug, Clone, Copy)]
+pub enum CommentParent<'a> {
+    Task(&'a str),
+    List(&'a str),
+}
+
+/// A JSON string or number as string (ClickUp is not consistent).
+fn scalar(value: Option<&Value>) -> Option<String> {
+    match value? {
+        Value::String(s) if !s.is_empty() => Some(s.clone()),
+        Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    }
+}
+
+fn comments_array(body: &Value, what: &str) -> Result<Vec<Value>> {
+    match body.get("comments") {
+        Some(Value::Array(a)) => Ok(a.clone()),
+        Some(Value::Null) | None => Ok(Vec::new()),
+        Some(_) => bail!("Kommentare von {what}: \"comments\" ist keine Liste"),
+    }
+}
+
+/// All comments of a task or list as raw JSON, newest first (all pages).
+/// Every comment with replies additionally carries them, raw, under the
+/// key `"replies"` (the only field the backup adds). Unknown task/list →
+/// empty.
+pub async fn fetch_comments(
+    api: &impl ClickUpApi,
+    parent: CommentParent<'_>,
+) -> Result<Vec<Value>> {
+    let what = match parent {
+        CommentParent::Task(id) => format!("Aufgabe {id}"),
+        CommentParent::List(id) => format!("Liste {id}"),
+    };
+    let mut out: Vec<Value> = Vec::new();
+    let mut seen = HashSet::new();
+    let mut start: Option<(String, String)> = None;
+    for _ in 0..MAX_PAGES {
+        let start_ref = start.as_ref().map(|(d, i)| (d.as_str(), i.as_str()));
+        let body = match parent {
+            CommentParent::Task(id) => api.task_comments(id, start_ref).await?,
+            CommentParent::List(id) => api.list_comments(id, start_ref).await?,
+        };
+        let Some(body) = body else {
+            break;
+        };
+        let page = comments_array(&body, &what)?;
+        let oldest = page
+            .last()
+            .and_then(|c| Some((scalar(c.get("date"))?, scalar(c.get("id"))?)));
+        let full = page.len() >= COMMENTS_PAGE_SIZE;
+        let mut new = 0;
+        for comment in page {
+            if scalar(comment.get("id")).is_some_and(|id| !seen.insert(id)) {
+                continue;
+            }
+            new += 1;
+            out.push(comment);
+        }
+        // Next page from the oldest comment; stop on a short page or when a
+        // page brings nothing new (never loop on an inclusive `start`).
+        match oldest {
+            Some(next) if full && new > 0 => start = Some(next),
+            _ => break,
+        }
+    }
+    for comment in &mut out {
+        let replies = comment
+            .get("reply_count")
+            .and_then(|c| scalar(Some(c)))
+            .and_then(|c| c.parse::<u64>().ok())
+            .unwrap_or(0);
+        let Some(id) = scalar(comment.get("id")).filter(|_| replies > 0) else {
+            continue;
+        };
+        let body = api.comment_replies(&id).await?;
+        let replies = match body {
+            Some(body) => comments_array(&body, &format!("Kommentar {id}"))?,
+            None => Vec::new(),
+        };
+        if let Value::Object(map) = comment {
+            map.insert("replies".into(), Value::Array(replies));
+        }
+    }
+    Ok(out)
 }

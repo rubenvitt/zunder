@@ -9,8 +9,8 @@ use uuid::Uuid;
 use zunder_core::hlc::{Clock, NodeId};
 use zunder_core::ids::clickup_entity_id;
 use zunder_core::{
-    AreaState, EntityKind, Location, NewArea, NewTask, OpBatch, ProjectKind, ProjectStatus,
-    TaskStatus, TaskType,
+    AreaState, EntityKind, Location, NewArea, NewProject, NewTask, OpBatch, ProjectKind,
+    ProjectStatus, TaskStatus, TaskType,
 };
 use zunder_import::convert::Conversion;
 use zunder_import::mapping::Mapping;
@@ -186,6 +186,26 @@ async fn imports_everything_with_correct_fields() {
         Location::Inbox
     );
     assert_eq!(state.task(task_id("86b001")).unwrap().rank, None);
+
+    // ClickUp history: a task closed in ClickUp days ago is dated to its
+    // date_closed and stays out of the default views (3-day rule); the
+    // creation is dated to date_created.
+    let now = zunder_core::hlc::system_time_ms();
+    let paper = task_id("86a003");
+    assert_eq!(
+        state.status_changed_at(paper).unwrap().wall_ms(),
+        1_790_900_000_000
+    );
+    assert!(!state.is_visible_by_default(paper, now));
+    assert_eq!(
+        state
+            .created_at(EntityKind::Task, windows.id)
+            .unwrap()
+            .wall_ms(),
+        1_790_000_000_000
+    );
+    // Without ClickUp dates the import time applies.
+    assert!(state.is_visible_by_default(scanner.id, now));
 
     // The closed archived parent has an open subtask: a warning, no rejection.
     assert_eq!(summary.warnings.len(), 1);
@@ -407,6 +427,143 @@ async fn existing_ids_map_onto_existing_entities() {
         .await
         .unwrap_err();
     assert!(err.to_string().contains("existing_id"), "{err}");
+}
+
+#[tokio::test]
+async fn existing_projects_must_declare_their_real_kind() {
+    let clickup = ClickUpMock::start().await;
+    let zunder = ZunderMock::start().await;
+    let mut web = Clock::new(NodeId::new("web-test").unwrap());
+    let mut batch = OpBatch::new(&mut web, zunder_core::hlc::system_time_ms());
+    let area = batch.create_area(NewArea::new("Werkstatt"));
+    let dev = batch.create_project(NewProject {
+        kind: ProjectKind::Dev,
+        ..NewProject::new("Werkzeugkiste", area)
+    });
+    zunder.apply(batch.ops());
+    let before = zunder.log_len();
+
+    // The proposal says kind = "standard"; with existing_id nothing is
+    // written, so the dev rules would silently turn bug/feature/review
+    // into aufgabe/in_progress although the real project is a dev project.
+    let mut mapping = mapping(&clickup).await;
+    let tools = mapping.projects.get_mut("werkzeugkiste").unwrap();
+    tools.existing_id = Some(dev.to_string());
+    tools.kind = Some("standard".into());
+    tools.repo = None;
+    let err = import(&clickup, &zunder, &mapping, &opts(500))
+        .await
+        .unwrap_err();
+    let message = err.to_string();
+    assert!(message.contains("existing_id"), "{message}");
+    assert!(message.contains("kind = \"dev\""), "{message}");
+    assert_eq!(zunder.log_len(), before, "nothing written");
+
+    // With the real kind the dev types and statuses survive.
+    let tools = mapping.projects.get_mut("werkzeugkiste").unwrap();
+    tools.kind = Some("dev".into());
+    let summary = import(&clickup, &zunder, &mapping, &opts(500))
+        .await
+        .unwrap();
+    assert!(summary.rejected.is_empty(), "{:?}", summary.rejected);
+    let state = zunder.state();
+    let feature = state.task(task_id("86f001")).unwrap();
+    assert_eq!(feature.location, Location::Project { id: dev });
+    assert_eq!(feature.task_type, TaskType::Feature);
+    assert_eq!(feature.status, TaskStatus::Review);
+    assert_eq!(
+        state.task(task_id("86f003")).unwrap().task_type,
+        TaskType::Bug
+    );
+}
+
+#[tokio::test]
+async fn dev_project_becoming_standard_survives_small_batches() {
+    let clickup = ClickUpMock::start().await;
+    let zunder = ZunderMock::start().await;
+    let mut mapping = mapping(&clickup).await;
+    import(&clickup, &zunder, &mapping, &opts(500))
+        .await
+        .unwrap();
+
+    // Werkzeugkiste stops being a dev project: its bug/feature/review tasks
+    // are downgraded. The server checks every batch on its own, so the
+    // downgrades must not arrive after the project's kind change.
+    let tools = mapping.projects.get_mut("werkzeugkiste").unwrap();
+    tools.kind = Some("standard".into());
+    tools.repo = None;
+    let summary = import(&clickup, &zunder, &mapping, &opts(2)).await.unwrap();
+    assert!(summary.predicted_rejections.is_empty());
+    assert!(summary.rejected.is_empty(), "{:?}", summary.rejected);
+    assert!(summary.batches > 1);
+    let state = zunder.state();
+    let project = state
+        .project(clickup_entity_id(EntityKind::Project, "folder-90021"))
+        .unwrap();
+    assert_eq!(project.kind, ProjectKind::Standard);
+    let feature = state.task(task_id("86f001")).unwrap();
+    assert_eq!(feature.task_type, TaskType::Aufgabe);
+    assert_eq!(feature.status, TaskStatus::InProgress);
+    assert_eq!(
+        state.task(task_id("86f003")).unwrap().task_type,
+        TaskType::Aufgabe
+    );
+}
+
+#[tokio::test]
+async fn oversized_entities_are_never_sent() {
+    let clickup = ClickUpMock::start().await;
+    let zunder = ZunderMock::start().await;
+    clickup.edit_task("/list/9001001/task?page=0", "86a002", |task| {
+        task.insert(
+            "markdown_description".into(),
+            json!("Protokoll ".repeat(800 * 1024)),
+        );
+    });
+    let mapping = mapping(&clickup).await;
+
+    // The dry run names the entity and, because the check runs on the real
+    // batches, the subtasks that depend on it.
+    let dry = import(
+        &clickup,
+        &zunder,
+        &mapping,
+        &RunOptions {
+            dry_run: true,
+            ..opts(500)
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(dry.oversized.len(), 1);
+    assert!(dry.oversized[0].contains("86a002"), "{:?}", dry.oversized);
+    assert!(dry
+        .predicted_rejections
+        .iter()
+        .any(|r| r.entity.contains("86a004")));
+    assert!(run::render_summary(&dry).contains("Zu groß für eine Anfrage"));
+
+    let err = import(&clickup, &zunder, &mapping, &opts(500))
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("zu groß"), "{err}");
+    assert_eq!(zunder.log_len(), 0, "nothing written");
+
+    let summary = import(
+        &clickup,
+        &zunder,
+        &mapping,
+        &RunOptions {
+            keep_going: true,
+            ..opts(500)
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(summary.oversized.len(), 1);
+    let state = zunder.state();
+    assert!(state.task(task_id("86a002")).is_none());
+    assert!(state.task(task_id("86a001")).is_some());
 }
 
 #[tokio::test]
