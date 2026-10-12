@@ -1,6 +1,17 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EVENTS, type AppConfig, type TauriBackend } from "../src/platform/tauri";
-import { appConfig, desktopSync, initDesktop, isConfigured, resetDesktopForTests, saveConnection, syncNow } from "../src/state/desktop";
+import {
+  appConfig,
+  defaultDeviceName,
+  desktopSync,
+  initDesktop,
+  isConfigured,
+  loginState,
+  resetDesktopForTests,
+  saveConnection,
+  startLogin,
+  syncNow,
+} from "../src/state/desktop";
 import { api, pendingCount, setNotifier } from "../src/state/store";
 import type { Rejection } from "../src/sync/types";
 
@@ -46,6 +57,8 @@ function fakeApp(initial: Partial<AppConfig> = {}) {
         }
         case "task_history":
           return [] as T;
+        case "login_start":
+          return undefined as T;
         default:
           throw `command ${cmd} not found`;
       }
@@ -162,5 +175,46 @@ describe("desktop state", () => {
     await initDesktop(fake.backend);
     fake.failures.set("sync_now", { code: "network", message: "Server nicht erreichbar: timeout" });
     expect(await syncNow()).toMatchObject({ ok: false, code: "network", message: "Server nicht erreichbar: timeout" });
+  });
+
+  it("logs in through the browser: login_start, then the login event stores and syncs", async () => {
+    const fake = fakeApp();
+    await initDesktop(fake.backend);
+    expect(await startLogin({ serverUrl: " https://zunder.example.org ", deviceName: " iPhone " })).toEqual({ ok: true });
+    expect(fake.calls.at(-1)).toEqual({
+      cmd: "login_start",
+      args: { server_url: "https://zunder.example.org", device_name: "iPhone", discard_pending: false },
+    });
+    expect(loginState().state).toBe("waiting");
+
+    // The app stored the device token before it reports the login.
+    fake.config.server_url = "https://zunder.example.org";
+    fake.config.has_api_token = true;
+    fake.emit(EVENTS.login, { ok: true });
+    await vi.waitFor(() => expect(fake.calls.some((c) => c.cmd === "sync_now")).toBe(true));
+    expect(loginState().state).toBe("done");
+    expect(isConfigured()).toBe(true);
+  });
+
+  it("reports a failed login and a refused start", async () => {
+    const fake = fakeApp();
+    await initDesktop(fake.backend);
+    await startLogin({ serverUrl: "https://zunder.example.org", deviceName: "Mac" });
+    fake.emit(EVENTS.login, { ok: false, error: { code: "login", message: "Anmeldung: Die Anmeldung wurde abgelehnt" } });
+    expect(loginState()).toEqual({ state: "error", code: "login", message: "Anmeldung: Die Anmeldung wurde abgelehnt" });
+
+    fake.failures.set("login_start", { code: "pending_ops", message: "2 lokale Änderungen sind noch nicht übertragen" });
+    const refused = await startLogin({ serverUrl: "https://other.example.org", deviceName: "Mac" });
+    expect(refused).toMatchObject({ ok: false, code: "pending_ops" });
+    expect(loginState().state).toBe("idle");
+    await startLogin({ serverUrl: "https://other.example.org", deviceName: "Mac", discardPending: true });
+    expect(fake.calls.at(-1)?.args).toMatchObject({ discard_pending: true });
+  });
+
+  it("suggests a device name from the user agent", () => {
+    expect(defaultDeviceName("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)")).toBe("iPhone");
+    expect(defaultDeviceName("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")).toBe("Mac");
+    expect(defaultDeviceName("Mozilla/5.0 (Linux; Android 15)")).toBe("Android");
+    expect(defaultDeviceName("curl")).toBe("Zunder-App");
   });
 });

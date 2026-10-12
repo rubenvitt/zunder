@@ -18,6 +18,7 @@ import { asFlameResult, HttpError, NetworkError, type ApiClient, type Subscripti
 import type {
   ApiToken,
   CreatedToken,
+  Device,
   FlameResult,
   HistoryEntry,
   Me,
@@ -97,9 +98,13 @@ export interface ChangedEvent {
   pending: number;
 }
 
+/** A login in the system browser finished (the browser came back to the app). */
+export type LoginEvent = { ok: true } | { ok: false; error: AppErrorBody };
+
 export const EVENTS = {
   changed: "zunder://changed",
   sync: "zunder://sync",
+  login: "zunder://login",
 } as const;
 
 // ---- Backend: invoke + listen (real Tauri API or a test double) ----------
@@ -162,7 +167,7 @@ export function appErrorCode(err: unknown): string {
 }
 
 export const TOKENS_UNSUPPORTED =
-  "API-Tokens und verbundene Apps lassen sich nur in der Web-Oberfläche mit Browser-Anmeldung verwalten.";
+  "API-Tokens, verbundene Apps und Geräte lassen sich nur in der Web-Oberfläche mit Browser-Anmeldung verwalten.";
 
 export const SETTINGS_UNSUPPORTED = "Einstellungen des Servers lassen sich nur in der Web-Oberfläche mit Browser-Anmeldung ändern.";
 
@@ -174,6 +179,7 @@ export class TauriApp {
   private readonly handlers = {
     sync: new Set<Handler<SyncEvent>>(),
     changed: new Set<Handler<ChangedEvent>>(),
+    login: new Set<Handler<LoginEvent>>(),
   };
   private unlisten: UnlistenFn[] = [];
 
@@ -185,13 +191,15 @@ export class TauriApp {
     app.unlisten = await Promise.all([
       app.backend.listen<SyncEvent>(EVENTS.sync, (e) => app.dispatch("sync", e.payload)),
       app.backend.listen<ChangedEvent>(EVENTS.changed, (e) => app.dispatch("changed", e.payload)),
+      app.backend.listen<LoginEvent>(EVENTS.login, (e) => app.dispatch("login", e.payload)),
     ]);
     return app;
   }
 
   on(event: "sync", handler: Handler<SyncEvent>): () => void;
   on(event: "changed", handler: Handler<ChangedEvent>): () => void;
-  on(event: "sync" | "changed", handler: Handler<never>): () => void {
+  on(event: "login", handler: Handler<LoginEvent>): () => void;
+  on(event: "sync" | "changed" | "login", handler: Handler<never>): () => void {
     const set = this.handlers[event] as Set<Handler<never>>;
     set.add(handler);
     return () => set.delete(handler);
@@ -202,7 +210,7 @@ export class TauriApp {
     this.unlisten = [];
   }
 
-  private dispatch(event: "sync" | "changed", payload: unknown): void {
+  private dispatch(event: "sync" | "changed" | "login", payload: unknown): void {
     for (const handler of this.handlers[event] as Set<Handler<unknown>>) {
       try {
         handler(payload);
@@ -230,6 +238,11 @@ export class TauriApp {
 
   syncNow(): Promise<SyncReport> {
     return this.call("sync_now");
+  }
+
+  /** Opens the server's login in the system browser; the outcome arrives as `login` event. */
+  loginStart(serverUrl: string, deviceName: string, discardPending: boolean): Promise<void> {
+    return this.call("login_start", { server_url: serverUrl, device_name: deviceName, discard_pending: discardPending });
   }
 
   localSnapshot(): Promise<LocalSnapshot> {
@@ -343,6 +356,14 @@ export class TauriTransport implements SyncTransport, ApiClient {
 
   timingProjects(): Promise<TimingProject[]> {
     return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+  }
+
+  listDevices(): Promise<Device[]> {
+    return Promise.reject(new AppCommandError("unsupported", TOKENS_UNSUPPORTED));
+  }
+
+  revokeDevice(_id: string): Promise<void> {
+    return Promise.reject(new AppCommandError("unsupported", TOKENS_UNSUPPORTED));
   }
 
   async logout(): Promise<void> {

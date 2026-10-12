@@ -57,6 +57,8 @@ pub fn routes() -> Router<App> {
         )
         .route("/settings/timing/check", post(check_timing))
         .route("/settings/timing/projects", get(timing_projects))
+        .route("/devices", get(list_devices))
+        .route("/devices/{id}", delete(revoke_device))
         .layer(DefaultBodyLimit::max(API_BODY_LIMIT))
 }
 
@@ -385,5 +387,24 @@ async fn revoke_oauth_client(
 ) -> AppResult<StatusCode> {
     require_browser(&principal)?;
     oauth::revoke_client(&app, principal.user_id, &id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn list_devices(
+    State(app): State<App>,
+    principal: Principal,
+) -> AppResult<Json<Vec<oauth::DeviceInfo>>> {
+    require_browser(&principal)?;
+    Ok(Json(oauth::devices(&app, principal.user_id).await?))
+}
+
+async fn revoke_device(
+    State(app): State<App>,
+    principal: Principal,
+    Path(id): Path<String>,
+) -> AppResult<StatusCode> {
+    require_browser(&principal)?;
+    let id = parse_id(&id)?;
+    oauth::revoke_device(&app, principal.user_id, id).await?;
     Ok(StatusCode::NO_CONTENT)
 }

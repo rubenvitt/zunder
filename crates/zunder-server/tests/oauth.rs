@@ -1052,3 +1052,197 @@ async fn login_round_trip_with_dev_auth_returns_to_authorize() {
     assert_eq!(r.header("location"), Some(path.as_str()));
     assert!(r.cookie("zunder_session").is_some());
 }
+
+// ----- devices (Tauri app) -----------------------------------------------------------
+
+const APP_CALLBACK: &str = "dev.rubeen.zunder:/oauth";
+const API_RESOURCE: &str = "http://localhost:8080/api";
+const DEVICE: &str = "RPhone-16 (iOS)";
+
+/// Registers the app with its private-use scheme and returns the client ID.
+async fn register_app(s: &TestServer) -> String {
+    let r = register(
+        s,
+        json!({"client_name": DEVICE, "redirect_uris": [APP_CALLBACK]}),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::CREATED, "{}", r.text());
+    r.json()["client_id"].as_str().unwrap().to_owned()
+}
+
+fn device_authorize_path(client_id: &str) -> String {
+    authorize_path(
+        client_id,
+        &[("redirect_uri", APP_CALLBACK), ("resource", API_RESOURCE)],
+    )
+}
+
+/// Consents to a device grant and returns the code from the app redirect.
+async fn device_code(s: &TestServer, cookie: &str, client_id: &str) -> String {
+    let r = get_with_cookie(s, &device_authorize_path(client_id), Some(cookie)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    let id = request_id(&r.text());
+    let r = form_post(
+        s,
+        "/oauth/authorize",
+        Some(cookie),
+        Some(PUBLIC),
+        &[("request_id", &id), ("decision", "allow")],
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.text());
+    let to = location(&r);
+    assert_eq!(to.scheme(), "dev.rubeen.zunder");
+    assert_eq!(to.path(), "/oauth");
+    let q = query(&to);
+    assert_eq!(q["state"], "zustand-123");
+    assert_eq!(q["iss"], PUBLIC);
+    q["code"].clone()
+}
+
+async fn device_exchange(s: &TestServer, client_id: &str, code: &str) -> TestResponse {
+    token(
+        s,
+        &[
+            ("grant_type", "authorization_code"),
+            ("code", code),
+            ("redirect_uri", APP_CALLBACK),
+            ("client_id", client_id),
+            ("code_verifier", VERIFIER),
+            ("resource", API_RESOURCE),
+        ],
+    )
+    .await
+}
+
+/// The device token of a successful token response: no expiry, no refresh.
+fn device_token(r: &TestResponse) -> String {
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    let body = r.json();
+    assert_eq!(body["token_type"], "Bearer");
+    assert!(body.get("expires_in").is_none(), "{body}");
+    assert!(body.get("refresh_token").is_none(), "{body}");
+    let token = body["access_token"].as_str().unwrap().to_owned();
+    assert!(token.starts_with("zd_"), "{token}");
+    token
+}
+
+async fn api_status(s: &TestServer, token: &str) -> StatusCode {
+    s.get("/api/snapshot", Auth::Bearer(token)).await.status
+}
+
+#[tokio::test]
+async fn devices_log_in_via_oauth_and_are_revocable() {
+    let s = TestServer::new().await;
+    let client_id = register_app(&s).await;
+    let cookie = s.session().await;
+
+    // The consent page says what a device may do and where it goes.
+    let r = get_with_cookie(&s, &device_authorize_path(&client_id), Some(&cookie)).await;
+    let page = r.text();
+    assert!(page.contains("als Gerät"), "{page}");
+    assert!(page.contains("läuft nicht ab"), "{page}");
+    assert!(page.contains("<code>dev.rubeen.zunder:</code>"), "{page}");
+    assert!(page.contains("App auf diesem Gerät"), "{page}");
+
+    // Code → device token; it syncs but has no MCP access.
+    let code = device_code(&s, &cookie, &client_id).await;
+    let device = device_token(&device_exchange(&s, &client_id, &code).await);
+    assert_eq!(api_status(&s, &device).await, StatusCode::OK);
+    assert_eq!(mcp_status(&s, &device).await, StatusCode::UNAUTHORIZED);
+    let mut clock = common::client_clock();
+    let mut task = None;
+    let ops = common::ops(&mut clock, |b| {
+        task = Some(b.create_task(zunder_core::builder::NewTask::new("Vom Handy")));
+    });
+    let r = s.push(Auth::Bearer(&device), &ops).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    let r = s
+        .get(
+            &format!("/api/tasks/{}/history", task.unwrap()),
+            Auth::Bearer(&device),
+        )
+        .await;
+    assert_eq!(r.json()[0]["source"], format!("app:{DEVICE}"));
+
+    // Listed as a device, not as a token or connected app; browser only.
+    let session = s.session().await;
+    let devices = s.get("/api/devices", Auth::Cookie(&session)).await.json();
+    assert_eq!(devices.as_array().unwrap().len(), 1, "{devices}");
+    assert_eq!(devices[0]["name"], DEVICE);
+    assert!(devices[0]["last_used_at"].is_string());
+    let r = s.get("/api/tokens", Auth::Cookie(&session)).await;
+    assert_eq!(r.json(), json!([]));
+    let r = s.get("/api/oauth/clients", Auth::Cookie(&session)).await;
+    assert_eq!(r.json(), json!([]));
+    let r = s.get("/api/devices", Auth::Bearer(&device)).await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+
+    // Revoking on the token page cuts the device off.
+    let path = format!("/api/devices/{}", devices[0]["id"].as_str().unwrap());
+    let r = s
+        .request(Method::DELETE, &path, Auth::Web(&session), None)
+        .await;
+    assert_eq!(r.status, StatusCode::NO_CONTENT);
+    assert_eq!(api_status(&s, &device).await, StatusCode::UNAUTHORIZED);
+    let r = s
+        .request(Method::DELETE, &path, Auth::Web(&session), None)
+        .await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND);
+
+    // Replaying the code revokes the device issued for it.
+    let code = device_code(&s, &cookie, &client_id).await;
+    let second = device_token(&device_exchange(&s, &client_id, &code).await);
+    assert_eq!(api_status(&s, &second).await, StatusCode::OK);
+    let r = device_exchange(&s, &client_id, &code).await;
+    assert_eq!(oauth_error(&r), "invalid_grant");
+    assert_eq!(api_status(&s, &second).await, StatusCode::UNAUTHORIZED);
+
+    // The app revokes its own token (re-login, logout).
+    let code = device_code(&s, &cookie, &client_id).await;
+    let third = device_token(&device_exchange(&s, &client_id, &code).await);
+    let r = form_post(&s, "/oauth/revoke", None, None, &[("token", &third)]).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(api_status(&s, &third).await, StatusCode::UNAUTHORIZED);
+    let r = s.get("/api/devices", Auth::Cookie(&session)).await;
+    assert_eq!(r.json(), json!([]));
+}
+
+#[tokio::test]
+async fn device_grants_keep_their_resource() {
+    let s = TestServer::new().await;
+    let client_id = register_app(&s).await;
+    let cookie = s.session().await;
+
+    // A foreign resource is refused with a redirect to the app.
+    let r = get_with_cookie(
+        &s,
+        &authorize_path(
+            &client_id,
+            &[
+                ("redirect_uri", APP_CALLBACK),
+                ("resource", "https://evil.example/api"),
+            ],
+        ),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER);
+    assert_eq!(query(&location(&r))["error"], "invalid_target");
+
+    // A device code cannot be redeemed for MCP tokens.
+    let code = device_code(&s, &cookie, &client_id).await;
+    let r = token(
+        &s,
+        &[
+            ("grant_type", "authorization_code"),
+            ("code", &code),
+            ("redirect_uri", APP_CALLBACK),
+            ("client_id", &client_id),
+            ("code_verifier", VERIFIER),
+            ("resource", RESOURCE),
+        ],
+    )
+    .await;
+    assert_eq!(oauth_error(&r), "invalid_target");
+}

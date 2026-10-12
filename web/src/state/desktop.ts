@@ -11,6 +11,11 @@ const [config, setConfig] = createSignal<AppConfig | null>(null);
 const [lastEvent, setLastEvent] = createSignal<SyncEvent | null>(null);
 const [syncing, setSyncing] = createSignal(false);
 
+/** Login in the system browser: waiting for the browser, done, or failed. */
+export type LoginState = { state: "idle" } | { state: "waiting" } | { state: "done" } | { state: "error"; code: string; message: string };
+const [login, setLogin] = createSignal<LoginState>({ state: "idle" });
+export { login as loginState };
+
 let app: TauriApp | null = null;
 let errorCode: (err: unknown) => string = () => "app";
 
@@ -53,6 +58,19 @@ export async function initDesktop(backend?: TauriBackend): Promise<AppConfig> {
       reportRejected(event.report.rejected);
     }
     void refreshConfig();
+  });
+  app.on("login", (event) => {
+    if (!event.ok) {
+      setLogin({ state: "error", code: event.error.code, message: event.error.message });
+      return;
+    }
+    void (async () => {
+      await refreshConfig();
+      // A server switch cleared the local data; the first sync brings the new data.
+      await reloadData();
+      setLogin({ state: "done" });
+      await syncNow();
+    })();
   });
   const initial = await app.getConfig();
   setConfig(initial);
@@ -129,6 +147,40 @@ export async function saveConnection(input: { serverUrl: string; token: string; 
   return syncNow();
 }
 
+/** A default device name for the login (editable): the kind of device. */
+export function defaultDeviceName(userAgent = navigator.userAgent): string {
+  if (/iPhone/.test(userAgent)) return "iPhone";
+  if (/iPad/.test(userAgent)) return "iPad";
+  if (/Android/.test(userAgent)) return "Android";
+  if (/Mac/.test(userAgent)) return "Mac";
+  if (/Windows/.test(userAgent)) return "Windows-PC";
+  if (/Linux/.test(userAgent)) return "Linux";
+  return "Zunder-App";
+}
+
+/**
+ * Starts the login in the system browser. Resolves once the browser is open;
+ * the outcome follows as `loginState()` (`done` or `error`). Switching servers
+ * with pending changes fails right away with `pending_ops` unless `discardPending`.
+ */
+export async function startLogin(input: { serverUrl: string; deviceName: string; discardPending?: boolean }): Promise<ActionResult> {
+  try {
+    await connected().loginStart(input.serverUrl.trim(), input.deviceName.trim(), !!input.discardPending);
+    setLogin({ state: "waiting" });
+    return { ok: true };
+  } catch (err) {
+    setLogin({ state: "idle" });
+    return failure(err, false);
+  }
+}
+
+/** Re-reads the app's configuration (e.g. when the window is visible again: a login event may have been missed). */
+export async function reloadConfig(): Promise<AppConfig | null> {
+  if (!app) return null;
+  await refreshConfig();
+  return config();
+}
+
 /** Test hook: forget the connection. */
 export function resetDesktopForTests(): void {
   app?.close();
@@ -136,4 +188,5 @@ export function resetDesktopForTests(): void {
   setConfig(null);
   setLastEvent(null);
   setSyncing(false);
+  setLogin({ state: "idle" });
 }

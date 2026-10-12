@@ -4,6 +4,7 @@
 import type {
   ApiToken,
   CreatedToken,
+  Device,
   FlameResult,
   HistoryEntry,
   Me,
@@ -85,6 +86,8 @@ export interface ApiClient {
   resetTimingSettings(): Promise<TimingSettings>;
   checkTiming(): Promise<TimingCheck>;
   timingProjects(): Promise<TimingProject[]>;
+  listDevices(): Promise<Device[]>;
+  revokeDevice(id: string): Promise<void>;
   logout(): Promise<void>;
 }
 
@@ -220,6 +223,14 @@ export class HttpTransport implements SyncTransport, ApiClient {
 
   timingProjects(): Promise<TimingProject[]> {
     return this.request("GET", "/api/settings/timing/projects");
+  }
+
+  listDevices(): Promise<Device[]> {
+    return this.request<Device[]>("GET", "/api/devices").then((data) => (Array.isArray(data) ? data : []));
+  }
+
+  async revokeDevice(id: string): Promise<void> {
+    await this.request("DELETE", `/api/devices/${encodeURIComponent(id)}`);
   }
 
   async logout(): Promise<void> {

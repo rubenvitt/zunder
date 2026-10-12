@@ -1,10 +1,24 @@
 // UI of the Tauri app, loaded on demand (App.tsx): start-up without OIDC
-// login, the connection settings (server URL + API token; setup screen on
-// first start and "Verbindung" view) and the status of the app's own sync.
+// login, the connection settings (login in the system browser or server URL +
+// API token; setup screen on first start and "Verbindung" view) and the status
+// of the app's own sync.
 
-import { createSignal, Match, onMount, Show, Switch, type Component } from "solid-js";
+import { createEffect, createSignal, Match, on, onCleanup, onMount, Show, Switch, type Component } from "solid-js";
 import { Icon } from "../components/Icon";
-import { appConfig, appSyncing, desktopSync, initDesktop, isConfigured, saveConnection, syncNow, type ActionResult } from "../state/desktop";
+import {
+  appConfig,
+  appSyncing,
+  defaultDeviceName,
+  desktopSync,
+  initDesktop,
+  isConfigured,
+  loginState,
+  reloadConfig,
+  saveConnection,
+  startLogin,
+  syncNow,
+  type ActionResult,
+} from "../state/desktop";
 import { now, pendingCount, ready, startSync } from "../state/store";
 import { toast } from "../state/ui";
 import { formatInstant } from "../sync/dates";
@@ -84,19 +98,73 @@ export function DesktopSyncIndicator() {
 
 export function ConnectionView(props: { setup?: boolean; onConnected?: () => void }) {
   const [serverUrl, setServerUrl] = createSignal(appConfig()?.server_url ?? "");
+  const [deviceName, setDeviceName] = createSignal(defaultDeviceName());
   const [token, setToken] = createSignal("");
   const [busy, setBusy] = createSignal(false);
   const [result, setResult] = createSignal<ActionResult | null>(null);
   const [problem, setProblem] = createSignal("");
+  // Which action "Änderungen verwerfen und …" repeats.
+  const [retry, setRetry] = createSignal<"login" | "token">("login");
 
   const hasToken = () => !!appConfig()?.has_api_token;
 
-  async function save(discardPending = false) {
+  function urlOk(): boolean {
+    if (URL_PATTERN.test(serverUrl().trim())) return true;
+    setProblem("Bitte die Adresse des Servers mit http:// oder https:// angeben.");
+    return false;
+  }
+
+  async function signIn(discardPending = false) {
     setProblem("");
-    if (!URL_PATTERN.test(serverUrl().trim())) {
-      setProblem("Bitte die Adresse des Servers mit http:// oder https:// angeben.");
+    setResult(null);
+    setRetry("login");
+    if (!urlOk()) return;
+    if (!deviceName().trim()) {
+      setProblem("Bitte einen Gerätenamen angeben.");
       return;
     }
+    setBusy(true);
+    try {
+      const outcome = await startLogin({ serverUrl: serverUrl(), deviceName: deviceName(), discardPending });
+      if (!outcome.ok) setResult(outcome);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const loginErrorMessage = () => {
+    const s = loginState();
+    return s.state === "error" ? s.message : "";
+  };
+
+  // The browser came back: the app stored the device token and syncs.
+  createEffect(
+    on(
+      loginState,
+      (s) => {
+        if (s.state !== "done") return;
+        toast("Angemeldet.");
+        props.onConnected?.();
+      },
+      { defer: true },
+    ),
+  );
+  // An event sent while the page was in the background can be lost: re-read
+  // the configuration when the app is visible again.
+  onMount(() => {
+    const visible = async () => {
+      if (document.visibilityState !== "visible") return;
+      const config = await reloadConfig();
+      if (props.setup && loginState().state === "waiting" && isConfigured(config)) props.onConnected?.();
+    };
+    document.addEventListener("visibilitychange", visible);
+    onCleanup(() => document.removeEventListener("visibilitychange", visible));
+  });
+
+  async function save(discardPending = false) {
+    setProblem("");
+    setRetry("token");
+    if (!urlOk()) return;
     if (!token().trim() && !hasToken()) {
       setProblem("Bitte einen API-Token eintragen.");
       return;
@@ -129,36 +197,68 @@ export function ConnectionView(props: { setup?: boolean; onConnected?: () => voi
   };
 
   const form = (
-    <form
-      class="form connection-form"
-      onSubmit={(e) => {
-        e.preventDefault();
-        void save();
-      }}
-    >
-      <label>
-        Server-Adresse
-        <input
-          class="field"
-          type="url"
-          inputmode="url"
-          autocomplete="url"
-          placeholder="https://zunder.example.org"
-          value={serverUrl()}
-          onInput={(e) => setServerUrl(e.currentTarget.value)}
-        />
-      </label>
-      <label>
-        API-Token
-        <input
-          class="field"
-          type="password"
-          autocomplete="off"
-          placeholder={hasToken() ? "Gespeichert – leer lassen, um ihn zu behalten" : "zt_…"}
-          value={token()}
-          onInput={(e) => setToken(e.currentTarget.value)}
-        />
-      </label>
+    <div class="form connection-form">
+      <form
+        class="form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void signIn();
+        }}
+      >
+        <label>
+          Server-Adresse
+          <input
+            class="field"
+            type="url"
+            inputmode="url"
+            autocomplete="url"
+            placeholder="https://zunder.example.org"
+            value={serverUrl()}
+            onInput={(e) => setServerUrl(e.currentTarget.value)}
+          />
+        </label>
+        <label>
+          Gerätename
+          <input class="field" autocomplete="off" maxLength={100} value={deviceName()} onInput={(e) => setDeviceName(e.currentTarget.value)} />
+        </label>
+        <p class="muted">Unter diesem Namen erscheint das Gerät in der Web-Oberfläche unter „Geräte“; dort lässt es sich abmelden.</p>
+        <button class="btn btn-primary" type="submit" disabled={busy()}>
+          {props.setup || !hasToken() ? "Im Browser anmelden" : "Neu anmelden"}
+        </button>
+      </form>
+      <Show when={loginState().state === "waiting"}>
+        <p class="notice notice-warning" role="status">
+          Melde dich im Browser an und erlaube den Zugriff. Danach geht es hier von selbst weiter.
+        </p>
+      </Show>
+      <Show when={loginErrorMessage()}>
+        <p class="notice notice-error" role="alert">
+          {loginErrorMessage()}
+        </p>
+      </Show>
+      <form
+        class="form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <p class="muted">Oder mit einem API-Token aus der Web-Oberfläche verbinden:</p>
+        <label>
+          API-Token
+          <input
+            class="field"
+            type="password"
+            autocomplete="off"
+            placeholder={hasToken() ? "Gespeichert – leer lassen, um ihn zu behalten" : "zt_…"}
+            value={token()}
+            onInput={(e) => setToken(e.currentTarget.value)}
+          />
+        </label>
+        <button class="btn" type="submit" disabled={busy()}>
+          {busy() ? "Verbinde …" : "Speichern und verbinden"}
+        </button>
+      </form>
       <Show when={problem()}>
         <p class="notice notice-error" role="alert">
           {problem()}
@@ -182,7 +282,7 @@ export function ConnectionView(props: { setup?: boolean; onConnected?: () => voi
             >
               <div class="notice notice-warning" role="alert">
                 <p>{r().message} Beim Wechsel des Servers gehen sie verloren.</p>
-                <button type="button" class="btn btn-danger btn-small" disabled={busy()} onClick={() => void save(true)}>
+                <button type="button" class="btn btn-danger btn-small" disabled={busy()} onClick={() => void (retry() === "login" ? signIn(true) : save(true))}>
                   Änderungen verwerfen und wechseln
                 </button>
               </div>
@@ -190,10 +290,7 @@ export function ConnectionView(props: { setup?: boolean; onConnected?: () => voi
           </Show>
         )}
       </Show>
-      <button class="btn btn-primary" type="submit" disabled={busy()}>
-        {busy() ? "Verbinde …" : "Speichern und verbinden"}
-      </button>
-    </form>
+    </div>
   );
 
   return (
@@ -207,7 +304,7 @@ export function ConnectionView(props: { setup?: boolean; onConnected?: () => voi
             </div>
             <h1>Zunder einrichten</h1>
             <p class="muted">
-              Die App speichert deine Aufgaben auf diesem Gerät und gleicht sie im Hintergrund mit deinem Zunder-Server ab. Einen API-Token erstellst du in der Web-Oberfläche unter „API-Tokens“.
+              Die App speichert deine Aufgaben auf diesem Gerät und gleicht sie im Hintergrund mit deinem Zunder-Server ab. Gib die Adresse deines Servers an und melde dich im Browser an.
             </p>
             {form}
           </div>
@@ -218,7 +315,7 @@ export function ConnectionView(props: { setup?: boolean; onConnected?: () => voi
         <header class="view-head">
           <h1>Verbindung</h1>
         </header>
-        <p class="muted">Server und API-Token dieser App. Änderungen werden lokal gespeichert und im Hintergrund abgeglichen.</p>
+        <p class="muted">Server und Anmeldung dieser App. Änderungen werden lokal gespeichert und im Hintergrund abgeglichen.</p>
         {form}
         <section class="detail-section connection-status" aria-label="Abgleich">
           <h3>Abgleich</h3>

@@ -47,6 +47,10 @@ uuid.workspace = true
 tokio.workspace = true
 tauri = { version = "2", features = [] }
 tauri-plugin-notification = "2"
+# Login: open the system browser, receive the redirect to dev.rubeen.zunder:/oauth.
+tauri-plugin-opener = "2"
+tauri-plugin-deep-link = "2"
+url = "2"
 log = "0.4"
 
 # Self-update from GitHub Releases (desktop only, see src/update.rs).

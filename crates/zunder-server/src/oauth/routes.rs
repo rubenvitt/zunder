@@ -30,9 +30,9 @@ use serde_json::{json, Value};
 use url::Url;
 
 use super::{
-    active_client, exchange_code, issue_code, issuer, mcp_resource, no_store, normalize_resource,
-    redirect_uri_matches, refresh, register, CodeExchange, CodeGrant, OAuthError, RefreshRequest,
-    MAX_SCOPE_LEN, MAX_STATE_LEN,
+    active_client, device_resource, exchange_code, issue_code, issuer, mcp_resource, no_store,
+    normalize_resource, redirect_uri_matches, refresh, register, CodeExchange, CodeGrant,
+    OAuthError, RefreshRequest, MAX_SCOPE_LEN, MAX_STATE_LEN,
 };
 use crate::app::App;
 use crate::auth;
@@ -404,18 +404,30 @@ async fn authorize(
             )
         }
     };
-    let expected =
+    let mcp =
         normalize_resource(&mcp_resource(app.config())).expect("public URL is a valid http(s) URL");
-    let resource = match q.resource.as_deref() {
-        None => expected,
-        Some(raw) if normalize_resource(raw).as_deref() == Some(expected.as_str()) => expected,
+    let devices = device_resource(app.config());
+    let resource = match q.resource.as_deref().map(normalize_resource) {
+        None => mcp,
+        Some(Some(r)) if r == mcp || r == devices => r,
         Some(_) => {
             return fail(
                 "invalid_target",
-                "Zunder stellt Tokens nur für den eigenen MCP-Endpunkt aus",
+                "Zunder stellt Tokens nur für den eigenen MCP-Endpunkt und die Sync-API aus",
             )
         }
     };
+    let device = resource == devices;
+    // A never-expiring sync credential only goes to an app on the device
+    // itself, not to a web service.
+    if device
+        && !(super::is_app_redirect(&redirect_uri) || super::is_loopback_redirect(&redirect_uri))
+    {
+        return fail(
+            "invalid_target",
+            "Gerätezugänge gibt es nur für Apps (App-Schema oder localhost)",
+        );
+    }
     if q.scope.as_ref().is_some_and(|s| s.len() > MAX_SCOPE_LEN) {
         return fail("invalid_scope", "scope ist zu lang");
     }
@@ -446,6 +458,7 @@ async fn authorize(
     };
     let request_id = state.insert_pending(pending);
     consent_page(
+        device,
         &client.name,
         &redirect_uri,
         &client.redirect_uris,
@@ -456,30 +469,58 @@ async fn authorize(
     )
 }
 
+/// The consent page. `device`: the client asks for a device token (sync
+/// API, no expiry) instead of MCP access.
 fn consent_page(
+    device: bool,
     client_name: &str,
     redirect_uri: &str,
     registered: &[String],
     owner: Option<&str>,
     request_id: &str,
 ) -> Response {
-    let host = Url::parse(redirect_uri)
+    // Apps (private-use scheme) have no host: show the scheme.
+    let target = Url::parse(redirect_uri)
         .ok()
-        .and_then(|u| u.host_str().map(str::to_owned))
+        .map(|u| match u.host_str() {
+            Some(host) => host.to_owned(),
+            None => format!("{}:", u.scheme()),
+        })
         .unwrap_or_else(|| redirect_uri.to_owned());
     let account = owner
         .map(|o| format!(" als <strong>{}</strong>", escape(o)))
         .unwrap_or_default();
-    let loopback_warning = if registered.iter().all(|r| super::is_loopback_redirect(r)) {
+    let local_warning = if registered.iter().all(|r| super::is_loopback_redirect(r)) {
         "<p class=\"warn\">Achtung: Die Anmeldung geht an ein Programm auf diesem Rechner \
          (localhost). Erlaube den Zugriff nur, wenn du die Verbindung gerade selbst gestartet hast.</p>"
+    } else if registered.iter().all(|r| super::is_app_redirect(r)) {
+        "<p class=\"warn\">Achtung: Die Anmeldung geht an eine App auf diesem Gerät. Erlaube den \
+         Zugriff nur, wenn du die Anmeldung gerade selbst in der Zunder-App gestartet hast.</p>"
     } else {
         ""
     };
+    let access = if device {
+        format!(
+            "<p><strong>{name}</strong> möchte sich{account} als Gerät mit Zunder verbinden: alle \
+             Aufgaben, Projekte und Bereiche abgleichen, lesen und ändern. Der Zugang läuft nicht \
+             ab; du kannst ihn jederzeit unter „Geräte“ widerrufen.</p>",
+            name = escape(client_name)
+        )
+    } else {
+        format!(
+            "<p><strong>{name}</strong> möchte{account} auf Zunder zugreifen: Aufgaben, Projekte und \
+             Bereiche über MCP lesen und ändern.</p>",
+            name = escape(client_name)
+        )
+    };
+    let revoke_hint = if device {
+        "„Geräte“"
+    } else {
+        "„Verbundene Apps“"
+    };
     let body = format!(
-        "<p><strong>{name}</strong> möchte{account} auf Zunder zugreifen: Aufgaben, Projekte und \
-         Bereiche über MCP lesen und ändern.</p>\
-         <p>Nach der Freigabe geht es weiter zu <code>{host}</code>.</p>{loopback_warning}\
+        "{access}\
+         <p>Nach der Freigabe geht es weiter zu <code>{target}</code>.</p>{local_warning}\
          <form method=\"post\" action=\"/oauth/authorize\">\
          <input type=\"hidden\" name=\"request_id\" value=\"{request_id}\">\
          <div class=\"actions\">\
@@ -487,9 +528,9 @@ fn consent_page(
          <button type=\"submit\" name=\"decision\" value=\"deny\">Ablehnen</button>\
          </div></form>\
          <p class=\"muted\">Erlaube den Zugriff nur, wenn du die Verbindung gerade selbst \
-         gestartet hast. Widerrufen lässt er sich jederzeit in Zunder unter „Tokens“.</p>",
-        name = escape(client_name),
-        host = escape(&host),
+         gestartet hast. Widerrufen lässt er sich jederzeit in Zunder unter „API-Tokens“, \
+         {revoke_hint}.</p>",
+        target = escape(&target),
         request_id = escape(request_id),
     );
     page(StatusCode::OK, "Zugriff erlauben?", &body)

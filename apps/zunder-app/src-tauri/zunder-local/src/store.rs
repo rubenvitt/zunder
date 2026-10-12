@@ -80,6 +80,8 @@ const META_SERVER_URL: &str = "server_url";
 const META_DATA_SERVER_URL: &str = "data_server_url";
 const META_API_TOKEN: &str = "api_token";
 const META_LAST_SYNC: &str = "last_sync";
+/// A started login waiting for the browser ([`crate::login::PendingLogin`]).
+const META_PENDING_LOGIN: &str = "pending_login";
 
 const API_TOKEN_MAX_LEN: usize = 512;
 
@@ -517,6 +519,36 @@ impl LocalStore {
             server_url,
             api_token,
         }))
+    }
+
+    /// The started login, if any.
+    pub fn pending_login(&self) -> Result<Option<crate::login::PendingLogin>> {
+        get_meta(&self.conn, META_PENDING_LOGIN)?
+            .map(|json| {
+                serde_json::from_str(&json)
+                    .map_err(|e| Error::Corrupt(format!("pending_login: {e}")))
+            })
+            .transpose()
+    }
+
+    /// Stores (or with `None` forgets) the started login.
+    pub fn set_pending_login(&self, login: Option<&crate::login::PendingLogin>) -> Result<()> {
+        let json = login.map(|l| serde_json::to_string(l).expect("PendingLogin serializes"));
+        put_meta(&self.conn, META_PENDING_LOGIN, json.as_deref())
+    }
+
+    /// Fails with `pending_ops` if switching to `server_url` would drop
+    /// pending operations (checked before a login opens the browser).
+    pub fn check_server_switch(&self, server_url: &str, discard_pending: bool) -> Result<()> {
+        let new = normalize_server_url(server_url)?;
+        let data_url = match get_meta(&self.conn, META_DATA_SERVER_URL)? {
+            Some(url) => Some(url),
+            None => get_meta(&self.conn, META_SERVER_URL)?,
+        };
+        if data_url.is_some_and(|old| old != new) && !self.pending.is_empty() && !discard_pending {
+            return Err(Error::PendingOps(self.pending.len()));
+        }
+        Ok(())
     }
 
     /// Applies a configuration change. Switching to a different server

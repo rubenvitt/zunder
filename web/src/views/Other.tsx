@@ -7,7 +7,7 @@ import { TaskList } from "../components/TaskList";
 import { isTauri } from "../platform/runtime";
 import { fireOf, formatInstant, isValidFire, shiftFire } from "../sync/dates";
 import { isFlameRunning } from "../sync/derived";
-import type { ApiToken, CreatedToken, OAuthClient, Task } from "../sync/types";
+import type { ApiToken, CreatedToken, Device, OAuthClient, Task } from "../sync/types";
 import { flame } from "../state/actions";
 import { navigate, route } from "../state/router";
 import { api, now } from "../state/store";
@@ -172,6 +172,26 @@ function TokenManager() {
     }
   }
 
+  const [devices, { refetch: refetchDevices }] = createResource(async (): Promise<Device[] | null> => {
+    try {
+      return await api().listDevices();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Geräte konnten nicht geladen werden.", "error");
+      return null;
+    }
+  });
+
+  async function revokeDevice(device: Device) {
+    if (!confirm(`Gerät „${device.name}“ abmelden? Die App dort gleicht sofort nicht mehr ab.`)) return;
+    try {
+      await api().revokeDevice(device.id);
+      toast(`Gerät „${device.name}“ abgemeldet.`);
+      void refetchDevices();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Abmelden fehlgeschlagen.", "error");
+    }
+  }
+
   return (
     <div class="view">
       <header class="view-head">
@@ -235,6 +255,38 @@ function TokenManager() {
           </tbody>
         </table>
       </Show>
+      <section class="group">
+        <h2>Geräte</h2>
+        <p class="muted">Geräte, auf denen du dich in der Zunder-App angemeldet hast. Abmelden widerruft den Zugang sofort; die App fragt dann nach einer neuen Anmeldung.</p>
+        <Show when={devices() !== null} fallback={<p class="muted">Geräte nicht verfügbar.</p>}>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Angemeldet seit</th>
+                <th>Zuletzt abgeglichen</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              <For each={devices() ?? []} fallback={<tr><td colSpan={4} class="muted">{devices.loading ? "Lädt …" : "Keine Geräte angemeldet."}</td></tr>}>
+                {(device) => (
+                  <tr data-device-id={device.id}>
+                    <td>{device.name}</td>
+                    <td>{device.created_at ? formatInstant(device.created_at, new Date(now())) : "—"}</td>
+                    <td>{device.last_used_at ? formatInstant(device.last_used_at, new Date(now())) : "nie"}</td>
+                    <td class="right">
+                      <button class="btn btn-danger btn-small" onClick={() => void revokeDevice(device)}>
+                        Abmelden
+                      </button>
+                    </td>
+                  </tr>
+                )}
+              </For>
+            </tbody>
+          </table>
+        </Show>
+      </section>
       <section class="group">
         <h2>Verbundene Apps</h2>
         <p class="muted">

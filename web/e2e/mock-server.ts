@@ -8,6 +8,7 @@
 //   POST /__test/ops     {"ops": [Op], "source": "mcp:test"}   simulate another client
 //   GET  /__test/state   materialized state for assertions
 //   POST /__test/oauth-client {"name": "Claude"}   a connected OAuth app (token page)
+//   POST /__test/device  {"name": "iPhone"}        a logged-in app device (token page)
 //
 // Mirrors the real server where the UI depends on it (contract 3 and 3.1): error
 // format {"error":{"code","message"}}, CSRF header X-Zunder-Client: web for
@@ -65,6 +66,13 @@ interface OAuthClient {
   last_used_at: string | null;
 }
 
+interface Device {
+  id: string;
+  name: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
 interface Rejection {
   op_id: string;
   code: string;
@@ -104,6 +112,7 @@ const TIMING_PROJECTS = [
   { self: "/projects/2", title: "Zunder", title_chain: ["Arbeit", "Zunder"], color: "#2A5DB0" },
   { self: "/projects/3", title: "Privat", title_chain: ["Privat"], color: null },
 ];
+let devices: Device[] = [];
 let authenticated = true;
 const sseClients = new Set<ServerResponse>();
 
@@ -420,6 +429,7 @@ function seed(kind: string) {
   tokens = [{ id: randomUUID(), name: "claude-code", created_at: new Date(Date.now() - 86400000 * 3).toISOString(), last_used_at: null }];
   oauthClients = [];
   timing = { token: null, project: null };
+  devices = [];
   if (kind === "empty") return;
   const base = Date.now() - 3600_000;
   let n = 0;
@@ -566,6 +576,12 @@ const server = createServer(async (req, res) => {
       oauthClients.push(client);
       return send(res, 201, client);
     }
+    if (path === "/__test/device" && method === "POST") {
+      const body = await readJson(req);
+      const device: Device = { id: randomUUID(), name: String(body.name ?? "iPhone"), created_at: new Date().toISOString(), last_used_at: null };
+      devices.push(device);
+      return send(res, 201, device);
+    }
     if (path === "/__test/state" && method === "GET") {
       const out: Record<string, Record<string, Json>> = {};
       for (const [k, e] of state) out[k] = Object.fromEntries(Object.entries(e.fields).map(([f, s]) => [f, s.value]));
@@ -708,6 +724,14 @@ const server = createServer(async (req, res) => {
       if (path === "/api/settings/timing/check" && method === "POST") {
         if (!timing.token) return error(res, 409, "conflict", "Timing ist nicht eingerichtet.");
         return send(res, 200, { ok: true, error: null });
+      }
+      if (path === "/api/devices" && method === "GET") return send(res, 200, devices);
+      m = /^\/api\/devices\/([^/]+)$/.exec(path);
+      if (m && method === "DELETE") {
+        const deviceId = decodeURIComponent(m[1]!);
+        if (!devices.some((d) => d.id === deviceId)) return error(res, 404, "not_found", "Gerät nicht gefunden");
+        devices = devices.filter((d) => d.id !== deviceId);
+        return send(res, 204);
       }
       if (path === "/api/oauth/clients" && method === "GET") return send(res, 200, oauthClients);
       m = /^\/api\/oauth\/clients\/([^/]+)$/.exec(path);
