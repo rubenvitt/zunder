@@ -1213,3 +1213,207 @@ async fn tool_errors_do_not_break_batches() {
     let result = mcp_call(&s, &t, "list_structure", json!({})).await;
     assert_eq!(result["isError"], false);
 }
+
+/// Pushes an imported task with a ClickUp ID like zunder-import does.
+async fn imported_task(s: &TestServer, clickup_id: &str, title: &str) -> String {
+    let mut clock = Clock::new(NodeId::new("import").unwrap());
+    let id = zunder_core::ids::clickup_entity_id(zunder_core::EntityKind::Task, clickup_id);
+    let pushed = ops(&mut clock, |b| {
+        b.create_task(NewTask {
+            id: Some(id),
+            clickup_id: Some(clickup_id.into()),
+            ..NewTask::new(title)
+        });
+    });
+    assert_eq!(
+        s.push(Auth::Bearer(BOOTSTRAP), &pushed).await.status,
+        StatusCode::OK
+    );
+    id.to_string()
+}
+
+#[tokio::test]
+async fn parent_id_accepts_clickup_ids() {
+    let (s, t) = setup().await;
+    let parent = imported_task(&s, "86abc1", "Importierte Eltern").await;
+
+    let child = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Kind", "parent_id": "86abc1"}),
+    )
+    .await;
+    assert_eq!(child["task"]["parent_id"], parent.as_str());
+
+    let loose = create(&s, &t, json!({"title": "Lose"})).await;
+    let moved = mcp_ok(
+        &s,
+        &t,
+        "move_task",
+        json!({"task_id": loose, "parent_id": "86abc1"}),
+    )
+    .await;
+    assert_eq!(moved["task"]["parent_id"], parent.as_str());
+
+    let r = mcp_ok(&s, &t, "filter_tasks", json!({"parent_id": "86abc1"})).await;
+    let mut got = titles(&r);
+    got.sort();
+    assert_eq!(got, ["Kind", "Lose"]);
+    // The UUID still works and an unknown ClickUp ID simply matches nothing.
+    let r = mcp_ok(&s, &t, "filter_tasks", json!({"parent_id": parent})).await;
+    assert_eq!(r["count"], 2);
+    let r = mcp_ok(&s, &t, "filter_tasks", json!({"parent_id": "unbekannt"})).await;
+    assert_eq!(r["count"], 0);
+
+    let (code, message) = mcp_err(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "X", "parent_id": "unbekannt"}),
+    )
+    .await;
+    assert_eq!(code, "not_found");
+    assert!(message.contains("unbekannt"), "{message}");
+    let (code, _) = mcp_err(
+        &s,
+        &t,
+        "move_task",
+        json!({"task_id": loose, "parent_id": "unbekannt"}),
+    )
+    .await;
+    assert_eq!(code, "not_found");
+    // A missing parent given as UUID is still checked by the core.
+    let (code, _) = mcp_err(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "X", "parent_id": "01929c3e-0000-7000-8000-000000000001"}),
+    )
+    .await;
+    assert_eq!(code, "invalid_reference");
+    let (code, _) = mcp_err(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "X", "parent_id": " "}),
+    )
+    .await;
+    assert_eq!(code, "invalid_arguments");
+}
+
+#[tokio::test]
+async fn task_reference_errors_are_invalid_arguments() {
+    let (s, t) = setup().await;
+    let id = create(&s, &t, json!({"title": "Ziel"})).await;
+    for (tool, args) in [
+        ("get_task", json!({})),
+        ("get_task", json!({"task_id": id, "clickup_id": "86abc1"})),
+        ("get_task", json!({"clickup_id": ""})),
+        ("update_task", json!({"title": "Neu"})),
+        ("start_flame", json!({})),
+    ] {
+        let (code, message) = mcp_err(&s, &t, tool, args.clone()).await;
+        assert_eq!(code, "invalid_arguments", "{tool} {args}: {message}");
+    }
+}
+
+#[tokio::test]
+async fn filter_tasks_pages_orders_and_filters_by_closing_date() {
+    let (s, t) = setup().await;
+    for days in [10, 9, 8, 2, 1] {
+        closed_task(&s, &format!("D{days}"), TaskStatus::Done, days).await;
+    }
+    create(&s, &t, json!({"title": "Offen"})).await;
+    let base = json!({"include_closed": true, "status": ["done"], "limit": 2});
+    let page = |offset: u64| {
+        let mut args = base.clone();
+        args["offset"] = json!(offset);
+        let (s, t) = (&s, &t);
+        async move { mcp_ok(s, t, "filter_tasks", args).await }
+    };
+    let r = page(0).await;
+    assert_eq!(titles(&r), ["D10", "D9"]);
+    assert_eq!(r["total"], 5);
+    assert_eq!(r["truncated"], true);
+    assert_eq!(r["next_offset"], 2);
+    let r = page(2).await;
+    assert_eq!(titles(&r), ["D8", "D2"]);
+    assert_eq!(r["next_offset"], 4);
+    let r = page(4).await;
+    assert_eq!(titles(&r), ["D1"]);
+    assert_eq!(r["truncated"], false);
+    assert_eq!(r["next_offset"], Value::Null);
+    assert!(titles(&page(10).await).is_empty());
+
+    // Newest completions first.
+    let r = mcp_ok(
+        &s,
+        &t,
+        "filter_tasks",
+        json!({"include_closed": true, "status": ["done"], "order_by": "status_changed", "reverse": true, "limit": 3}),
+    )
+    .await;
+    assert_eq!(titles(&r), ["D1", "D2", "D8"]);
+
+    // Closing dates imply include_closed and only match closed tasks.
+    let now = zunder_core::hlc::system_time_ms();
+    let ago = |days: u64| zunder_server::app::format_ms((now - days * DAY_MS) as i64);
+    let f = |args: Value| {
+        let (s, t) = (&s, &t);
+        async move { titles(&mcp_ok(s, t, "filter_tasks", args).await) }
+    };
+    assert_eq!(f(json!({"closed_after": ago(3)})).await, ["D2", "D1"]);
+    assert_eq!(
+        f(json!({"closed_before": ago(5)})).await,
+        ["D10", "D9", "D8"]
+    );
+    assert_eq!(
+        f(json!({"closed_after": ago(9), "closed_before": ago(5)})).await,
+        ["D8"]
+    );
+    assert_eq!(f(json!({"closed_after": "2000-01-01"})).await.len(), 5);
+    assert!(f(json!({"closed_before": "2000-01-01"})).await.is_empty());
+
+    for bad in [
+        json!({"offset": -1}),
+        json!({"order_by": "titel"}),
+        json!({"reverse": "ja"}),
+        json!({"closed_after": "neulich"}),
+    ] {
+        let (code, _) = mcp_err(&s, &t, "filter_tasks", bad.clone()).await;
+        assert_eq!(code, "invalid_arguments", "{bad}");
+    }
+}
+
+#[tokio::test]
+async fn running_flame_can_be_found_and_stopped_without_its_task() {
+    let (s, t) = setup().await;
+    let (code, message) = mcp_err(&s, &t, "stop_flame", json!({})).await;
+    assert_eq!(code, "conflict");
+    assert!(message.contains("keine Flamme"), "{message}");
+
+    let a = create(&s, &t, json!({"title": "A"})).await;
+    create(&s, &t, json!({"title": "B"})).await;
+    mcp_ok(&s, &t, "start_flame", json!({"task_id": a})).await;
+    // Closing the task does not hide its running flame.
+    mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": a, "status": "done"}),
+    )
+    .await;
+    let r = mcp_ok(&s, &t, "filter_tasks", json!({"flame_running": true})).await;
+    assert_eq!(titles(&r), ["A"]);
+    let r = mcp_ok(&s, &t, "filter_tasks", json!({"flame_running": false})).await;
+    assert_eq!(titles(&r), ["B"]);
+
+    let r = mcp_ok(&s, &t, "stop_flame", json!({})).await;
+    assert_eq!(r["running"], false);
+    assert_eq!(r["task"]["id"], a.as_str());
+    let r = mcp_ok(&s, &t, "filter_tasks", json!({"flame_running": true})).await;
+    assert_eq!(r["count"], 0);
+    let (code, _) = mcp_err(&s, &t, "stop_flame", json!({})).await;
+    assert_eq!(code, "conflict");
+}

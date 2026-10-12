@@ -175,9 +175,30 @@ impl Args {
             .collect()
     }
 
-    /// `task_id` or `clickup_id`.
-    pub fn task_ref(&self) -> AppResult<TaskRef> {
+    /// `task_id` or `clickup_id`, `None` without either.
+    pub fn optional_task_ref(&self) -> AppResult<Option<TaskRef>> {
         let clickup = self.non_empty_str("clickup_id")?.map(str::to_owned);
-        TaskRef::from_args(self.id("task_id")?, clickup)
+        TaskRef::from_args(self.id("task_id")?, clickup).map_err(invalid)
+    }
+
+    /// `task_id` or `clickup_id` (exactly one).
+    pub fn task_ref(&self) -> AppResult<TaskRef> {
+        self.optional_task_ref()?
+            .ok_or_else(|| invalid("task_id oder clickup_id fehlt."))
+    }
+
+    /// A reference to another task (e.g. `parent_id`): a canonical UUID or
+    /// the ClickUp ID of an imported task. `None` when absent, `Some(None)`
+    /// for an explicit `null`.
+    pub fn task_link(&self, key: &str) -> AppResult<Option<Option<TaskRef>>> {
+        if self.raw(key).is_some_and(Value::is_null) {
+            return Ok(Some(None));
+        }
+        Ok(self.non_empty_str(key)?.map(|s| {
+            Some(match zunder_core::ids::parse_canonical(s) {
+                Some(id) => TaskRef::Id(id),
+                None => TaskRef::ClickUp(s.trim().to_owned()),
+            })
+        }))
     }
 }

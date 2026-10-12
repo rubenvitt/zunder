@@ -5,7 +5,7 @@
       "readOnlyHint": true,
       "title": "Aufgaben filtern"
     },
-    "description": "Listet Aufgaben nach Filtern. Ohne include_closed werden erledigte und verworfene Aufgaben ausgeblendet, deren Status sich vor mehr als 3 Tagen geändert hat. Gelöschte Aufgaben erscheinen nie. Alle Filter werden mit UND verknüpft. Sortierung: Fälligkeit (ohne Fälligkeit zuletzt), dann Erstellung.",
+    "description": "Listet Aufgaben nach Filtern. Ohne include_closed werden erledigte und verworfene Aufgaben ausgeblendet, deren Status sich vor mehr als 3 Tagen geändert hat. Gelöschte Aufgaben erscheinen nie. Alle Filter werden mit UND verknüpft. Sortierung (order_by): due = Fälligkeit (ohne Fälligkeit zuletzt), dann Erstellung (Standard); created, updated oder status_changed; reverse kehrt sie um. Mehr als limit Treffer holt man seitenweise mit offset (next_offset im Ergebnis).",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -17,6 +17,14 @@
           "description": "Nur Aufgaben mit gültiger Reservierung durch diesen Agenten.",
           "type": "string"
         },
+        "closed_after": {
+          "description": "Nur erledigte oder verworfene Aufgaben, deren Status sich an oder nach diesem Tag geändert hat (JJJJ-MM-TT, Kalendertag in der Zeitzone des Servers, inklusive; oder RFC-3339-Zeitpunkt). Schließt include_closed ein.",
+          "type": "string"
+        },
+        "closed_before": {
+          "description": "Nur erledigte oder verworfene Aufgaben, deren Status sich an oder vor diesem Tag geändert hat (wie closed_after).",
+          "type": "string"
+        },
         "due_after": {
           "description": "Fällig frühestens an diesem Tag (JJJJ-MM-TT oder RFC 3339, inklusive, Vergleich nach Kalendertag).",
           "type": "string"
@@ -24,6 +32,10 @@
         "due_before": {
           "description": "Fällig spätestens an diesem Tag (JJJJ-MM-TT oder RFC 3339, inklusive, Vergleich nach Kalendertag).",
           "type": "string"
+        },
+        "flame_running": {
+          "description": "true: nur Aufgaben mit laufender Flamme (unabhängig von Status und Alter); false: nur ohne.",
+          "type": "boolean"
         },
         "include_closed": {
           "description": "Auch erledigte und verworfene Aufgaben, die älter als 3 Tage sind (Standard false).",
@@ -46,8 +58,25 @@
           ],
           "type": "string"
         },
+        "offset": {
+          "default": 0,
+          "description": "So viele Treffer der Sortierung überspringen.",
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "order_by": {
+          "description": "Sortierung (Standard due).",
+          "enum": [
+            "due",
+            "created",
+            "updated",
+            "status_changed"
+          ],
+          "type": "string"
+        },
         "parent_id": {
-          "description": "Nur direkte Unteraufgaben dieser Aufgabe.",
+          "description": "Nur direkte Unteraufgaben dieser Aufgabe (UUID oder ClickUp-ID einer importierten Aufgabe).",
           "type": "string"
         },
         "phoenix_fire": {
@@ -65,6 +94,10 @@
         "project_id": {
           "description": "Nur Aufgaben in diesem Projekt.",
           "type": "string"
+        },
+        "reverse": {
+          "description": "Sortierung umkehren (Standard false).",
+          "type": "boolean"
         },
         "status": {
           "description": "Nur diese Status.",
@@ -194,7 +227,7 @@
           "type": "object"
         },
         "parent_id": {
-          "description": "ID der Elternaufgabe für eine Unteraufgabe.",
+          "description": "Elternaufgabe für eine Unteraufgabe: UUID oder ClickUp-ID einer importierten Aufgabe.",
           "type": "string"
         },
         "phoenix": {
@@ -464,7 +497,7 @@
           "type": "object"
         },
         "parent_id": {
-          "description": "Neue Elternaufgabe oder null, um die Aufgabe zu lösen.",
+          "description": "Neue Elternaufgabe (UUID oder ClickUp-ID einer importierten Aufgabe) oder null, um die Aufgabe zu lösen.",
           "type": [
             "string",
             "null"
@@ -982,7 +1015,7 @@
       "readOnlyHint": false,
       "title": "Flamme beenden"
     },
-    "description": "Beendet die laufende Flamme einer Aufgabe und stoppt den zugehörigen Timing-Timer, falls er noch läuft.",
+    "description": "Beendet die laufende Flamme einer Aufgabe und stoppt den zugehörigen Timing-Timer, falls er noch läuft. Ohne task_id und clickup_id endet die gerade laufende Flamme, wo immer sie brennt.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {

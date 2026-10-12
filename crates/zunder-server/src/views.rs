@@ -251,29 +251,39 @@ pub enum TaskRef {
 }
 
 impl TaskRef {
-    /// From the `task_id` / `clickup_id` arguments: exactly one is required.
-    pub fn from_args(task_id: Option<Uuid>, clickup_id: Option<String>) -> AppResult<Self> {
+    /// From the `task_id` / `clickup_id` arguments: `Ok(None)` without
+    /// either, an error message when both are given.
+    pub fn from_args(
+        task_id: Option<Uuid>,
+        clickup_id: Option<String>,
+    ) -> Result<Option<Self>, &'static str> {
         match (task_id, clickup_id) {
-            (Some(id), None) => Ok(TaskRef::Id(id)),
-            (None, Some(c)) => Ok(TaskRef::ClickUp(c)),
-            (Some(_), Some(_)) => Err(AppError::bad_request(
-                "Bitte entweder task_id oder clickup_id angeben, nicht beides.",
-            )),
-            (None, None) => Err(AppError::bad_request("task_id oder clickup_id fehlt.")),
+            (Some(id), None) => Ok(Some(TaskRef::Id(id))),
+            (None, Some(c)) => Ok(Some(TaskRef::ClickUp(c))),
+            (Some(_), Some(_)) => {
+                Err("Bitte entweder task_id oder clickup_id angeben, nicht beides.")
+            }
+            (None, None) => Ok(None),
         }
     }
 
-    /// Resolves to a task ID. Tombstoned tasks only resolve with
-    /// `allow_deleted`. A `clickup_id` is looked up among live tasks, then
-    /// via the deterministic import ID.
-    pub fn resolve(&self, state: &State, allow_deleted: bool) -> AppResult<Uuid> {
-        let id = match self {
+    /// The ID this reference stands for, whether or not such a task exists:
+    /// a `clickup_id` is looked up among live tasks, then mapped to the
+    /// deterministic import ID.
+    pub fn candidate_id(&self, state: &State) -> Uuid {
+        match self {
             TaskRef::Id(id) => *id,
             TaskRef::ClickUp(clickup_id) => match state.task_by_clickup_id(clickup_id) {
                 Some(task) => task.id,
                 None => zunder_core::ids::clickup_entity_id(EntityKind::Task, clickup_id),
             },
-        };
+        }
+    }
+
+    /// Resolves to the ID of an existing task (see [`TaskRef::candidate_id`]).
+    /// Tombstoned tasks only resolve with `allow_deleted`.
+    pub fn resolve(&self, state: &State, allow_deleted: bool) -> AppResult<Uuid> {
+        let id = self.candidate_id(state);
         let Some(entity) = state.entity(EntityKind::Task, id) else {
             return Err(AppError::NotFound(match self {
                 TaskRef::Id(id) => format!("Aufgabe {id} nicht gefunden."),
