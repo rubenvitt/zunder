@@ -25,12 +25,10 @@ env:
   NODE_VERSION: "22"
 
 # The Tauri app shell (apps/zunder-app/src-tauri, package zunder-app) is
-# intentionally not built here: it is not a member of the root workspace,
-# needs webkit2gtk/GTK system libraries on Linux and Xcode/Android SDKs for
-# the mobile targets, and is not part of the deployed artifact. Its logic
-# lives in zunder-core and in the webview-free crate zunder-local (second
-# member of the src-tauri workspace), which the `local` job checks and
-# tests, including a sync run against the real server.
+# built and released by app.yml (macOS). Its logic lives in zunder-core and
+# in the webview-free crate zunder-local (second member of the src-tauri
+# workspace), which the `local` job checks and tests, including a sync run
+# against the real server.
 
 jobs:
   rust:

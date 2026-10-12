@@ -1,0 +1,103 @@
+name: App
+
+# Desktop app (macOS, Apple Silicon). Pull requests that touch the app, the
+# web UI or zunder-core only build it. Version tags (v*) build it signed with
+# the Developer ID, notarize it and publish a GitHub release with
+# latest.json; installed apps update themselves from there
+# (apps/zunder-app/src-tauri/src/update.rs). The tag sets the app version.
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - "apps/zunder-app/**"
+      - "web/**"
+      - "crates/zunder-core/**"
+      - ".github/workflows/app.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: app-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Keep in sync with ci.yml.
+  RUST_TOOLCHAIN: "1.97"
+  NODE_VERSION: "22"
+
+jobs:
+  macos:
+    name: Desktop (macOS)
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/zunder-app/src-tauri -> target
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            apps/zunder-app/package-lock.json
+            web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: apps/zunder-app
+      - run: npm ci --no-audit --no-fund
+        working-directory: web
+
+      - name: Bauen
+        if: env.RELEASE != 'true'
+        working-directory: apps/zunder-app
+        run: npm run build -- --bundles app
+
+      - name: Release vorbereiten
+        if: env.RELEASE == 'true'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          for name in TAURI_SIGNING_PRIVATE_KEY APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD \
+            APPLE_API_ISSUER APPLE_API_KEY APPLE_API_KEY_P8; do
+            [ -n "${!name}" ] || { echo "::error::Secret $name fehlt"; exit 1; }
+          done
+          printf '%s\n' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+          # The updater only installs strictly higher versions, so the tag is the version.
+          version="${GITHUB_REF_NAME#v}"
+          printf '{"version":"%s","bundle":{"createUpdaterArtifacts":true}}\n' "$version" \
+            > "$RUNNER_TEMP/release.conf.json"
+
+      - name: Bauen, signieren, notarisieren, veröffentlichen
+        if: env.RELEASE == 'true'
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: "Developer ID Application: Ruben Vitt (H95J852PKP)"
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+        with:
+          projectPath: apps/zunder-app
+          args: --config ${{ runner.temp }}/release.conf.json
+          tagName: ${{ github.ref_name }}
+          releaseName: Zunder __VERSION__
+          releaseBody: "Desktop-App für macOS (Apple Silicon). Installierte Apps aktualisieren sich selbst."

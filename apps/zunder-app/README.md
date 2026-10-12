@@ -19,6 +19,7 @@ apps/zunder-app/
     src/commands.rs       Befehle für die Web-UI
     src/background.rs     Sync-Schleife und Ereignisse
     src/notify.rs         Erinnerungen (mobil: OS-Planer, Desktop: Timer)
+    src/update.rs         Selbstaktualisierung aus GitHub-Releases (nur Desktop)
     zunder-local/         Speicher, Sync, Erinnerungsplanung – ohne Webview testbar
 ```
 
@@ -56,6 +57,35 @@ ZUNDER_SERVER_BIN=$PWD/target/debug/zunder-server \
   -p zunder-local --test server_e2e -- --ignored
 ```
 
+## Updates und Releases
+
+Die Desktop-App aktualisiert sich selbst aus den GitHub-Releases (`tauri-plugin-updater`, nur Desktop, nur Release-Builds; `src/update.rs`). Sie prüft beim Start und dann alle 6 Stunden `https://github.com/rubenvitt/zunder/releases/latest/download/latest.json`, lädt eine neuere Version im Hintergrund herunter, installiert sie und meldet das per Benachrichtigung. Aktiv wird sie beim nächsten Start; die App startet nicht von selbst neu. Updates müssen mit dem Schlüssel signiert sein, dessen öffentlicher Teil in `tauri.conf.json` (`plugins.updater.pubkey`) steht.
+
+Ein Release entsteht durch einen Tag:
+
+```sh
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+Der Workflow `.github/workflows/app.yml` baut dann auf macOS (Apple Silicon), signiert mit der Developer ID, notarisiert über die App Store Connect API und legt das Release mit `.dmg`, `.app.tar.gz`, Signatur und `latest.json` an. Die Version kommt aus dem Tag (`v0.2.0` → `0.2.0`), nicht aus `tauri.conf.json`; der Updater installiert nur höhere Versionen. Bei Pull Requests baut derselbe Workflow nur (unsigniert, ohne Release).
+
+Secrets im Repo, Originale im 1Password-Tresor „Dev“:
+
+| Secret | 1Password-Eintrag |
+|---|---|
+| `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Zunder App Updater-Signierschlüssel |
+| `APPLE_CERTIFICATE` (p12, base64), `APPLE_CERTIFICATE_PASSWORD` | Zunder – Developer ID Application (.p12) |
+| `APPLE_API_KEY`, `APPLE_API_ISSUER`, `APPLE_API_KEY_P8` | Zunder – Apple Notarisierung (App Store Connect API) |
+
+Geht der Updater-Schlüssel verloren, können installierte Apps keine Updates mehr annehmen; dann hilft nur eine Neuinstallation von Hand.
+
+Lokal baut `npm run build` ohne Updater-Artefakte und ohne Signierschlüssel. Mit Artefakten (zum Prüfen):
+
+```sh
+TAURI_SIGNING_PRIVATE_KEY=… TAURI_SIGNING_PRIVATE_KEY_PASSWORD=… \
+  npm run build -- --config '{"bundle":{"createUpdaterArtifacts":true}}'
+```
+
 ## Mobil (iOS, Android)
 
 Die nativen Projekte werden nicht eingecheckt, sondern einmalig erzeugt (landen in `src-tauri/gen/`):
@@ -75,7 +105,7 @@ Hinweise:
 - **iOS:** Höchstens 64 ausstehende lokale Benachrichtigungen pro App. Zunder plant deshalb immer nur die 64 nächsten; weiter entfernte rücken nach, sobald die App wieder läuft (Start, Rückkehr in den Vordergrund, Sync).
 - **Zeitpunkte ans Plugin** (`zunder_local::schedule::plugin_time`): `tauri-plugin-notification` 2.x sendet die Zeit als `…:ss.<9 Ziffern>Z`. iOS liest sie als lokale Uhrzeit (ohne Zeitzone), Android liest alle neun Nachkommastellen als Millisekunden. Die App übergibt deshalb volle Sekunden (aufgerundet) und auf iOS die lokale Uhrzeit des Zeitpunkts als UTC beschriftet (Versatz zum Zeitpunkt selbst, also über Sommer-/Winterzeit hinweg richtig). Bei einem Update des Plugins prüfen, ob das noch nötig ist.
 - Die App fragt beim Start nach der Benachrichtigungs-Berechtigung.
-- Mobile Builds sind in der Entwicklungsumgebung dieses Repos nicht verifiziert.
+- **iOS-Build** (`npx tauri ios build --export-method debugging`) ist lokal mit Xcode 27 gebaut und auf einem iPhone installiert (`xcrun devicectl device install app --device <ID> src-tauri/gen/apple/build/arm64/Zunder.ipa`). Signiert wird automatisch mit dem Team aus `bundle.iOS.developmentTeam`. Android ist nicht eingerichtet (kein SDK/NDK).
 
 ## Lokaler Speicher
 
@@ -172,4 +202,5 @@ Titel ist der Aufgabentitel, der Text „Erinnerung“ bzw. „Jetzt fällig“,
 - Der Verlauf einer Aufgabe zeigt erst nach dem Push etwas; noch ausstehende Änderungen fehlen darin.
 - Kein SSE in der App: Änderungen anderer Geräte kommen mit dem 30-s-Takt (oder per `sync_now`).
 - API-Token im Schlüsselbund statt in SQLite.
-- Mobile Builds und Signierung sind nicht eingerichtet und hier nicht getestet.
+- Android-Build ist nicht eingerichtet; iOS nur lokal gebaut, nicht in der CI und nicht über TestFlight verteilt.
+- Desktop-Releases gibt es nur für macOS (Apple Silicon); Linux und Windows baut die CI nicht.

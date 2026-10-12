@@ -12,6 +12,7 @@
 //!   and when the webview reports the network is back)
 //! - [`notify`]: local reminders (OS scheduler on mobile, in-process timer
 //!   on desktop)
+//! - [`update`]: self-update from GitHub Releases (desktop only)
 
 use std::sync::Mutex;
 
@@ -22,6 +23,8 @@ use zunder_local::{LocalStore, Syncer};
 pub mod background;
 pub mod commands;
 pub mod notify;
+#[cfg(desktop)]
+pub mod update;
 
 /// Events sent to the webview.
 pub mod events {
@@ -62,9 +65,12 @@ fn online_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
-        .plugin(online_plugin())
+        .plugin(online_plugin());
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    let app = builder
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
@@ -84,6 +90,8 @@ pub fn run() {
             });
             notify::start(app.handle().clone());
             background::start(app.handle().clone());
+            #[cfg(desktop)]
+            update::start(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
