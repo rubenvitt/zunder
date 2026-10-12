@@ -70,18 +70,22 @@ test("Kaltstart unter 1 s und Interaktionen unter 100 ms", async ({ page }) => {
   console.log(`n (Erfassen öffnen): ${openCapture.toFixed(1)} ms`);
   expect(openCapture).toBeLessThan(INTERACTION_BUDGET_MS);
 
-  // Interaction: capture a task until it shows up in the list.
+  // Interaction: capture a task until it shows up in the list (preselected: Lose, the open view).
   await page.getByLabel("Titel der neuen Aufgabe").fill(`Neu ${s}`);
-  const capture = await measureKey(page, "Enter", `!document.querySelector('.capture-input') && !!document.querySelector('.toast')`);
+  const capture = await measureKey(
+    page,
+    "Enter",
+    `!document.querySelector('.capture-input') && !!document.querySelector('.toast') && [...document.querySelectorAll('.task-title')].some((el) => el.textContent === "Neu ${s}")`,
+  );
   console.log(`Enter (Erfassen): ${capture.toFixed(1)} ms`);
   expect(capture).toBeLessThan(INTERACTION_BUDGET_MS);
 
-  // Interaction: switch view with g i; the new task is in the inbox.
+  // Interaction: switch view with g i until the inbox tasks are shown.
   await page.keyboard.press("g");
   const switchView = await measureKey(
     page,
     "i",
-    `document.querySelector('.view-head h1')?.textContent === "Inbox" && [...document.querySelectorAll('.task-title')].some((el) => el.textContent === "Neu ${s}")`,
+    `document.querySelector('.view-head h1')?.textContent === "Inbox" && [...document.querySelectorAll('.task-title')].some((el) => el.textContent === "Last ${s} 000")`,
   );
   console.log(`g i (Sicht wechseln): ${switchView.toFixed(1)} ms`);
   expect(switchView).toBeLessThan(INTERACTION_BUDGET_MS);
