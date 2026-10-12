@@ -37,6 +37,17 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "iOS": {
+      "developmentTeam": "H95J852PKP"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVFMEU0NzI2QkQyOEI2MkYKUldRdnRpaTlKa2NPWGk0VGVsVFo4VVd4dU5uR1JidTZ1dWRJc3lIRlVONGZ3QytGZThmelRHTlQK",
+      "endpoints": [
+        "https://github.com/rubenvitt/zunder/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

@@ -49,6 +49,10 @@ tauri = { version = "2", features = [] }
 tauri-plugin-notification = "2"
 log = "0.4"
 
+# Self-update from GitHub Releases (desktop only, see src/update.rs).
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
+
 # The device's UTC offset for reminders on iOS (see src/notify.rs).
 [target.'cfg(target_os = "ios")'.dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
