@@ -5,6 +5,7 @@ name: App
 # the Developer ID, notarize it and publish a GitHub release with
 # latest.json; installed apps update themselves from there
 # (apps/zunder-app/src-tauri/src/update.rs). The tag sets the app version.
+# Third-party actions are pinned to commits: this job holds the signing keys.
 on:
   push:
     tags: ["v*"]
@@ -39,10 +40,10 @@ jobs:
       RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: apps/zunder-app/src-tauri -> target
       - uses: actions/setup-node@v7
@@ -84,7 +85,7 @@ jobs:
 
       - name: Bauen, signieren, notarisieren, veröffentlichen
         if: env.RELEASE == 'true'
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
