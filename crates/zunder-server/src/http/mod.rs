@@ -4,7 +4,8 @@
 //! or OAuth access tokens from [`crate::oauth`]), the flame
 //! endpoints under `/api/tasks/{id}/flame/*`, the calendar feed under
 //! `/calendar/<token>.ics` (its own token, [`calendar`]) and
-//! `/api/calendar.ics`. Protected routes use
+//! `/api/calendar.ics`, intake channels under `/intake/v1/…` (their own
+//! token, [`intake`]). Protected routes use
 //! [`crate::auth::middleware::require_auth`] and the [`crate::auth::Principal`]
 //! extractor and call into [`App`].
 
@@ -12,6 +13,7 @@ pub mod api;
 pub mod auth_routes;
 pub mod calendar;
 pub mod extract;
+pub mod intake;
 pub mod static_files;
 
 use std::sync::Arc;
@@ -48,6 +50,7 @@ pub fn router(app: App, oidc: Option<Arc<OidcClient>>) -> Router {
         .route("/healthz", get(healthz))
         .nest("/api", api)
         .merge(calendar::routes())
+        .merge(intake::routes(app.clone()))
         .merge(crate::mcp::routes())
         .merge(crate::oauth::routes::routes(
             crate::oauth::routes::OAuthState::new(app.clone()),

@@ -19,10 +19,12 @@ import type {
   ApiToken,
   CalendarSettings,
   CreatedCalendarFeed,
+  CreatedIntakeChannel,
   CreatedToken,
   Device,
   FlameResult,
   HistoryEntry,
+  IntakeChannel,
   Me,
   OAuthClient,
   Op,
@@ -189,7 +191,7 @@ export function appErrorCode(err: unknown): string {
 }
 
 export const TOKENS_UNSUPPORTED =
-  "API-Tokens, verbundene Apps und Geräte lassen sich nur in der Web-Oberfläche mit Browser-Anmeldung verwalten.";
+  "API-Tokens, Eingänge, verbundene Apps und Geräte lassen sich nur in der Web-Oberfläche mit Browser-Anmeldung verwalten.";
 
 export const SETTINGS_UNSUPPORTED = "Einstellungen des Servers lassen sich nur in der Web-Oberfläche mit Browser-Anmeldung ändern.";
 
@@ -423,6 +425,18 @@ export class TauriTransport implements SyncTransport, ApiClient {
   }
 
   revokeDevice(_id: string): Promise<void> {
+    return Promise.reject(new AppCommandError("unsupported", TOKENS_UNSUPPORTED));
+  }
+
+  listIntakeChannels(): Promise<IntakeChannel[]> {
+    return Promise.reject(new AppCommandError("unsupported", TOKENS_UNSUPPORTED));
+  }
+
+  createIntakeChannel(_name: string, _projectId: string): Promise<CreatedIntakeChannel> {
+    return Promise.reject(new AppCommandError("unsupported", TOKENS_UNSUPPORTED));
+  }
+
+  revokeIntakeChannel(_id: string): Promise<void> {
     return Promise.reject(new AppCommandError("unsupported", TOKENS_UNSUPPORTED));
   }
 

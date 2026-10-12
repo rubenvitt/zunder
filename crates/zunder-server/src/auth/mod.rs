@@ -8,6 +8,8 @@
 //!   only accepted by `/api`.
 //! - **Calendar feed token**: `zc_…` in the URL of the calendar feed
 //!   ([`crate::calendar`]), stored as SHA-256 hex, grants only the feed.
+//! - **Intake tokens**: `zi_…` of an intake channel ([`crate::intake`]),
+//!   stored as SHA-256 hex in their own table, only accepted by `/intake`.
 //! - **Sessions**: cookie [`SESSION_COOKIE`] with a random 32-byte ID, stored
 //!   as HMAC-SHA256 (key `ZUNDER_SESSION_SECRET`), 30 days sliding expiry.
 //! - **CSRF**: cookie-authenticated requests that change state must carry the
@@ -37,6 +39,9 @@ pub const DEVICE_TOKEN_PREFIX: &str = "zd_";
 /// Prefix of the calendar feed token (in the feed URL, see
 /// [`crate::calendar`]); never accepted as a bearer token.
 pub const CALENDAR_TOKEN_PREFIX: &str = "zc_";
+/// Prefix of intake channel tokens (see [`crate::intake`]); only accepted
+/// by `/intake`, never by `/api` or `/mcp`.
+pub const INTAKE_TOKEN_PREFIX: &str = "zi_";
 /// Session lifetime (sliding).
 pub const SESSION_TTL_MS: i64 = 30 * 24 * 60 * 60 * 1000;
 /// A session is extended at most this often.

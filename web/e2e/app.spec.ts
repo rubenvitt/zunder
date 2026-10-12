@@ -108,6 +108,58 @@ test("API-Tokens anlegen (einmal sichtbar) und widerrufen", async ({ page }) => 
   await expect(tokenRow).toHaveCount(0);
 });
 
+test("Eingang anlegen (Token einmal sichtbar), einwerfen und widerrufen", async ({ page }) => {
+  const s = suffix();
+  const key = `E${s.toUpperCase()}`;
+  const seed = new Seeder();
+  const area = seed.area(`Ehrenamt ${s}`);
+  const project = seed.project(`IDA Eingang ${s}`, area, { kind: "dev", key });
+  seed.project(`Erledigt ${s}`, area, { status: "completed" });
+  await seed.push(page);
+
+  await openApp(page, "#/tokens");
+  const section = page.getByRole("region", { name: "Eingänge" });
+  await expect(section).toBeVisible();
+  // Completed projects are no target.
+  const picker = section.getByLabel("Zielprojekt");
+  await expect(picker.locator("option", { hasText: `Erledigt ${s}` })).toHaveCount(0);
+  await section.getByLabel("Name des Eingangs").fill(`iuk-suite-${s}`);
+  await picker.selectOption({ label: `IDA Eingang ${s}` });
+  await section.getByRole("button", { name: "Eingang anlegen" }).click();
+  const shown = section.getByTestId("new-intake-token");
+  await expect(shown).toHaveText(/^zi_[A-Za-z0-9_-]{43}$/);
+  const token = (await shown.textContent())!.trim();
+  const channelRow = section.locator("tr", { hasText: `iuk-suite-${s}` });
+  await expect(channelRow).toContainText(`IDA Eingang ${s}`);
+  await expect(channelRow).toContainText("nie");
+
+  // The token creates a task in the target project, once per external_id.
+  const submit = (bearer: string, data: Record<string, unknown>) =>
+    page.request.post("/intake/v1/tasks", { headers: { Authorization: `Bearer ${bearer}` }, data });
+  const body = { external_id: `rm-${s}`, title: `Rückmeldung ${s}`, type: "bug" };
+  const created = await submit(token, body);
+  expect(created.status(), await created.text()).toBe(201);
+  const task = (await created.json()) as { id: string; ref: string | null };
+  expect(task.ref).toBe(`${key}-1`);
+  const again = await submit(token, body);
+  expect(again.status()).toBe(200);
+  expect(await again.json()).toEqual(task);
+  await openApp(page, `#/bereiche/project/${project}`);
+  await expect(page.locator(".card", { hasText: `Rückmeldung ${s}` })).toBeVisible();
+
+  // Shown only once: after a reload it is gone, the channel stays.
+  await openApp(page, "#/tokens");
+  await expect(section.getByTestId("new-intake-token")).toHaveCount(0);
+  await expect(channelRow).toBeVisible();
+  await expect(channelRow).not.toContainText("nie");
+
+  page.once("dialog", (d) => void d.accept());
+  await channelRow.getByRole("button", { name: "Widerrufen" }).click();
+  await expect(channelRow).toHaveCount(0);
+  const revoked = await submit(token, { external_id: `rm2-${s}`, title: "Zu spät" });
+  expect(revoked.status()).toBe(401);
+});
+
 test("Timing in den Einstellungen eintragen, ändern und zurücksetzen", async ({ page }) => {
   // The real server would call Timing for flames afterwards: always reset.
   try {

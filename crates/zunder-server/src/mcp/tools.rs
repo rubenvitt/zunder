@@ -959,7 +959,7 @@ async fn add_comment(app: &App, source: Source, args: &Args) -> AppResult<Value>
 /// OAuth client (`mcp:oauth:Claude` → `Claude`).
 fn default_author(source: &Source) -> Option<String> {
     match source {
-        Source::Mcp(name) | Source::Api(name) | Source::App(name) => {
+        Source::Mcp(name) | Source::Api(name) | Source::App(name) | Source::Intake(name) => {
             Some(name.strip_prefix("oauth:").unwrap_or(name).to_owned())
         }
         Source::Web | Source::Server => None,

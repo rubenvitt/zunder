@@ -10,5 +10,6 @@ describe("sourceLabel", () => {
     expect(sourceLabel("mcp:claude-code")).toBe("Agent · claude-code");
     expect(sourceLabel("mcp:oauth:Claude")).toBe("Agent · Claude (OAuth)");
     expect(sourceLabel("app:RPhone-16 (iOS)")).toBe("App · RPhone-16 (iOS)");
+    expect(sourceLabel("intake:iuk-suite")).toBe("Eingang · iuk-suite");
   });
 });

@@ -247,6 +247,22 @@ export interface CreatedToken extends ApiToken {
   token: string;
 }
 
+/** An intake channel: lets another server create tasks in one project, see `GET /api/intake/channels`. */
+export interface IntakeChannel {
+  id: string;
+  name: string;
+  project_id: string;
+  /** Name of the target project; null when the server does not know it. */
+  project_name: string | null;
+  created_at?: string;
+  last_used_at?: string | null;
+}
+
+/** A newly created intake channel; `token` (`zi_…`) is shown only once. */
+export interface CreatedIntakeChannel extends IntakeChannel {
+  token: string;
+}
+
 /** Where an effective setting comes from: the settings view or an environment variable. */
 export type SettingSource = "settings" | "env";
 

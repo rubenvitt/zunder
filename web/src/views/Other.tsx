@@ -9,10 +9,10 @@ import { TaskList } from "../components/TaskList";
 import { isTauri } from "../platform/runtime";
 import { fireOf, formatInstant, isValidFire, shiftFire } from "../sync/dates";
 import { isFlameRunning } from "../sync/derived";
-import type { ApiToken, CreatedToken, Device, OAuthClient, Task } from "../sync/types";
+import type { ApiToken, CreatedIntakeChannel, CreatedToken, Device, IntakeChannel, OAuthClient, Task } from "../sync/types";
 import { flame } from "../state/actions";
 import { navigate, route } from "../state/router";
-import { api, now } from "../state/store";
+import { api, areaList, data, now, projectList } from "../state/store";
 import { devProjectIds, devTasks, phoenixTasks } from "../state/selectors";
 import { copyText, registerList, setStructureEdit, toast } from "../state/ui";
 
@@ -263,6 +263,7 @@ function TokenManager() {
           </tbody>
         </table>
       </Show>
+      <IntakeChannels />
       <section class="group">
         <h2>Geräte</h2>
         <p class="muted">Geräte, auf denen du dich in der Zunder-App angemeldet hast. Abmelden widerruft den Zugang sofort; die App fragt dann nach einer neuen Anmeldung.</p>
@@ -336,6 +337,146 @@ function TokenManager() {
         </Show>
       </section>
     </div>
+  );
+}
+
+/**
+ * Intake channels: another server (e.g. the iuk-suite) creates tasks in exactly one
+ * project with a `zi_…` token and can do nothing else.
+ */
+function IntakeChannels() {
+  const [channels, { refetch }] = createResource(async (): Promise<IntakeChannel[] | null> => {
+    try {
+      return await api().listIntakeChannels();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Eingänge konnten nicht geladen werden.", "error");
+      return null;
+    }
+  });
+  const [name, setName] = createSignal("");
+  const [projectId, setProjectId] = createSignal("");
+  const [created, setCreated] = createSignal<CreatedIntakeChannel | null>(null);
+  // Targets: open projects, grouped by area.
+  const targets = createMemo(() =>
+    areaList()
+      .map((area) => ({ area, projects: projectList().filter((p) => p.area_id === area.id && p.status !== "completed") }))
+      .filter((group) => group.projects.length > 0),
+  );
+  const endpoint = () => `${location.origin}/intake/v1/tasks`;
+
+  async function create(e: Event) {
+    e.preventDefault();
+    if (!name().trim() || !projectId()) return;
+    try {
+      setCreated(await api().createIntakeChannel(name().trim(), projectId()));
+      setName("");
+      setProjectId("");
+      void refetch();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Eingang konnte nicht angelegt werden.", "error");
+    }
+  }
+
+  async function revoke(channel: IntakeChannel) {
+    if (!confirm(`Eingang „${channel.name}“ widerrufen? Der Einwerfer kann danach keine Aufgaben mehr anlegen.`)) return;
+    try {
+      await api().revokeIntakeChannel(channel.id);
+      toast(`Eingang „${channel.name}“ widerrufen.`);
+      if (created()?.id === channel.id) setCreated(null);
+      void refetch();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Widerrufen fehlgeschlagen.", "error");
+    }
+  }
+
+  /** The target as the local data knows it: name plus a hint when it no longer takes tasks. */
+  function target(channel: IntakeChannel): string {
+    const project = data.projects[channel.project_id];
+    const label = project?.name ?? channel.project_name ?? "unbekanntes Projekt";
+    if (!project || project.deleted) return `${label} (gelöscht)`;
+    if (project.status === "completed") return `${label} (abgeschlossen)`;
+    return label;
+  }
+
+  return (
+    <section class="group" aria-labelledby="intake-heading">
+      <h2 id="intake-heading">Eingänge</h2>
+      <p class="muted">
+        Ein Eingang lässt einen anderen Server Aufgaben in genau ein Projekt einwerfen, z. B. Rückmeldungen aus der iuk-suite. Sein Token kann
+        nur anlegen: nichts lesen, nichts ändern, keine anderen Bereiche. API-Tokens funktionieren dort nicht und Eingangs-Tokens nicht in der API.
+      </p>
+      <form class="inline-form" onSubmit={create}>
+        <input class="field" placeholder="Name, z. B. iuk-suite" aria-label="Name des Eingangs" value={name()} onInput={(e) => setName(e.currentTarget.value)} />
+        <select class="field" aria-label="Zielprojekt" value={projectId()} onChange={(e) => setProjectId(e.currentTarget.value)}>
+          <option value="" disabled>
+            Zielprojekt wählen …
+          </option>
+          <For each={targets()}>
+            {(group) => (
+              <optgroup label={group.area.name}>
+                <For each={group.projects}>{(p) => <option value={p.id}>{p.name}</option>}</For>
+              </optgroup>
+            )}
+          </For>
+        </select>
+        <button class="btn btn-primary" type="submit" disabled={!name().trim() || !projectId()}>
+          <Icon name="key" size={14} /> Eingang anlegen
+        </button>
+      </form>
+      <Show when={created()}>
+        {(c) => (
+          <div class="notice notice-success new-token">
+            <p>
+              Neuer Eingang <strong>{c().name}</strong> nach <strong>{c().project_name ?? "?"}</strong>. Der Token wird nur jetzt angezeigt:
+            </p>
+            <code class="token-value" data-testid="new-intake-token">
+              {c().token}
+            </code>
+            <p class="muted">
+              Einwerfen mit <code>POST {endpoint()}</code> und <code>Authorization: Bearer …</code>
+            </p>
+            <div class="inline-group">
+              <button class="btn btn-small" onClick={() => copyText(c().token, "Token kopiert.")}>
+                Kopieren
+              </button>
+              <button class="btn btn-ghost btn-small" onClick={() => setCreated(null)}>
+                Ausblenden
+              </button>
+            </div>
+          </div>
+        )}
+      </Show>
+      <Show when={channels() !== null} fallback={<p class="muted">Eingänge nicht verfügbar.</p>}>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Zielprojekt</th>
+              <th>Erstellt</th>
+              <th>Zuletzt benutzt</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            <For each={channels() ?? []} fallback={<tr><td colSpan={5} class="muted">{channels.loading ? "Lädt …" : "Noch keine Eingänge."}</td></tr>}>
+              {(channel) => (
+                <tr data-intake-id={channel.id}>
+                  <td>{channel.name}</td>
+                  <td>{target(channel)}</td>
+                  <td>{channel.created_at ? formatInstant(channel.created_at, new Date(now())) : "—"}</td>
+                  <td>{channel.last_used_at ? formatInstant(channel.last_used_at, new Date(now())) : "nie"}</td>
+                  <td class="right">
+                    <button class="btn btn-danger btn-small" onClick={() => void revoke(channel)}>
+                      Widerrufen
+                    </button>
+                  </td>
+                </tr>
+              )}
+            </For>
+          </tbody>
+        </table>
+      </Show>
+    </section>
   );
 }
 

@@ -113,7 +113,7 @@ Das persönliche Produktivitätssystem (Wochenzyklen „Feuer“, Deep-Work-Blö
 | `zunder-app` | Tauri 2 für Desktop, iOS und Android, mit lokaler SQLite über `zunder-core` (E4). |
 | `zunder-import` | CLI für den einmaligen ClickUp-Import. |
 
-**Login:** OIDC (Pocket-ID). Für Agenten und MCP gibt es API-Tokens, die einzeln widerrufbar sind.
+**Login:** OIDC (Pocket-ID). Für Agenten und MCP gibt es API-Tokens, die einzeln widerrufbar sind. Fremde Server, die nur Aufgaben in ein bestimmtes Projekt einwerfen sollen (z. B. Rückmeldungen aus der iuk-suite), bekommen statt eines API-Tokens einen Eingang: einen eigenen, einzeln widerrufbaren Token, der nur anlegen kann.
 
 **Hosting:** All-in-one in einem Container. Eine getrennte Auslieferung der Web-UI (z. B. über Cloudflare) bleibt später möglich.
 
