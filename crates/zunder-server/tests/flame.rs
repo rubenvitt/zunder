@@ -432,6 +432,20 @@ async fn flame_without_timing_via_http() {
     assert_eq!(r.status, StatusCode::CONFLICT);
     assert_eq!(r.error_code(), "conflict");
 
+    // A stopped flame can be started again.
+    let r = s
+        .request(
+            axum::http::Method::POST,
+            &format!("/api/tasks/{b}/flame/start"),
+            Auth::Web(&session),
+            None,
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    assert_eq!(r.json()["running"], true, "{}", r.text());
+    assert_eq!(r.json()["unchanged"], false);
+    assert_eq!(r.json()["task"]["flame_ended_at"], Value::Null);
+
     let r = s
         .request(
             axum::http::Method::POST,

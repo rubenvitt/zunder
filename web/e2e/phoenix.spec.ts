@@ -43,4 +43,9 @@ test("Flamme starten und beenden", async ({ page }) => {
   await button.click();
   await expect(button).toHaveText(/Flamme starten/);
   await expect.poll(async () => (await entityFields(page, "task", flameId)).flame_ended_at).toBeTruthy();
+
+  // A stopped flame starts again.
+  await button.click();
+  await expect(button).toHaveText(/Flamme beenden/);
+  await expect.poll(async () => (await entityFields(page, "task", flameId)).flame_ended_at ?? null).toBeNull();
 });
