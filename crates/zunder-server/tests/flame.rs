@@ -120,6 +120,11 @@ async fn start_timer(
 
 async fn stop_timer(State(mock): State<TimingMock>, headers: HeaderMap) -> Response {
     mock.record("PUT", "/time-entries/stop", &headers, Value::Null);
+    // Like the real Timing (behind its web server): a PUT without
+    // Content-Length is refused.
+    if !headers.contains_key(header::CONTENT_LENGTH) {
+        return (StatusCode::LENGTH_REQUIRED, "Length Required").into_response();
+    }
     let mut s = mock.0.lock().unwrap();
     match s.running.take() {
         Some(id) => Json(entry(id, false, "")).into_response(),

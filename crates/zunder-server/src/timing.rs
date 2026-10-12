@@ -14,7 +14,8 @@
 //!   and only stops when that entry still runs. Only one timer runs at a
 //!   time, so a running entry is the running timer. It does not ask
 //!   `GET /time-entries/running`: that answers with a redirect, and a stop
-//!   must not depend on how the redirect is followed.
+//!   must not depend on how the redirect is followed. The stop has no body,
+//!   but Timing insists on `Content-Length: 0` (else 411 Length Required).
 //! - **check**: the same `GET /time-entries/running` tells whether Timing
 //!   accepts the token (settings view, "Verbindung prüfen").
 //! - **projects**: `GET /projects?hide_archived=true` lists the projects the
@@ -136,6 +137,7 @@ impl TimingClient {
         path: &str,
         body: Option<&StartTimer>,
     ) -> Result<(StatusCode, Value), TimingError> {
+        let needs_length = body.is_none() && method != Method::GET;
         let mut request = self
             .http
             .request(method, format!("{}{path}", self.base_url))
@@ -143,6 +145,10 @@ impl TimingClient {
             .header(reqwest::header::ACCEPT, "application/json");
         if let Some(body) = body {
             request = request.json(body);
+        } else if needs_length {
+            // A bodyless PUT goes out without Content-Length; Timing's web
+            // server refuses that with 411 Length Required.
+            request = request.header(reqwest::header::CONTENT_LENGTH, 0);
         }
         let response = request
             .send()
