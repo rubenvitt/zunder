@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Zunder",
+  "version": "0.1.0",
+  "identifier": "dev.rubeen.zunder",
+  "build": {
+    "frontendDist": "../../../web/dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm --prefix ../../web run dev",
+    "beforeBuildCommand": "npm --prefix ../../web run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Zunder",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 360,
+        "minHeight": 560
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src ipc: http://ipc.localhost",
+      "devCsp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Productivity",
+    "shortDescription": "Persönliche Aufgabenverwaltung",
+    "longDescription": "Zunder: selbst gehostete, offline-fähige Aufgabenverwaltung für eine Person.",
+    "license": "Apache-2.0",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

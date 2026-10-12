@@ -1,0 +1,33 @@
+[package]
+name = "zunder-import"
+description = "Einmaliger Import aus ClickUp nach Zunder (Probelauf, Bericht, Import, Sicherung)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "zunder-import"
+path = "src/main.rs"
+
+[dependencies]
+zunder-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+url.workspace = true
+anyhow = "1"
+clap = { version = "4", features = ["derive", "env"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["rt", "macros", "time"] }
+toml = "1"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+chrono-tz = "0.10"
+
+[dev-dependencies]
+axum = { version = "0.8", default-features = false, features = ["tokio", "http1", "json", "query"] }
+tokio = { version = "1", features = ["rt", "macros", "time", "net"] }
+tempfile = "3"
+
+[lints]
+workspace = true

@@ -1,0 +1,48 @@
+# Zunder – Portainer-Stack für r-server (ARM64) hinter Traefik.
+#
+# Öffentliche Domain (zunder.rubeen.dev statt *.rubeen.home), weil claude.ai
+# den MCP-Endpoint /mcp von außen erreichen muss. Details: docs/betrieb.md.
+#
+# Geheimnisse kommen aus stack.env (Vorlage in diesem Ordner, befüllen mit
+# ./generate-secrets.sh). Statische Werte stehen direkt hier.
+
+services:
+  zunder:
+    image: ghcr.io/rubenvitt/zunder:latest
+    container_name: zunder
+    restart: unless-stopped
+    environment:
+      # Statisch
+      - ZUNDER_PUBLIC_URL=https://zunder.rubeen.dev
+      - ZUNDER_BIND=0.0.0.0:8080
+      - ZUNDER_DATA_DIR=/data
+      - ZUNDER_WEB_DIR=/app/web
+      - ZUNDER_BACKUP_HOUR=3
+      - TZ=Europe/Berlin
+      # Pocket-ID (OIDC)
+      - ZUNDER_OIDC_ISSUER=${ZUNDER_OIDC_ISSUER}
+      - ZUNDER_OIDC_CLIENT_ID=${ZUNDER_OIDC_CLIENT_ID}
+      - ZUNDER_OIDC_CLIENT_SECRET=${ZUNDER_OIDC_CLIENT_SECRET}
+      - ZUNDER_OIDC_ALLOWED_EMAIL=${ZUNDER_OIDC_ALLOWED_EMAIL}
+      # Sitzungen
+      - ZUNDER_SESSION_SECRET=${ZUNDER_SESSION_SECRET}
+      # Timing-Brücke (optional, leer = aus)
+      - ZUNDER_TIMING_TOKEN=${ZUNDER_TIMING_TOKEN}
+      - ZUNDER_TIMING_PROJECT=${ZUNDER_TIMING_PROJECT}
+    volumes:
+      - zunder_data:/data
+    networks:
+      - infrastructure
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.zunder.rule=Host(`zunder.rubeen.dev`)"
+      - "traefik.http.routers.zunder.entrypoints=websecure"
+      - "traefik.http.routers.zunder.tls=true"
+      - "traefik.http.services.zunder.loadbalancer.server.port=8080"
+
+volumes:
+  zunder_data:
+
+networks:
+  infrastructure:
+    external: true

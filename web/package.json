@@ -1,0 +1,32 @@
+{
+  "name": "zunder-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Web-Oberfläche von Zunder",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "vite build && playwright test"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.12.1",
+    "solid-js": "^1.9.17"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@types/node": "^22.19.0",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.7",
+    "vite-plugin-solid": "^2.11.14",
+    "vitest": "^5.0.3"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}

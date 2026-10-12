@@ -1,0 +1,71 @@
+{
+  "name": "ausser-der-reihe",
+  "description": "Operationen kommen in zufälliger Reihenfolge an (offline-Client, mehrere Knoten). Das Ergebnis hängt nur von den HLCs ab.",
+  "kind": "merge",
+  "ops": [
+    {
+      "op_id": "0192a000-0000-7000-8000-00000000a006",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-00000000e001",
+      "field": "status",
+      "value": "done",
+      "hlc": "1760000006000:00000:web-b"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-00000000a003",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-00000000e001",
+      "field": "description",
+      "value": "Version 2",
+      "hlc": "1760000003000:00000:web-a"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-00000000a001",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-00000000e001",
+      "field": "title",
+      "value": "Erster Titel",
+      "hlc": "1760000001000:00000:web-a"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-00000000a005",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-00000000e001",
+      "field": "status",
+      "value": "in_progress",
+      "hlc": "1760000005000:00000:web-a"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-00000000a002",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-00000000e001",
+      "field": "description",
+      "value": "Version 1",
+      "hlc": "1760000002000:00000:web-b"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-00000000a007",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-00000000e001",
+      "field": "title",
+      "value": "Letzter Titel",
+      "hlc": "1760000007000:00000:server"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-00000000a004",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-00000000e001",
+      "field": "type",
+      "value": "aufgabe",
+      "hlc": "1760000004000:00000:web-b"
+    }
+  ],
+  "expected": {
+    "task/0192a000-0000-7000-8000-00000000e001": {
+      "title": "Letzter Titel",
+      "description": "Version 2",
+      "status": "done",
+      "type": "aufgabe"
+    }
+  }
+}

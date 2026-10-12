@@ -1,0 +1,20 @@
+[package]
+name = "zunder-core"
+description = "Domäne, Validierung, Hybrid Logical Clock und Merge von Zunder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+time.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

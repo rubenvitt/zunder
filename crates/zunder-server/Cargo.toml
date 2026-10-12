@@ -1,0 +1,45 @@
+[package]
+name = "zunder-server"
+description = "Server von Zunder: Sync-API, Login, Persistenz und Auslieferung der Web-UI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+zunder-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+time.workspace = true
+url = { workspace = true, features = ["serde"] }
+anyhow = "1"
+axum = { version = "0.8", features = ["macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time", "fs"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+tokio-util = "0.7"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["fs", "compression-gzip", "compression-br", "trace", "set-header", "timeout"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+jsonwebtoken = "9"
+sha2 = "0.10"
+hmac = "0.12"
+base64 = "0.22"
+getrandom = "0.3"
+cookie = "0.18"
+brotli = { version = "9", default-features = false, features = ["std"] }
+flate2 = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+ring = "0.17"
+
+[dev-dependencies]
+tempfile = "3"
+http-body-util = "0.1"
+rsa = { version = "0.9", features = ["getrandom"] }
+
+[lints]
+workspace = true

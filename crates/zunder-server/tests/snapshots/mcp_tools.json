@@ -1,0 +1,1069 @@
+[
+  {
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Aufgaben filtern"
+    },
+    "description": "Listet Aufgaben nach Filtern. Ohne include_closed werden erledigte und verworfene Aufgaben ausgeblendet, deren Status sich vor mehr als 3 Tagen geändert hat. Gelöschte Aufgaben erscheinen nie. Alle Filter werden mit UND verknüpft. Sortierung (order_by): due = Fälligkeit (ohne Fälligkeit zuletzt), dann Erstellung (Standard); created, updated oder status_changed; reverse kehrt sie um. Mehr als limit Treffer holt man seitenweise mit offset (next_offset im Ergebnis).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "area_id": {
+          "description": "Nur Aufgaben in diesem Bereich, direkt oder in einem seiner Projekte.",
+          "type": "string"
+        },
+        "claimed_by": {
+          "description": "Nur Aufgaben mit gültiger Reservierung durch diesen Agenten.",
+          "type": "string"
+        },
+        "closed_after": {
+          "description": "Nur erledigte oder verworfene Aufgaben, deren Status sich an oder nach diesem Tag geändert hat (JJJJ-MM-TT, Kalendertag in der Zeitzone des Servers, inklusive; oder RFC-3339-Zeitpunkt). Schließt include_closed ein.",
+          "type": "string"
+        },
+        "closed_before": {
+          "description": "Nur erledigte oder verworfene Aufgaben, deren Status sich an oder vor diesem Tag geändert hat (wie closed_after).",
+          "type": "string"
+        },
+        "due_after": {
+          "description": "Fällig frühestens an diesem Tag (JJJJ-MM-TT oder RFC 3339, inklusive, Vergleich nach Kalendertag).",
+          "type": "string"
+        },
+        "due_before": {
+          "description": "Fällig spätestens an diesem Tag (JJJJ-MM-TT oder RFC 3339, inklusive, Vergleich nach Kalendertag).",
+          "type": "string"
+        },
+        "flame_running": {
+          "description": "true: nur Aufgaben mit laufender Flamme (unabhängig von Status und Alter); false: nur ohne.",
+          "type": "boolean"
+        },
+        "include_closed": {
+          "description": "Auch erledigte und verworfene Aufgaben, die älter als 3 Tage sind (Standard false).",
+          "type": "boolean"
+        },
+        "limit": {
+          "default": 100,
+          "description": "Höchstzahl der Ergebnisse.",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "location": {
+          "description": "Art der wirksamen Stelle (bei Unteraufgaben die der Wurzelaufgabe).",
+          "enum": [
+            "inbox",
+            "loose",
+            "area",
+            "project"
+          ],
+          "type": "string"
+        },
+        "offset": {
+          "default": 0,
+          "description": "So viele Treffer der Sortierung überspringen.",
+          "maximum": 1000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "order_by": {
+          "description": "Sortierung (Standard due).",
+          "enum": [
+            "due",
+            "created",
+            "updated",
+            "status_changed"
+          ],
+          "type": "string"
+        },
+        "parent_id": {
+          "description": "Nur direkte Unteraufgaben dieser Aufgabe (UUID oder ClickUp-ID einer importierten Aufgabe).",
+          "type": "string"
+        },
+        "phoenix_fire": {
+          "description": "Nur Aufgaben dieses Feuers (ISO-Woche JJJJ-Www).",
+          "type": "string"
+        },
+        "phoenix_role": {
+          "description": "Nur Aufgaben mit dieser Phönix-Rolle.",
+          "enum": [
+            "feuer_schritt",
+            "flamme"
+          ],
+          "type": "string"
+        },
+        "project_id": {
+          "description": "Nur Aufgaben in diesem Projekt.",
+          "type": "string"
+        },
+        "reverse": {
+          "description": "Sortierung umkehren (Standard false).",
+          "type": "boolean"
+        },
+        "status": {
+          "description": "Nur diese Status.",
+          "items": {
+            "enum": [
+              "open",
+              "in_progress",
+              "review",
+              "blocked",
+              "done",
+              "dropped"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "type": {
+          "description": "Nur diese Typen.",
+          "items": {
+            "enum": [
+              "aufgabe",
+              "bug",
+              "feature"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "filter_tasks",
+    "title": "Aufgaben filtern"
+  },
+  {
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Aufgabe lesen"
+    },
+    "description": "Liefert eine Aufgabe mit allen Feldern, Fortschritt und dem Baum ihrer Unteraufgaben (subtasks). Adressierung über task_id oder clickup_id.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "clickup_id": {
+          "description": "ClickUp-ID einer importierten Aufgabe (statt task_id).",
+          "type": "string"
+        },
+        "task_id": {
+          "description": "ID der Aufgabe (UUID). Alternativ clickup_id angeben.",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "get_task",
+    "title": "Aufgabe lesen"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Aufgabe anlegen"
+    },
+    "description": "Legt eine Aufgabe an. Nur title ist Pflicht; ohne location landet sie in der Inbox. Mit parent_id entsteht eine Unteraufgabe (ihre Stelle ist die der Wurzelaufgabe).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "branch": {
+          "description": "Git-Branch der Umsetzung.",
+          "type": "string"
+        },
+        "description": {
+          "description": "Beschreibung (Markdown).",
+          "type": "string"
+        },
+        "due": {
+          "description": "Fälligkeit: Datum JJJJ-MM-TT oder RFC-3339-Zeitpunkt mit Offset.",
+          "type": "string"
+        },
+        "links": {
+          "description": "Externe Links; ersetzt die ganze Liste.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "title": {
+                "description": "Optionaler Anzeigetext.",
+                "type": "string"
+              },
+              "url": {
+                "description": "Absolute URL (beliebiges Schema).",
+                "type": "string"
+              }
+            },
+            "required": [
+              "url"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "location": {
+          "additionalProperties": false,
+          "description": "Stelle der Aufgabe: {\"kind\":\"inbox\"}, {\"kind\":\"loose\"}, {\"kind\":\"area\",\"id\":<Bereichs-ID>} oder {\"kind\":\"project\",\"id\":<Projekt-ID>}. IDs liefert list_structure.",
+          "properties": {
+            "id": {
+              "description": "ID des Bereichs bzw. Projekts (nur bei area/project).",
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "inbox",
+                "loose",
+                "area",
+                "project"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        "parent_id": {
+          "description": "Elternaufgabe für eine Unteraufgabe: UUID oder ClickUp-ID einer importierten Aufgabe.",
+          "type": "string"
+        },
+        "phoenix": {
+          "additionalProperties": false,
+          "description": "Phönix-Markierung oder null zum Entfernen.",
+          "properties": {
+            "fire": {
+              "description": "Feuer als ISO-Woche JJJJ-Www, z. B. 2026-W45.",
+              "type": "string"
+            },
+            "role": {
+              "enum": [
+                "feuer_schritt",
+                "flamme"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "role",
+            "fire"
+          ],
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "plan": {
+          "description": "Plan (Markdown), z. B. aus dem Dev-Modus.",
+          "type": "string"
+        },
+        "pr_url": {
+          "description": "URL des Pull Requests (http/https).",
+          "type": "string"
+        },
+        "remind_at": {
+          "description": "Erinnerung als RFC-3339-Zeitpunkt mit Offset.",
+          "type": "string"
+        },
+        "status": {
+          "description": "Status: open, in_progress, review (nur Dev-Projekte), blocked, done, dropped.",
+          "enum": [
+            "open",
+            "in_progress",
+            "review",
+            "blocked",
+            "done",
+            "dropped"
+          ],
+          "type": "string"
+        },
+        "title": {
+          "description": "Titel (Pflicht, höchstens 500 Zeichen).",
+          "type": "string"
+        },
+        "type": {
+          "description": "Typ: aufgabe (Standard), bug oder feature (nur in Dev-Projekten).",
+          "enum": [
+            "aufgabe",
+            "bug",
+            "feature"
+          ],
+          "type": "string"
+        },
+        "vault_links": {
+          "description": "Verweise auf Notizen im Obsidian-Vault (Pfade oder obsidian://-URIs); ersetzt die ganze Liste.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "type": "object"
+    },
+    "name": "create_task",
+    "title": "Aufgabe anlegen"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Aufgabe ändern"
+    },
+    "description": "Ändert Felder einer Aufgabe (task_id oder clickup_id). Nur angegebene Felder ändern sich; null entfernt optionale Werte. Stelle und Elternaufgabe ändert move_task, Reservierungen claim_task/release_task.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "branch": {
+          "description": "Git-Branch der Umsetzung. null entfernt den Wert.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "clickup_id": {
+          "description": "ClickUp-ID einer importierten Aufgabe (statt task_id).",
+          "type": "string"
+        },
+        "description": {
+          "description": "Beschreibung (Markdown). null entfernt den Wert.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "due": {
+          "description": "Fälligkeit: Datum JJJJ-MM-TT oder RFC-3339-Zeitpunkt mit Offset. null entfernt den Wert.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "links": {
+          "description": "Externe Links; ersetzt die ganze Liste.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "title": {
+                "description": "Optionaler Anzeigetext.",
+                "type": "string"
+              },
+              "url": {
+                "description": "Absolute URL (beliebiges Schema).",
+                "type": "string"
+              }
+            },
+            "required": [
+              "url"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "phoenix": {
+          "additionalProperties": false,
+          "description": "Phönix-Markierung oder null zum Entfernen.",
+          "properties": {
+            "fire": {
+              "description": "Feuer als ISO-Woche JJJJ-Www, z. B. 2026-W45.",
+              "type": "string"
+            },
+            "role": {
+              "enum": [
+                "feuer_schritt",
+                "flamme"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "role",
+            "fire"
+          ],
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "plan": {
+          "description": "Plan (Markdown), z. B. aus dem Dev-Modus. null entfernt den Wert.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pr_url": {
+          "description": "URL des Pull Requests (http/https). null entfernt den Wert.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "remind_at": {
+          "description": "Erinnerung als RFC-3339-Zeitpunkt mit Offset. null entfernt den Wert.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "description": "Status: open, in_progress, review (nur Dev-Projekte), blocked, done, dropped.",
+          "enum": [
+            "open",
+            "in_progress",
+            "review",
+            "blocked",
+            "done",
+            "dropped"
+          ],
+          "type": "string"
+        },
+        "task_id": {
+          "description": "ID der Aufgabe (UUID). Alternativ clickup_id angeben.",
+          "type": "string"
+        },
+        "title": {
+          "description": "Neuer Titel.",
+          "type": "string"
+        },
+        "type": {
+          "description": "Typ: aufgabe (Standard), bug oder feature (nur in Dev-Projekten).",
+          "enum": [
+            "aufgabe",
+            "bug",
+            "feature"
+          ],
+          "type": "string"
+        },
+        "vault_links": {
+          "description": "Verweise auf Notizen im Obsidian-Vault (Pfade oder obsidian://-URIs); ersetzt die ganze Liste.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "update_task",
+    "title": "Aufgabe ändern"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Aufgabe verschieben"
+    },
+    "description": "Verschiebt eine Aufgabe an eine neue Stelle und/oder unter eine andere Elternaufgabe. Nur location: die Aufgabe wird an diese Stelle gelegt und von einer Elternaufgabe gelöst. parent_id: wird zur Unteraufgabe. parent_id null: wird eigenständig und behält ihre bisherige wirksame Stelle, sofern keine location angegeben ist.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "clickup_id": {
+          "description": "ClickUp-ID einer importierten Aufgabe (statt task_id).",
+          "type": "string"
+        },
+        "location": {
+          "additionalProperties": false,
+          "description": "Stelle der Aufgabe: {\"kind\":\"inbox\"}, {\"kind\":\"loose\"}, {\"kind\":\"area\",\"id\":<Bereichs-ID>} oder {\"kind\":\"project\",\"id\":<Projekt-ID>}. IDs liefert list_structure.",
+          "properties": {
+            "id": {
+              "description": "ID des Bereichs bzw. Projekts (nur bei area/project).",
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "inbox",
+                "loose",
+                "area",
+                "project"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        "parent_id": {
+          "description": "Neue Elternaufgabe (UUID oder ClickUp-ID einer importierten Aufgabe) oder null, um die Aufgabe zu lösen.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "task_id": {
+          "description": "ID der Aufgabe (UUID). Alternativ clickup_id angeben.",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "move_task",
+    "title": "Aufgabe verschieben"
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Aufgabe löschen"
+    },
+    "description": "Löscht eine Aufgabe samt allen Unteraufgaben (Tombstone; bleibt im Änderungsprotokoll nachvollziehbar).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "clickup_id": {
+          "description": "ClickUp-ID einer importierten Aufgabe (statt task_id).",
+          "type": "string"
+        },
+        "task_id": {
+          "description": "ID der Aufgabe (UUID). Alternativ clickup_id angeben.",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "delete_task",
+    "title": "Aufgabe löschen"
+  },
+  {
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Suchen"
+    },
+    "description": "Volltextsuche über Titel, Beschreibung und Plan von Aufgaben sowie Namen von Projekten und Bereichen. Findet auch erledigte und verworfene Aufgaben, aber keine gelöschten. Groß-/Kleinschreibung egal, „ä“ findet „a“ und „ae“. Eine exakte ClickUp-ID findet die importierte Aufgabe.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 20,
+          "description": "Höchstzahl der Treffer.",
+          "maximum": 200,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "query": {
+          "description": "Suchbegriffe; alle Wörter müssen vorkommen.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "name": "search",
+    "title": "Suchen"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Aufgabe reservieren"
+    },
+    "description": "Reserviert eine Aufgabe für einen Agenten mit Ablaufzeit (Dev-Modus). Schlägt fehl, wenn ein anderer Agent sie gültig reserviert hat. Derselbe Agent kann seine Reservierung damit verlängern.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "description": "Name des Agenten, z. B. „claude-code@laptop“.",
+          "type": "string"
+        },
+        "clickup_id": {
+          "description": "ClickUp-ID einer importierten Aufgabe (statt task_id).",
+          "type": "string"
+        },
+        "task_id": {
+          "description": "ID der Aufgabe (UUID). Alternativ clickup_id angeben.",
+          "type": "string"
+        },
+        "ttl_minutes": {
+          "default": 120,
+          "description": "Gültigkeit in Minuten.",
+          "maximum": 10080,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "agent"
+      ],
+      "type": "object"
+    },
+    "name": "claim_task",
+    "title": "Aufgabe reservieren"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Reservierung aufheben"
+    },
+    "description": "Hebt die Reservierung einer Aufgabe auf. Nur der reservierende Agent darf das, außer die Reservierung ist abgelaufen oder force ist true.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "description": "Name des reservierenden Agenten (Pflicht ohne force).",
+          "type": "string"
+        },
+        "clickup_id": {
+          "description": "ClickUp-ID einer importierten Aufgabe (statt task_id).",
+          "type": "string"
+        },
+        "force": {
+          "description": "Fremde, gültige Reservierung trotzdem aufheben (Standard false).",
+          "type": "boolean"
+        },
+        "task_id": {
+          "description": "ID der Aufgabe (UUID). Alternativ clickup_id angeben.",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "release_task",
+    "title": "Reservierung aufheben"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Aufgabe zerlegen"
+    },
+    "description": "Legt mehrere Unteraufgaben einer Aufgabe in einem Schritt an (alles oder nichts). Ohne type erhalten sie den Typ aufgabe.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "clickup_id": {
+          "description": "ClickUp-ID einer importierten Aufgabe (statt task_id).",
+          "type": "string"
+        },
+        "subtasks": {
+          "description": "Die neuen Unteraufgaben in Reihenfolge.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "description": {
+                "description": "Beschreibung (Markdown).",
+                "type": "string"
+              },
+              "due": {
+                "description": "Fälligkeit: Datum JJJJ-MM-TT oder RFC-3339-Zeitpunkt mit Offset.",
+                "type": "string"
+              },
+              "plan": {
+                "description": "Plan (Markdown).",
+                "type": "string"
+              },
+              "remind_at": {
+                "description": "Erinnerung als RFC-3339-Zeitpunkt mit Offset.",
+                "type": "string"
+              },
+              "status": {
+                "description": "Status: open, in_progress, review (nur Dev-Projekte), blocked, done, dropped.",
+                "enum": [
+                  "open",
+                  "in_progress",
+                  "review",
+                  "blocked",
+                  "done",
+                  "dropped"
+                ],
+                "type": "string"
+              },
+              "title": {
+                "description": "Titel (Pflicht).",
+                "type": "string"
+              },
+              "type": {
+                "description": "Typ: aufgabe (Standard), bug oder feature (nur in Dev-Projekten).",
+                "enum": [
+                  "aufgabe",
+                  "bug",
+                  "feature"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "title"
+            ],
+            "type": "object"
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "type": "array"
+        },
+        "task_id": {
+          "description": "ID der Aufgabe (UUID). Alternativ clickup_id angeben.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subtasks"
+      ],
+      "type": "object"
+    },
+    "name": "decompose_task",
+    "title": "Aufgabe zerlegen"
+  },
+  {
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Struktur auflisten"
+    },
+    "description": "Listet Bereiche mit ihren Projekten (IDs für location, Vault-Abgleich über die ID = zunder_id) sowie die Zahl offener Aufgaben in Inbox, Lose und je Projekt.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "include_archived": {
+          "description": "Auch archivierte Bereiche und abgeschlossene Projekte (Standard false).",
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "list_structure",
+    "title": "Struktur auflisten"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Bereich anlegen"
+    },
+    "description": "Legt einen Bereich an. Die ID ist die zunder_id im Vault-Frontmatter; eine vorhandene zunder_id kann als id übergeben werden.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Optionale eigene ID (UUID, klein, mit Bindestrichen).",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name (Pflicht).",
+          "type": "string"
+        },
+        "state": {
+          "description": "Zustand (Standard active).",
+          "enum": [
+            "active",
+            "archived"
+          ],
+          "type": "string"
+        },
+        "vault_path": {
+          "description": "Pfad der Notiz im Vault (nur Info).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "create_area",
+    "title": "Bereich anlegen"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Bereich ändern"
+    },
+    "description": "Ändert Name, Zustand oder Vault-Pfad eines Bereichs.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "area_id": {
+          "description": "ID des Bereichs.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Neuer Name.",
+          "type": "string"
+        },
+        "state": {
+          "description": "active oder archived.",
+          "enum": [
+            "active",
+            "archived"
+          ],
+          "type": "string"
+        },
+        "vault_path": {
+          "description": "Pfad der Notiz im Vault; null entfernt ihn.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "area_id"
+      ],
+      "type": "object"
+    },
+    "name": "update_area",
+    "title": "Bereich ändern"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Projekt anlegen"
+    },
+    "description": "Legt ein Projekt in einem Bereich an. Dev-Projekte (kind dev) erlauben bug, feature und review und tragen optional das GitHub-Repo.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "area_id": {
+          "description": "ID des Bereichs (Pflicht).",
+          "type": "string"
+        },
+        "description": {
+          "description": "Beschreibung (Markdown).",
+          "type": "string"
+        },
+        "id": {
+          "description": "Optionale eigene ID (UUID, klein, mit Bindestrichen).",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Art (Standard standard).",
+          "enum": [
+            "standard",
+            "dev"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "description": "Name (Pflicht).",
+          "type": "string"
+        },
+        "repo": {
+          "description": "GitHub-Repo owner/name (nur bei kind dev).",
+          "type": "string"
+        },
+        "status": {
+          "description": "Status (Standard active).",
+          "enum": [
+            "active",
+            "paused",
+            "completed"
+          ],
+          "type": "string"
+        },
+        "view": {
+          "description": "Ansicht (Standard: board bei dev, sonst list).",
+          "enum": [
+            "list",
+            "board"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "area_id"
+      ],
+      "type": "object"
+    },
+    "name": "create_project",
+    "title": "Projekt anlegen"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Projekt ändern"
+    },
+    "description": "Ändert Felder eines Projekts, auch den Bereich (area_id).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "area_id": {
+          "description": "Neuer Bereich.",
+          "type": "string"
+        },
+        "description": {
+          "description": "Beschreibung (Markdown); null entfernt sie.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "description": "standard oder dev.",
+          "enum": [
+            "standard",
+            "dev"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "description": "Neuer Name.",
+          "type": "string"
+        },
+        "project_id": {
+          "description": "ID des Projekts.",
+          "type": "string"
+        },
+        "repo": {
+          "description": "GitHub-Repo owner/name; null entfernt es.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "description": "active, paused oder completed.",
+          "enum": [
+            "active",
+            "paused",
+            "completed"
+          ],
+          "type": "string"
+        },
+        "view": {
+          "description": "list oder board; null stellt den Standard der Art wieder her.",
+          "enum": [
+            "list",
+            "board",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "project_id"
+      ],
+      "type": "object"
+    },
+    "name": "update_project",
+    "title": "Projekt ändern"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Flamme starten"
+    },
+    "description": "Startet eine Flamme (Deep-Work-Block) an einer Aufgabe. Eine laufende Flamme an einer anderen Aufgabe endet dabei. Ist Timing angebunden, startet ein Timer in Timing (timing_ref); sonst werden nur Start- und Endzeit gespeichert. Das Ergebnis sagt, ob Timing genutzt wurde.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "clickup_id": {
+          "description": "ClickUp-ID einer importierten Aufgabe (statt task_id).",
+          "type": "string"
+        },
+        "task_id": {
+          "description": "ID der Aufgabe (UUID). Alternativ clickup_id angeben.",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "start_flame",
+    "title": "Flamme starten"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Flamme beenden"
+    },
+    "description": "Beendet die laufende Flamme einer Aufgabe und stoppt den zugehörigen Timing-Timer, falls er noch läuft. Ohne task_id und clickup_id endet die gerade laufende Flamme, wo immer sie brennt.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "clickup_id": {
+          "description": "ClickUp-ID einer importierten Aufgabe (statt task_id).",
+          "type": "string"
+        },
+        "task_id": {
+          "description": "ID der Aufgabe (UUID). Alternativ clickup_id angeben.",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "stop_flame",
+    "title": "Flamme beenden"
+  },
+  {
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Änderungsprotokoll"
+    },
+    "description": "Liefert das Änderungsprotokoll einer Aufgabe (auch gelöschter): jede Feldänderung mit Wert, Zeitpunkt und Quelle (web, api:<token>, mcp:<token>, server).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "clickup_id": {
+          "description": "ClickUp-ID einer importierten Aufgabe (statt task_id).",
+          "type": "string"
+        },
+        "limit": {
+          "default": 100,
+          "description": "Höchstzahl der Einträge (die neuesten).",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "task_id": {
+          "description": "ID der Aufgabe (UUID). Alternativ clickup_id angeben.",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "get_task_history",
+    "title": "Änderungsprotokoll"
+  }
+]
