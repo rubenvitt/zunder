@@ -131,6 +131,8 @@ test("Timing in den Einstellungen eintragen, ändern und zurücksetzen", async (
 
     // Only the project: the token stays.
     await page.getByLabel("Timing-Projekt").fill("");
+    // With a token the field lists Timing's projects; Escape closes the list.
+    await page.getByLabel("Timing-Projekt").press("Escape");
     await save.click();
     await expect(status).toContainText("ohne Projekt");
     await expect(status).toContainText("…1234");
@@ -139,6 +141,46 @@ test("Timing in den Einstellungen eintragen, ändern und zurücksetzen", async (
     await page.getByRole("button", { name: "Zurücksetzen" }).click();
     await expect(status).toContainText("Nicht eingerichtet");
     await expect(page.getByRole("button", { name: "Zurücksetzen" })).toHaveCount(0);
+  } finally {
+    await page.request.delete("/api/settings/timing", { headers: WEB_HEADERS });
+  }
+});
+
+test("Timing-Projekt aus der Liste wählen", async ({ page }) => {
+  test.skip(!isMock, "Die Projektliste kommt aus Timing; nur der Mock hat ein Timing-Konto");
+  try {
+    await openApp(page, "#/einstellungen");
+    const status = page.getByTestId("timing-status");
+    await page.getByLabel("Timing-Token").fill("e2e-timing-token-1234");
+    await page.getByRole("button", { name: "Speichern" }).click();
+    await expect(status).toContainText("ohne Projekt");
+
+    // Typing filters the projects; choosing one stores its self link.
+    const field = page.getByRole("combobox", { name: "Timing-Projekt" });
+    await field.fill("zund");
+    const list = page.getByRole("listbox", { name: "Projekte aus Timing" });
+    await expect(list.getByRole("option")).toHaveText(["Arbeit › Zunder"]);
+    await list.getByRole("option", { name: "Arbeit › Zunder" }).click();
+    await expect(field).toHaveValue("Arbeit › Zunder");
+    await expect(page.getByTestId("timing-project-hint")).toContainText("/projects/2");
+    await page.getByRole("button", { name: "Speichern" }).click();
+    await expect(status).toContainText("Arbeit › Zunder");
+    expect((await (await page.request.get("/api/settings/timing", { headers: WEB_HEADERS })).json()).project).toBe("/projects/2");
+
+    // Keyboard: open the list, pick the first project with Enter.
+    await field.fill("");
+    await field.press("ArrowDown");
+    await expect(list.getByRole("option")).toHaveCount(3);
+    await field.press("Enter");
+    await expect(field).toHaveValue("Arbeit");
+
+    // Free text that matches no project is kept as a title.
+    await field.fill("Neues Projekt");
+    await expect(list).toContainText("als Projekttitel gespeichert");
+    await field.press("Escape");
+    await expect(list).toHaveCount(0);
+    await page.getByRole("button", { name: "Speichern" }).click();
+    await expect(status).toContainText("Neues Projekt");
   } finally {
     await page.request.delete("/api/settings/timing", { headers: WEB_HEADERS });
   }

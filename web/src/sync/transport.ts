@@ -13,6 +13,7 @@ import type {
   PushResponse,
   Snapshot,
   TimingCheck,
+  TimingProject,
   TimingSettings,
   TimingSettingsUpdate,
 } from "./types";
@@ -83,6 +84,7 @@ export interface ApiClient {
   /** Removes the stored settings; the environment variables apply again. */
   resetTimingSettings(): Promise<TimingSettings>;
   checkTiming(): Promise<TimingCheck>;
+  timingProjects(): Promise<TimingProject[]>;
   logout(): Promise<void>;
 }
 
@@ -214,6 +216,10 @@ export class HttpTransport implements SyncTransport, ApiClient {
 
   checkTiming(): Promise<TimingCheck> {
     return this.request("POST", "/api/settings/timing/check");
+  }
+
+  timingProjects(): Promise<TimingProject[]> {
+    return this.request("GET", "/api/settings/timing/projects");
   }
 
   async logout(): Promise<void> {

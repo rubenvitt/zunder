@@ -40,7 +40,7 @@ use crate::settings::{
     EffectiveTiming, TimingCheck, TimingOverrides, TimingSettings, TimingUpdate, TIMING_PREFIX,
     TIMING_PROJECT_KEY, TIMING_TOKEN_KEY,
 };
-use crate::timing::{TimingApi, TimingClient};
+use crate::timing::{TimingApi, TimingClient, TimingProject};
 
 /// Node ID of the server's own clock.
 pub const SERVER_NODE: &str = "server";
@@ -410,6 +410,18 @@ impl App {
                 error: Some(e.to_string()),
             },
         })
+    }
+
+    /// The Timing projects for the settings view's project picker.
+    pub async fn timing_projects(&self) -> AppResult<Vec<TimingProject>> {
+        let bridge = self
+            .timing()
+            .ok_or_else(|| AppError::Conflict("Timing ist nicht eingerichtet.".into()))?;
+        bridge
+            .api
+            .projects()
+            .await
+            .map_err(|e| AppError::Unavailable(e.to_string()))
     }
 
     /// Cancelled on shutdown; long-running streams and tasks stop then.

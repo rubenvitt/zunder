@@ -98,6 +98,12 @@ let tokens: Token[] = [];
 let oauthClients: OAuthClient[] = [];
 /** Timing settings from the settings view (the mock has no environment variables). */
 let timing: { token: string | null; project: string | null } = { token: null, project: null };
+/** Projects the mock's Timing account has (for the project picker). */
+const TIMING_PROJECTS = [
+  { self: "/projects/1", title: "Arbeit", title_chain: ["Arbeit"], color: "#E5532D" },
+  { self: "/projects/2", title: "Zunder", title_chain: ["Arbeit", "Zunder"], color: "#2A5DB0" },
+  { self: "/projects/3", title: "Privat", title_chain: ["Privat"], color: null },
+];
 let authenticated = true;
 const sseClients = new Set<ServerResponse>();
 
@@ -694,6 +700,10 @@ const server = createServer(async (req, res) => {
         } else if (method === "DELETE") timing = { token: null, project: null };
         else if (method !== "GET") return error(res, 405, "invalid_request", "Methode nicht erlaubt.");
         return send(res, 200, timingSettings());
+      }
+      if (path === "/api/settings/timing/projects" && method === "GET") {
+        if (!timing.token) return error(res, 409, "conflict", "Timing ist nicht eingerichtet.");
+        return send(res, 200, TIMING_PROJECTS);
       }
       if (path === "/api/settings/timing/check" && method === "POST") {
         if (!timing.token) return error(res, 409, "conflict", "Timing ist nicht eingerichtet.");

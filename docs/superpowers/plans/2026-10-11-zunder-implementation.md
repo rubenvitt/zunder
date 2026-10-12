@@ -186,7 +186,7 @@ Basis: `ZUNDER_PUBLIC_URL`. JSON, UTF-8. Fehler: `{"error":{"code":…,"message"
 | `POST /api/tasks/{id}/flame/stop` | Flamme beenden (409, wenn keine läuft) |
 | `GET /api/tokens` / `POST /api/tokens` / `DELETE /api/tokens/{id}` | API-Tokens verwalten (nur Session-Auth): Liste `[{"id","name","created_at","last_used_at"}]`; Anlegen mit `{"name"}` → `201` `{"id","name","created_at","last_used_at","token"}` (Token nur in dieser Antwort); Widerruf → `204` |
 | `GET /api/oauth/clients` / `DELETE /api/oauth/clients/{id}` | per OAuth verbundene Apps (nur Session-Auth): Liste `[{"id","name","redirect_uris","created_at","last_used_at"}]`; Trennen → `204` (Details 4.3) |
-| `GET` / `PUT` / `DELETE /api/settings/timing`, `POST /api/settings/timing/check` | Timing-Einstellungen (nur Session-Auth), Details in 4.2 |
+| `GET` / `PUT` / `DELETE /api/settings/timing`, `POST /api/settings/timing/check`, `GET /api/settings/timing/projects` | Timing-Einstellungen (nur Session-Auth), Details in 4.2 |
 | `POST /mcp` (+ `GET`, `DELETE`) | MCP Streamable HTTP |
 | `GET /.well-known/oauth-protected-resource` (auch `…/mcp`), `GET /.well-known/oauth-authorization-server` | OAuth-Metadaten für `/mcp`, ohne Auth (4.3) |
 | `POST /oauth/register`, `GET`/`POST /oauth/authorize`, `POST /oauth/token`, `POST /oauth/revoke` | eingebauter OAuth-2.1-Authorization-Server für `/mcp` (4.3) |
@@ -326,6 +326,7 @@ Jedes Werkzeug, das eine Aufgabe adressiert, akzeptiert `task_id` (UUID oder Ken
   - `PUT /api/settings/timing` mit `{"token"?, "project"?}` (unbekannte Felder → `400`): fehlender oder leerer `token` behält den gespeicherten, fehlendes `project` behält das Projekt, `""` entfernt es. Werte werden getrimmt; Token höchstens 2048 Zeichen ohne Leer- und Steuerzeichen, Projekt höchstens 500 Zeichen ohne Steuerzeichen (sonst `400`). Antwort wie `GET`.
   - `DELETE /api/settings/timing` entfernt die gespeicherten Werte (danach gelten wieder die Umgebungsvariablen); Antwort wie `GET`.
   - `POST /api/settings/timing/check` fragt `GET /time-entries/running` mit dem wirksamen Token → `{"ok": true, "error": null}` oder `{"ok": false, "error": <deutsche Meldung>}`; ohne Token `409 conflict`.
+  - `GET /api/settings/timing/projects` fragt `GET /projects?hide_archived=true` mit dem wirksamen Token → `[{"self", "title", "title_chain", "color"}]` (Auswahl im Projektfeld der Einstellungen; `title_chain` reicht von der Wurzel bis zum Projekt); ohne Token `409 conflict`, lehnt Timing ab oder ist es nicht erreichbar `503 unavailable` mit deutscher Meldung.
 
 ### 4.3 OAuth für claude.ai (MCP-Authorization)
 

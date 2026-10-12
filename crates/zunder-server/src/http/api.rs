@@ -22,6 +22,7 @@ use crate::error::{AppError, AppResult};
 use crate::flame::{self, FlameOutcome};
 use crate::oauth;
 use crate::settings::{TimingCheck, TimingSettings, TimingUpdate};
+use crate::timing::TimingProject;
 
 /// Body limit of `/api` requests except push.
 pub const API_BODY_LIMIT: usize = 64 * 1024;
@@ -55,6 +56,7 @@ pub fn routes() -> Router<App> {
                 .delete(reset_timing_settings),
         )
         .route("/settings/timing/check", post(check_timing))
+        .route("/settings/timing/projects", get(timing_projects))
         .layer(DefaultBodyLimit::max(API_BODY_LIMIT))
 }
 
@@ -322,6 +324,14 @@ async fn check_timing(
 ) -> AppResult<Json<TimingCheck>> {
     require_browser_for_settings(&principal)?;
     Ok(Json(app.check_timing().await?))
+}
+
+async fn timing_projects(
+    State(app): State<App>,
+    principal: Principal,
+) -> AppResult<Json<Vec<TimingProject>>> {
+    require_browser_for_settings(&principal)?;
+    Ok(Json(app.timing_projects().await?))
 }
 
 async fn list_tokens(
