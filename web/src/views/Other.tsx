@@ -2,6 +2,7 @@
 
 import { createMemo, createResource, createSignal, For, onMount, Show } from "solid-js";
 import { Board } from "../components/Board";
+import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
 import { Logo } from "../components/Logo";
 import { TaskList } from "../components/TaskList";
@@ -13,7 +14,7 @@ import { flame } from "../state/actions";
 import { navigate, route } from "../state/router";
 import { api, now } from "../state/store";
 import { devProjectIds, devTasks, phoenixTasks } from "../state/selectors";
-import { copyText, registerList, toast } from "../state/ui";
+import { copyText, registerList, setStructureEdit, toast } from "../state/ui";
 
 export function DevView() {
   const tasks = createMemo(() => devTasks().filter((t) => t.status !== "dropped"));
@@ -23,7 +24,13 @@ export function DevView() {
         <h1>Dev</h1>
         <span class="muted">{devProjectIds().size} Dev-Projekte</span>
       </header>
-      <Show when={devProjectIds().size > 0} fallback={<p class="empty big">Noch keine Dev-Projekte. Ein Projekt mit der Art „Dev“ anlegen.</p>}>
+      <Show when={devProjectIds().size > 0} fallback={
+          <EmptyState icon="code" title="Noch keine Dev-Projekte." hint="Ein Projekt mit der Art „Dev“ bekommt Board, Bugs, Features und Review.">
+            <button class="btn btn-small" onClick={() => setStructureEdit({ kind: "project", projectKind: "dev" })}>
+              Dev-Projekt anlegen
+            </button>
+          </EmptyState>
+        }>
         <Board tasks={tasks()} dev devDetails label="Dev-Board" />
       </Show>
     </div>
@@ -78,11 +85,11 @@ export function PhoenixView() {
       </header>
       <section class="group">
         <h2>Feuer-Schritte</h2>
-        <TaskList tasks={groups().steps} showLocation label="Feuer-Schritte" empty="Keine Feuer-Schritte in dieser Woche." />
+        <TaskList tasks={groups().steps} showLocation label="Feuer-Schritte" empty={<EmptyState compact icon="target" title="Keine Feuer-Schritte in dieser Woche." />} />
       </section>
       <section class="group">
         <h2>Flammen</h2>
-        <Show when={groups().flames.length > 0} fallback={<p class="empty">Keine Flammen in dieser Woche.</p>}>
+        <Show when={groups().flames.length > 0} fallback={<EmptyState compact icon="flame" title="Keine Flammen in dieser Woche." />}>
           <ul class="flame-list">
             <For each={groups().flames}>
               {(task) => (

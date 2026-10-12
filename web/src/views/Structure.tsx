@@ -2,6 +2,7 @@
 
 import { createEffect, createMemo, createSignal, For, on, onMount, Show } from "solid-js";
 import { Board } from "../components/Board";
+import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
 import { TaskList } from "../components/TaskList";
 import type { Area, Project } from "../sync/types";
@@ -89,12 +90,25 @@ export function StructureView() {
       <div class="split-main">
         <Show
           when={current()?.kind && current()?.id}
-          fallback={<p class="empty big">Bereich oder Projekt links auswählen.</p>}
+          fallback={
+            <Show
+              when={areaList().length > 0}
+              fallback={
+                <EmptyState icon="folder" title="Noch keine Bereiche." hint="Bereiche bündeln Projekte und Aufgaben, etwa Arbeit, Zuhause oder Gesundheit.">
+                  <button class="btn btn-small" onClick={() => setStructureEdit({ kind: "area" })}>
+                    Bereich anlegen
+                  </button>
+                </EmptyState>
+              }
+            >
+              <EmptyState icon="folderOpen" title="Bereich oder Projekt links auswählen." />
+            </Show>
+          }
         >
           <Show
             when={current()!.kind === "project" ? data.projects[current()!.id!] : undefined}
             fallback={
-              <Show when={data.areas[current()!.id!]} fallback={<p class="empty">Nicht gefunden.</p>}>
+              <Show when={data.areas[current()!.id!]} fallback={<EmptyState icon="search" title="Nicht gefunden." hint="Der Bereich oder das Projekt existiert nicht mehr." />}>
                 {(area) => <AreaPanel area={area()} />}
               </Show>
             }
@@ -164,7 +178,11 @@ function AreaPanel(props: { area: Area }) {
         </div>
       </Show>
       <AddTaskInline label="Aufgabe im Bereich anlegen …" onAdd={(title) => createTask({ title, location: { kind: "area", id: props.area.id } })} />
-      <TaskList tasks={tasks()} label={`Aufgaben in ${props.area.name}`} empty="Keine laufenden Aufgaben ohne Projekt." />
+      <TaskList
+        tasks={tasks()}
+        label={`Aufgaben in ${props.area.name}`}
+        empty={<EmptyState compact icon="check" title="Keine laufenden Aufgaben ohne Projekt." />}
+      />
     </>
   );
 }
@@ -212,7 +230,7 @@ function ProjectPanel(props: { project: Project }) {
 
 function ProjectList(props: { tasks: ReturnType<typeof tasksAt>; name: string }) {
   onMount(() => registerList(() => props.tasks));
-  return <TaskList tasks={props.tasks} label={`Aufgaben in ${props.name}`} empty="Noch keine Aufgaben." />;
+  return <TaskList tasks={props.tasks} label={`Aufgaben in ${props.name}`} empty={<EmptyState compact icon="list" title="Noch keine Aufgaben." hint="Oben eine Aufgabe anlegen." />} />;
 }
 
 export function toggleCurrentProjectView(): boolean {
