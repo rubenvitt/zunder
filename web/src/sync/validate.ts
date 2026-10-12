@@ -237,7 +237,9 @@ export function checkField(entity: EntityKind, field: string, value: JsonValue):
   }
   if (shape === "title") {
     if (typeof value !== "string") return { code: "invalid_value", message: `${label(field)} muss ein Text sein.` };
-    if (value.trim() === "") {
+    // Blank = only Unicode White_Space, the set Rust's str::trim strips (JS trim differs: it
+    // keeps U+0085 and strips U+FEFF).
+    if (/^\p{White_Space}*$/u.test(value)) {
       return { code: "invalid_value", message: entity === "task" ? "Eine Aufgabe braucht einen Titel." : `${DEFINITE[entity]} ${KIND_LABEL[entity]} braucht einen Namen.` };
     }
     if ([...value].length > TITLE_MAX) {

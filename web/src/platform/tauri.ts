@@ -14,8 +14,8 @@
 // available in the app.
 
 import { MemoryLocalStore } from "../sync/local-store";
-import { HttpError, NetworkError, type ApiClient, type SubscriptionHandlers, type SyncTransport } from "../sync/transport";
-import type { ApiToken, CreatedToken, HistoryEntry, Me, OAuthClient, Op, PullResponse, PushRequest, PushResponse, Rejection, Snapshot, Warning } from "../sync/types";
+import { asFlameResult, HttpError, NetworkError, type ApiClient, type SubscriptionHandlers, type SyncTransport } from "../sync/transport";
+import type { ApiToken, CreatedToken, FlameResult, HistoryEntry, Me, OAuthClient, Op, PullResponse, PushRequest, PushResponse, Rejection, Snapshot, Warning } from "../sync/types";
 
 // ---- Command and event contract ------------------------------------------
 
@@ -277,8 +277,9 @@ export class TauriTransport implements SyncTransport, ApiClient {
     return this.app.taskHistory(taskId);
   }
 
-  async flame(taskId: string, action: "start" | "stop"): Promise<void> {
-    await this.app.flame(taskId, action);
+  async flame(taskId: string, action: "start" | "stop"): Promise<FlameResult | null> {
+    // The app hands the server's answer through unchanged (contract 5.1, flame_start/flame_stop).
+    return asFlameResult(await this.app.flame(taskId, action));
   }
 
   listTokens(): Promise<ApiToken[]> {

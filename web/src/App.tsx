@@ -8,10 +8,10 @@ import { TaskDetail } from "./components/TaskDetail";
 import { installKeyboard } from "./keys";
 import { isTauri } from "./platform/runtime";
 import { isUnauthorized } from "./sync/transport";
-import { navigate, parseRoute, route, type ViewName } from "./state/router";
+import { navigate, parseRoute, route, type Route, type ViewName } from "./state/router";
 import { inboxCount } from "./state/selectors";
-import { api, pendingCount, ready, setNotifier, startSync, syncStatus } from "./state/store";
-import { captureOpen, detailId, helpOpen, openSearch, palette, setCaptureOpen, setHelpOpen, structureEdit, toast } from "./state/ui";
+import { api, data, getEngine, pendingCount, ready, setNotifier, startSync, syncStatus, taskIndex } from "./state/store";
+import { captureOpen, detailId, helpOpen, openSearch, palette, setCaptureOpen, setDetailId, setHelpOpen, setSelectedId, structureEdit, toast } from "./state/ui";
 import { InboxView, LooseView, TodayView } from "./views/Lists";
 import { DevView, LoginView, PhoenixView, TokensView } from "./views/Other";
 import { StructureView } from "./views/Structure";
@@ -38,7 +38,10 @@ setNotifier({
     toast(`Änderung abgelehnt: ${messages.join(" ")}`, "error");
   },
   warnings(warnings) {
-    for (const message of new Set(warnings.map((w) => w.message))) toast(message, "warning");
+    // open_subtasks is already shown locally at the moment of the change (warnIfOpenChildren),
+    // also offline; push warnings only describe this client's own ops.
+    const shown = warnings.filter((w) => w.code !== "open_subtasks");
+    for (const message of new Set(shown.map((w) => w.message))) toast(message, "warning");
   },
 });
 
@@ -102,6 +105,13 @@ function Shell() {
   const desktop = isTauri();
   onMount(() => onCleanup(installKeyboard()));
   const active = (view: ViewName) => route().view === view;
+  // On phones the detail panel covers everything: keep focus and screen readers out of what is behind it.
+  const narrowQuery = window.matchMedia("(max-width: 900px)");
+  const [narrow, setNarrow] = createSignal(narrowQuery.matches);
+  const onNarrow = () => setNarrow(narrowQuery.matches);
+  narrowQuery.addEventListener("change", onNarrow);
+  onCleanup(() => narrowQuery.removeEventListener("change", onNarrow));
+  const covered = () => narrow() && !!detailId();
 
   return (
     <div class="app" classList={{ "detail-open": !!detailId() }}>
@@ -156,7 +166,7 @@ function Shell() {
         </div>
       </nav>
 
-      <header class="topbar">
+      <header class="topbar" inert={covered()}>
         <span class="brand">
           <Icon name="flame" size={20} /> Zunder
         </span>
@@ -178,7 +188,7 @@ function Shell() {
         </Show>
       </header>
 
-      <main class="main" id="main">
+      <main class="main" id="main" inert={covered()}>
         <Switch>
           <Match when={route().view === "heute"}>
             <TodayView />
@@ -206,16 +216,19 @@ function Shell() {
               <ConnectionView />
             </Show>
           </Match>
+          <Match when={route().view === "aufgabe" || route().view === "clickup"}>
+            <TaskLink />
+          </Match>
         </Switch>
       </main>
 
       <Show when={detailId()}>{(id) => <TaskDetail id={id()} />}</Show>
 
-      <button class="fab" aria-label="Neue Aufgabe" onClick={() => setCaptureOpen(true)}>
+      <button class="fab" aria-label="Neue Aufgabe" inert={covered()} onClick={() => setCaptureOpen(true)}>
         <Icon name="plus" size={28} />
       </button>
 
-      <nav class="tabbar" aria-label="Sichten">
+      <nav class="tabbar" aria-label="Sichten" inert={covered()}>
         <For each={NAV}>
           {(item) => (
             <button class="tab" classList={{ active: active(item.view) }} onClick={() => navigate(parseRoute(`#/${item.view}`))} aria-current={active(item.view) ? "page" : undefined}>
@@ -240,6 +253,34 @@ function Shell() {
       <Toasts />
     </div>
   );
+}
+
+/** "#/aufgabe/<id>" or "#/clickup/<clickup_id>": open the task over its home view. */
+function TaskLink() {
+  onMount(async () => {
+    const r = route();
+    if (r.view !== "aufgabe" && r.view !== "clickup") return;
+    const find = () => (r.view === "aufgabe" ? data.tasks[r.id] : Object.values(data.tasks).find((t) => t.clickup_id === r.id));
+    let task = find();
+    if (!task) {
+      // A running app may not have pulled a task created a moment ago.
+      await getEngine().pull();
+      if (route() !== r) return;
+      task = find();
+    }
+    if (!task || taskIndex().isDeleted(task)) {
+      toast("Aufgabe nicht gefunden oder gelöscht.", "error");
+      navigate({ view: "heute" }, { replace: true });
+      return;
+    }
+    const loc = taskIndex().location(task);
+    const home: Route =
+      loc.kind === "inbox" ? { view: "inbox" } : loc.kind === "loose" ? { view: "lose" } : { view: "bereiche", kind: loc.kind, id: loc.id };
+    setSelectedId(task.id);
+    navigate(home, { replace: true });
+    setDetailId(task.id);
+  });
+  return null;
 }
 
 function SyncIndicator() {

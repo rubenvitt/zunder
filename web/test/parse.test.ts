@@ -121,4 +121,14 @@ describe("quick capture parser", () => {
     expect(slugify("Größe & Übermut")).toBe("groesse-uebermut");
     expect(slugify("Café Noir")).toBe("cafe-noir");
   });
+
+  it.each(["Refactor constructor logic", "Check __proto__ handling", "nächsten constructor prüfen", "nächsten __proto__ prüfen"])(
+    "does not take inherited object keys for weekdays: %s",
+    (input) => {
+      const r = parse(input);
+      expect(r.title).toBe(input);
+      expect(r.due).toBeNull();
+      expect(r.tokens).toEqual([]);
+    },
+  );
 });

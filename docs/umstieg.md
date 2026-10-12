@@ -135,6 +135,10 @@ Im Skill-Repo einen Branch `zunder` anlegen und dort umstellen (Anleitung in [Ab
 - [ ] Token `import` widerrufen.
 - [ ] Bereich „Test“ samt Test-Aufgaben löschen.
 
+**Erinnerungen ab dem Umstieg:** Zunder stellt Erinnerungen nur über die Tauri-App zu (Desktop, solange sie läuft; mobil erst mit einem auf dem Gerät geprüften Build). Die Web-UI im Browser benachrichtigt nicht, sie zeigt fällige Erinnerungen nur in „Heute“. Einen Web-Push-Fallback gibt es nicht (Vertrag, Abschnitt 5.1 App-Befehle).
+
+**Links auf Aufgaben im Vault:** `https://zunder.rubeen.dev/#/aufgabe/<id>` öffnet eine Aufgabe, `https://zunder.rubeen.dev/#/clickup/<clickup_id>` eine importierte über ihre alte ClickUp-ID. Alte `app.clickup.com/t/<id>`-Links lassen sich so ersetzen.
+
 ## 3. Skills umstellen
 
 Die Zunder-Werkzeuge spiegeln die genutzten ClickUp-Aufrufe. Die Umstellung ist weitgehend mechanisch: Werkzeugname tauschen, Parameter umbenennen, Statusnamen aus einem zentralen Block beziehen.

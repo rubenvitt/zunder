@@ -35,6 +35,16 @@ function isTyping(target: EventTarget | null): boolean {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
 }
 
+/**
+ * A focused control that Enter activates natively (button, link …). The row's own
+ * main button is not counted: Enter there opens the selected task either way.
+ */
+function isInteractive(target: EventTarget | null): target is HTMLElement {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.classList.contains("task-main")) return false;
+  return !!target.closest("button, a[href], summary, [role=button], [role=link], [role=menuitem], [role=tab], [role=option]");
+}
+
 function moveSelection(delta: number): void {
   const list = activeList()();
   if (list.length === 0) return;
@@ -43,6 +53,14 @@ function moveSelection(delta: number): void {
   const id = list[next]!.id;
   setSelectedId(id);
   if (detailId()) setDetailId(id);
+  // Navigating the list takes the focus off a control (e.g. a clicked nav link), so the
+  // next Enter opens the selected task instead of activating that control again.
+  const active = document.activeElement;
+  if (isInteractive(active)) {
+    const row = document.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(id)}"] .task-main`);
+    if (row) row.focus({ preventScroll: true });
+    else active.blur();
+  }
 }
 
 function selectedTask() {
@@ -137,6 +155,8 @@ export function installKeyboard(): () => void {
         else handled = false;
         break;
       case "Enter": {
+        // Let a focused button or link do its own thing (contract: fully keyboard operable).
+        if (isInteractive(e.target)) return;
         const task = selectedTask();
         if (task) setDetailId(task.id);
         else handled = false;

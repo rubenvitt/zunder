@@ -39,16 +39,17 @@ export interface CaptureResult {
   unknownTags: string[];
 }
 
-const WEEKDAYS: Record<string, number> = {
-  sonntag: 0,
-  montag: 1,
-  dienstag: 2,
-  mittwoch: 3,
-  donnerstag: 4,
-  freitag: 5,
-  samstag: 6,
-  sonnabend: 6,
-};
+// A Map, not an object literal: `in` would also match inherited keys such as "constructor".
+const WEEKDAYS = new Map<string, number>([
+  ["sonntag", 0],
+  ["montag", 1],
+  ["dienstag", 2],
+  ["mittwoch", 3],
+  ["donnerstag", 4],
+  ["freitag", 5],
+  ["samstag", 6],
+  ["sonnabend", 6],
+]);
 
 const NEXT_WORDS = new Set(["nächsten", "nächster", "nächste", "naechsten", "naechster", "naechste", "kommenden", "kommender", "kommende"]);
 const WEEKDAY_LABELS = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
@@ -83,16 +84,17 @@ function matchDate(words: readonly string[], i: number, today: Date): DateHit | 
   if (word === "morgen") return { date: addDays(today, 1), consumed: 1, label: "Morgen" };
   if (word === "übermorgen" || word === "uebermorgen") return { date: addDays(today, 2), consumed: 1, label: "Übermorgen" };
 
-  if (word in WEEKDAYS) {
-    const target = WEEKDAYS[word]!;
+  const weekday = WEEKDAYS.get(word);
+  if (weekday !== undefined) {
+    const target = weekday;
     const delta = ((target - today.getDay() + 7) % 7) || 7;
     return { date: addDays(today, delta), consumed: 1, label: WEEKDAY_LABELS[target]! };
   }
 
   if (NEXT_WORDS.has(word) && i + 1 < words.length) {
     const next = stripPunctuation(words[i + 1]!.toLowerCase());
-    if (next in WEEKDAYS) {
-      const target = WEEKDAYS[next]!;
+    const target = WEEKDAYS.get(next);
+    if (target !== undefined) {
       // The weekday in the following (Monday-based) calendar week.
       const mondayThisWeek = addDays(today, -((today.getDay() + 6) % 7));
       const offset = (target + 6) % 7;

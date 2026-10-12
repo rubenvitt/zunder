@@ -32,8 +32,9 @@ declare global {
 }
 
 function currentFire(): string {
-  const d = new Date();
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  // The browser runs in Europe/Berlin (playwright.config.ts), the test process may not.
+  const [y, m, d] = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin" }).format(new Date()).split("-").map(Number);
+  const date = new Date(Date.UTC(y!, m! - 1, d!));
   const day = date.getUTCDay() || 7;
   date.setUTCDate(date.getUTCDate() + 4 - day);
   const week = Math.ceil(((date.getTime() - Date.UTC(date.getUTCFullYear(), 0, 1)) / 86400000 + 1) / 7);
