@@ -90,6 +90,8 @@ pub struct TaskView {
     pub location: LocationView,
     pub parent_id: Option<Id>,
     pub due: Option<Due>,
+    /// When the task was marked as deliberately undated ("bewusst undatiert").
+    pub undated_ack: Option<String>,
     pub remind_at: Option<String>,
     pub links: Vec<Link>,
     pub vault_links: Vec<String>,
@@ -194,6 +196,7 @@ impl TaskView {
         Some(TaskView {
             id,
             location: LocationView::of(state, location),
+            undated_ack: task.undated_ack.map(format_rfc3339),
             remind_at: task.remind_at.map(format_rfc3339),
             claim_expires_at: task.claim_expires_at.map(format_rfc3339),
             claim_active: claim_active(&task, now_ms),

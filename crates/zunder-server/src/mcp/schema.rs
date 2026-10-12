@@ -167,6 +167,9 @@ const REMIND_AT: &str = "Erinnerung als RFC-3339-Zeitpunkt mit Offset.";
 const STATUS: &str =
     "Status: open, in_progress, review (nur Dev-Projekte), blocked, done, dropped.";
 const TYPE: &str = "Typ: aufgabe (Standard), bug oder feature (nur in Dev-Projekten).";
+const UNDATED_ACK: &str = "Bewusst ohne Fälligkeit: true markiert die Aufgabe jetzt als \
+    „bewusst undatiert“ (erneut true erneuert die Markierung), damit eine Deadline-Prüfung sie \
+    überspringt; false entfernt die Markierung. Gespeichert wird der Zeitpunkt der Entscheidung.";
 
 fn task_ref() -> Vec<(&'static str, Value)> {
     vec![
@@ -202,6 +205,17 @@ fn task_fields(nullable: bool) -> Vec<(&'static str, Value)> {
         ("plan", text("Plan (Markdown), z. B. aus dem Dev-Modus.")),
         ("branch", text("Git-Branch der Umsetzung.")),
         ("pr_url", text("URL des Pull Requests (http/https).")),
+        (
+            "undated_ack",
+            if nullable {
+                json!({
+                    "type": ["boolean", "null"],
+                    "description": format!("{UNDATED_ACK} null wie false."),
+                })
+            } else {
+                boolean(UNDATED_ACK)
+            },
+        ),
     ]
 }
 
@@ -280,6 +294,23 @@ pub fn definitions() -> Vec<ToolDef> {
                     (
                         "flame_running",
                         boolean("true: nur Aufgaben mit laufender Flamme (unabhängig von Status und Alter); false: nur ohne."),
+                    ),
+                    (
+                        "has_due",
+                        boolean("true: nur Aufgaben mit Fälligkeit; false: nur ohne."),
+                    ),
+                    (
+                        "undated_ack",
+                        boolean("true: nur Aufgaben, die als „bewusst undatiert“ markiert sind; false: nur unmarkierte. Für die Deadline-Prüfung: has_due false und undated_ack false."),
+                    ),
+                    (
+                        "undated_ack_weeks",
+                        json!({
+                            "type": "integer",
+                            "description": "Wiedervorlage: Eine Markierung „bewusst undatiert“, die älter als so viele Wochen ist, gilt als abgelaufen (wie unmarkiert). Nur zusammen mit undated_ack.",
+                            "minimum": 1,
+                            "maximum": 520,
+                        }),
                     ),
                     (
                         "order_by",

@@ -37,6 +37,10 @@
           "description": "true: nur Aufgaben mit laufender Flamme (unabhängig von Status und Alter); false: nur ohne.",
           "type": "boolean"
         },
+        "has_due": {
+          "description": "true: nur Aufgaben mit Fälligkeit; false: nur ohne.",
+          "type": "boolean"
+        },
         "include_closed": {
           "description": "Auch erledigte und verworfene Aufgaben, die älter als 3 Tage sind (Standard false).",
           "type": "boolean"
@@ -125,6 +129,16 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "undated_ack": {
+          "description": "true: nur Aufgaben, die als „bewusst undatiert“ markiert sind; false: nur unmarkierte. Für die Deadline-Prüfung: has_due false und undated_ack false.",
+          "type": "boolean"
+        },
+        "undated_ack_weeks": {
+          "description": "Wiedervorlage: Eine Markierung „bewusst undatiert“, die älter als so viele Wochen ist, gilt als abgelaufen (wie unmarkiert). Nur zusammen mit undated_ack.",
+          "maximum": 520,
+          "minimum": 1,
+          "type": "integer"
         }
       },
       "required": [],
@@ -292,6 +306,10 @@
           ],
           "type": "string"
         },
+        "undated_ack": {
+          "description": "Bewusst ohne Fälligkeit: true markiert die Aufgabe jetzt als „bewusst undatiert“ (erneut true erneuert die Markierung), damit eine Deadline-Prüfung sie überspringt; false entfernt die Markierung. Gespeichert wird der Zeitpunkt der Entscheidung.",
+          "type": "boolean"
+        },
         "vault_links": {
           "description": "Verweise auf Notizen im Obsidian-Vault (Pfade oder obsidian://-URIs); ersetzt die ganze Liste.",
           "items": {
@@ -441,6 +459,13 @@
             "feature"
           ],
           "type": "string"
+        },
+        "undated_ack": {
+          "description": "Bewusst ohne Fälligkeit: true markiert die Aufgabe jetzt als „bewusst undatiert“ (erneut true erneuert die Markierung), damit eine Deadline-Prüfung sie überspringt; false entfernt die Markierung. Gespeichert wird der Zeitpunkt der Entscheidung. null wie false.",
+          "type": [
+            "boolean",
+            "null"
+          ]
         },
         "vault_links": {
           "description": "Verweise auf Notizen im Obsidian-Vault (Pfade oder obsidian://-URIs); ersetzt die ganze Liste.",

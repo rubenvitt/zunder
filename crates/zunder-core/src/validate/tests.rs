@@ -242,6 +242,7 @@ fn invalid_values_are_rejected() {
         ("title", json!(null)),
         ("due", json!("morgen")),
         ("remind_at", json!("2026-10-12")),
+        ("undated_ack", json!(true)),
         ("phoenix", json!({"role": "flamme", "fire": "2026-W60"})),
         ("pr_url", json!("not a url")),
         ("links", json!([{"url": "relative/path"}])),

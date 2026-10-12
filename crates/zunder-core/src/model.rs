@@ -78,6 +78,9 @@ pub mod fields {
         pub const FLAME_ENDED_AT: &str = "flame_ended_at";
         pub const CLICKUP_ID: &str = "clickup_id";
         pub const RANK: &str = "rank";
+        /// When the owner decided to leave the task without a due date on
+        /// purpose ("bewusst undatiert"); unset = no decision.
+        pub const UNDATED_ACK: &str = "undated_ack";
         /// Human-readable reference (`ZUN-42`). Assigned once by the server,
         /// never changed afterwards (see [`crate::numbering`]).
         pub const REF: &str = "ref";
@@ -104,6 +107,7 @@ pub mod fields {
             FLAME_ENDED_AT,
             CLICKUP_ID,
             RANK,
+            UNDATED_ACK,
             REF,
             DELETED,
         ];
@@ -584,6 +588,9 @@ pub struct Task {
     pub flame_ended_at: Option<OffsetDateTime>,
     pub clickup_id: Option<String>,
     pub rank: Option<String>,
+    /// When the task was marked as deliberately undated.
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub undated_ack: Option<OffsetDateTime>,
     /// Reference such as `ZUN-42`, once the server has assigned it.
     #[serde(rename = "ref")]
     pub reference: Option<String>,
@@ -669,9 +676,11 @@ fn shape_of(kind: EntityKind, field: &str) -> Option<Shape> {
             t::LOCATION => Shape::Location,
             t::PARENT_ID => Shape::Id,
             t::DUE => Shape::Due,
-            t::REMIND_AT | t::CLAIM_EXPIRES_AT | t::FLAME_STARTED_AT | t::FLAME_ENDED_AT => {
-                Shape::Timestamp
-            }
+            t::REMIND_AT
+            | t::CLAIM_EXPIRES_AT
+            | t::FLAME_STARTED_AT
+            | t::FLAME_ENDED_AT
+            | t::UNDATED_ACK => Shape::Timestamp,
             t::VAULT_LINKS => Shape::StringList,
             t::LINKS => Shape::Links,
             t::PHOENIX => Shape::Phoenix,
@@ -1152,6 +1161,14 @@ mod tests {
             json!("2026-10-12T09:00:00Z"),
         );
         bad(EntityKind::Task, "flame_ended_at", json!(1728650000000u64));
+        ok(
+            EntityKind::Task,
+            "undated_ack",
+            json!("2026-10-12T09:00:00Z"),
+        );
+        ok(EntityKind::Task, "undated_ack", json!(null));
+        bad(EntityKind::Task, "undated_ack", json!("2026-10-12"));
+        bad(EntityKind::Task, "undated_ack", json!(true));
     }
 
     #[test]

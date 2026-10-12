@@ -1,7 +1,7 @@
 // Task detail side panel: everything inline editable, subtask tree, change history.
 
 import { createEffect, createResource, createSignal, For, on, onCleanup, onMount, Show, type JSX } from "solid-js";
-import { fireOf, formatInstant, fromDatetimeLocalInput, parseDue, toDatetimeLocalInput, toRfc3339Local } from "../sync/dates";
+import { fireOf, formatDateLabel, formatInstant, fromDatetimeLocalInput, localDate, parseDue, toDatetimeLocalInput, toRfc3339Local } from "../sync/dates";
 import { hasOpenChildren, isClaimActive, isDevLocation, isFlameRunning } from "../sync/derived";
 import { hlcWallMs } from "../sync/hlc";
 import { PHOENIX_ROLES, TASK_STATUSES, TASK_TYPES, type HistoryEntry, type JsonValue, type Link, type Task, type TaskStatus, type TaskType } from "../sync/types";
@@ -321,9 +321,12 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
             </Prop>
 
             <Prop icon="calendar" label="Fällig">
-              <DateSlot isSet={!!t().due} label="Fälligkeit setzen">
-                {(autoOpen) => <DueEditor task={t()} autoOpen={autoOpen} />}
-              </DateSlot>
+              <span class="prop-inline">
+                <DateSlot isSet={!!t().due} label="Fälligkeit setzen">
+                  {(autoOpen) => <DueEditor task={t()} autoOpen={autoOpen} />}
+                </DateSlot>
+                <UndatedAck task={t()} />
+              </span>
             </Prop>
 
             <Prop icon="bell" label="Erinnerung">
@@ -608,20 +611,60 @@ function DateSlot(props: { isSet: boolean; label: string; children: (autoOpen: (
   );
 }
 
+/**
+ * "Bewusst ohne Fälligkeit": records the decision to leave a task undated, so the
+ * weekly deadline review (filter_tasks with has_due/undated_ack) skips it.
+ */
+function UndatedAck(props: { task: Task }) {
+  const since = () => {
+    const at = new Date(props.task.undated_ack!);
+    return Number.isNaN(at.getTime()) ? props.task.undated_ack! : formatDateLabel(localDate(at), new Date(now()));
+  };
+  return (
+    <Show when={!props.task.due}>
+      <Show
+        when={props.task.undated_ack}
+        fallback={
+          <button
+            class="btn btn-ghost btn-small"
+            title="Entscheidung festhalten: Die Deadline-Prüfung überspringt diese Aufgabe."
+            onClick={() => updateTask(props.task.id, { undated_ack: toRfc3339Local(new Date()) })}
+          >
+            Bewusst ohne
+          </button>
+        }
+      >
+        <span class="chip undated-ack" title={`Bewusst ohne Fälligkeit, entschieden ${formatInstant(props.task.undated_ack, new Date(now()))}`}>
+          Bewusst ohne · {since()}
+          <button
+            class="btn btn-ghost btn-icon btn-xs"
+            aria-label="Markierung „bewusst ohne Fälligkeit“ entfernen"
+            onClick={() => updateTask(props.task.id, { undated_ack: null })}
+          >
+            <Icon name="x" size={12} />
+          </button>
+        </span>
+      </Show>
+    </Show>
+  );
+}
+
 function DueEditor(props: { task: Task; autoOpen?: (el: HTMLInputElement) => void }) {
   const info = () => parseDue(props.task.due);
+  // A due date supersedes the decision to leave the task undated.
+  const setDue = (due: string) => updateTask(props.task.id, props.task.undated_ack ? { due, undated_ack: null } : { due });
   const commit = (date: string, time: string) => {
     if (!date) {
       updateTask(props.task.id, { due: null });
       return;
     }
     if (!time) {
-      updateTask(props.task.id, { due: date });
+      setDue(date);
       return;
     }
     const [y, m, d] = date.split("-").map(Number);
     const [hh, mm] = time.split(":").map(Number);
-    updateTask(props.task.id, { due: toRfc3339Local(new Date(y!, m! - 1, d!, hh!, mm!)) });
+    setDue(toRfc3339Local(new Date(y!, m! - 1, d!, hh!, mm!)));
   };
   let dateInput: HTMLInputElement | undefined;
   let timeInput: HTMLInputElement | undefined;
