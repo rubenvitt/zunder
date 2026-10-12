@@ -5,6 +5,8 @@
 //! - [`client`]: HTTP client for the server's sync API, plus task history
 //!   and flames, which the app calls on behalf of the web UI
 //! - [`sync`]: one sync round (push, then snapshot or pull) and [`Syncer`]
+//! - [`login`]: login through the server's OAuth authorization server
+//!   (device token instead of a pasted API token)
 //! - [`reminders`]: which local notifications should be pending and how to
 //!   get there from what is scheduled
 //! - [`schedule`]: executes such a plan against an OS scheduler (mobile)
@@ -15,6 +17,7 @@
 
 pub mod client;
 pub mod error;
+pub mod login;
 pub mod reminders;
 pub mod schedule;
 pub mod store;
@@ -26,6 +29,7 @@ mod testutil;
 
 pub use client::{FlameAction, HttpClient, SyncApi};
 pub use error::{Error, Result};
+pub use login::PendingLogin;
 pub use reminders::{plan_schedule, upcoming_reminders, Reminder, SchedulePlan, ScheduledReminder};
 pub use store::{
     ApplyResult, ConfigUpdate, ConfigView, LastSync, LocalSnapshot, LocalStore, Remote,

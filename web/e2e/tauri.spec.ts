@@ -23,6 +23,8 @@ interface FakeAppHandle {
   pending: number;
   emit(event: string, payload: unknown): void;
   serverOp(entity: string, id: string, field: string, value: Json): void;
+  /** The browser came back with a device token (deep link). */
+  completeLogin(): void;
 }
 
 declare global {
@@ -70,7 +72,14 @@ function installFakeApp(seed: { serverOps: WireOp[]; validToken: string }) {
       fake.ops.push({ op_id: uuid(), entity, entity_id: id, field, value, hlc: hlc() });
       config.cursor += 1;
     },
+    completeLogin() {
+      config.server_url = loginServer;
+      config.token = seed.validToken;
+      config.has_api_token = true;
+      fake.emit("zunder://login", { ok: true });
+    },
   };
+  let loginServer: string | null = null;
 
   function snapshot() {
     const entities = new Map<string, { entity: string; entity_id: string; created_hlc: string; fields: Record<string, { value: Json; hlc: string; op_id: string }> }>();
@@ -134,6 +143,9 @@ function installFakeApp(seed: { serverOps: WireOp[]; validToken: string }) {
         }
         return view();
       }
+      case "login_start":
+        loginServer = (args.server_url as string).replace(/\/$/, "");
+        return null;
       case "sync_now":
         return sync();
       case "local_snapshot":
@@ -248,6 +260,22 @@ test("App: Einrichtung mit Server und Token statt Anmeldung", async ({ page }) =
   const setConfig = await page.evaluate(() => window.__ZUNDER_FAKE_APP__.calls.filter((c) => c.cmd === "set_config").map((c) => c.args));
   expect(setConfig[0]).toEqual({ update: { server_url: "https://zunder.example.org/", api_token: "zt_falsch" } });
   expect(await calls(page)).toContain("sync_now");
+  expect(apiRequests).toEqual([]);
+});
+
+test("App: Anmeldung im Browser statt Token", async ({ page }) => {
+  const seed = serverOps(currentFire());
+  const apiRequests = await openInApp(page, seed.ops);
+  await page.getByLabel("Server-Adresse").fill("https://zunder.example.org");
+  await page.getByLabel("Gerätename").fill("Testgerät");
+  await page.getByRole("button", { name: "Im Browser anmelden" }).click();
+  await expect(page.getByText("Melde dich im Browser an und erlaube")).toBeVisible();
+  const started = await page.evaluate(() => window.__ZUNDER_FAKE_APP__.calls.filter((c) => c.cmd === "login_start").map((c) => c.args));
+  expect(started).toEqual([{ server_url: "https://zunder.example.org", device_name: "Testgerät", discard_pending: false }]);
+
+  await page.evaluate(() => window.__ZUNDER_FAKE_APP__.completeLogin());
+  await expect(page.locator(".app")).toBeVisible();
+  await expect(row(page, "Vom Server geladen")).toBeVisible();
   expect(apiRequests).toEqual([]);
 });
 

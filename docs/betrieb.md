@@ -254,7 +254,7 @@ Manuelle Kopien bewusst nicht nach `/data/backups/` legen, damit die Rotation si
 
 ### Umstellung der IDs auf CUID2 (einmalig)
 
-Die erste Version mit Schema 4 stellt beim Start alle IDs von UUID auf CUID2 um, ohne Zutun:
+Die erste Version mit Schema 5 stellt beim Start alle IDs von UUID auf CUID2 um, ohne Zutun:
 
 1. Sie schreibt `backups/vor-cuid2-<UTC-Zeit>.db` (wird nie automatisch gelöscht).
 2. Sie rechnet Oplog und Bezüge in einer Transaktion um und baut den Zustand neu auf. Im Log steht `IDs switched to CUID2` mit der Zahl der Operationen.
@@ -265,7 +265,7 @@ Vorher bzw. danach:
 - **Apps zuerst aktualisieren.** Web-UI und App (ab dieser Version) rechnen ihre gespeicherten Daten und noch nicht abgeglichene Änderungen beim Start selbst um. Eine ältere App-Version kann mit dem umgestellten Server nicht mehr abgleichen.
 - **Alte IDs funktionieren weiter** als Eingabe: im MCP (`task_id`, `area_id`, `project_id`), in Links `#/aufgabe/<uuid>`, beim Import (`existing_id`) und in Pushes von Clients, die noch UUIDs erzeugen (Funke). Die Umrechnung ist fest, deshalb muss nichts sofort angepasst werden.
 - **Vault:** Die `zunder_id`s in den Notizen sind noch die alten. Mit der Zuordnungsliste lassen sie sich ersetzen; bis dahin findet das MCP die Bereiche und Projekte auch über die alte ID.
-- **Zurückrollen:** Eine ältere Version startet nicht mit Schema 4. Dann `vor-cuid2-….db` wie unter [Wiederherstellen](#wiederherstellen) einspielen; alles, was seit der Umstellung geändert wurde, ist danach weg.
+- **Zurückrollen:** Eine ältere Version startet nicht mit Schema 5. Dann `vor-cuid2-….db` wie unter [Wiederherstellen](#wiederherstellen) einspielen; alles, was seit der Umstellung geändert wurde, ist danach weg.
 
 ## Fehlersuche
 

@@ -241,7 +241,7 @@ Funke ersetzt den ClickUp-Aufruf durch einen Push an Zunder. Die erfasste Aufgab
 - Endpoint: `POST https://zunder.rubeen.dev/api/sync/push`
 - Auth: `Authorization: Bearer zt_…` mit eigenem Token je Gerät (z. B. `funke-iphone`), abgelegt im Schlüsselbund und per App Group mit der Watch geteilt.
 - Anlegen = mehrere Feld-Operationen mit derselben `entity_id` in **einem** Push.
-- IDs: seit Schema 4 CUID2-Form, 24 Zeichen `^[a-z][a-z0-9]{23}$` (z. B. ein zufälliger Kleinbuchstabe und 23 zufällige Zeichen aus `0-9a-z`). Eine kanonische UUID (klein, mit Bindestrichen; Swifts `UUID().uuidString` muss `lowercased()` werden) nimmt der Server weiter an und rechnet sie fest um; die Antwort nennt die IDs so, wie sie gesendet wurden. Ein Funke, der noch UUIDv7 erzeugt, läuft also unverändert weiter.
+- IDs: seit Schema 5 CUID2-Form, 24 Zeichen `^[a-z][a-z0-9]{23}$` (z. B. ein zufälliger Kleinbuchstabe und 23 zufällige Zeichen aus `0-9a-z`). Eine kanonische UUID (klein, mit Bindestrichen; Swifts `UUID().uuidString` muss `lowercased()` werden) nimmt der Server weiter an und rechnet sie fest um; die Antwort nennt die IDs so, wie sie gesendet wurden. Ein Funke, der noch UUIDv7 erzeugt, läuft also unverändert weiter.
 - HLC: `"<13 Stellen Unix-ms>:<5 Stellen Zähler>:<Knoten>"`, Knoten z. B. `funke-3f9a1c2e` (`[a-z0-9-]`, höchstens 36 Zeichen, je Gerät fest). Innerhalb einer Millisekunde zählt der Zähler hoch.
 - Offline: Operationen in einer lokalen Warteschlange halten und **mit denselben `op_id`s** erneut senden. Der Server erkennt Wiederholungen und nimmt sie als `accepted` an, ohne sie doppelt zu speichern.
 
