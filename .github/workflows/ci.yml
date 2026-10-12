@@ -1,7 +1,9 @@
 name: CI
 
-# Pushes to main and version tags run everything including the image build;
-# pull requests run the checks only. Feature branches get CI via their PR.
+# Every run builds the container image for amd64 and arm64 (arm64 is the
+# production architecture), so a broken Dockerfile or cross build fails the
+# PR. Only pushes to main and version tags log in to GHCR and publish it.
+# Feature branches get CI via their PR.
 on:
   push:
     branches: [main]
@@ -164,12 +166,17 @@ jobs:
 
   image:
     name: Container-Image (GHCR, amd64 + arm64)
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     needs: [rust, local, web, e2e]
     runs-on: ubuntu-24.04
+    # Runs on pull requests too (build only, so the Dockerfile and the arm64
+    # cross build are checked before merging). GHCR login, push and cache
+    # writes only happen when PUBLISH is true; pull requests from forks get a
+    # read-only token anyway.
     permissions:
       contents: read
       packages: write
+    env:
+      PUBLISH: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
     steps:
       - uses: actions/checkout@v7
       # QEMU is only needed for the small runtime stage of the foreign
@@ -178,6 +185,7 @@ jobs:
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
+        if: env.PUBLISH == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -196,9 +204,11 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: true
+          push: ${{ env.PUBLISH == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Only publishing runs write the cache, so pull requests reuse the
+          # main cache without evicting it.
+          cache-to: ${{ env.PUBLISH == 'true' && 'type=gha,mode=max' || '' }}

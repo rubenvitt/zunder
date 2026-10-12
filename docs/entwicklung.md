@@ -107,7 +107,7 @@ Shell-Skripte (z. B. `deploy/generate-secrets.sh`) mit `shellcheck` prüfen.
 | `local` | `zunder-local` im Tauri-Workspace: `fmt`, `clippy -p zunder-local`, Tests, Sync gegen den echten Server |
 | `web` | `npm ci`, `typecheck`, `test` (inkl. gemeinsamer Testvektoren), `build` in `web/` |
 | `e2e` | Server (Release) und Web-UI bauen, Chromium installieren, Playwright mit `ZUNDER_E2E_BACKEND=real` (Binärdatei aus `ZUNDER_SERVER_BIN`), danach gegen den Mock; bei Fehlern wird der Report hochgeladen |
-| `image` | nur `main` und Tags, nach grünen Checks: Multi-Arch-Image (amd64 + arm64) nach `ghcr.io/<owner>/zunder` mit den Tags `latest`, `sha-<commit>` und SemVer |
+| `image` | nach grünen Checks: Multi-Arch-Image (amd64 + arm64) bauen, bei Pull Requests nur bauen (Dockerfile und arm64-Cross-Build werden vor dem Merge geprüft, Cache nur lesend); bei `main` und Tags zusätzlich nach `ghcr.io/<owner>/zunder` mit den Tags `latest`, `sha-<commit>` und SemVer |
 
 Die Tauri-Hülle (`zunder-app`) wird in der CI nicht gebaut: `src-tauri` gehört nicht zum Root-Workspace, braucht unter Linux webkit2gtk/GTK und für Mobile Xcode bzw. Android-SDK und ist nicht Teil des ausgelieferten Containers. Ihre Logik steckt in `zunder-core` (Job `rust`) und `zunder-local` (Job `local`).
 

@@ -17,7 +17,7 @@ apps/zunder-app/           Tauri 2 (E4); src-tauri ist NICHT Workspace-Mitglied 
                            sondern eigener Workspace mit zunder-local (ohne webkit testbar)
 deploy/                    compose.yaml, stack.env (Vorlage), generate-secrets.sh (Portainer/Traefik)
 Dockerfile                 Multi-Stage: Web bauen, Server bauen, schlankes Runtime-Image
-.github/workflows/ci.yml   fmt, clippy -D warnings, Tests, Web, Playwright, GHCR
+.github/workflows/ci.yml   fmt, clippy -D warnings, Tests, Web, Playwright, Image (PR: nur Build, main/Tags: GHCR)
 docs/                      Spec, dieser Vertrag, betrieb.md, umstieg.md, entwicklung.md
 ```
 
