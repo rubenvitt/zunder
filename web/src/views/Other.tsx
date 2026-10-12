@@ -12,7 +12,7 @@ import { flame } from "../state/actions";
 import { navigate, route } from "../state/router";
 import { api, now } from "../state/store";
 import { devProjectIds, devTasks, phoenixTasks } from "../state/selectors";
-import { registerList, toast } from "../state/ui";
+import { copyText, registerList, toast } from "../state/ui";
 
 export function DevView() {
   const tasks = createMemo(() => devTasks().filter((t) => t.status !== "dropped"));
@@ -216,12 +216,7 @@ function TokenManager() {
             <div class="inline-group">
               <button
                 class="btn btn-small"
-                onClick={() => {
-                  void navigator.clipboard?.writeText(c().token).then(
-                    () => toast("Token kopiert."),
-                    () => toast("Kopieren nicht möglich.", "warning"),
-                  );
-                }}
+                onClick={() => copyText(c().token, "Token kopiert.")}
               >
                 Kopieren
               </button>

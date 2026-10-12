@@ -1,5 +1,5 @@
 // Tiny hash router: "#/inbox", "#/bereiche/project/<id>", "#/phoenix/2026-W41".
-// "#/aufgabe/<id>" and "#/clickup/<clickup_id>" are links to a single task (e.g. from
+// "#/aufgabe/<id or reference like ZUN-42>" and "#/clickup/<clickup_id>" are links to a single task (e.g. from
 // the vault): they open the task's detail over its home view.
 
 import { createSignal } from "solid-js";
@@ -12,6 +12,7 @@ export type Route =
   | { view: "dev" }
   | { view: "phoenix"; fire?: string }
   | { view: "tokens" }
+  | { view: "einstellungen" }
   | { view: "verbindung" }
   | { view: "aufgabe"; id: string }
   | { view: "clickup"; id: string };
@@ -34,6 +35,8 @@ export function parseRoute(hash: string): Route {
       return parts[1] ? { view: "phoenix", fire: parts[1] } : { view: "phoenix" };
     case "tokens":
       return { view: "tokens" };
+    case "einstellungen":
+      return { view: "einstellungen" };
     case "verbindung":
       return { view: "verbindung" };
     case "aufgabe":

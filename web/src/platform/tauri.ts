@@ -10,12 +10,30 @@
 //   pull      → nothing; after each app sync with changes the app emits
 //               zunder://changed and the engine reloads the snapshot (onReset)
 // History and flames go through app commands that call the server with the
-// stored API token. Token management needs a browser session and is not
-// available in the app.
+// stored API token. Token management and server settings need a browser
+// session and are not available in the app.
 
 import { MemoryLocalStore } from "../sync/local-store";
 import { asFlameResult, HttpError, NetworkError, type ApiClient, type SubscriptionHandlers, type SyncTransport } from "../sync/transport";
-import type { ApiToken, CreatedToken, Device, FlameResult, HistoryEntry, Me, OAuthClient, Op, PullResponse, PushRequest, PushResponse, Rejection, Snapshot, Warning } from "../sync/types";
+import type {
+  ApiToken,
+  CreatedToken,
+  Device,
+  FlameResult,
+  HistoryEntry,
+  Me,
+  OAuthClient,
+  Op,
+  PullResponse,
+  PushRequest,
+  PushResponse,
+  Rejection,
+  Snapshot,
+  TimingCheck,
+  TimingSettings,
+  TimingSettingsUpdate,
+  Warning,
+} from "../sync/types";
 
 // ---- Command and event contract ------------------------------------------
 
@@ -149,6 +167,8 @@ export function appErrorCode(err: unknown): string {
 
 export const TOKENS_UNSUPPORTED =
   "API-Tokens, verbundene Apps und Geräte lassen sich nur in der Web-Oberfläche mit Browser-Anmeldung verwalten.";
+
+export const SETTINGS_UNSUPPORTED = "Einstellungen des Servers lassen sich nur in der Web-Oberfläche mit Browser-Anmeldung ändern.";
 
 // ---- The app's commands ----------------------------------------------------
 
@@ -315,6 +335,22 @@ export class TauriTransport implements SyncTransport, ApiClient {
 
   revokeOAuthClient(_id: string): Promise<void> {
     return Promise.reject(new AppCommandError("unsupported", TOKENS_UNSUPPORTED));
+  }
+
+  timingSettings(): Promise<TimingSettings> {
+    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+  }
+
+  updateTimingSettings(_update: TimingSettingsUpdate): Promise<TimingSettings> {
+    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+  }
+
+  resetTimingSettings(): Promise<TimingSettings> {
+    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+  }
+
+  checkTiming(): Promise<TimingCheck> {
+    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
   }
 
   listDevices(): Promise<Device[]> {

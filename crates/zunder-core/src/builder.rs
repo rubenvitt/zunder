@@ -61,6 +61,8 @@ pub struct NewProject {
     pub description: Option<String>,
     /// `None` = default for the kind (not written).
     pub view: Option<ProjectView>,
+    /// Prefix of the task references (`ZUN`).
+    pub key: Option<String>,
 }
 
 impl NewProject {
@@ -74,6 +76,7 @@ impl NewProject {
             repo: None,
             description: None,
             view: None,
+            key: None,
         }
     }
 }
@@ -217,6 +220,9 @@ impl<'c> OpBatch<'c> {
         }
         if let Some(view) = new.view {
             self.set_project(id, f::VIEW, view);
+        }
+        if let Some(key) = new.key {
+            self.set_project(id, f::KEY, key);
         }
         id
     }

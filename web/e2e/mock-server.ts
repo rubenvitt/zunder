@@ -81,11 +81,11 @@ interface Rejection {
 
 const FIELDS: Record<string, string[]> = {
   area: ["name", "state", "vault_path", "deleted"],
-  project: ["name", "area_id", "status", "kind", "repo", "description", "view", "deleted"],
+  project: ["name", "area_id", "status", "kind", "repo", "description", "view", "key", "deleted"],
   task: [
     "title", "description", "type", "status", "location", "parent_id", "due", "remind_at", "vault_links", "links",
     "phoenix", "claimed_by", "claim_expires_at", "plan", "branch", "pr_url", "timing_ref", "flame_started_at",
-    "flame_ended_at", "clickup_id", "rank", "deleted",
+    "flame_ended_at", "clickup_id", "rank", "ref", "deleted",
   ],
 };
 const ENUMS: Record<string, string[]> = {
@@ -104,6 +104,8 @@ let state = new Map<string, Entity>();
 let opIds = new Set<string>();
 let tokens: Token[] = [];
 let oauthClients: OAuthClient[] = [];
+/** Timing settings from the settings view (the mock has no environment variables). */
+let timing: { token: string | null; project: string | null } = { token: null, project: null };
 let devices: Device[] = [];
 let authenticated = true;
 const sseClients = new Set<ServerResponse>();
@@ -183,6 +185,9 @@ function checkOp(op: Op): [string, string] | null {
   if (Number(op.hlc.slice(0, 13)) > Date.now() + 24 * 3600 * 1000) {
     return ["future_hlc", "Der Zeitstempel liegt mehr als 24 Stunden in der Zukunft. Bitte die Uhr des Geräts prüfen."];
   }
+  if (op.entity === "task" && op.field === "ref") {
+    return ["invalid_value", "Die Kennung („ref“) vergibt der Server, sobald die Aufgabe in einem Projekt mit Schlüssel liegt."];
+  }
   if (op.value === null) {
     return REQUIRED[op.entity]!.includes(op.field) ? ["invalid_value", `Pflichtfeld „${op.field}“ kann nicht zurückgesetzt werden.`] : null;
   }
@@ -190,6 +195,9 @@ function checkOp(op: Op): [string, string] | null {
   if (allowed && !allowed.includes(String(op.value))) return ["invalid_value", `Ungültiger Wert für „${op.field}“.`];
   if ((op.field === "title" || op.field === "name") && (typeof op.value !== "string" || !op.value.trim())) {
     return ["invalid_value", `„${op.field}“ darf nicht leer sein.`];
+  }
+  if (op.entity === "project" && op.field === "key" && !/^[A-Z][A-Z0-9]{0,9}$/.test(String(op.value))) {
+    return ["invalid_value", "Ungültiger Schlüssel."];
   }
   if (op.field === "deleted" && typeof op.value !== "boolean") return ["invalid_value", "„deleted“ muss true oder false sein."];
   if ((op.field === "parent_id" || op.field === "area_id") && !UUID_RE.test(String(op.value))) {
@@ -259,6 +267,13 @@ function checkEntity(entity: EntityKind, id: string, pending: Map<string, Op[]>)
   } else if (entity === "project") {
     if (!aliveAfter("area", String(fields.area_id), pending)) return ["invalid_reference", "Der Bereich existiert nicht."];
     if (fields.repo && fields.kind !== "dev") return ["dev_only", "Ein Repo ist nur bei Dev-Projekten erlaubt."];
+    if (typeof fields.key === "string") {
+      const holder = [...new Set([...state.keys(), ...pending.keys()])].find((k) => {
+        const [kind, other] = k.split("/") as [EntityKind, string];
+        return kind === "project" && other !== id && aliveAfter(kind, other, pending) && fieldsAfter(kind, other, pending).key === fields.key;
+      });
+      if (holder) return ["invalid_value", `Der Schlüssel „${fields.key}“ gehört schon zum Projekt „${fieldsAfter("project", holder.split("/")[1]!, pending).name}“.`];
+    }
   }
   return null;
 }
@@ -325,8 +340,36 @@ function push(ops: Op[], source: string) {
       }
     }
   }
-  if (groups.size > 0) notify();
+  if (groups.size > 0) {
+    assignRefs();
+    notify();
+  }
   return { accepted, rejected, warnings, cursor: log.length };
+}
+
+/** Task references like the server (zunder_core::numbering): per key in creation order, never reused. */
+function assignRefs() {
+  const keyOf = (projectId: string | null) => {
+    const p = projectId ? state.get(key("project", projectId)) : undefined;
+    const k = p && p.fields.deleted?.value !== true ? p.fields.key?.value : undefined;
+    return typeof k === "string" ? k : null;
+  };
+  const tasks = [...state.values()].filter((e) => e.entity === "task");
+  const pending = tasks
+    .filter((e) => e.fields.deleted?.value !== true && typeof e.fields.ref?.value !== "string")
+    .map((e) => ({ e, k: keyOf(effectiveProject(e.id, new Map())) }))
+    .filter((x): x is { e: Entity; k: string } => x.k !== null)
+    .sort((a, b) => (a.e.created_hlc < b.e.created_hlc ? -1 : a.e.created_hlc > b.e.created_hlc ? 1 : a.e.id < b.e.id ? -1 : 1));
+  const last = new Map<string, number>();
+  for (const e of tasks) {
+    const m = /^([A-Z][A-Z0-9]*)-([1-9][0-9]*)$/.exec(String(e.fields.ref?.value ?? ""));
+    if (m) last.set(m[1]!, Math.max(last.get(m[1]!) ?? 0, Number(m[2])));
+  }
+  for (const { e, k } of pending) {
+    const n = (last.get(k) ?? 0) + 1;
+    last.set(k, n);
+    append({ op_id: randomUUID(), entity: "task", entity_id: e.id, field: "ref", value: `${k}-${n}`, hlc: serverHlc() }, "server");
+  }
 }
 
 function serverOps(entity: EntityKind, id: string, fields: Record<string, Json>, source = "server") {
@@ -359,12 +402,27 @@ const SEED_IDS = {
   projMove: "0192a000-0000-7000-8000-000000000011",
 };
 
+function timingSettings() {
+  const overridden = timing.token !== null || timing.project !== null;
+  return {
+    configured: timing.token !== null,
+    token_source: timing.token !== null ? "settings" : null,
+    token_hint: timing.token !== null ? (timing.token.length >= 12 ? `…${timing.token.slice(-4)}` : "…") : null,
+    project: timing.project || null,
+    project_source: timing.project !== null ? "settings" : null,
+    overridden,
+    env_token: false,
+    env_project: null,
+  };
+}
+
 function seed(kind: string) {
   log = [];
   state = new Map();
   opIds = new Set();
   tokens = [{ id: randomUUID(), name: "claude-code", created_at: new Date(Date.now() - 86400000 * 3).toISOString(), last_used_at: null }];
   oauthClients = [];
+  timing = { token: null, project: null };
   devices = [];
   if (kind === "empty") return;
   const base = Date.now() - 3600_000;
@@ -641,6 +699,21 @@ const server = createServer(async (req, res) => {
         if (!tokens.some((t) => t.id === tokenId)) return error(res, 404, "not_found", "Token nicht gefunden.");
         tokens = tokens.filter((t) => t.id !== tokenId);
         return send(res, 204);
+      }
+      if (path === "/api/settings/timing") {
+        if (method === "PUT") {
+          const body = await readJson(req);
+          const token = typeof body.token === "string" ? body.token.trim() : "";
+          if (/\s/.test(token)) return error(res, 400, "invalid_request", "Der Timing-Token darf keine Leer- oder Steuerzeichen enthalten");
+          if (token) timing.token = token;
+          if (typeof body.project === "string") timing.project = body.project.trim();
+        } else if (method === "DELETE") timing = { token: null, project: null };
+        else if (method !== "GET") return error(res, 405, "invalid_request", "Methode nicht erlaubt.");
+        return send(res, 200, timingSettings());
+      }
+      if (path === "/api/settings/timing/check" && method === "POST") {
+        if (!timing.token) return error(res, 409, "conflict", "Timing ist nicht eingerichtet.");
+        return send(res, 200, { ok: true, error: null });
       }
       if (path === "/api/devices" && method === "GET") return send(res, 200, devices);
       m = /^\/api\/devices\/([^/]+)$/.exec(path);

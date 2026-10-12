@@ -514,6 +514,7 @@ async fn search_all(app: &App, args: &Args) -> AppResult<Value> {
                                 v["parent_id"] = json!(t.parent_id);
                                 v["due"] = json!(t.due);
                                 v["clickup_id"] = json!(t.clickup_id);
+                                v["ref"] = json!(t.reference);
                             }
                         }
                         EntityKind::Project => {
@@ -522,6 +523,7 @@ async fn search_all(app: &App, args: &Args) -> AppResult<Value> {
                                 v["area_name"] = json!(p.area_name);
                                 v["status"] = json!(p.status);
                                 v["kind"] = json!(p.kind);
+                                v["key"] = json!(p.key);
                             }
                         }
                         EntityKind::Area => {
@@ -646,7 +648,7 @@ async fn create_task(app: &App, source: Source, args: &Args) -> AppResult<Value>
 fn parent_value(state: &State, parent: &TaskRef) -> AppResult<Value> {
     let id = match parent {
         TaskRef::Id(id) => *id,
-        TaskRef::ClickUp(_) => parent.resolve(state, false)?,
+        TaskRef::Key(_) | TaskRef::ClickUp(_) => parent.resolve(state, false)?,
     };
     Ok(Value::String(id.to_string()))
 }
@@ -916,6 +918,7 @@ const PROJECT_FIELDS: &[&str] = &[
     fp::REPO,
     fp::DESCRIPTION,
     fp::VIEW,
+    fp::KEY,
 ];
 
 async fn create_project(app: &App, source: Source, args: &Args) -> AppResult<Value> {

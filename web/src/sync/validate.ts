@@ -101,6 +101,20 @@ export function isValidRepo(s: string): boolean {
   return ownerOk && nameOk;
 }
 
+export const MAX_KEY_CHARS = 10;
+
+/** Project key: uppercase letter, then uppercase letters or digits (core: numbering::is_valid_key). */
+export function isValidKey(s: string): boolean {
+  return s.length >= 1 && s.length <= MAX_KEY_CHARS && /^[A-Z][A-Z0-9]*$/.test(s);
+}
+
+/** Task reference `KEY-N` (core: numbering::parse_ref). */
+export function isValidRef(s: string): boolean {
+  const dash = s.indexOf("-");
+  if (dash < 0) return false;
+  return isValidKey(s.slice(0, dash)) && /^[1-9][0-9]{0,8}$/.test(s.slice(dash + 1));
+}
+
 /** Strict location shape (core: RawLocation with deny_unknown_fields). */
 export function parseStrictLocation(v: JsonValue | undefined): Location | null {
   if (!isObject(v) || !onlyKeys(v, ["kind", "id"])) return null;
@@ -123,6 +137,8 @@ type Shape =
   | "phoenix"
   | "repo"
   | "http_url"
+  | "project_key"
+  | "task_ref"
   | readonly string[];
 
 const SHAPES: Record<EntityKind, Record<string, Shape>> = {
@@ -135,6 +151,7 @@ const SHAPES: Record<EntityKind, Record<string, Shape>> = {
     repo: "repo",
     description: "text",
     view: PROJECT_VIEWS,
+    key: "project_key",
     deleted: "bool",
   },
   task: {
@@ -159,6 +176,7 @@ const SHAPES: Record<EntityKind, Record<string, Shape>> = {
     flame_ended_at: "timestamp",
     clickup_id: "text",
     rank: "text",
+    ref: "task_ref",
     deleted: "bool",
   },
 };
@@ -172,6 +190,7 @@ const FIELD_LABELS: Record<string, string> = {
   phoenix: "Phönix (Rolle und Feuer wie 2026-W45)",
   pr_url: "PR-Link (http(s)-URL)",
   repo: "Repository (owner/name)",
+  key: "Schlüssel (Großbuchstaben und Ziffern, z. B. ZUN)",
   location: "Stelle",
   parent_id: "Elternaufgabe",
   area_id: "Bereich",
@@ -222,6 +241,10 @@ function shapeOk(shape: Shape, v: JsonValue): boolean {
       return typeof v === "string" && isValidRepo(v);
     case "http_url":
       return typeof v === "string" && isHttpUrl(v);
+    case "project_key":
+      return typeof v === "string" && isValidKey(v);
+    case "task_ref":
+      return typeof v === "string" && isValidRef(v);
   }
 }
 
@@ -450,6 +473,15 @@ class Checker {
   private checkProject(p: EntityState): void {
     const area = areaId(p);
     if (area) this.brokenReference("project", p.id, ["area_id", "deleted"], "area", area);
+    const own = strValue(p, "key");
+    if (own !== undefined && this.changedAny("project", p.id, ["key"])) {
+      for (const other of this.scratch.entities("project")) {
+        if (other.id !== p.id && !isDeleted(other) && strValue(other, "key") === own) {
+          this.blame(keyOf("project", p.id), "invalid_value", `Der Schlüssel „${own}“ gehört schon zum Projekt „${strValue(other, "name") ?? ""}“.`);
+          break;
+        }
+      }
+    }
     if (value(p, "repo") !== undefined && strValue(p, "kind") !== "dev" && this.changedAny("project", p.id, ["repo", "kind"])) {
       this.blame(
         keyOf("project", p.id),
@@ -606,6 +638,9 @@ export function validateOps(base: EntityStore, ops: readonly Op[], nowMs: number
       issue = { code: "future_hlc", message: "Der Zeitstempel liegt mehr als 24 Stunden in der Zukunft. Bitte die Uhr des Geräts prüfen." };
     }
     issue ??= checkField(op.entity, op.field, op.value);
+    if (!issue && op.entity === "task" && op.field === "ref") {
+      issue = { code: "invalid_value", message: "Die Kennung („ref“) vergibt der Server, sobald die Aufgabe in einem Projekt mit Schlüssel liegt." };
+    }
     if (!issue) {
       const other = otherKinds(op.entity, op.entity_id)[0];
       if (other) {

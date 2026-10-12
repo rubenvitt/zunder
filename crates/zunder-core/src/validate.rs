@@ -161,8 +161,23 @@ impl Violation {
     }
 }
 
-/// Validates a push against `state` at physical time `now_ms`.
+/// Who writes a push. Some fields are reserved for the server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Author {
+    /// Clients, agents and tools: everything but the reserved fields.
+    Client,
+    /// The server's own bookkeeping (task references, see
+    /// [`crate::numbering`]).
+    Server,
+}
+
+/// Validates a client push against `state` at physical time `now_ms`.
 pub fn validate_push(state: &State, ops: &[Op], now_ms: u64) -> PushOutcome {
+    validate_push_as(state, ops, now_ms, Author::Client)
+}
+
+/// Validates a push by `author` against `state` at physical time `now_ms`.
+pub fn validate_push_as(state: &State, ops: &[Op], now_ms: u64, author: Author) -> PushOutcome {
     let mut verdicts: Vec<Option<Violation>> = vec![None; ops.len()];
 
     // 1. Already known op IDs and repeats within the push. Neither is
@@ -200,7 +215,7 @@ pub fn validate_push(state: &State, ops: &[Op], now_ms: u64) -> PushOutcome {
     for (key, indices) in &groups {
         let mut first_failure: Option<String> = None;
         for &i in indices {
-            if let Some(v) = check_op(state, &ops[i], now_ms, &kinds_in_push) {
+            if let Some(v) = check_op(state, &ops[i], now_ms, &kinds_in_push, author) {
                 first_failure.get_or_insert_with(|| v.message.clone());
                 verdicts[i] = Some(v);
             }
@@ -391,6 +406,7 @@ fn check_op(
     op: &Op,
     now_ms: u64,
     kinds_in_push: &HashMap<Uuid, BTreeSet<EntityKind>>,
+    author: Author,
 ) -> Option<Violation> {
     if op.hlc.wall_ms() > now_ms.saturating_add(MAX_FUTURE_MS) {
         return Some(Violation::new(
@@ -400,6 +416,12 @@ fn check_op(
     }
     if let Err(e) = validate_field_value(op.entity, &op.field, &op.value) {
         return Some(Violation::new(e.code, e.message));
+    }
+    if author == Author::Client && op.entity == EntityKind::Task && op.field == fields::task::REF {
+        return Some(Violation::new(
+            RejectCode::InvalidValue,
+            "Die Kennung („ref“) vergibt der Server, sobald die Aufgabe in einem Projekt mit Schlüssel liegt.",
+        ));
     }
     let other_in_state = state.kinds_of(op.entity_id).find(|k| *k != op.entity);
     let ambiguous_in_push = other_in_state.is_none()
@@ -614,6 +636,21 @@ impl Checker<'_> {
                 &[f::AREA_ID, fields::DELETED],
                 (EntityKind::Area, area),
             );
+        }
+        if let Some(own) = project.str_value(f::KEY) {
+            if self.changed_any(key, &[f::KEY]) {
+                let holder = self.scratch.entities_of(EntityKind::Project).find(|p| {
+                    p.id() != project.id() && !p.is_deleted() && p.str_value(f::KEY) == Some(own)
+                });
+                if let Some(holder) = holder {
+                    let name = holder.str_value(f::NAME).unwrap_or_default().to_owned();
+                    self.blame(
+                        key,
+                        RejectCode::InvalidValue,
+                        format!("Der Schlüssel „{own}“ gehört schon zum Projekt „{name}“."),
+                    );
+                }
+            }
         }
         if project.value(f::REPO).is_some()
             && project.project_kind() != crate::model::ProjectKind::Dev

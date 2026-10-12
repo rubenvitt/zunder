@@ -97,11 +97,12 @@ function ProjectForm(props: { edit: Extract<StructureEdit, { kind: "project" }>;
   const [repo, setRepo] = createSignal(project?.repo ?? "");
   const [view, setView] = createSignal(project?.view ?? "list");
   const [description, setDescription] = createSignal(project?.description ?? "");
+  const [key, setKey] = createSignal(project?.key ?? "");
 
   function save(e: Event) {
     e.preventDefault();
     if (!project) {
-      const id = createProject(name(), areaId(), kind(), repo().trim() || null);
+      const id = createProject(name(), areaId(), kind(), repo().trim() || null, key().trim() || null);
       if (id) {
         props.onClose();
         navigate({ view: "bereiche", kind: "project", id });
@@ -117,6 +118,7 @@ function ProjectForm(props: { edit: Extract<StructureEdit, { kind: "project" }>;
     if (repoValue !== project.repo) fields.repo = repoValue;
     if (view() !== project.view) fields.view = view();
     if ((description() || null) !== project.description) fields.description = description() || null;
+    if ((key().trim() || null) !== project.key) fields.key = key().trim() || null;
     if (Object.keys(fields).length === 0 || updateProject(project.id, fields)) props.onClose();
   }
 
@@ -156,6 +158,22 @@ function ProjectForm(props: { edit: Extract<StructureEdit, { kind: "project" }>;
             </label>
           </Show>
         </div>
+        <label>
+          Schlüssel <span class="muted">(für Kennungen wie {key().trim() || "ZUN"}-42; Großbuchstaben und Ziffern)</span>
+          <input
+            class="field mono field-short"
+            name="key"
+            placeholder="ZUN"
+            maxLength={10}
+            autocapitalize="characters"
+            spellcheck={false}
+            value={key()}
+            onInput={(e) => setKey(e.currentTarget.value.toUpperCase())}
+          />
+        </label>
+        <Show when={project?.key && key().trim() !== project.key}>
+          <p class="muted small">Vergebene Kennungen bleiben; neue Aufgaben zählen unter dem neuen Schlüssel.</p>
+        </Show>
         <Show when={kind() === "dev"}>
           <label>
             GitHub-Repository

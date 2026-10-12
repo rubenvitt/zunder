@@ -1,12 +1,13 @@
 //! Flames and the Timing bridge: HTTP endpoints and MCP tools, against a
-//! local mock of the Timing web API and without Timing.
+//! local mock of the Timing web API and without Timing; Timing settings
+//! from the web UI (`/api/settings/timing`).
 
 mod common;
 
 use std::sync::{Arc, Mutex};
 
 use axum::extract::{Path, State};
-use axum::http::{header, HeaderMap, StatusCode};
+use axum::http::{header, HeaderMap, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
@@ -161,8 +162,8 @@ async fn with_timing(project: Option<&str>) -> (TestServer, TimingMock) {
         c.timing = Some(TimingConfig {
             token: TIMING_TOKEN.into(),
             project,
-            base_url: base,
         });
+        c.timing_base_url = base;
     })
     .await;
     (s, mock)
@@ -316,8 +317,8 @@ async fn unreachable_timing_falls_back() {
         c.timing = Some(TimingConfig {
             token: TIMING_TOKEN.into(),
             project: None,
-            base_url: base,
         });
+        c.timing_base_url = base;
     })
     .await;
     let t = api_token(&s, "claude").await;
@@ -428,4 +429,188 @@ async fn flame_without_timing_via_http() {
         )
         .await;
     assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+}
+
+async fn put_settings(s: &TestServer, session: &str, body: Value) -> common::TestResponse {
+    s.request(
+        Method::PUT,
+        "/api/settings/timing",
+        Auth::Web(session),
+        Some(body),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn timing_settings_from_the_web_ui() {
+    let (mock, base) = TimingMock::start().await;
+    let s = TestServer::with_config(move |c| c.timing_base_url = base).await;
+    let t = api_token(&s, "claude").await;
+    let session = s.session().await;
+
+    let r = s.get("/api/settings/timing", Auth::Web(&session)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    assert_eq!(
+        r.json(),
+        json!({
+            "configured": false, "token_source": null, "token_hint": null,
+            "project": null, "project_source": null, "overridden": false,
+            "env_token": false, "env_project": null,
+        })
+    );
+    let r = s
+        .request(
+            Method::POST,
+            "/api/settings/timing/check",
+            Auth::Web(&session),
+            None,
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::CONFLICT);
+
+    // Browser sessions only, with the CSRF header.
+    let r = s.get("/api/settings/timing", Auth::Bearer(&t)).await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+    let r = s
+        .request(
+            Method::PUT,
+            "/api/settings/timing",
+            Auth::Cookie(&session),
+            Some(json!({"token": "x"})),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+    let r = s
+        .request(
+            Method::PUT,
+            "/api/settings/timing",
+            Auth::Bearer(&t),
+            Some(json!({"token": "x"})),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+
+    // Invalid values.
+    let r = put_settings(&s, &session, json!({"token": "a b"})).await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    let r = put_settings(&s, &session, json!({"secret": "x"})).await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+
+    let r = put_settings(
+        &s,
+        &session,
+        json!({"token": " ui-token-0123456789 ", "project": "/projects/7"}),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    let body = r.json();
+    assert_eq!(body["configured"], true);
+    assert_eq!(body["token_source"], "settings");
+    assert_eq!(body["token_hint"], "…6789");
+    assert_eq!(body["project"], "/projects/7");
+    assert_eq!(body["project_source"], "settings");
+    assert_eq!(body["overridden"], true);
+    assert!(!r.text().contains("ui-token-0123456789"));
+
+    // The next flame uses the new settings, without a restart.
+    let a = task(&s, &t, "Planen").await;
+    let r = mcp_ok(&s, &t, "start_flame", json!({"task_id": a})).await;
+    assert_eq!(r["timing"]["used"], true);
+    let requests = mock.requests();
+    assert_eq!(
+        requests[0].auth.as_deref(),
+        Some("Bearer ui-token-0123456789")
+    );
+    assert_eq!(
+        requests[0].body,
+        json!({"title": "Planen", "project": "/projects/7", "replace_existing": false})
+    );
+
+    let r = s
+        .request(
+            Method::POST,
+            "/api/settings/timing/check",
+            Auth::Web(&session),
+            None,
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    assert_eq!(r.json(), json!({"ok": true, "error": null}));
+    assert_eq!(mock.calls()[0], "GET /time-entries/running");
+
+    // An empty token keeps the stored one; an empty project removes it.
+    let r = put_settings(&s, &session, json!({"token": "", "project": ""})).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    assert_eq!(r.json()["token_hint"], "…6789");
+    assert_eq!(r.json()["project"], Value::Null);
+
+    // Settings survive a restart.
+    let s = s.restart().await;
+    let session = s.session().await;
+    let r = s.get("/api/settings/timing", Auth::Web(&session)).await;
+    assert_eq!(r.json()["configured"], true);
+    assert_eq!(r.json()["token_source"], "settings");
+    assert_eq!(r.json()["project_source"], "settings");
+
+    // Reset: without environment, Timing is off again.
+    let r = s
+        .request(
+            Method::DELETE,
+            "/api/settings/timing",
+            Auth::Web(&session),
+            None,
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    assert_eq!(r.json()["configured"], false);
+    assert_eq!(r.json()["overridden"], false);
+    let t = api_token(&s, "claude-2").await;
+    let b = task(&s, &t, "Ohne Timing").await;
+    let r = mcp_ok(&s, &t, "start_flame", json!({"task_id": b})).await;
+    assert_eq!(r["timing"]["configured"], false);
+}
+
+#[tokio::test]
+async fn timing_settings_override_the_environment() {
+    let (s, mock) = with_timing(Some("/projects/1")).await;
+    let t = api_token(&s, "claude").await;
+    let session = s.session().await;
+
+    let r = s.get("/api/settings/timing", Auth::Web(&session)).await;
+    let body = r.json();
+    assert_eq!(body["configured"], true);
+    assert_eq!(body["token_source"], "env");
+    assert_eq!(body["project"], "/projects/1");
+    assert_eq!(body["project_source"], "env");
+    assert_eq!(body["env_token"], true);
+    assert_eq!(body["env_project"], "/projects/1");
+
+    // Only the project: the token stays the environment's.
+    let r = put_settings(&s, &session, json!({"project": "Deep Work"})).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    assert_eq!(r.json()["token_source"], "env");
+    assert_eq!(r.json()["project_source"], "settings");
+    let a = task(&s, &t, "Schreiben").await;
+    mcp_ok(&s, &t, "start_flame", json!({"task_id": a})).await;
+    let requests = mock.requests();
+    assert_eq!(
+        requests[0].auth.as_deref(),
+        Some("Bearer timing-test-token")
+    );
+    assert_eq!(requests[0].body["project"], "Deep Work");
+
+    // Reset: the environment applies again.
+    let r = s
+        .request(
+            Method::DELETE,
+            "/api/settings/timing",
+            Auth::Web(&session),
+            None,
+        )
+        .await;
+    assert_eq!(r.json()["project"], "/projects/1");
+    assert_eq!(r.json()["project_source"], "env");
+    let b = task(&s, &t, "Lesen").await;
+    mcp_ok(&s, &t, "start_flame", json!({"task_id": b})).await;
+    assert_eq!(mock.requests()[0].body["project"], "/projects/1");
 }

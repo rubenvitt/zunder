@@ -1,5 +1,6 @@
 //! Representations of tasks, areas and projects for MCP tools and the flame
-//! endpoints, plus resolving task references (`task_id` or `clickup_id`).
+//! endpoints, plus resolving task addresses (`task_id` as UUID or reference
+//! like `ZUN-42`, or `clickup_id`).
 //!
 //! Views are computed from the materialized state: the effective location
 //! with resolved names, derived timestamps (`created_at`, `updated_at`,
@@ -77,6 +78,9 @@ pub fn location_kind(location: Location) -> &'static str {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TaskView {
     pub id: Uuid,
+    /// Reference such as `ZUN-42` (tasks in projects with a key).
+    #[serde(rename = "ref")]
+    pub reference: Option<String>,
     pub title: String,
     pub description: Option<String>,
     #[serde(rename = "type")]
@@ -173,6 +177,7 @@ impl TaskView {
             pr_url: task.pr_url,
             timing_ref: task.timing_ref,
             clickup_id: task.clickup_id,
+            reference: task.reference,
         })
     }
 }
@@ -224,6 +229,8 @@ pub struct ProjectView {
     pub repo: Option<String>,
     pub description: Option<String>,
     pub view: ProjectViewMode,
+    /// Prefix of the task references (`ZUN`).
+    pub key: Option<String>,
 }
 
 impl ProjectView {
@@ -239,6 +246,7 @@ impl ProjectView {
             repo: project.repo,
             description: project.description,
             view: project.view,
+            key: project.key,
         })
     }
 }
@@ -247,6 +255,8 @@ impl ProjectView {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TaskRef {
     Id(Uuid),
+    /// A reference such as `ZUN-42` (canonical form).
+    Key(String),
     ClickUp(String),
 }
 
@@ -254,11 +264,11 @@ impl TaskRef {
     /// From the `task_id` / `clickup_id` arguments: `Ok(None)` without
     /// either, an error message when both are given.
     pub fn from_args(
-        task_id: Option<Uuid>,
+        task_id: Option<TaskRef>,
         clickup_id: Option<String>,
     ) -> Result<Option<Self>, &'static str> {
         match (task_id, clickup_id) {
-            (Some(id), None) => Ok(Some(TaskRef::Id(id))),
+            (Some(task), None) => Ok(Some(task)),
             (None, Some(c)) => Ok(Some(TaskRef::ClickUp(c))),
             (Some(_), Some(_)) => {
                 Err("Bitte entweder task_id oder clickup_id angeben, nicht beides.")
@@ -273,6 +283,9 @@ impl TaskRef {
     pub fn candidate_id(&self, state: &State) -> Uuid {
         match self {
             TaskRef::Id(id) => *id,
+            TaskRef::Key(reference) => state
+                .task_by_ref(reference, true)
+                .map_or(Uuid::nil(), |t| t.id),
             TaskRef::ClickUp(clickup_id) => match state.task_by_clickup_id(clickup_id) {
                 Some(task) => task.id,
                 None => zunder_core::ids::clickup_entity_id(EntityKind::Task, clickup_id),
@@ -287,6 +300,7 @@ impl TaskRef {
         let Some(entity) = state.entity(EntityKind::Task, id) else {
             return Err(AppError::NotFound(match self {
                 TaskRef::Id(id) => format!("Aufgabe {id} nicht gefunden."),
+                TaskRef::Key(r) => format!("Keine Aufgabe mit der Kennung „{r}“ gefunden."),
                 TaskRef::ClickUp(c) => format!("Keine Aufgabe mit der ClickUp-ID „{c}“ gefunden."),
             }));
         };

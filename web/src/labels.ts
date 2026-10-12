@@ -61,6 +61,8 @@ export const FIELD_LABELS: Record<string, string> = {
   flame_ended_at: "Flamme beendet",
   clickup_id: "ClickUp-ID",
   rank: "Reihenfolge",
+  ref: "Kennung",
+  key: "Schlüssel",
   deleted: "Gelöscht",
 };
 

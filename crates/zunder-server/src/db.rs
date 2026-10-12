@@ -18,7 +18,8 @@ use zunder_core::{EntityKind, Hlc, Op, SnapshotEntity, State};
 const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0001_init.sql"),
     include_str!("../migrations/0002_oauth.sql"),
-    include_str!("../migrations/0003_devices.sql"),
+    include_str!("../migrations/0003_settings.sql"),
+    include_str!("../migrations/0004_devices.sql"),
 ];
 
 /// The schema version this binary expects.
@@ -396,6 +397,35 @@ pub fn entity_history(
         });
     }
     Ok(out)
+}
+
+// ----- settings ---------------------------------------------------------------
+
+/// All settings whose key starts with `prefix`, by key.
+pub fn settings(conn: &Connection, prefix: &str) -> anyhow::Result<BTreeMap<String, String>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT key, value FROM settings WHERE substr(key, 1, length(?1)) = ?1 ORDER BY key",
+    )?;
+    let rows = stmt.query_map([prefix], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
+/// Inserts or replaces a setting.
+pub fn set_setting(conn: &Connection, key: &str, value: &str, now: i64) -> anyhow::Result<()> {
+    conn.execute(
+        "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        params![key, value, now],
+    )?;
+    Ok(())
+}
+
+/// Removes every setting whose key starts with `prefix`.
+pub fn delete_settings(conn: &Connection, prefix: &str) -> anyhow::Result<usize> {
+    Ok(conn.execute(
+        "DELETE FROM settings WHERE substr(key, 1, length(?1)) = ?1",
+        [prefix],
+    )?)
 }
 
 // ----- API tokens -------------------------------------------------------------
@@ -1104,6 +1134,22 @@ mod tests {
         let loaded = load_state(&mut conn, owner).unwrap();
         assert!(!loaded.rebuilt, "rebuild is persisted");
         assert_eq!(loaded.state, state);
+    }
+
+    #[test]
+    fn settings_by_prefix() {
+        let (_dir, conn) = temp_db();
+        set_setting(&conn, "timing.token", "a", 1).unwrap();
+        set_setting(&conn, "timing.token", "b", 2).unwrap();
+        set_setting(&conn, "timing.project", "", 2).unwrap();
+        set_setting(&conn, "timingx", "nein", 2).unwrap();
+        let timing = settings(&conn, "timing.").unwrap();
+        assert_eq!(timing.len(), 2);
+        assert_eq!(timing["timing.token"], "b");
+        assert_eq!(timing["timing.project"], "");
+        assert_eq!(delete_settings(&conn, "timing.").unwrap(), 2);
+        assert!(settings(&conn, "timing.").unwrap().is_empty());
+        assert_eq!(settings(&conn, "timingx").unwrap().len(), 1);
     }
 
     #[test]

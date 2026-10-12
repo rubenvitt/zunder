@@ -13,6 +13,9 @@ import type {
   PushRequest,
   PushResponse,
   Snapshot,
+  TimingCheck,
+  TimingSettings,
+  TimingSettingsUpdate,
 } from "./types";
 
 /** The server answered with an error status. */
@@ -76,6 +79,11 @@ export interface ApiClient {
   revokeToken(id: string): Promise<void>;
   listOAuthClients(): Promise<OAuthClient[]>;
   revokeOAuthClient(id: string): Promise<void>;
+  timingSettings(): Promise<TimingSettings>;
+  updateTimingSettings(update: TimingSettingsUpdate): Promise<TimingSettings>;
+  /** Removes the stored settings; the environment variables apply again. */
+  resetTimingSettings(): Promise<TimingSettings>;
+  checkTiming(): Promise<TimingCheck>;
   listDevices(): Promise<Device[]>;
   revokeDevice(id: string): Promise<void>;
   logout(): Promise<void>;
@@ -193,6 +201,22 @@ export class HttpTransport implements SyncTransport, ApiClient {
 
   async revokeOAuthClient(id: string): Promise<void> {
     await this.request("DELETE", `/api/oauth/clients/${encodeURIComponent(id)}`);
+  }
+
+  timingSettings(): Promise<TimingSettings> {
+    return this.request("GET", "/api/settings/timing");
+  }
+
+  updateTimingSettings(update: TimingSettingsUpdate): Promise<TimingSettings> {
+    return this.request("PUT", "/api/settings/timing", update);
+  }
+
+  resetTimingSettings(): Promise<TimingSettings> {
+    return this.request("DELETE", "/api/settings/timing");
+  }
+
+  checkTiming(): Promise<TimingCheck> {
+    return this.request("POST", "/api/settings/timing/check");
   }
 
   listDevices(): Promise<Device[]> {

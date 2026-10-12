@@ -161,3 +161,71 @@ test("Dunkles Design: Text auf Fehler-Toasts ist dunkel", async ({ page }) => {
   await expect(toast).toBeVisible();
   expect(await toast.evaluate((el) => getComputedStyle(el).color)).toBe("rgb(22, 19, 15)");
 });
+
+test("Dev-Aufgabe: ID per Klick und mit y kopieren", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
+  const s = suffix();
+  const seeder = new Seeder();
+  const area = seeder.area(`Arbeit ${s}`);
+  const project = seeder.project(`App ${s}`, area, { kind: "dev" });
+  const a = seeder.task(`Erste ${s}`, { location: { kind: "project", id: project } });
+  const b = seeder.task(`Zweite ${s}`, { location: { kind: "project", id: project } });
+  await seeder.push(page);
+  await openApp(page, `#/bereiche/project/${project}`);
+
+  // Detail panel: the id is shown right at the top and copies on click.
+  const card = (title: string) => page.locator(".card", { hasText: title });
+  await card(`Erste ${s}`).click();
+  await detail(page).getByRole("button", { name: "ID kopieren" }).click();
+  await expect(page.locator(".toast")).toContainText(a);
+  await expect.poll(clipboard).toBe(a);
+
+  // Keyboard: y copies the selected task, with or without the panel.
+  await page.keyboard.press("Escape");
+  await expect(detail(page)).toBeHidden();
+  await card(`Zweite ${s}`).click();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("y");
+  await expect.poll(clipboard).toBe(b);
+});
+
+test("Projektschlüssel: Aufgaben bekommen Kennungen wie ZUN-1", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
+  const s = suffix();
+  const key = `Z${s.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5)}`;
+  const seeder = new Seeder();
+  const area = seeder.area(`Arbeit ${s}`);
+  const project = seeder.project(`App ${s}`, area, { kind: "dev" });
+  seeder.task(`Erste ${s}`, { location: { kind: "project", id: project } });
+  seeder.task(`Zweite ${s}`, { location: { kind: "project", id: project } });
+  await seeder.push(page);
+  await openApp(page, `#/bereiche/project/${project}`);
+
+  // The key is set in the project form; the server numbers the tasks.
+  await page.getByRole("button", { name: "Bearbeiten" }).click();
+  await page.getByRole("dialog").locator('input[name="key"]').fill(key.toLowerCase());
+  await page.getByRole("dialog").getByRole("button", { name: "Speichern" }).click();
+  const card = (title: string) => page.locator(".card", { hasText: title });
+  await expect(card(`Erste ${s}`).locator(".chip-ref")).toHaveText(`${key}-1`);
+  await expect(card(`Zweite ${s}`).locator(".chip-ref")).toHaveText(`${key}-2`);
+
+  // Detail and y copy the reference.
+  await card(`Zweite ${s}`).click();
+  await detail(page).getByRole("button", { name: "Kennung kopieren" }).click();
+  await expect.poll(clipboard).toBe(`${key}-2`);
+  await page.keyboard.press("Escape");
+  await card(`Erste ${s}`).click();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("y");
+  await expect.poll(clipboard).toBe(`${key}-1`);
+
+  // The palette finds a reference, and #/aufgabe/<ref> opens the task.
+  await page.keyboard.press("Control+k");
+  await page.keyboard.type(`${key}-2`);
+  await expect(page.getByRole("dialog").getByRole("option").first()).toContainText(`Zweite ${s}`);
+  await page.keyboard.press("Escape");
+  await openApp(page, `#/aufgabe/${key.toLowerCase()}-1`);
+  await expect(detail(page).getByLabel("Titel", { exact: true })).toHaveValue(`Erste ${s}`);
+});

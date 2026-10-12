@@ -51,7 +51,7 @@ export const TASK_STATUSES: readonly TaskStatus[] = ["open", "in_progress", "rev
 export const PHOENIX_ROLES: readonly PhoenixRole[] = ["feuer_schritt", "flamme"];
 
 export const AREA_FIELDS = ["name", "state", "vault_path", "deleted"] as const;
-export const PROJECT_FIELDS = ["name", "area_id", "status", "kind", "repo", "description", "view", "deleted"] as const;
+export const PROJECT_FIELDS = ["name", "area_id", "status", "kind", "repo", "description", "view", "key", "deleted"] as const;
 export const TASK_FIELDS = [
   "title",
   "description",
@@ -74,6 +74,7 @@ export const TASK_FIELDS = [
   "flame_ended_at",
   "clickup_id",
   "rank",
+  "ref",
   "deleted",
 ] as const;
 
@@ -112,6 +113,8 @@ export interface Project extends EntityMeta {
   repo: string | null;
   description: string | null;
   view: ProjectView;
+  /** Prefix of the task references (`ZUN` → `ZUN-42`). */
+  key: string | null;
 }
 
 export interface Task extends EntityMeta {
@@ -136,6 +139,8 @@ export interface Task extends EntityMeta {
   flame_ended_at: string | null;
   clickup_id: string | null;
   rank: string | null;
+  /** Reference such as `ZUN-42`, assigned by the server (never by a client). */
+  ref: string | null;
   /** HLC of the winning status op, or created_hlc when the status was never set. */
   status_hlc: Hlc;
 }
@@ -225,6 +230,35 @@ export interface ApiToken {
 
 export interface CreatedToken extends ApiToken {
   token: string;
+}
+
+/** Where an effective setting comes from: the settings view or an environment variable. */
+export type SettingSource = "settings" | "env";
+
+/** Timing bridge settings, see `GET /api/settings/timing` (never contains the token itself). */
+export interface TimingSettings {
+  configured: boolean;
+  token_source: SettingSource | null;
+  /** Last characters of the token in effect, e.g. "…abcd". */
+  token_hint: string | null;
+  project: string | null;
+  project_source: SettingSource | null;
+  /** Whether stored settings override the environment. */
+  overridden: boolean;
+  env_token: boolean;
+  env_project: string | null;
+}
+
+/** `PUT /api/settings/timing`: missing/empty token keeps it; missing project keeps it, "" removes it. */
+export interface TimingSettingsUpdate {
+  token?: string;
+  project?: string;
+}
+
+/** `POST /api/settings/timing/check`. */
+export interface TimingCheck {
+  ok: boolean;
+  error: string | null;
 }
 
 /** A device logged in with the Zunder app, see `GET /api/devices`. */

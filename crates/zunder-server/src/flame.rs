@@ -2,8 +2,8 @@
 //!
 //! Starting a flame always writes `flame_started_at` (and clears
 //! `flame_ended_at`), stopping writes `flame_ended_at` — the fallback of the
-//! spec, so flames work without Timing. With `ZUNDER_TIMING_TOKEN` the
-//! service additionally starts/stops a Timing timer and stores the entry's
+//! spec, so flames work without Timing. With a Timing token (settings view
+//! or `ZUNDER_TIMING_TOKEN`, see [`crate::settings`]) the service additionally starts/stops a Timing timer and stores the entry's
 //! self link in `timing_ref`. A Timing failure never blocks the flame; the
 //! result reports whether Timing was used and why not.
 //!
@@ -95,15 +95,16 @@ pub async fn start(app: &App, task_id: Uuid) -> AppResult<FlameOutcome> {
         });
     }
 
-    let timing = match app.timing() {
+    let bridge = app.timing();
+    let timing = match &bridge {
         None => TimingUsage::unconfigured(),
-        Some(api) => {
+        Some(bridge) => {
             let request = StartTimer {
                 title,
-                project: app.config().timing.as_ref().and_then(|t| t.project.clone()),
+                project: bridge.project.clone(),
                 replace_existing: false,
             };
-            match api.start(request).await {
+            match bridge.api.start(request).await {
                 Ok(entry) => TimingUsage {
                     configured: true,
                     used: true,
@@ -149,8 +150,8 @@ pub async fn start(app: &App, task_id: Uuid) -> AppResult<FlameOutcome> {
         Ok(v) => v,
         Err(e) => {
             // Do not leave an orphaned timer behind.
-            if let (Some(api), Some(entry)) = (app.timing(), timing.entry.as_deref()) {
-                if let Err(stop) = api.stop_if_running(entry).await {
+            if let (Some(bridge), Some(entry)) = (&bridge, timing.entry.as_deref()) {
+                if let Err(stop) = bridge.api.stop_if_running(entry).await {
                     tracing::warn!(error = %stop, "stopping an orphaned Timing timer failed");
                 }
             }
@@ -188,7 +189,7 @@ pub async fn stop(app: &App, task_id: Uuid) -> AppResult<FlameOutcome> {
             entry: None,
             error: Some("Die Flamme wurde ohne Timing-Eintrag gestartet.".into()),
         },
-        (Some(api), Some(entry)) => match api.stop_if_running(&entry).await {
+        (Some(bridge), Some(entry)) => match bridge.api.stop_if_running(&entry).await {
             Ok(_) => TimingUsage {
                 configured: true,
                 used: true,

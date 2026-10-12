@@ -21,6 +21,7 @@ use crate::auth::Principal;
 use crate::error::{AppError, AppResult};
 use crate::flame::{self, FlameOutcome};
 use crate::oauth;
+use crate::settings::{TimingCheck, TimingSettings, TimingUpdate};
 
 /// Body limit of `/api` requests except push.
 pub const API_BODY_LIMIT: usize = 64 * 1024;
@@ -47,6 +48,13 @@ pub fn routes() -> Router<App> {
         .route("/tokens/{id}", delete(revoke_token))
         .route("/oauth/clients", get(list_oauth_clients))
         .route("/oauth/clients/{id}", delete(revoke_oauth_client))
+        .route(
+            "/settings/timing",
+            get(timing_settings)
+                .put(update_timing_settings)
+                .delete(reset_timing_settings),
+        )
+        .route("/settings/timing/check", post(check_timing))
         .route("/devices", get(list_devices))
         .route("/devices/{id}", delete(revoke_device))
         .layer(DefaultBodyLimit::max(API_BODY_LIMIT))
@@ -271,6 +279,51 @@ fn require_browser(principal: &Principal) -> AppResult<()> {
             "API-Tokens lassen sich nur mit einer Browser-Sitzung verwalten".into(),
         ))
     }
+}
+
+/// Settings hold credentials of other services, so like API tokens they are
+/// managed with a browser session only.
+fn require_browser_for_settings(principal: &Principal) -> AppResult<()> {
+    if principal.is_browser() {
+        Ok(())
+    } else {
+        Err(AppError::Forbidden(
+            "Einstellungen lassen sich nur mit einer Browser-Sitzung verwalten".into(),
+        ))
+    }
+}
+
+async fn timing_settings(
+    State(app): State<App>,
+    principal: Principal,
+) -> AppResult<Json<TimingSettings>> {
+    require_browser_for_settings(&principal)?;
+    Ok(Json(app.timing_settings()))
+}
+
+async fn update_timing_settings(
+    State(app): State<App>,
+    principal: Principal,
+    ApiJson(body): ApiJson<TimingUpdate>,
+) -> AppResult<Json<TimingSettings>> {
+    require_browser_for_settings(&principal)?;
+    Ok(Json(app.update_timing_settings(body).await?))
+}
+
+async fn reset_timing_settings(
+    State(app): State<App>,
+    principal: Principal,
+) -> AppResult<Json<TimingSettings>> {
+    require_browser_for_settings(&principal)?;
+    Ok(Json(app.reset_timing_settings().await?))
+}
+
+async fn check_timing(
+    State(app): State<App>,
+    principal: Principal,
+) -> AppResult<Json<TimingCheck>> {
+    require_browser_for_settings(&principal)?;
+    Ok(Json(app.check_timing().await?))
 }
 
 async fn list_tokens(

@@ -108,6 +108,51 @@ test("API-Tokens anlegen (einmal sichtbar) und widerrufen", async ({ page }) => 
   await expect(tokenRow).toHaveCount(0);
 });
 
+test("Timing in den Einstellungen eintragen, ändern und zurücksetzen", async ({ page }) => {
+  // The real server would call Timing for flames afterwards: always reset.
+  try {
+    await openApp(page, "#/einstellungen");
+    await expect(page.getByRole("heading", { name: "Einstellungen" })).toBeVisible();
+    const status = page.getByTestId("timing-status");
+    await expect(status).toContainText("Nicht eingerichtet");
+    const save = page.getByRole("button", { name: "Speichern" });
+    await expect(save).toBeDisabled();
+
+    await page.getByLabel("Timing-Token").fill("e2e-timing-token-1234");
+    await page.getByLabel("Timing-Projekt").fill("/projects/7");
+    await save.click();
+    await expect(status).toContainText("…1234");
+    await expect(status).toContainText("/projects/7");
+    await expect(status).toContainText("aus den Einstellungen");
+    // The token is never shown again; the field is empty after saving.
+    await expect(page.getByLabel("Timing-Token")).toHaveValue("");
+    await expect(page.getByLabel("Timing-Token")).toHaveAttribute("placeholder", /…1234/);
+    await expect(page.getByRole("button", { name: "Verbindung prüfen" })).toBeVisible();
+
+    // Only the project: the token stays.
+    await page.getByLabel("Timing-Projekt").fill("");
+    await save.click();
+    await expect(status).toContainText("ohne Projekt");
+    await expect(status).toContainText("…1234");
+
+    page.once("dialog", (d) => void d.accept());
+    await page.getByRole("button", { name: "Zurücksetzen" }).click();
+    await expect(status).toContainText("Nicht eingerichtet");
+    await expect(page.getByRole("button", { name: "Zurücksetzen" })).toHaveCount(0);
+  } finally {
+    await page.request.delete("/api/settings/timing", { headers: WEB_HEADERS });
+  }
+});
+
+test("Einstellungen über die Befehlspalette", async ({ page }) => {
+  await openApp(page);
+  await page.keyboard.press("Control+k");
+  await page.keyboard.type("einstellungen");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/#\/einstellungen$/);
+  await expect(page.getByRole("heading", { name: "Timing" })).toBeVisible();
+});
+
 /**
  * Connects an OAuth app. Real backend: the actual flow of a claude.ai connector
  * (registration, consent page in the browser, code with PKCE, token exchange).

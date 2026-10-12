@@ -1,4 +1,4 @@
--- Zunder schema, version 3: devices. The Tauri app logs in through the
+-- Zunder schema, version 4: devices. The Tauri app logs in through the
 -- built-in authorization server (resource <public>/api) and receives a
 -- device token (`zd_…`, stored as SHA-256 hex) that does not expire and is
 -- revoked per device. No foreign key to oauth_clients: registered clients
