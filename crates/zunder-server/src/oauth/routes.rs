@@ -11,16 +11,17 @@
 //! | `POST /oauth/revoke` | token revocation (RFC 7009) |
 
 use std::collections::HashMap;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use axum::body::Bytes;
 use axum::extract::rejection::FormRejection;
-use axum::extract::{DefaultBodyLimit, Query, RawQuery, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Query, RawQuery, State};
 use axum::http::header::{
     ACCESS_CONTROL_ALLOW_ORIGIN, CACHE_CONTROL, CONTENT_SECURITY_POLICY, LOCATION, ORIGIN,
 };
-use axum::http::{HeaderMap, HeaderValue, StatusCode};
+use axum::http::{Extensions, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Form, Json, Router};
@@ -60,6 +61,7 @@ struct Pending {
 pub struct OAuthState {
     app: App,
     pending: Arc<Mutex<HashMap<String, Pending>>>,
+    registrations: Arc<super::RegistrationLimiter>,
 }
 
 impl OAuthState {
@@ -67,6 +69,7 @@ impl OAuthState {
         Self {
             app,
             pending: Arc::new(Mutex::new(HashMap::new())),
+            registrations: Arc::default(),
         }
     }
 
@@ -164,7 +167,39 @@ async fn authorization_server(State(state): State<OAuthState>) -> Response {
 
 // ----- registration -------------------------------------------------------------
 
-async fn register_client(State(state): State<OAuthState>, body: Bytes) -> Response {
+/// The address a request comes from: the peer, or behind a reverse proxy on
+/// a loopback or private address (Traefik in the same Docker network) the
+/// right-most `X-Forwarded-For` entry, which the proxy itself appended.
+fn client_source(peer: Option<SocketAddr>, headers: &HeaderMap) -> Option<IpAddr> {
+    let peer = peer?.ip();
+    let behind_proxy = match peer {
+        IpAddr::V4(v4) => v4.is_loopback() || v4.is_private() || v4.is_link_local(),
+        IpAddr::V6(v6) => v6.is_loopback() || (v6.segments()[0] & 0xfe00) == 0xfc00,
+    };
+    if !behind_proxy {
+        return Some(peer);
+    }
+    let forwarded = headers
+        .get_all("x-forwarded-for")
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|v| v.split(','))
+        .last()
+        .and_then(|ip| ip.trim().parse::<IpAddr>().ok());
+    Some(forwarded.unwrap_or(peer))
+}
+
+async fn register_client(
+    State(state): State<OAuthState>,
+    extensions: Extensions,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let peer = extensions.get::<ConnectInfo<SocketAddr>>().map(|c| c.0);
+    let source = client_source(peer, &headers);
+    if !state.registrations.allows(source, crate::app::now_ms()) {
+        return crate::oauth::too_many_registrations().into_response();
+    }
     let metadata: Value = match serde_json::from_slice(&body) {
         Ok(v) => v,
         Err(_) => {
@@ -173,7 +208,10 @@ async fn register_client(State(state): State<OAuthState>, body: Bytes) -> Respon
         }
     };
     match register(&state.app, metadata).await {
-        Ok(client) => no_store((StatusCode::CREATED, Json(client)).into_response()),
+        Ok(client) => {
+            state.registrations.record(source, crate::app::now_ms());
+            no_store((StatusCode::CREATED, Json(client)).into_response())
+        }
         Err(e) => e.into_response(),
     }
 }

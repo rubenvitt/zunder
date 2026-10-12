@@ -23,3 +23,10 @@ unsafe_code = "forbid"
 
 [profile.dev.package.proptest]
 opt-level = 2
+
+# Test-only RSA key generation (OIDC tests) is unbearably slow unoptimized.
+[profile.dev.package.num-bigint-dig]
+opt-level = 3
+
+[profile.dev.package.rsa]
+opt-level = 3

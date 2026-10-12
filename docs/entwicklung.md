@@ -41,7 +41,7 @@ npm install
 npm run dev
 ```
 
-Die Web-UI läuft dann unter `http://localhost:5173`, der Server unter `http://127.0.0.1:8080`. Ein anderer Server-Port wird der Web-UI über `ZUNDER_DEV_BACKEND` mitgeteilt. `ZUNDER_DEV_AUTH=true` ist nur für die lokale Entwicklung gedacht; der Server warnt beim Start im Log.
+Die Web-UI läuft dann unter `http://localhost:5173`, der Server unter `http://127.0.0.1:8080`. Ein anderer Server-Port wird der Web-UI über `ZUNDER_DEV_BACKEND` mitgeteilt. `ZUNDER_DEV_AUTH=true` ist nur für die lokale Entwicklung gedacht; der Server warnt beim Start im Log. Mit Dev-Auth lauscht er ohne `ZUNDER_BIND` nur auf `127.0.0.1:8080`, verweigert den Start bei einer nicht lokalen Bind-Adresse und lässt Anfragen ohne Zugangsdaten nur dann als Besitzer durch, wenn ihr `Host` `localhost`, `127.0.0.1` oder `[::1]` ist (Schutz gegen Zugriffe aus dem Netz und DNS-Rebinding).
 
 Für MCP-Tests ohne Web-Login einen festen Token setzen:
 
@@ -115,7 +115,7 @@ Die Tauri-Hülle (`zunder-app`) wird in der CI nicht gebaut: `src-tauri` gehört
 
 ```sh
 docker build -t zunder .
-docker run --rm -p 8080:8080 -e ZUNDER_DEV_AUTH=true -v zunder-dev:/data zunder
+docker run --rm -p 127.0.0.1:8080:8080 -e ZUNDER_DEV_AUTH=true -e ZUNDER_DEV_AUTH_ALLOW_REMOTE=true -v zunder-dev:/data zunder
 curl -fsS http://localhost:8080/healthz                  # {"status":"ok",…}
 docker inspect --format '{{.State.Health.Status}}' <container>   # HEALTHCHECK: zunder-server healthcheck
 ```

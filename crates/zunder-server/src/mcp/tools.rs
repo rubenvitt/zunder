@@ -21,7 +21,9 @@ use super::schema::{definitions, ToolDef};
 use crate::app::{format_ms, App, Source};
 use crate::error::{AppError, AppResult};
 use crate::flame;
-use crate::views::{claim_active, location_kind, AreaView, ProjectView, TaskRef, TaskView};
+use crate::views::{
+    claim_active, flame_running, location_kind, AreaView, ProjectView, TaskRef, TaskView,
+};
 
 /// Task fields that `create_task` and `update_task` pass through to the
 /// core unchanged (besides `title`).
@@ -103,17 +105,17 @@ fn tool_result(result: AppResult<Value>) -> Value {
 
 async fn dispatch(app: &App, source: Source, name: &str, args: &Args) -> AppResult<Value> {
     match name {
-        "filter_tasks" => filter_tasks(app, args),
+        "filter_tasks" => filter_tasks(app, args).await,
         "get_task" => get_task(app, args),
         "create_task" => create_task(app, source, args).await,
         "update_task" => update_task(app, source, args).await,
         "move_task" => move_task(app, source, args).await,
         "delete_task" => delete_task(app, source, args).await,
-        "search" => search_all(app, args),
+        "search" => search_all(app, args).await,
         "claim_task" => claim_task(app, source, args).await,
         "release_task" => release_task(app, source, args).await,
         "decompose_task" => decompose_task(app, source, args).await,
-        "list_structure" => list_structure(app, args),
+        "list_structure" => list_structure(app, args).await,
         "create_area" => create_area(app, source, args).await,
         "update_area" => update_area(app, source, args).await,
         "create_project" => create_project(app, source, args).await,
@@ -195,20 +197,81 @@ struct TaskFilter {
     phoenix_fire: Option<IsoWeek>,
     due_before: Option<Date>,
     due_after: Option<Date>,
+    closed_after: Option<Due>,
+    closed_before: Option<Due>,
     include_closed: bool,
+    /// `parent_id` as given (UUID or ClickUp ID) …
+    parent: Option<TaskRef>,
+    /// … and resolved against the state that is being filtered.
     parent_id: Option<Uuid>,
     claimed_by: Option<String>,
+    flame_running: Option<bool>,
+    order_by: OrderBy,
+    reverse: bool,
+    offset: usize,
     limit: usize,
 }
 
+/// Sort order of filter_tasks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OrderBy {
+    /// Due date (undated last), then creation.
+    Due,
+    Created,
+    Updated,
+    StatusChanged,
+}
+
+const ORDER_BY_CODES: [&str; 4] = ["due", "created", "updated", "status_changed"];
+
+impl std::str::FromStr for OrderBy {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, ()> {
+        match s {
+            "due" => Ok(OrderBy::Due),
+            "created" => Ok(OrderBy::Created),
+            "updated" => Ok(OrderBy::Updated),
+            "status_changed" => Ok(OrderBy::StatusChanged),
+            _ => Err(()),
+        }
+    }
+}
+
+/// Highest accepted `offset` of filter_tasks.
+const MAX_OFFSET: u64 = 1_000_000;
+
 fn day(args: &Args, key: &str) -> AppResult<Option<Date>> {
+    Ok(moment(args, key)?.map(|d| d.date()))
+}
+
+fn moment(args: &Args, key: &str) -> AppResult<Option<Due>> {
     match args.str(key)? {
         None => Ok(None),
-        Some(s) => Due::parse(s).map(|d| Some(d.date())).ok_or_else(|| {
+        Some(s) => Due::parse(s).map(Some).ok_or_else(|| {
             invalid(format!(
                 "„{key}“ muss ein Datum (JJJJ-MM-TT) oder ein RFC-3339-Zeitpunkt sein."
             ))
         }),
+    }
+}
+
+/// The calendar day of `ms` in the server's time zone (`TZ`).
+fn local_day(ms: u64) -> Option<Date> {
+    use chrono::{Datelike, TimeZone};
+    let day = chrono::Local
+        .timestamp_millis_opt(i64::try_from(ms).ok()?)
+        .single()?
+        .date_naive();
+    Date::from_ordinal_date(day.year(), u16::try_from(day.ordinal()).ok()?).ok()
+}
+
+/// How `ms` compares with a bound: a date compares by calendar day in the
+/// server's time zone, an RFC 3339 instant exactly.
+fn cmp_moment(ms: u64, bound: &Due) -> Option<std::cmp::Ordering> {
+    match bound {
+        Due::Date(d) => local_day(ms).map(|day| day.cmp(d)),
+        Due::DateTime(t) => Some(i128::from(ms).cmp(&(t.unix_timestamp_nanos() / 1_000_000))),
     }
 }
 
@@ -228,6 +291,8 @@ impl TaskFilter {
                 invalid("„phoenix_fire“ muss eine ISO-Woche JJJJ-Www sein, z. B. 2026-W45.")
             })?),
         };
+        let closed_after = moment(args, "closed_after")?;
+        let closed_before = moment(args, "closed_before")?;
         Ok(TaskFilter {
             location,
             area_id: args.id("area_id")?,
@@ -238,16 +303,51 @@ impl TaskFilter {
             phoenix_fire,
             due_before: day(args, "due_before")?,
             due_after: day(args, "due_after")?,
-            include_closed: args.bool("include_closed")?.unwrap_or(false),
-            parent_id: args.id("parent_id")?,
+            // A closing date only matches closed tasks, of any age.
+            include_closed: args.bool("include_closed")?.unwrap_or(false)
+                || closed_after.is_some()
+                || closed_before.is_some(),
+            closed_after,
+            closed_before,
+            parent: args.task_link("parent_id")?.flatten(),
+            parent_id: None,
             claimed_by: args.str("claimed_by")?.map(str::to_owned),
+            flame_running: args.bool("flame_running")?,
+            order_by: args
+                .code("order_by", &ORDER_BY_CODES)?
+                .unwrap_or(OrderBy::Due),
+            reverse: args.bool("reverse")?.unwrap_or(false),
+            offset: args.int("offset", 0, MAX_OFFSET, 0)? as usize,
             limit: args.int("limit", 1, 500, 100)? as usize,
         })
     }
 
     fn matches(&self, state: &State, task: &zunder_core::Task, now: u64) -> bool {
-        if !self.include_closed && !state.is_visible_by_default(task.id, now) {
+        // A running flame is found whatever the task's status and age.
+        let finds_flame = self.flame_running == Some(true);
+        if !self.include_closed && !finds_flame && !state.is_visible_by_default(task.id, now) {
             return false;
+        }
+        if self
+            .flame_running
+            .is_some_and(|running| flame_running(task) != running)
+        {
+            return false;
+        }
+        if self.closed_after.is_some() || self.closed_before.is_some() {
+            if !task.status.is_closed() {
+                return false;
+            }
+            let changed = state.status_changed_at(task.id).map_or(0, |h| h.wall_ms());
+            let after = self.closed_after.as_ref().is_none_or(|b| {
+                cmp_moment(changed, b).is_some_and(|o| o != std::cmp::Ordering::Less)
+            });
+            let before = self.closed_before.as_ref().is_none_or(|b| {
+                cmp_moment(changed, b).is_some_and(|o| o != std::cmp::Ordering::Greater)
+            });
+            if !after || !before {
+                return false;
+            }
         }
         let location = state.effective_location(task.id).unwrap_or(task.location);
         if self
@@ -318,40 +418,61 @@ impl TaskFilter {
     }
 }
 
-fn filter_tasks(app: &App, args: &Args) -> AppResult<Value> {
-    let filter = TaskFilter::parse(args)?;
+// The full scans below run on the blocking pool (`read_blocking`).
+
+async fn filter_tasks(app: &App, args: &Args) -> AppResult<Value> {
+    let mut filter = TaskFilter::parse(args)?;
     let now = system_time_ms();
-    let (tasks, total) = app.read(|state| {
-        let mut hits: Vec<_> = state
-            .live_tasks()
-            .filter(|t| filter.matches(state, t, now))
-            .map(|t| {
-                let created = state.created_at(EntityKind::Task, t.id).cloned();
-                (t.due.map(|d| d.date()), created, t.id)
-            })
-            .collect();
-        hits.sort_by(|a, b| {
-            let due = match (a.0, b.0) {
-                (Some(x), Some(y)) => x.cmp(&y),
-                (Some(_), None) => std::cmp::Ordering::Less,
-                (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => std::cmp::Ordering::Equal,
-            };
-            due.then_with(|| a.1.cmp(&b.1)).then_with(|| a.2.cmp(&b.2))
-        });
-        let total = hits.len();
-        let tasks: Vec<TaskView> = hits
-            .into_iter()
-            .take(filter.limit)
-            .filter_map(|(_, _, id)| TaskView::build(state, id, now, false))
-            .collect();
-        (tasks, total)
-    });
+    let (offset, limit) = (filter.offset, filter.limit);
+    let (tasks, total) = app
+        .read_blocking(move |state| {
+            filter.parent_id = filter.parent.as_ref().map(|p| p.candidate_id(state));
+            let mut hits: Vec<_> = state
+                .live_tasks()
+                .filter(|t| filter.matches(state, t, now))
+                .map(|t| {
+                    let key = match filter.order_by {
+                        OrderBy::Due | OrderBy::Created => {
+                            state.created_at(EntityKind::Task, t.id).cloned()
+                        }
+                        OrderBy::Updated => state.updated_at(EntityKind::Task, t.id).cloned(),
+                        OrderBy::StatusChanged => state.status_changed_at(t.id).cloned(),
+                    };
+                    (t.due.map(|d| d.date()), key, t.id)
+                })
+                .collect();
+            hits.sort_by(|a, b| {
+                let due = match (filter.order_by, a.0, b.0) {
+                    (OrderBy::Due, Some(x), Some(y)) => x.cmp(&y),
+                    (OrderBy::Due, Some(_), None) => std::cmp::Ordering::Less,
+                    (OrderBy::Due, None, Some(_)) => std::cmp::Ordering::Greater,
+                    _ => std::cmp::Ordering::Equal,
+                };
+                let order = due.then_with(|| a.1.cmp(&b.1)).then_with(|| a.2.cmp(&b.2));
+                if filter.reverse {
+                    order.reverse()
+                } else {
+                    order
+                }
+            });
+            let total = hits.len();
+            let tasks: Vec<TaskView> = hits
+                .into_iter()
+                .skip(offset)
+                .take(limit)
+                .filter_map(|(_, _, id)| TaskView::build(state, id, now, false))
+                .collect();
+            (tasks, total)
+        })
+        .await?;
+    let end = offset + tasks.len();
     Ok(json!({
         "tasks": tasks,
         "count": tasks.len(),
         "total": total,
-        "truncated": total > tasks.len(),
+        "offset": offset,
+        "truncated": end < total,
+        "next_offset": (end < total).then_some(end),
     }))
 }
 
@@ -366,58 +487,60 @@ fn get_task(app: &App, args: &Args) -> AppResult<Value> {
     })
 }
 
-fn search_all(app: &App, args: &Args) -> AppResult<Value> {
+async fn search_all(app: &App, args: &Args) -> AppResult<Value> {
     let query = args
         .non_empty_str("query")?
         .ok_or_else(|| invalid("Parameter „query“ fehlt."))?
         .to_owned();
     let limit = args.int("limit", 1, 200, 20)? as usize;
     let now = system_time_ms();
-    let hits: Vec<Value> = app.read(|state| {
-        search(state, &query, limit)
-            .into_iter()
-            .map(|hit| {
-                let mut v = json!({
-                    "entity": hit.entity,
-                    "id": hit.entity_id,
-                    "title": hit.title,
-                    "score": hit.score,
-                });
-                match hit.entity {
-                    EntityKind::Task => {
-                        if let Some(t) = TaskView::build(state, hit.entity_id, now, false) {
-                            v["status"] = json!(t.status);
-                            v["type"] = json!(t.task_type);
-                            v["location"] = json!(t.location);
-                            v["parent_id"] = json!(t.parent_id);
-                            v["due"] = json!(t.due);
-                            v["clickup_id"] = json!(t.clickup_id);
+    let hits: Vec<Value> = app
+        .read_blocking(move |state| {
+            search(state, &query, limit)
+                .into_iter()
+                .map(|hit| {
+                    let mut v = json!({
+                        "entity": hit.entity,
+                        "id": hit.entity_id,
+                        "title": hit.title,
+                        "score": hit.score,
+                    });
+                    match hit.entity {
+                        EntityKind::Task => {
+                            if let Some(t) = TaskView::build(state, hit.entity_id, now, false) {
+                                v["status"] = json!(t.status);
+                                v["type"] = json!(t.task_type);
+                                v["location"] = json!(t.location);
+                                v["parent_id"] = json!(t.parent_id);
+                                v["due"] = json!(t.due);
+                                v["clickup_id"] = json!(t.clickup_id);
+                            }
+                        }
+                        EntityKind::Project => {
+                            if let Some(p) = ProjectView::build(state, hit.entity_id) {
+                                v["area_id"] = json!(p.area_id);
+                                v["area_name"] = json!(p.area_name);
+                                v["status"] = json!(p.status);
+                                v["kind"] = json!(p.kind);
+                            }
+                        }
+                        EntityKind::Area => {
+                            if let Some(a) = AreaView::build(state, hit.entity_id) {
+                                v["state"] = json!(a.state);
+                            }
                         }
                     }
-                    EntityKind::Project => {
-                        if let Some(p) = ProjectView::build(state, hit.entity_id) {
-                            v["area_id"] = json!(p.area_id);
-                            v["area_name"] = json!(p.area_name);
-                            v["status"] = json!(p.status);
-                            v["kind"] = json!(p.kind);
-                        }
-                    }
-                    EntityKind::Area => {
-                        if let Some(a) = AreaView::build(state, hit.entity_id) {
-                            v["state"] = json!(a.state);
-                        }
-                    }
-                }
-                v
-            })
-            .collect()
-    });
+                    v
+                })
+                .collect()
+        })
+        .await?;
     Ok(json!({"hits": hits, "count": hits.len()}))
 }
 
-fn list_structure(app: &App, args: &Args) -> AppResult<Value> {
+async fn list_structure(app: &App, args: &Args) -> AppResult<Value> {
     let include_archived = args.bool("include_archived")?.unwrap_or(false);
-    app.read(|state| {
+    app.read_blocking(move |state| {
         let mut inbox = 0usize;
         let mut loose = 0usize;
         let mut open: HashMap<Uuid, usize> = HashMap::new();
@@ -456,6 +579,7 @@ fn list_structure(app: &App, args: &Args) -> AppResult<Value> {
         }
         Ok(json!({"areas": out, "inbox_open": inbox, "loose_open": loose}))
     })
+    .await?
 }
 
 async fn task_history(app: &App, args: &Args) -> AppResult<Value> {
@@ -494,19 +618,19 @@ async fn create_task(app: &App, source: Source, args: &Args) -> AppResult<Value>
         .value("location")
         .cloned()
         .unwrap_or_else(|| Location::Inbox.to_value());
-    let parent = args.value("parent_id").cloned();
+    let parent = args.task_link("parent_id")?.flatten();
     let mut fields = present(args, TASK_FIELDS, false);
     let task_type = take(&mut fields, ft::TYPE).unwrap_or_else(|| TaskType::Aufgabe.into());
     let status = take(&mut fields, ft::STATUS).unwrap_or_else(|| TaskStatus::Open.into());
     let (id, warnings) = app
-        .mutate_atomic(source, move |_, batch| {
+        .mutate_atomic(source, move |state, batch| {
             let id = zunder_core::ids::new_id();
             batch.set_task(id, ft::TITLE, title);
             batch.set_task(id, ft::TYPE, task_type);
             batch.set_task(id, ft::STATUS, status);
             batch.set_task(id, ft::LOCATION, location);
             if let Some(parent) = parent {
-                batch.set_task(id, ft::PARENT_ID, parent);
+                batch.set_task(id, ft::PARENT_ID, parent_value(state, &parent)?);
             }
             for (field, value) in fields {
                 batch.set_task(id, field, value);
@@ -515,6 +639,16 @@ async fn create_task(app: &App, source: Source, args: &Args) -> AppResult<Value>
         })
         .await?;
     task_result(app, id, &warnings)
+}
+
+/// The value written to `parent_id`: a UUID as given (the core checks the
+/// reference), a ClickUp ID resolved to its task.
+fn parent_value(state: &State, parent: &TaskRef) -> AppResult<Value> {
+    let id = match parent {
+        TaskRef::Id(id) => *id,
+        TaskRef::ClickUp(_) => parent.resolve(state, false)?,
+    };
+    Ok(Value::String(id.to_string()))
 }
 
 fn take(fields: &mut Vec<(&'static str, Value)>, key: &str) -> Option<Value> {
@@ -546,7 +680,7 @@ async fn update_task(app: &App, source: Source, args: &Args) -> AppResult<Value>
 async fn move_task(app: &App, source: Source, args: &Args) -> AppResult<Value> {
     let target = args.task_ref()?;
     let location = args.value("location").cloned();
-    let parent = args.raw("parent_id").cloned();
+    let parent = args.task_link("parent_id")?;
     if location.is_none() && parent.is_none() {
         return Err(invalid("location oder parent_id angeben."));
     }
@@ -556,7 +690,7 @@ async fn move_task(app: &App, source: Source, args: &Args) -> AppResult<Value> {
             match parent {
                 // Detach from the parent; keep the effective location
                 // unless a new one is given.
-                Some(Value::Null) => {
+                Some(None) => {
                     let location = match location {
                         Some(l) => l,
                         None => state.effective_location(id).unwrap_or_default().to_value(),
@@ -564,7 +698,8 @@ async fn move_task(app: &App, source: Source, args: &Args) -> AppResult<Value> {
                     batch.set_task(id, ft::LOCATION, location);
                     batch.clear(EntityKind::Task, id, ft::PARENT_ID);
                 }
-                Some(parent) => {
+                Some(Some(parent)) => {
+                    let parent = parent_value(state, &parent)?;
                     if let Some(location) = location {
                         batch.set_task(id, ft::LOCATION, location);
                     }
@@ -835,7 +970,20 @@ async fn start_flame(app: &App, args: &Args) -> AppResult<Value> {
     to_json(&flame::start(app, id).await?)
 }
 
+/// Stops the flame of the given task, or without a task the one that is
+/// running (the most recently started, should several run after a sync).
 async fn stop_flame(app: &App, args: &Args) -> AppResult<Value> {
-    let id = resolve_live(app, &args.task_ref()?)?;
+    let id = match args.optional_task_ref()? {
+        Some(target) => resolve_live(app, &target)?,
+        None => app
+            .read_blocking(|s| {
+                s.live_tasks()
+                    .filter(flame_running)
+                    .max_by_key(|t| (t.flame_started_at, t.id))
+                    .map(|t| t.id)
+            })
+            .await?
+            .ok_or_else(|| AppError::Conflict("Es läuft keine Flamme.".into()))?,
+    };
     to_json(&flame::stop(app, id).await?)
 }

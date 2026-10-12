@@ -106,7 +106,12 @@ impl TestServer {
         Self { app, router, dir }
     }
 
-    pub async fn send(&self, req: Request<Body>) -> TestResponse {
+    /// Sends a request; like a real HTTP/1.1 client it carries a `Host`
+    /// header (`localhost` unless the request sets one).
+    pub async fn send(&self, mut req: Request<Body>) -> TestResponse {
+        req.headers_mut()
+            .entry(header::HOST)
+            .or_insert(header::HeaderValue::from_static("localhost"));
         let response = self.router.clone().oneshot(req).await.unwrap();
         let status = response.status();
         let headers = response.headers().clone();

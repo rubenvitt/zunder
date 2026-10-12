@@ -62,6 +62,51 @@ async fn api_requires_credentials() {
 }
 
 #[tokio::test]
+async fn snapshot_is_encoded_per_accept_encoding() {
+    use std::io::Read;
+    let s = TestServer::new().await;
+    let (_, ops) = new_task_ops("Komprimiert");
+    s.push(BOOT, &ops).await;
+    let plain = s.get("/api/snapshot", BOOT).await;
+    assert_eq!(plain.header("content-encoding"), None);
+    assert_eq!(plain.header("content-type"), Some("application/json"));
+    let expected = plain.json();
+    assert_eq!(expected["cursor"], ops.len() as i64);
+
+    for (accept, coding) in [
+        ("gzip, deflate, br", Some("br")),
+        ("gzip", Some("gzip")),
+        ("br;q=0, gzip;q=0.5", Some("gzip")),
+        ("identity", None),
+    ] {
+        let req = common::authorize(Request::get("/api/snapshot"), BOOT)
+            .header(header::ACCEPT_ENCODING, accept)
+            .body(Body::empty())
+            .unwrap();
+        let r = s.send(req).await;
+        assert_eq!(r.status, StatusCode::OK);
+        assert_eq!(r.header("content-encoding"), coding, "{accept}");
+        assert!(r.header("vary").unwrap().contains("accept-encoding"));
+        let mut json = Vec::new();
+        match coding {
+            Some("br") => {
+                brotli::Decompressor::new(&r.body[..], 4096)
+                    .read_to_end(&mut json)
+                    .unwrap();
+            }
+            Some("gzip") => {
+                flate2::read::GzDecoder::new(&r.body[..])
+                    .read_to_end(&mut json)
+                    .unwrap();
+            }
+            _ => json = r.body.clone(),
+        }
+        let body: Value = serde_json::from_slice(&json).unwrap();
+        assert_eq!(body, expected, "{accept}");
+    }
+}
+
+#[tokio::test]
 async fn push_pull_snapshot() {
     let s = TestServer::new().await;
     let (task, ops) = new_task_ops("Zahnarzt anrufen");
@@ -487,6 +532,83 @@ async fn dev_auth_logs_in_without_oidc() {
     assert!(!set_cookie.contains("Secure"), "plain-http localhost");
     let r = s.get("/api/tokens", Auth::Cookie(&cookie)).await;
     assert_eq!(r.status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn dev_auth_only_for_loopback_hosts() {
+    let s = TestServer::with_config(|c| c.dev_auth = true).await;
+    let with_host = |method: Method, path: &str, host: &str| {
+        Request::builder()
+            .method(method)
+            .uri(path)
+            .header(header::HOST, host)
+            .header("x-zunder-client", "web")
+            .header(header::CONTENT_TYPE, "application/json")
+    };
+    for host in [
+        "localhost",
+        "localhost:5173",
+        "127.0.0.1:8080",
+        "[::1]:8080",
+    ] {
+        let r = s
+            .send(
+                with_host(Method::GET, "/api/me", host)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::OK, "{host}");
+    }
+    // DNS rebinding or a foreign machine: the Host names someone else
+    for host in [
+        "rebind.attacker.example:8080",
+        "192.0.2.2:8080",
+        "localhost.attacker.example",
+        "localhost@evil.example",
+    ] {
+        let r = s
+            .send(
+                with_host(Method::GET, "/api/me", host)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::UNAUTHORIZED, "{host}");
+        let r = s
+            .send(
+                with_host(Method::POST, "/api/tokens", host)
+                    .body(Body::from(json!({"name": "x"}).to_string()))
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::UNAUTHORIZED, "{host}");
+        let r = s
+            .send(
+                with_host(Method::GET, "/auth/login", host)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::FORBIDDEN, "{host}");
+        assert!(r.cookie("zunder_session").is_none());
+    }
+}
+
+#[tokio::test]
+async fn login_rejects_return_to_with_control_characters() {
+    let s = TestServer::with_config(|c| c.dev_auth = true).await;
+    for evil in [
+        "/%09/evil.example",
+        "/%0A/evil.example",
+        "/%0D/evil.example",
+    ] {
+        let r = s
+            .get(&format!("/auth/login?return_to={evil}"), Auth::None)
+            .await;
+        assert_eq!(r.status, StatusCode::SEE_OTHER);
+        assert_eq!(r.header("location"), Some("/"), "{evil}");
+    }
 }
 
 #[tokio::test]

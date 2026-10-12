@@ -221,8 +221,10 @@ pub fn definitions() -> Vec<ToolDef> {
             title: "Aufgaben filtern",
             description: "Listet Aufgaben nach Filtern. Ohne include_closed werden erledigte und \
                 verworfene Aufgaben ausgeblendet, deren Status sich vor mehr als 3 Tagen geändert hat. \
-                Gelöschte Aufgaben erscheinen nie. Alle Filter werden mit UND verknüpft. Sortierung: \
-                Fälligkeit (ohne Fälligkeit zuletzt), dann Erstellung.",
+                Gelöschte Aufgaben erscheinen nie. Alle Filter werden mit UND verknüpft. Sortierung \
+                (order_by): due = Fälligkeit (ohne Fälligkeit zuletzt), dann Erstellung (Standard); \
+                created, updated oder status_changed; reverse kehrt sie um. Mehr als limit Treffer \
+                holt man seitenweise mit offset (next_offset im Ergebnis).",
             input_schema: object(
                 vec![
                     (
@@ -259,10 +261,37 @@ pub fn definitions() -> Vec<ToolDef> {
                         "include_closed",
                         boolean("Auch erledigte und verworfene Aufgaben, die älter als 3 Tage sind (Standard false)."),
                     ),
-                    ("parent_id", string("Nur direkte Unteraufgaben dieser Aufgabe.")),
+                    (
+                        "closed_after",
+                        string("Nur erledigte oder verworfene Aufgaben, deren Status sich an oder nach diesem Tag geändert hat (JJJJ-MM-TT, Kalendertag in der Zeitzone des Servers, inklusive; oder RFC-3339-Zeitpunkt). Schließt include_closed ein."),
+                    ),
+                    (
+                        "closed_before",
+                        string("Nur erledigte oder verworfene Aufgaben, deren Status sich an oder vor diesem Tag geändert hat (wie closed_after)."),
+                    ),
+                    (
+                        "parent_id",
+                        string("Nur direkte Unteraufgaben dieser Aufgabe (UUID oder ClickUp-ID einer importierten Aufgabe)."),
+                    ),
                     (
                         "claimed_by",
                         string("Nur Aufgaben mit gültiger Reservierung durch diesen Agenten."),
+                    ),
+                    (
+                        "flame_running",
+                        boolean("true: nur Aufgaben mit laufender Flamme (unabhängig von Status und Alter); false: nur ohne."),
+                    ),
+                    (
+                        "order_by",
+                        enumeration(
+                            vec!["due", "created", "updated", "status_changed"],
+                            "Sortierung (Standard due).",
+                        ),
+                    ),
+                    ("reverse", boolean("Sortierung umkehren (Standard false).")),
+                    (
+                        "offset",
+                        integer("So viele Treffer der Sortierung überspringen.", 0, 1_000_000, 0),
                     ),
                     ("limit", integer("Höchstzahl der Ergebnisse.", 1, 500, 100)),
                 ],
@@ -292,7 +321,10 @@ pub fn definitions() -> Vec<ToolDef> {
                     vec![
                         ("title", string("Titel (Pflicht, höchstens 500 Zeichen).")),
                         ("location", location()),
-                        ("parent_id", string("ID der Elternaufgabe für eine Unteraufgabe.")),
+                        (
+                            "parent_id",
+                            string("Elternaufgabe für eine Unteraufgabe: UUID oder ClickUp-ID einer importierten Aufgabe."),
+                        ),
                     ],
                     task_fields(false),
                 ),
@@ -333,7 +365,7 @@ pub fn definitions() -> Vec<ToolDef> {
                         ("location", location()),
                         (
                             "parent_id",
-                            nullable_string("Neue Elternaufgabe oder null, um die Aufgabe zu lösen."),
+                            nullable_string("Neue Elternaufgabe (UUID oder ClickUp-ID einer importierten Aufgabe) oder null, um die Aufgabe zu lösen."),
                         ),
                     ],
                 ),
@@ -566,7 +598,8 @@ pub fn definitions() -> Vec<ToolDef> {
             name: "stop_flame",
             title: "Flamme beenden",
             description: "Beendet die laufende Flamme einer Aufgabe und stoppt den zugehörigen \
-                Timing-Timer, falls er noch läuft.",
+                Timing-Timer, falls er noch läuft. Ohne task_id und clickup_id endet die gerade \
+                laufende Flamme, wo immer sie brennt.",
             input_schema: object(task_ref(), &[]),
             read_only: false,
             destructive: false,

@@ -3,7 +3,8 @@
 use std::convert::Infallible;
 
 use axum::extract::{DefaultBodyLimit, Path, State};
-use axum::http::{HeaderValue, StatusCode};
+use axum::http::header::{ACCEPT_ENCODING, CONTENT_ENCODING, CONTENT_TYPE, VARY};
+use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
@@ -61,8 +62,97 @@ async fn me(State(app): State<App>, principal: Principal) -> AppResult<Json<serd
     })))
 }
 
-async fn snapshot(State(app): State<App>, _principal: Principal) -> Json<Snapshot> {
-    Json(app.snapshot())
+/// Content coding of a snapshot response.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Coding {
+    Br,
+    Gzip,
+    Identity,
+}
+
+impl Coding {
+    /// Brotli before gzip before identity, per `Accept-Encoding` (`q=0`
+    /// refuses a coding).
+    fn negotiate(headers: &HeaderMap) -> Self {
+        let (mut br, mut gzip) = (false, false);
+        let items = headers
+            .get_all(ACCEPT_ENCODING)
+            .iter()
+            .filter_map(|v| v.to_str().ok())
+            .flat_map(|v| v.split(','));
+        for item in items {
+            let mut parts = item.split(';').map(str::trim);
+            let coding = parts.next().unwrap_or_default();
+            let refused = parts.any(|p| {
+                p.split_once('=').is_some_and(|(k, q)| {
+                    k.trim().eq_ignore_ascii_case("q")
+                        && q.trim().parse::<f32>().is_ok_and(|q| q <= 0.0)
+                })
+            });
+            if refused {
+                continue;
+            }
+            br |= coding.eq_ignore_ascii_case("br");
+            gzip |= coding.eq_ignore_ascii_case("gzip");
+        }
+        match (br, gzip) {
+            (true, _) => Coding::Br,
+            (false, true) => Coding::Gzip,
+            _ => Coding::Identity,
+        }
+    }
+
+    fn header(self) -> Option<HeaderValue> {
+        match self {
+            Coding::Br => Some(HeaderValue::from_static("br")),
+            Coding::Gzip => Some(HeaderValue::from_static("gzip")),
+            Coding::Identity => None,
+        }
+    }
+
+    /// Serializes `snapshot` as JSON in this coding.
+    fn encode(self, snapshot: &Snapshot) -> std::io::Result<Vec<u8>> {
+        use std::io::Write;
+        match self {
+            Coding::Identity => Ok(serde_json::to_vec(snapshot)?),
+            Coding::Gzip => {
+                let mut w = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+                serde_json::to_writer(&mut w, snapshot)?;
+                w.finish()
+            }
+            Coding::Br => {
+                // Quality 5 compresses large JSON well at a fraction of the
+                // time of higher levels.
+                let mut w = brotli::CompressorWriter::new(Vec::new(), 64 * 1024, 5, 22);
+                serde_json::to_writer(&mut w, snapshot)?;
+                w.flush()?;
+                Ok(w.into_inner())
+            }
+        }
+    }
+}
+
+/// The full state. Copying, serializing and compressing it takes long for a
+/// large state, so all of it runs on the blocking pool (the response carries
+/// its own `Content-Encoding`, which the compression layer leaves alone).
+async fn snapshot(
+    State(app): State<App>,
+    _principal: Principal,
+    headers: HeaderMap,
+) -> AppResult<Response> {
+    let coding = Coding::negotiate(&headers);
+    let body = tokio::task::spawn_blocking(move || coding.encode(&app.snapshot()))
+        .await
+        .map_err(|e| AppError::Internal(e.into()))?
+        .map_err(|e| AppError::Internal(e.into()))?;
+    let mut response = Response::new(axum::body::Body::from(body));
+    let h = response.headers_mut();
+    h.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    h.insert(VARY, HeaderValue::from_static("accept-encoding"));
+    if let Some(value) = coding.header() {
+        h.insert(CONTENT_ENCODING, value);
+    }
+    Ok(response)
 }
 
 #[derive(Deserialize)]

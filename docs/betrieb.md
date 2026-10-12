@@ -101,6 +101,7 @@ Dann `https://zunder.rubeen.dev` im Browser öffnen, über Pocket-ID anmelden un
 | `ZUNDER_TIMING_PROJECT` | ID des Timing-Projekts für Flammen | `stack.env`, optional |
 | `ZUNDER_BOOTSTRAP_TOKEN` | fester API-Token `zt_…` | nicht gesetzt; nur für Tests oder eine Inbetriebnahme ohne Web-Login |
 | `ZUNDER_DEV_AUTH` | `true` = Login ohne OIDC | **nie in Produktion**, nur lokal |
+| `ZUNDER_DEV_AUTH_ALLOW_REMOTE` | `true` = Dev-Auth auch mit nicht lokaler `ZUNDER_BIND` (nur für einen lokalen Container mit `-p 127.0.0.1:…`) | **nie in Produktion** |
 
 Leere Werte gelten als nicht gesetzt. Wer das Session-Secret ändert, meldet alle Browser-Sessions ab; API-Tokens bleiben gültig.
 
