@@ -69,6 +69,8 @@ git tag v0.2.0 && git push origin v0.2.0
 
 Der Workflow `.github/workflows/app.yml` baut dann auf macOS (Apple Silicon), signiert mit der Developer ID, notarisiert über die App Store Connect API und legt das Release mit `.dmg`, `.app.tar.gz`, Signatur und `latest.json` an. Die Version kommt aus dem Tag (`v0.2.0` → `0.2.0`), nicht aus `tauri.conf.json`; der Updater installiert nur höhere Versionen. Bei Pull Requests baut derselbe Workflow nur (unsigniert, ohne Release).
 
+Der Tag startet auch `ci.yml`: Das Server-Image erscheint dann zusätzlich mit den SemVer-Tags (etwa `0.2.0`, `0.2`) in GHCR. App und Server teilen sich die Versionsnummer.
+
 Secrets im Repo, Originale im 1Password-Tresor „Dev“:
 
 | Secret | 1Password-Eintrag |
