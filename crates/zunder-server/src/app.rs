@@ -34,6 +34,10 @@ use zunder_core::{
 };
 
 use crate::auth::{self, Principal, PrincipalKind};
+use crate::calendar::{
+    self, CalendarSettings, CreatedCalendarFeed, FeedScope, CALENDAR_CREATED_KEY, CALENDAR_PREFIX,
+    CALENDAR_TOKEN_KEY,
+};
 use crate::config::Config;
 use crate::db::{self, TokenRow, User};
 use crate::error::{AppError, AppResult};
@@ -850,6 +854,84 @@ impl App {
             }
         })
         .await
+    }
+
+    // ----- calendar feed ---------------------------------------------------------------
+
+    /// Whether the calendar feed is enabled, for the settings view.
+    pub async fn calendar_settings(&self) -> AppResult<CalendarSettings> {
+        self.with_reader(|conn| {
+            Ok(CalendarSettings::from_rows(&db::settings(
+                conn,
+                CALENDAR_PREFIX,
+            )?))
+        })
+        .await
+    }
+
+    /// Creates the feed token, replacing an existing one (its URLs stop
+    /// working). The URLs with the token are returned only here.
+    pub async fn create_calendar_feed(&self) -> AppResult<CreatedCalendarFeed> {
+        let raw = format!("{}{}", auth::CALENDAR_TOKEN_PREFIX, auth::random_secret());
+        let hash = auth::sha256_hex(&raw);
+        let settings = self
+            .with_writer(move |conn| {
+                let now = now_ms();
+                let tx = conn.transaction()?;
+                db::set_setting(&tx, CALENDAR_TOKEN_KEY, &hash, now)?;
+                db::set_setting(&tx, CALENDAR_CREATED_KEY, &now.to_string(), now)?;
+                tx.commit()?;
+                Ok(CalendarSettings::from_rows(&db::settings(
+                    conn,
+                    CALENDAR_PREFIX,
+                )?))
+            })
+            .await?;
+        tracing::info!("calendar feed token created");
+        let public = &self.inner.config.public_url;
+        Ok(CreatedCalendarFeed {
+            settings,
+            url: calendar::feed_url(public, &raw, FeedScope::Flames),
+            url_all: calendar::feed_url(public, &raw, FeedScope::All),
+        })
+    }
+
+    /// Removes the feed token; the feed answers 404 afterwards.
+    pub async fn disable_calendar_feed(&self) -> AppResult<CalendarSettings> {
+        let settings = self
+            .with_writer(|conn| {
+                db::delete_settings(conn, CALENDAR_PREFIX)?;
+                Ok(CalendarSettings::from_rows(&db::settings(
+                    conn,
+                    CALENDAR_PREFIX,
+                )?))
+            })
+            .await?;
+        tracing::info!("calendar feed disabled");
+        Ok(settings)
+    }
+
+    /// Whether `raw` is the current feed token.
+    pub async fn calendar_token_valid(&self, raw: &str) -> AppResult<bool> {
+        if !raw.starts_with(auth::CALENDAR_TOKEN_PREFIX) {
+            return Ok(false);
+        }
+        let hash = auth::sha256_hex(raw);
+        self.with_reader(move |conn| {
+            let rows = db::settings(conn, CALENDAR_PREFIX)?;
+            Ok(rows
+                .get(CALENDAR_TOKEN_KEY)
+                .is_some_and(|stored| auth::constant_time_eq(stored.as_bytes(), hash.as_bytes())))
+        })
+        .await
+    }
+
+    /// The calendar feed (iCalendar) of the current state.
+    pub async fn calendar_feed(&self, scope: FeedScope) -> AppResult<String> {
+        let public = self.inner.config.public_url.clone();
+        let now = time::OffsetDateTime::now_utc();
+        self.read_blocking(move |state| calendar::render(state, &public, scope, now))
+            .await
     }
 
     // ----- maintenance ----------------------------------------------------------------

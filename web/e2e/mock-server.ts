@@ -115,6 +115,8 @@ const TIMING_PROJECTS = [
   { self: "/projects/3", title: "Privat", title_chain: ["Privat"], color: null },
 ];
 let devices: Device[] = [];
+/** Calendar feed: creation time of the token, null without a feed. */
+let calendarCreatedAt: string | null = null;
 let authenticated = true;
 const sseClients = new Set<ServerResponse>();
 
@@ -436,6 +438,7 @@ function seed(kind: string) {
   oauthClients = [];
   timing = { token: null, project: null };
   devices = [];
+  calendarCreatedAt = null;
   if (kind === "empty") return;
   const base = Date.now() - 3600_000;
   let n = 0;
@@ -730,6 +733,16 @@ const server = createServer(async (req, res) => {
       if (path === "/api/settings/timing/check" && method === "POST") {
         if (!timing.token) return error(res, 409, "conflict", "Timing ist nicht eingerichtet.");
         return send(res, 200, { ok: true, error: null });
+      }
+      if (path === "/api/settings/calendar") {
+        if (method === "POST") {
+          calendarCreatedAt = new Date().toISOString();
+          const url = `http://${req.headers.host ?? "localhost"}/calendar/zc_${randomBytes(32).toString("base64url")}.ics`;
+          return send(res, 201, { enabled: true, created_at: calendarCreatedAt, url, url_all: `${url}?scope=all` });
+        }
+        if (method === "DELETE") calendarCreatedAt = null;
+        else if (method !== "GET") return error(res, 405, "invalid_request", "Methode nicht erlaubt.");
+        return send(res, 200, { enabled: calendarCreatedAt !== null, created_at: calendarCreatedAt });
       }
       if (path === "/api/devices" && method === "GET") return send(res, 200, devices);
       m = /^\/api\/devices\/([^/]+)$/.exec(path);

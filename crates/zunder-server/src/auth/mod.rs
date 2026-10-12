@@ -6,6 +6,8 @@
 //! - **Device tokens**: `zd_…`, issued to the Tauri app by the built-in
 //!   authorization server (resource `<public>/api`), stored as SHA-256 hex,
 //!   only accepted by `/api`.
+//! - **Calendar feed token**: `zc_…` in the URL of the calendar feed
+//!   ([`crate::calendar`]), stored as SHA-256 hex, grants only the feed.
 //! - **Sessions**: cookie [`SESSION_COOKIE`] with a random 32-byte ID, stored
 //!   as HMAC-SHA256 (key `ZUNDER_SESSION_SECRET`), 30 days sliding expiry.
 //! - **CSRF**: cookie-authenticated requests that change state must carry the
@@ -32,6 +34,9 @@ pub const CLIENT_HEADER: &str = "x-zunder-client";
 pub const TOKEN_PREFIX: &str = "zt_";
 /// Prefix of device tokens (Tauri app, see [`crate::oauth`]).
 pub const DEVICE_TOKEN_PREFIX: &str = "zd_";
+/// Prefix of the calendar feed token (in the feed URL, see
+/// [`crate::calendar`]); never accepted as a bearer token.
+pub const CALENDAR_TOKEN_PREFIX: &str = "zc_";
 /// Session lifetime (sliding).
 pub const SESSION_TTL_MS: i64 = 30 * 24 * 60 * 60 * 1000;
 /// A session is extended at most this often.

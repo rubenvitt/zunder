@@ -9,6 +9,7 @@
 //! - [`oauth`]: built-in OAuth 2.1 authorization server for `/mcp`
 //! - [`views`]: task, area and project representations for tools
 //! - [`flame`]: starting and stopping flames (shared by HTTP and MCP)
+//! - [`calendar`]: calendar feed (iCalendar) of flames and timed tasks
 //! - [`settings`]: settings changed in the web UI (Timing bridge)
 //! - [`timing`]: client for the Timing web API
 //! - [`backup`]: nightly `VACUUM INTO` backups
@@ -17,6 +18,7 @@
 pub mod app;
 pub mod auth;
 pub mod backup;
+pub mod calendar;
 pub mod config;
 pub mod db;
 pub mod error;

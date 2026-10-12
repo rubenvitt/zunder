@@ -3,6 +3,8 @@
 
 import type {
   ApiToken,
+  CalendarSettings,
+  CreatedCalendarFeed,
   CreatedToken,
   Device,
   FlameResult,
@@ -86,6 +88,10 @@ export interface ApiClient {
   resetTimingSettings(): Promise<TimingSettings>;
   checkTiming(): Promise<TimingCheck>;
   timingProjects(): Promise<TimingProject[]>;
+  calendarSettings(): Promise<CalendarSettings>;
+  /** Creates the feed token; an existing one stops working. */
+  createCalendarFeed(): Promise<CreatedCalendarFeed>;
+  disableCalendarFeed(): Promise<CalendarSettings>;
   listDevices(): Promise<Device[]>;
   revokeDevice(id: string): Promise<void>;
   logout(): Promise<void>;
@@ -223,6 +229,18 @@ export class HttpTransport implements SyncTransport, ApiClient {
 
   timingProjects(): Promise<TimingProject[]> {
     return this.request("GET", "/api/settings/timing/projects");
+  }
+
+  calendarSettings(): Promise<CalendarSettings> {
+    return this.request("GET", "/api/settings/calendar");
+  }
+
+  createCalendarFeed(): Promise<CreatedCalendarFeed> {
+    return this.request("POST", "/api/settings/calendar");
+  }
+
+  disableCalendarFeed(): Promise<CalendarSettings> {
+    return this.request("DELETE", "/api/settings/calendar");
   }
 
   listDevices(): Promise<Device[]> {

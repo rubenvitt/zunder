@@ -1,12 +1,14 @@
-// Server settings (browser session only): the Timing bridge for flames. Stored
-// settings override the server's environment variables field by field.
+// Server settings (browser session only): the Timing bridge for flames (stored
+// settings override the server's environment variables field by field) and the
+// calendar feed of flames and timed tasks.
 
 import { createMemo, createResource, createSignal, For, Show } from "solid-js";
 import { Icon } from "../components/Icon";
 import { isTauri } from "../platform/runtime";
-import type { SettingSource, TimingProject, TimingSettings, TimingSettingsUpdate } from "../sync/types";
-import { api } from "../state/store";
-import { toast } from "../state/ui";
+import { formatInstant } from "../sync/dates";
+import type { CalendarSettings, CreatedCalendarFeed, SettingSource, TimingProject, TimingSettings, TimingSettingsUpdate } from "../sync/types";
+import { api, now } from "../state/store";
+import { copyText, toast } from "../state/ui";
 
 export function SettingsView() {
   return isTauri() ? <SettingsInApp /> : <ServerSettings />;
@@ -35,6 +37,7 @@ function ServerSettings() {
       </header>
       <p class="muted">Einstellungen dieses Zunder-Servers. Sie gelten sofort und haben Vorrang vor den Umgebungsvariablen des Servers.</p>
       <TimingSection />
+      <CalendarSection />
     </div>
   );
 }
@@ -236,6 +239,109 @@ function TimingSection() {
         </Show>
       </Show>
     </section>
+  );
+}
+
+function CalendarSection() {
+  const [settings, { mutate }] = createResource(async (): Promise<CalendarSettings | null> => {
+    try {
+      return await api().calendarSettings();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Kalender-Einstellungen konnten nicht geladen werden.", "error");
+      return null;
+    }
+  });
+  // The feed URLs contain the token and come only with the answer that created it.
+  const [created, setCreated] = createSignal<CreatedCalendarFeed | null>(null);
+  const [busy, setBusy] = createSignal(false);
+
+  async function create() {
+    if (settings()?.enabled && !confirm("Neue Feed-Adresse erzeugen? Die bisherige Adresse funktioniert danach nicht mehr; Kalender-Abos musst du neu einrichten.")) return;
+    setBusy(true);
+    try {
+      const feed = await api().createCalendarFeed();
+      setCreated(feed);
+      mutate({ enabled: feed.enabled, created_at: feed.created_at });
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Feed konnte nicht erzeugt werden.", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disable() {
+    if (!confirm("Kalender-Feed abschalten? Abonnierte Kalender erhalten danach keine Termine mehr.")) return;
+    setBusy(true);
+    try {
+      mutate(await api().disableCalendarFeed());
+      setCreated(null);
+      toast("Kalender-Feed abgeschaltet.");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Abschalten fehlgeschlagen.", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section class="group settings-section" aria-label="Kalender">
+      <h2>Kalender</h2>
+      <p class="muted">
+        Ein Feed zum Abonnieren in Fantastical, Apple Kalender oder Google Kalender: Flammen mit Uhrzeit als Termin von zwei Stunden, auf Wunsch auch alle anderen Aufgaben mit Uhrzeit (30 Minuten, als frei markiert). Erledigte Aufgaben behalten ein ✓, verworfene fallen heraus. Die Adresse enthält einen eigenen Schlüssel, der nur den Feed liest.
+      </p>
+      <Show when={settings() !== null} fallback={<p class="muted">Kalender-Einstellungen nicht verfügbar.</p>}>
+        <Show when={settings()} fallback={<p class="muted">Lädt …</p>}>
+          {(s) => (
+            <>
+              <p class="notice" classList={{ "notice-success": s().enabled }} data-testid="calendar-status">
+                <Show when={s().enabled} fallback="Kein Feed eingerichtet.">
+                  Feed eingerichtet.
+                  <Show when={s().created_at}>{(at) => <> Adresse erzeugt: {formatInstant(at(), new Date(now()))}.</>}</Show>
+                </Show>
+              </p>
+              <Show when={created()}>
+                {(c) => (
+                  <div class="notice notice-success new-token">
+                    <p>Die Adressen werden nur jetzt angezeigt. Zum Abonnieren in die Kalender-App kopieren:</p>
+                    <FeedUrl label="Nur Flammen" url={c().url} testId="calendar-url" />
+                    <FeedUrl label="Flammen und alle Aufgaben mit Uhrzeit" url={c().url_all} testId="calendar-url-all" />
+                    <div class="inline-group">
+                      <button class="btn btn-ghost btn-small" type="button" onClick={() => setCreated(null)}>
+                        Ausblenden
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </Show>
+              <div class="inline-group">
+                <button class="btn" classList={{ "btn-primary": !s().enabled }} type="button" disabled={busy()} onClick={() => void create()}>
+                  <Icon name="calendar" size={14} /> {s().enabled ? "Neue Adresse erzeugen" : "Feed einrichten"}
+                </button>
+                <Show when={s().enabled}>
+                  <button class="btn btn-ghost" type="button" disabled={busy()} onClick={() => void disable()}>
+                    Abschalten
+                  </button>
+                </Show>
+              </div>
+            </>
+          )}
+        </Show>
+      </Show>
+    </section>
+  );
+}
+
+function FeedUrl(props: { label: string; url: string; testId: string }) {
+  return (
+    <div class="feed-url">
+      <span class="hint">{props.label}</span>
+      <code class="token-value" data-testid={props.testId}>
+        {props.url}
+      </code>
+      <button class="btn btn-small" type="button" aria-label={`${props.label}: Adresse kopieren`} onClick={() => copyText(props.url, "Feed-Adresse kopiert.")}>
+        <Icon name="copy" size={14} /> Kopieren
+      </button>
+    </div>
   );
 }
 
