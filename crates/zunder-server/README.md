@@ -23,10 +23,11 @@ Alle Einstellungen kommen aus `ZUNDER_*`-Umgebungsvariablen (Tabelle im Vertrag)
 | `db` | SQLite (WAL, Fremdschlüssel, `busy_timeout`), eingebettete Migrationen über `user_version`, alle Abfragen |
 | `app` | Anwendungsdienst `App`: `push`, `mutate` (serverseitige Operationen), `snapshot`, `pull`, `task_history`, Tokens, Sitzungen, Backup |
 | `auth` | Principal, Token- und Sitzungs-Hashes, CSRF-Regel, Middleware `require_auth`, OIDC (`auth::oidc`) |
-| `http` | Router: `/healthz`, `/auth/*`, `/api/*` (inkl. `/api/tasks/{id}/flame/start\|stop`), `/mcp`, statische Dateien mit SPA-Fallback |
+| `http` | Router: `/healthz`, `/auth/*`, `/api/*` (inkl. `/api/tasks/{id}/flame/start\|stop`), `/mcp`, `/intake/v1/tasks` (`http::intake`), statische Dateien mit SPA-Fallback |
 | `mcp` | MCP über Streamable HTTP: JSON-RPC 2.0 (`mcp`), Werkzeug-Schemas (`mcp::schema`), Werkzeuge (`mcp::tools`), Argumentprüfung (`mcp::args`) |
 | `oauth` | OAuth-2.1-Authorization-Server für `/mcp`: Registrierung, Codes, Tokens, Rotation, Widerruf (`oauth`); Metadaten, Freigabeseite und Endpunkte (`oauth::routes`) |
 | `views` | Darstellung von Aufgaben (wirksame Stelle mit Namen, abgeleitete Zeitpunkte, Fortschritt, Unteraufgaben-Baum), Bereichen und Projekten; Auflösen von `task_id`/`clickup_id` |
+| `intake` | Eingänge: Token `zi_…`, Prüfung des Bodys, idempotentes Anlegen in genau einem Projekt unter der Schreibsperre (Vertrag 3.3) |
 | `flame` | Flamme starten/beenden (gemeinsam für HTTP und MCP), immer mit Fallback-Zeitstempeln |
 | `timing` | Client der Timing-Web-API hinter dem Trait `TimingApi` |
 | `backup` | nächtliches `VACUUM INTO` nach `data/backups/`, 14 Stück |

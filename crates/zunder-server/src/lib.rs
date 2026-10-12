@@ -10,6 +10,7 @@
 //! - [`views`]: task, area and project representations for tools
 //! - [`flame`]: starting and stopping flames (shared by HTTP and MCP)
 //! - [`calendar`]: calendar feed (iCalendar) of flames and timed tasks
+//! - [`intake`]: intake channels (write-only task creation for other servers)
 //! - [`settings`]: settings changed in the web UI (Timing bridge)
 //! - [`timing`]: client for the Timing web API
 //! - [`backup`]: nightly `VACUUM INTO` backups
@@ -25,6 +26,7 @@ pub mod error;
 pub mod flame;
 pub mod healthcheck;
 pub mod http;
+pub mod intake;
 pub mod mcp;
 pub mod oauth;
 pub mod settings;

@@ -23,6 +23,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0004_devices.sql"),
     include_str!("../migrations/0005_cuid2.sql"),
     include_str!("../migrations/0006_comments.sql"),
+    include_str!("../migrations/0007_intake.sql"),
 ];
 
 /// The schema version this binary expects.
@@ -447,8 +448,13 @@ fn write_entities(
     Ok(())
 }
 
+/// Writes further rows in the transaction of [`commit_ops`] (e.g. the intake
+/// submission belonging to the created task).
+pub type ExtraWrite<'a> = &'a dyn Fn(&Connection) -> anyhow::Result<()>;
+
 /// Appends operations to the log and upserts the given materialized
-/// entities, atomically. Returns the `seq` of the last inserted operation.
+/// entities, atomically, together with `extra`. Returns the `seq` of the last
+/// inserted operation.
 #[allow(clippy::too_many_arguments)]
 pub fn commit_ops(
     conn: &mut Connection,
@@ -458,6 +464,7 @@ pub fn commit_ops(
     source: &str,
     client_id: Option<&str>,
     now: i64,
+    extra: Option<ExtraWrite<'_>>,
 ) -> anyhow::Result<i64> {
     let tx = conn.transaction()?;
     let mut last_seq = 0;
@@ -485,6 +492,9 @@ pub fn commit_ops(
     }
     write_entities(&tx, owner, entities)?;
     set_materialized(&tx, owner, last_seq)?;
+    if let Some(extra) = extra {
+        extra(&tx)?;
+    }
     tx.commit()?;
     Ok(last_seq)
 }
@@ -1185,6 +1195,175 @@ pub fn touch_device(conn: &Connection, id: Uuid, now: i64) -> anyhow::Result<()>
     Ok(())
 }
 
+// ----- intake channels --------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IntakeChannelRow {
+    pub id: Id,
+    pub user_id: Uuid,
+    pub name: String,
+    pub project_id: Id,
+    pub created_at: i64,
+    pub last_used_at: Option<i64>,
+}
+
+const INTAKE_COLUMNS: &str = "id, user_id, name, project_id, created_at, last_used_at";
+
+fn row_to_intake_channel(row: &Row<'_>) -> rusqlite::Result<IntakeChannelRow> {
+    let id = |idx: usize| -> rusqlite::Result<Id> {
+        let s: String = row.get(idx)?;
+        Id::parse(&s).ok_or_else(|| {
+            rusqlite::Error::FromSqlConversionFailure(
+                idx,
+                rusqlite::types::Type::Text,
+                anyhow!("ungültige ID in der Datenbank: {s}").into(),
+            )
+        })
+    };
+    Ok(IntakeChannelRow {
+        id: id(0)?,
+        user_id: parse_uuid_col(row, 1)?,
+        name: row.get(2)?,
+        project_id: id(3)?,
+        created_at: row.get(4)?,
+        last_used_at: row.get(5)?,
+    })
+}
+
+pub fn insert_intake_channel(
+    conn: &Connection,
+    channel: &IntakeChannelRow,
+    hash: &str,
+) -> anyhow::Result<()> {
+    conn.execute(
+        "INSERT INTO intake_channels (id, user_id, name, token_hash, project_id, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            channel.id.to_string(),
+            channel.user_id.to_string(),
+            channel.name,
+            hash,
+            channel.project_id.to_string(),
+            channel.created_at
+        ],
+    )?;
+    Ok(())
+}
+
+/// Active (not revoked) intake channels of a user, oldest first.
+pub fn list_intake_channels(
+    conn: &Connection,
+    user_id: Uuid,
+) -> anyhow::Result<Vec<IntakeChannelRow>> {
+    let mut stmt = conn.prepare_cached(&format!(
+        "SELECT {INTAKE_COLUMNS} FROM intake_channels
+         WHERE user_id = ?1 AND revoked_at IS NULL ORDER BY created_at, rowid"
+    ))?;
+    let rows = stmt.query_map([user_id.to_string()], row_to_intake_channel)?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
+/// The active intake channel with this token hash.
+pub fn find_intake_channel_by_hash(
+    conn: &Connection,
+    hash: &str,
+) -> anyhow::Result<Option<IntakeChannelRow>> {
+    Ok(conn
+        .query_row(
+            &format!(
+                "SELECT {INTAKE_COLUMNS} FROM intake_channels
+                 WHERE token_hash = ?1 AND revoked_at IS NULL"
+            ),
+            [hash],
+            row_to_intake_channel,
+        )
+        .optional()?)
+}
+
+/// Whether the intake channel is still active (not revoked).
+pub fn intake_channel_active(conn: &Connection, id: Id) -> anyhow::Result<bool> {
+    Ok(conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM intake_channels WHERE id = ?1 AND revoked_at IS NULL)",
+        [id.to_string()],
+        |r| r.get(0),
+    )?)
+}
+
+/// Revokes an active intake channel of the user. Returns whether one was
+/// revoked.
+pub fn revoke_intake_channel(
+    conn: &Connection,
+    user_id: Uuid,
+    id: Id,
+    now: i64,
+) -> anyhow::Result<bool> {
+    let n = conn.execute(
+        "UPDATE intake_channels SET revoked_at = ?3
+         WHERE id = ?1 AND user_id = ?2 AND revoked_at IS NULL",
+        params![id.to_string(), user_id.to_string(), now],
+    )?;
+    Ok(n > 0)
+}
+
+pub fn touch_intake_channel(conn: &Connection, id: Id, now: i64) -> anyhow::Result<()> {
+    conn.execute(
+        "UPDATE intake_channels SET last_used_at = ?2 WHERE id = ?1",
+        params![id.to_string(), now],
+    )?;
+    Ok(())
+}
+
+/// The task an earlier submission with this `external_id` created.
+pub fn intake_submission(
+    conn: &Connection,
+    channel_id: Id,
+    external_id: &str,
+) -> anyhow::Result<Option<Id>> {
+    let task_id: Option<String> = conn
+        .query_row(
+            "SELECT task_id FROM intake_submissions WHERE channel_id = ?1 AND external_id = ?2",
+            params![channel_id.to_string(), external_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    task_id.map(|s| parse_entity_id(&s)).transpose()
+}
+
+/// Number of submissions of a channel created at or after `since`, and the
+/// creation time of the oldest of them.
+pub fn intake_submissions_since(
+    conn: &Connection,
+    channel_id: Id,
+    since: i64,
+) -> anyhow::Result<(i64, Option<i64>)> {
+    Ok(conn.query_row(
+        "SELECT COUNT(*), MIN(created_at) FROM intake_submissions
+         WHERE channel_id = ?1 AND created_at >= ?2",
+        params![channel_id.to_string(), since],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?)
+}
+
+pub fn insert_intake_submission(
+    conn: &Connection,
+    channel_id: Id,
+    external_id: &str,
+    task_id: Id,
+    now: i64,
+) -> anyhow::Result<()> {
+    conn.execute(
+        "INSERT INTO intake_submissions (channel_id, external_id, task_id, created_at)
+         VALUES (?1, ?2, ?3, ?4)",
+        params![
+            channel_id.to_string(),
+            external_id,
+            task_id.to_string(),
+            now
+        ],
+    )?;
+    Ok(())
+}
+
 // ----- backup ---------------------------------------------------------------------
 
 /// Writes a consistent copy of the database to `dest` (`VACUUM INTO`).
@@ -1332,6 +1511,7 @@ mod tests {
             "test",
             None,
             1,
+            None,
         )
         .unwrap();
 

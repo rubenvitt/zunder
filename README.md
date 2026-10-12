@@ -11,7 +11,7 @@ Zunder ersetzt ClickUp; Stichtag für den Umstieg ist Ende November 2026. Das De
 | Etappe | Inhalt | Stand |
 |---|---|---|
 | **E1 Fundament** | [`zunder-core`](crates/zunder-core) (Modell, HLC, Operationen, LWW-Merge, Validierung, gemeinsame Testvektoren für Rust und TypeScript) | umgesetzt |
-| | [`zunder-server`](crates/zunder-server) (Sync-API, OIDC-Login, API-Tokens, SSE, Backups, Auslieferung der Web-UI) | umgesetzt |
+| | [`zunder-server`](crates/zunder-server) (Sync-API, OIDC-Login, API-Tokens, Eingänge für fremde Server, SSE, Backups, Auslieferung der Web-UI) | umgesetzt |
 | | [`zunder-import`](crates/zunder-import) (Sicherung, Zuordnung, Bericht, idempotenter Import; Ende-zu-Ende gegen den echten Server getestet) | umgesetzt |
 | | Container-Image, CI mit Deployment für den deploy-agent, Compose-Stack für Traefik, Betriebsdoku | umgesetzt |
 | **E2 Oberfläche** | [Web-UI](web) mit allen Sichten, MCP-Endpunkt für Agenten, Timing-Brücke für Flammen; Playwright gegen Mock und echten Server | umgesetzt |

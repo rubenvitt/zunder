@@ -22,6 +22,7 @@ use crate::auth::Principal;
 use crate::calendar::{CalendarSettings, CreatedCalendarFeed};
 use crate::error::{AppError, AppResult};
 use crate::flame::{self, FlameOutcome};
+use crate::intake::{ChannelInfo, CreatedChannel};
 use crate::oauth;
 use crate::settings::{TimingCheck, TimingSettings, TimingUpdate};
 use crate::timing::TimingProject;
@@ -68,6 +69,11 @@ pub fn routes() -> Router<App> {
         .route("/calendar.ics", get(super::calendar::api_feed))
         .route("/devices", get(list_devices))
         .route("/devices/{id}", delete(revoke_device))
+        .route(
+            "/intake/channels",
+            get(list_intake_channels).post(create_intake_channel),
+        )
+        .route("/intake/channels/{id}", delete(revoke_intake_channel))
         .layer(DefaultBodyLimit::max(API_BODY_LIMIT))
 }
 
@@ -502,5 +508,56 @@ async fn revoke_device(
     require_browser(&principal)?;
     let id = parse_uuid(&id)?;
     oauth::revoke_device(&app, principal.user_id, id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Intake channels carry a credential for another server, so like API
+/// tokens they are managed with a browser session only.
+fn require_browser_for_intake(principal: &Principal) -> AppResult<()> {
+    if principal.is_browser() {
+        Ok(())
+    } else {
+        Err(AppError::Forbidden(
+            "Eingänge lassen sich nur mit einer Browser-Sitzung verwalten".into(),
+        ))
+    }
+}
+
+async fn list_intake_channels(
+    State(app): State<App>,
+    principal: Principal,
+) -> AppResult<Json<Vec<ChannelInfo>>> {
+    require_browser_for_intake(&principal)?;
+    Ok(Json(app.list_intake_channels(principal.user_id).await?))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateChannelBody {
+    name: String,
+    project_id: String,
+}
+
+async fn create_intake_channel(
+    State(app): State<App>,
+    principal: Principal,
+    ApiJson(body): ApiJson<CreateChannelBody>,
+) -> AppResult<(StatusCode, Json<CreatedChannel>)> {
+    require_browser_for_intake(&principal)?;
+    let channel = app
+        .create_intake_channel(principal.user_id, &body.name, &body.project_id)
+        .await?;
+    Ok((StatusCode::CREATED, Json(channel)))
+}
+
+async fn revoke_intake_channel(
+    State(app): State<App>,
+    principal: Principal,
+    Path(id): Path<String>,
+) -> AppResult<StatusCode> {
+    require_browser_for_intake(&principal)?;
+    let id = zunder_core::ids::Id::parse(&id)
+        .ok_or_else(|| AppError::bad_request(format!("Ungültige ID: {id}")))?;
+    app.revoke_intake_channel(principal.user_id, id).await?;
     Ok(StatusCode::NO_CONTENT)
 }

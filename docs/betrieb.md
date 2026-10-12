@@ -23,7 +23,7 @@ Was das für die Sicherheit heißt:
   - `GET /oauth/authorize` (prüft die Anfrage und leitet ohne Session auf den Login um; die Freigabe `POST /oauth/authorize` verlangt eine Session),
   - `POST /oauth/token` und `POST /oauth/revoke` (wirken nur mit einem Code, Refresh- oder Access-Token aus einer erteilten Freigabe).
 
-  Alles unter `/api/*` verlangt eine Session oder einen API-Token, `/mcp` einen API-Token oder ein OAuth-Access-Token. Wer vor Traefik eine IP-Allowlist oder Forward-Auth schaltet, muss `/.well-known/*` und `/oauth/*` (wie `/mcp`) davon ausnehmen, sonst funktioniert der claude.ai-Connector nicht.
+  Alles unter `/api/*` verlangt eine Session oder einen API-Token, `/mcp` einen API-Token oder ein OAuth-Access-Token, `/intake/*` den Token eines [Eingangs](#eingänge). Wer vor Traefik eine IP-Allowlist oder Forward-Auth schaltet, muss `/.well-known/*` und `/oauth/*` (wie `/mcp`) davon ausnehmen, sonst funktioniert der claude.ai-Connector nicht; ebenso `/intake/*`, wenn ein Einwerfer von außen kommt (oder dessen Adresse in die Allowlist aufnehmen).
 - Anmelden darf sich genau eine Person (`ZUNDER_OIDC_ALLOWED_EMAIL` bzw. `ZUNDER_OIDC_ALLOWED_SUBJECT`).
 - API-Tokens liegen in der Datenbank nur als SHA-256-Hash und sind einzeln widerrufbar.
 - TLS übernimmt Traefik.
@@ -131,6 +131,38 @@ Leere Werte gelten als nicht gesetzt. Timing lässt sich statt über `.env` auch
 - Die Token-Liste zeigt `last_used_at`. Tokens, die lange nicht benutzt wurden, widerrufen.
 - Verwendung: Header `Authorization: Bearer zt_…`, sowohl für `/api/*` als auch für `/mcp`.
 - Darunter stehen unter **Verbundene Apps** die per OAuth verbundenen Clients (z. B. claude.ai) mit Ziel-Host und letzter Nutzung. **Trennen** widerruft die Verbindung sofort samt allen Tokens.
+
+## Eingänge
+
+Ein Eingang lässt einen fremden Server Aufgaben in **genau ein Projekt** einwerfen, ohne dass dort ein API-Token liegt. Gedacht ist das für die iuk-suite: Viele DRK-Mitglieder nutzen sie, ein `zt_…`-Token dort hätte Lese- und Schreibzugriff auf alle Lebensbereiche. Ein Eingangs-Token (`zi_…`) kann dagegen nur anlegen: nichts lesen, nichts ändern, nichts verschieben, keine anderen Projekte. `/api/*` und `/mcp` nehmen ihn nicht an, umgekehrt nimmt der Eingang keinen API-Token an. Details im [Vertrag, 3.3](superpowers/plans/2026-10-11-zunder-implementation.md#33-eingänge).
+
+Anlegen:
+
+1. Zielprojekt anlegen, für Rückmeldungen am besten ein Dev-Projekt mit Schlüssel (dann sind `bug` und `feature` erlaubt und jede Aufgabe bekommt eine Kennung), z. B. „IDA Eingang“ mit Repo `rubenvitt/iuk-suite`, Schlüssel `IDAE`, Ansicht Board.
+2. In der Web-UI unter **Tokens → Eingänge** einen Namen (erscheint im Änderungsprotokoll als Quelle `intake:<name>`) und das Zielprojekt wählen, **Eingang anlegen**. Der Token wird **nur einmal** angezeigt; gespeichert wird nur sein SHA-256-Hash. Abgeschlossene Projekte stehen nicht zur Wahl.
+3. Den Token beim Einwerfer hinterlegen, für die iuk-suite in deren `.env`:
+
+   ```sh
+   SUITE_RUECKMELDUNG_ZUNDER_URL=https://zunder.rubeen.dev
+   SUITE_RUECKMELDUNG_ZUNDER_TOKEN=zi_…
+   ```
+
+Einwerfen (das macht der fremde Server):
+
+```sh
+curl -sS https://zunder.rubeen.dev/intake/v1/tasks \
+  -H "Authorization: Bearer zi_…" -H "Content-Type: application/json" \
+  -d '{"external_id":"rm-17","title":"Karte lädt nicht","type":"bug"}'
+# 201 {"id":"…","ref":"IDAE-1"}; dieselbe external_id noch einmal: 200 mit derselben Aufgabe
+```
+
+Gut zu wissen:
+
+- Die Aufgabe landet immer offen im Projekt des Eingangs, die Anfrage kann kein anderes Ziel nennen. Ist das Projekt gelöscht oder abgeschlossen, antwortet der Eingang mit `409`.
+- Je Eingang höchstens 30 neue Aufgaben pro Stunde (gleitend), danach `429` mit `Retry-After`.
+- Die Liste zeigt die letzte Nutzung. **Widerrufen** sperrt den Token sofort (`401`); für einen neuen Token einen neuen Eingang anlegen.
+- Traefik reicht `/intake/*` mit der Regel `Host(...)` schon an den Container durch, es braucht keine eigene Regel. Steht vor Zunder eine IP-Allowlist, darf sie `/intake/*` nicht aussperren, wenn der Einwerfer von außen kommt.
+- Server-Logs enthalten weder Tokens noch Inhalte der Anfragen.
 
 ## Kalender-Feed
 
@@ -288,6 +320,10 @@ Vorher bzw. danach:
 
 Die erste Version mit Schema 6 baut beim Start die Tabellen `ops` und `entities` neu auf, damit sie Kommentare aufnehmen (eine Transaktion; Cursor und Daten bleiben). Vorher ein manuelles Backup ziehen. Die Zunder-App muss danach mindestens diese Version haben, sonst scheitert ihr Abgleich, sobald es den ersten Kommentar gibt. **Zurückrollen:** Eine ältere Version startet nicht mit Schema 6; dann das Backup von vor dem Update einspielen.
 
+### Eingänge (Schema 7)
+
+Schema 7 legt nur die neuen Tabellen `intake_channels` und `intake_submissions` an; bestehende Daten bleiben unberührt. **Zurückrollen:** Eine ältere Version startet nicht mit Schema 7; dann das Backup von vor dem Update einspielen.
+
 ## Fehlersuche
 
 | Symptom | Prüfen |
@@ -297,6 +333,8 @@ Die erste Version mit Schema 6 baut beim Start die Tabellen `ops` und `entities`
 | Login-Schleife oder Fehler nach Pocket-ID | Callback-URL in Pocket-ID exakt `https://zunder.rubeen.dev/auth/callback`? `ZUNDER_PUBLIC_URL` korrekt? Uhrzeit des Servers korrekt? |
 | „Nicht berechtigt“ nach erfolgreichem Pocket-ID-Login | `ZUNDER_OIDC_ALLOWED_EMAIL` stimmt nicht mit der E-Mail im Pocket-ID-Konto überein |
 | MCP `401` | Token widerrufen oder falsch kopiert; Header `Authorization: Bearer zt_…` |
+| Eingang `401` | Eingang widerrufen oder Token falsch kopiert; ein API-Token (`zt_…`) gilt dort nicht |
+| Eingang `409` | Zielprojekt gelöscht oder abgeschlossen; Projekt wieder öffnen oder neuen Eingang anlegen |
 | Backup fehlt | Logs um `ZUNDER_BACKUP_HOUR`, Zeitzone `TZ`, freier Platz im Volume |
 | `unhealthy` | `docker exec zunder zunder-server healthcheck` (Exit-Code und Meldung), dazu `docker logs zunder` |
 
