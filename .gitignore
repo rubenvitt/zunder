@@ -16,11 +16,11 @@ dist/
 /data/
 /import-backup/
 
-# Deployment: deploy/stack.env ist die Vorlage (eingecheckt), das befüllte
-# Ergebnis von deploy/generate-secrets.sh bleibt lokal
-/deploy/stack.env.local
-/deploy/stack.env.local.tmp
-/deploy/stack.env.local.tmp.new
+# Deployment: deploy/.env.example ist die Vorlage (eingecheckt), deploy/.env
+# das befüllte Ergebnis (über .env oben ignoriert), dazu Laufzeitdaten.
+/deploy/.env.tmp
+/deploy/.env.tmp.new
+/deploy/data/
 
 # Import (zunder-import plan) erzeugt eine Zuordnungsdatei mit echten Namen
 /mapping.toml

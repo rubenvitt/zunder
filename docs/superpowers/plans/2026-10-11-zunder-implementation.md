@@ -15,13 +15,13 @@ crates/zunder-import/      CLI für den ClickUp-Import
 web/                       zunder-web: SolidJS + Vite + TypeScript, Vitest, Playwright
 apps/zunder-app/           Tauri 2 (E4); src-tauri ist NICHT Workspace-Mitglied (braucht webkit),
                            sondern eigener Workspace mit zunder-local (ohne webkit testbar)
-deploy/                    compose.yaml, stack.env (Vorlage), generate-secrets.sh (Portainer/Traefik)
+deploy/                    compose.yaml, .env.example (Vorlage), generate-secrets.sh (Compose/Traefik)
 Dockerfile                 Multi-Stage: Web bauen, Server bauen, schlankes Runtime-Image
 .github/workflows/ci.yml   fmt, clippy -D warnings, Tests, Web, Playwright, Image (PR: nur Build, main/Tags: GHCR)
 docs/                      Spec, dieser Vertrag, betrieb.md, umstieg.md, entwicklung.md
 ```
 
-`deploy/stack.env` ist eine eingecheckte Vorlage mit Platzhaltern; `deploy/generate-secrets.sh` schreibt das befüllte Ergebnis nach `deploy/stack.env.local` (von Git ignoriert). Die Tauri-App wird in der CI nicht gebaut (Begründung als Kommentar in `ci.yml`).
+`deploy/.env.example` ist eine eingecheckte Vorlage mit Platzhaltern; `deploy/generate-secrets.sh` schreibt das befüllte Ergebnis nach `deploy/.env` (von Git ignoriert), die `compose.yaml` per `env_file` lädt. Auf r-server liegt der Ordner unter `~/server/zunder/` und wird von Hand mit `docker compose` betrieben; nach jedem grünen Push auf `main` legt die CI ein GitHub-Deployment für den deploy-agent des Servers an (`payload.tag` = voller Commit-SHA, als Image-Tag veröffentlicht). Die Tauri-App wird in der CI nicht gebaut (Begründung als Kommentar in `ci.yml`).
 
 Code-Bezeichner sind englisch, Doku und UI deutsch.
 
@@ -209,7 +209,7 @@ Basis: `ZUNDER_PUBLIC_URL`. JSON, UTF-8. Fehler: `{"error":{"code":…,"message"
 | `ZUNDER_DEV_AUTH_ALLOW_REMOTE` | `true` = Dev-Auth auch mit nicht lokaler `ZUNDER_BIND` (lokaler Container) |
 | `ZUNDER_BACKUP_HOUR` | Stunde (lokal) für das nächtliche Backup, Default 3 |
 
-Leere Werte gelten als nicht gesetzt (Compose und Portainer reichen optionale Variablen wie `ZUNDER_TIMING_TOKEN` als leeren String durch). „Lokal“ heißt: Zeitzone des Prozesses, im Container über `TZ` (z. B. `Europe/Berlin`).
+Leere Werte gelten als nicht gesetzt (Compose reicht optionale Variablen wie `ZUNDER_TIMING_TOKEN` als leeren String durch). „Lokal“ heißt: Zeitzone des Prozesses, im Container über `TZ` (z. B. `Europe/Berlin`).
 
 **Persistenz:** SQLite im WAL-Modus. Tabellen mindestens `users`, `ops` (seq, op_id unique, entity, entity_id, field, value_json, hlc, source, received_at, owner_id), `entities` (materialisierter Zustand je Entität als JSON inkl. Feld-HLCs), `api_tokens`, `sessions`, ab Schema 2 `oauth_clients`, `oauth_codes`, `oauth_tokens` (4.3). Der Server hält den materialisierten Zustand zusätzlich im Speicher. Nächtliches Backup per `VACUUM INTO` nach `data/backups/`, 14 Stück aufbewahren.
 

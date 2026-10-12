@@ -13,7 +13,7 @@ Zunder ersetzt ClickUp; Stichtag für den Umstieg ist Ende November 2026. Das De
 | **E1 Fundament** | [`zunder-core`](crates/zunder-core) (Modell, HLC, Operationen, LWW-Merge, Validierung, gemeinsame Testvektoren für Rust und TypeScript) | umgesetzt |
 | | [`zunder-server`](crates/zunder-server) (Sync-API, OIDC-Login, API-Tokens, SSE, Backups, Auslieferung der Web-UI) | umgesetzt |
 | | [`zunder-import`](crates/zunder-import) (Sicherung, Zuordnung, Bericht, idempotenter Import; Ende-zu-Ende gegen den echten Server getestet) | umgesetzt |
-| | Container-Image, CI, Portainer-Stack, Betriebsdoku | umgesetzt |
+| | Container-Image, CI mit Deployment für den deploy-agent, Compose-Stack für Traefik, Betriebsdoku | umgesetzt |
 | **E2 Oberfläche** | [Web-UI](web) mit allen Sichten, MCP-Endpunkt für Agenten, Timing-Brücke für Flammen; Playwright gegen Mock und echten Server | umgesetzt |
 | **E3 Umstieg** | Import, Skill-Umstellung, Umschalten, Sicherheitsnetz | Runbook in [`docs/umstieg.md`](docs/umstieg.md); offen: Entscheidung zu Funke |
 | **E4 Apps** | [Tauri 2](apps/zunder-app) für Desktop, iOS und Android | Lokaler Speicher, Sync und Erinnerungen in `zunder-local` (gegen den echten Server getestet); Web-UI in der App über `TauriTransport` angebunden (`local_snapshot`/`local_apply`, Playwright `web/e2e/tauri.spec.ts`); offen: fertige App nicht von Hand durchgeklickt, Mobile-Builds nicht verifiziert |
@@ -39,7 +39,7 @@ Ohne Vite: `(cd web && npm install && npm run build)`, danach liefert der Server
 ## Dokumentation
 
 - [Entwicklung](docs/entwicklung.md): Aufbau, lokaler Start, Tests, Qualitätsschranken, CI
-- [Betrieb](docs/betrieb.md): Container, Portainer/Traefik, Pocket-ID, API-Tokens, MCP verbinden, Backups, Updates
+- [Betrieb](docs/betrieb.md): Container, Compose/Traefik, Pocket-ID, API-Tokens, MCP verbinden, Backups, Updates
 - [Umstieg](docs/umstieg.md): Runbook für E3 – Import, Skill-Umstellung, Umstiegstag, Funke
 - [Spec](docs/superpowers/specs/2026-10-11-zunder-design.md) und [Implementierungsvertrag](docs/superpowers/plans/2026-10-11-zunder-implementation.md)
 

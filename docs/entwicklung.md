@@ -6,7 +6,7 @@ Wie man an Zunder arbeitet: Aufbau, lokaler Start, Tests und die Qualitätsschra
 
 - **Vertrag zuerst.** Schnittstellen, Wire-Format, Felder, Validierung, HTTP-API, MCP-Werkzeuge und Umgebungsvariablen stehen im [Implementierungsvertrag](superpowers/plans/2026-10-11-zunder-implementation.md). Wer davon abweicht oder eine Lücke füllt, passt den Vertrag im selben Commit an.
 - **Sprache:** Code-Bezeichner und Kommentare englisch, Oberfläche und Doku deutsch.
-- **Keine echten Daten im Repo.** Testdaten sind synthetisch oder anonymisiert. `mapping.toml`, Import-Backups und befüllte `stack.env.local` bleiben außerhalb von Git.
+- **Keine echten Daten im Repo.** Testdaten sind synthetisch oder anonymisiert. `mapping.toml`, Import-Backups und die befüllte `deploy/.env` bleiben außerhalb von Git.
 - **Testgetrieben** wo sinnvoll, besonders in `zunder-core` (Merge, Validierung, HLC).
 
 ## Aufbau
@@ -18,7 +18,7 @@ Wie man an Zunder arbeitet: Aufbau, lokaler Start, Tests und die Qualitätsschra
 | `crates/zunder-import` | CLI für den ClickUp-Import |
 | `web/` | SolidJS + Vite + TypeScript, Vitest, Playwright |
 | `apps/zunder-app` | Tauri 2 (E4): eigener Cargo-Workspace in `src-tauri` mit der Hülle `zunder-app` und der webview-freien Crate `zunder-local` (Speicher, Sync, Erinnerungen) |
-| `deploy/` | Portainer-Stack ([`betrieb.md`](betrieb.md)) |
+| `deploy/` | Compose-Stack für r-server ([`betrieb.md`](betrieb.md)) |
 | `Dockerfile`, `.github/workflows/ci.yml` | Image und CI |
 
 ## Voraussetzungen
