@@ -113,3 +113,37 @@ export const [structureEdit, setStructureEdit] = createSignal<StructureEdit | nu
 export function anyOverlayOpen(): boolean {
   return captureOpen() || helpOpen() || palette() !== null || structureEdit() !== null;
 }
+
+// ---- Detail panel layout (per device, remembered) -----------------------
+
+function stored(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function store(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Private mode or blocked storage: the setting lasts for this session only.
+  }
+}
+
+export const DETAIL_MIN_WIDTH = 380;
+const [detailWide, setDetailWideSignal] = createSignal(stored("zunder.detailWide") === "1");
+const [detailWidth, setDetailWidthSignal] = createSignal(Number(stored("zunder.detailWidth")) || 560);
+export { detailWide, detailWidth };
+
+/** Wide mode: the open task takes the place of the list. */
+export function setDetailWide(wide: boolean): void {
+  setDetailWideSignal(wide);
+  store("zunder.detailWide", wide ? "1" : "0");
+}
+
+export function setDetailWidth(width: number): void {
+  const clamped = Math.round(Math.max(DETAIL_MIN_WIDTH, Math.min(width, window.innerWidth - 420)));
+  setDetailWidthSignal(clamped);
+  store("zunder.detailWidth", String(clamped));
+}

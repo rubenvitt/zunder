@@ -5,6 +5,7 @@ import { locationLabel } from "../labels";
 import { createTask } from "../state/actions";
 import { areaList, now, projectList } from "../state/store";
 import { setCaptureOpen, toast } from "../state/ui";
+import { Icon } from "./Icon";
 import { Modal } from "./Modal";
 
 export function QuickCapture() {
@@ -54,6 +55,8 @@ export function QuickCapture() {
           submit();
         }}
       >
+        <div class="capture-row">
+        <Icon name="plus" size={20} />
         <input
           ref={input}
           class="capture-input"
@@ -70,15 +73,25 @@ export function QuickCapture() {
           }}
           aria-label="Titel der neuen Aufgabe"
         />
+        </div>
         <div class="capture-preview" aria-live="polite">
-          <Show when={text().trim()} fallback={<span class="muted">Landet in der Inbox. Enter speichert, Esc schließt.</span>}>
+          <Show when={text().trim()} fallback={<span class="muted">Landet in der Inbox. <kbd>#</kbd> ordnet zu, „morgen 9:00“ setzt Fälligkeit. <kbd>Enter</kbd> speichert.</span>}>
             <span class="capture-title">{parsed().title}</span>
-            <span class="chip">{locationLabel(parsed().location ?? { kind: "inbox" })}</span>
+            <span class="chip">
+              <Icon name={parsed().location ? "folder" : "inbox"} size={12} />
+              {locationLabel(parsed().location ?? { kind: "inbox" })}
+            </span>
             <Show when={parsed().due}>
-              <span class="chip chip-accent">Fällig {formatDue(parsed().due, new Date(now()))}</span>
+              <span class="chip chip-accent">
+                <Icon name="calendar" size={12} />
+                Fällig {formatDue(parsed().due, new Date(now()))}
+              </span>
             </Show>
             <Show when={parsed().remind_at}>
-              <span class="chip">Erinnerung</span>
+              <span class="chip">
+                <Icon name="bell" size={12} />
+                Erinnerung
+              </span>
             </Show>
             <Show when={parsed().unknownTags.length > 0}>
               <span class="chip chip-danger" title="Kein Bereich oder Projekt gefunden">

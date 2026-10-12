@@ -4,7 +4,7 @@
 // writes nothing, so a value that changed meanwhile (pull from an agent or another
 // device) is not overwritten with the stale text.
 
-import { createEffect, createSignal, Show, type JSX } from "solid-js";
+import { createEffect, createSignal, onCleanup, onMount, Show, type JSX } from "solid-js";
 
 interface TextFieldProps {
   value: string | null;
@@ -15,6 +15,16 @@ interface TextFieldProps {
   class?: string;
   type?: "text" | "url";
   rows?: number;
+  /** Textarea that grows with its content instead of scrolling. */
+  autosize?: boolean;
+  /** A single-line value shown wrapped over several lines (e.g. a long title); Enter commits. */
+  wrap?: boolean;
+}
+
+/** Grows a textarea to fit its content. */
+export function fitHeight(el: HTMLTextAreaElement): void {
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight + (el.offsetHeight - el.clientHeight)}px`;
 }
 
 export function TextField(props: TextFieldProps) {
@@ -46,7 +56,7 @@ export function TextField(props: TextFieldProps) {
       setDraft(stored());
       e.currentTarget.blur();
       e.stopPropagation();
-    } else if (e.key === "Enter" && (!props.multiline || e.metaKey || e.ctrlKey)) {
+    } else if (e.key === "Enter" && (!props.multiline || props.wrap || e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       e.currentTarget.blur();
     }
@@ -58,21 +68,32 @@ export function TextField(props: TextFieldProps) {
     onBlur: commit,
     onKeyDown,
   };
+  let area: HTMLTextAreaElement | undefined;
+  const grows = () => props.autosize || props.wrap;
+  createEffect(() => {
+    draft();
+    if (area && grows()) fitHeight(area);
+  });
+  onMount(() => {
+    if (!area || !grows()) return;
+    // Fonts and the panel width settle after mounting.
+    const observer = new ResizeObserver(() => area && fitHeight(area));
+    observer.observe(area);
+    onCleanup(() => observer.disconnect());
+  });
   return (
     <Show
-      when={props.multiline}
+      when={props.multiline || props.wrap}
       fallback={<input {...common} type={props.type ?? "text"} value={draft()} onInput={(e) => onInput(e.currentTarget.value)} />}
     >
-      <textarea {...common} rows={props.rows ?? 4} value={draft()} onInput={(e) => onInput(e.currentTarget.value)} />
+      <textarea
+        ref={area}
+        {...common}
+        class={`${common.class}${grows() ? " autosize" : ""}`}
+        rows={props.wrap ? 1 : (props.rows ?? 4)}
+        value={draft()}
+        onInput={(e) => onInput(props.wrap ? e.currentTarget.value.replace(/\n/g, " ") : e.currentTarget.value)}
+      />
     </Show>
-  );
-}
-
-export function Row(props: { label: string; children: JSX.Element }) {
-  return (
-    <div class="detail-row">
-      <span class="detail-label">{props.label}</span>
-      <div class="detail-value">{props.children}</div>
-    </div>
   );
 }

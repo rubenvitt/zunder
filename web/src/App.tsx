@@ -11,7 +11,9 @@ import { isUnauthorized } from "./sync/transport";
 import { navigate, parseRoute, route, type Route, type ViewName } from "./state/router";
 import { inboxCount } from "./state/selectors";
 import { api, data, getEngine, pendingCount, ready, setNotifier, startSync, syncStatus, taskIndex } from "./state/store";
-import { captureOpen, detailId, helpOpen, openSearch, palette, setCaptureOpen, setDetailId, setHelpOpen, setSelectedId, structureEdit, toast } from "./state/ui";
+import { captureOpen, detailId, detailWide, detailWidth, helpOpen, openSearch, palette, setCaptureOpen, setDetailId, setHelpOpen, setSelectedId, structureEdit, toast } from "./state/ui";
+import { Logo } from "./components/Logo";
+import { preloadEditor } from "./components/MarkdownField";
 import { InboxView, LooseView, TodayView } from "./views/Lists";
 import { DevView, LoginView, PhoenixView, TokensView } from "./views/Other";
 import { SettingsView } from "./views/Settings";
@@ -105,6 +107,11 @@ function markReady(): void {
 function Shell() {
   const desktop = isTauri();
   onMount(() => onCleanup(installKeyboard()));
+  // The Markdown editor is a separate chunk: fetch it once the app is idle, so the first task opens instantly.
+  onMount(() => {
+    const idle = window.requestIdleCallback ?? ((cb: () => void) => setTimeout(cb, 1500));
+    idle(() => void preloadEditor());
+  });
   const active = (view: ViewName) => route().view === view;
   // On phones the detail panel covers everything: keep focus and screen readers out of what is behind it.
   const narrowQuery = window.matchMedia("(max-width: 900px)");
@@ -113,12 +120,13 @@ function Shell() {
   narrowQuery.addEventListener("change", onNarrow);
   onCleanup(() => narrowQuery.removeEventListener("change", onNarrow));
   const covered = () => narrow() && !!detailId();
+  const mobileTitle = () => NAV.find((n) => n.view === route().view)?.label ?? "Zunder";
 
   return (
-    <div class="app" classList={{ "detail-open": !!detailId() }}>
+    <div class="app" classList={{ "detail-open": !!detailId(), "detail-wide": !!detailId() && detailWide() }} style={{ "--detail": `${detailWidth()}px` }}>
       <nav class="sidebar" aria-label="Sichten">
         <div class="brand">
-          <Icon name="flame" size={22} />
+          <Logo size={26} />
           <span>Zunder</span>
         </div>
         <button class="search-button" onClick={openSearch} title="Suche (⌘K)">
@@ -175,7 +183,7 @@ function Shell() {
 
       <header class="topbar" inert={covered()}>
         <span class="brand">
-          <Icon name="flame" size={20} /> Zunder
+          <Logo size={24} /> {mobileTitle()}
         </span>
         <SyncIndicator />
         <button class="btn btn-ghost btn-icon" aria-label="Suchen" onClick={openSearch}>

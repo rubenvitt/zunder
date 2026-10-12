@@ -1,11 +1,12 @@
 import { createEffect, createSignal, For, Show, type JSX } from "solid-js";
-import { localDate, formatDue, parseDue } from "../sync/dates";
 import { isClosed, isClaimActive, isFlameRunning } from "../sync/derived";
 import type { Task } from "../sync/types";
 import { locationLabel, PHOENIX_LABELS, STATUS_LABELS, TYPE_LABELS } from "../labels";
-import { toggleDone } from "../state/actions";
 import { now, taskIndex } from "../state/store";
 import { Icon } from "./Icon";
+import { CheckButton, DueChip, RefButton, SubtaskToggle, SubtaskTree } from "./TaskBits";
+
+export { DueChip };
 
 export interface RowAction {
   label: string;
@@ -32,28 +33,11 @@ export interface TaskRowProps {
 
 const SWIPE_THRESHOLD = 80;
 
-export function DueChip(props: { task: Task }) {
-  const info = () => parseDue(props.task.due);
-  const tone = () => {
-    const due = info();
-    if (!due || isClosed(props.task.status)) return "";
-    const today = localDate(new Date(now()));
-    return due.date < today ? "chip-danger" : due.date === today ? "chip-accent" : "";
-  };
-  return (
-    <Show when={props.task.due}>
-      <span class={`chip ${tone()}`} title="Fällig">
-        {formatDue(props.task.due, new Date(now()))}
-      </span>
-    </Show>
-  );
-}
-
-export function TaskMeta(props: { task: Task; showLocation?: boolean }) {
+export function TaskMeta(props: { task: Task; showLocation?: boolean; showRef?: boolean; showProgress?: boolean }) {
   const progress = () => taskIndex().progress(props.task.id);
   return (
     <span class="task-meta">
-      <Show when={props.task.ref}>
+      <Show when={props.showRef && props.task.ref}>
         <span class="chip chip-ref mono" title="Kennung">
           {props.task.ref}
         </span>
@@ -65,8 +49,8 @@ export function TaskMeta(props: { task: Task; showLocation?: boolean }) {
         <span class={`chip chip-status-${props.task.status}`}>{STATUS_LABELS[props.task.status]}</span>
       </Show>
       <DueChip task={props.task} />
-      <Show when={progress().total > 0}>
-        <span class="chip" title="Unteraufgaben erledigt">
+      <Show when={props.showProgress && progress().total > 0}>
+        <span class="chip chip-count" title="Unteraufgaben erledigt">
           {progress().done}/{progress().total}
         </span>
       </Show>
@@ -85,7 +69,10 @@ export function TaskMeta(props: { task: Task; showLocation?: boolean }) {
         </span>
       </Show>
       <Show when={props.showLocation}>
-        <span class="chip chip-muted">{locationLabel(taskIndex().location(props.task))}</span>
+        <span class="chip chip-muted">
+          <Icon name="folder" size={12} />
+          {locationLabel(taskIndex().location(props.task))}
+        </span>
       </Show>
     </span>
   );
@@ -93,6 +80,7 @@ export function TaskMeta(props: { task: Task; showLocation?: boolean }) {
 
 export function TaskRow(props: TaskRowProps) {
   const [dx, setDx] = createSignal(0);
+  const [subtasksOpen, setSubtasksOpen] = createSignal(false);
   let ref: HTMLLIElement | undefined;
   createEffect(() => {
     if (props.selected) ref?.scrollIntoView({ block: "nearest" });
@@ -150,19 +138,7 @@ export function TaskRow(props: TaskRowProps) {
         </div>
       </Show>
       <div class="task-row-inner" style={dx() ? { transform: `translateX(${dx()}px)` } : undefined}>
-        <button
-          class="check"
-          classList={{ done: props.task.status === "done", dropped: props.task.status === "dropped" }}
-          aria-label={props.task.status === "done" ? "Als offen markieren" : "Erledigt"}
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleDone(props.task.id);
-          }}
-        >
-          <Show when={props.task.status === "done"}>
-            <Icon name="check" size={14} />
-          </Show>
-        </button>
+        <CheckButton task={props.task} />
         <button
           class="task-main"
           onClick={() => {
@@ -174,6 +150,10 @@ export function TaskRow(props: TaskRowProps) {
           <span class="task-title">{props.task.title}</span>
           <TaskMeta task={props.task} showLocation={props.showLocation} />
         </button>
+        <span class="row-side">
+          <SubtaskToggle task={props.task} open={subtasksOpen()} onToggle={() => setSubtasksOpen((o) => !o)} />
+          <RefButton task={props.task} />
+        </span>
         <Show when={props.actions?.length}>
           <span class="row-actions">
             <For each={props.actions}>
@@ -191,6 +171,11 @@ export function TaskRow(props: TaskRowProps) {
           </span>
         </Show>
       </div>
+      <Show when={subtasksOpen()}>
+        <div class="row-subtasks">
+          <SubtaskTree parentId={props.task.id} compact />
+        </div>
+      </Show>
     </li>
   );
 }

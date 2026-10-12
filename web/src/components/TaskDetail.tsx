@@ -1,16 +1,18 @@
 // Task detail side panel: everything inline editable, subtask tree, change history.
 
-import { createEffect, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createResource, createSignal, For, on, onCleanup, onMount, Show, type JSX } from "solid-js";
 import { fireOf, formatInstant, fromDatetimeLocalInput, parseDue, toDatetimeLocalInput, toRfc3339Local } from "../sync/dates";
-import { hasOpenChildren, isClaimActive, isClosed, isDevLocation, isFlameRunning } from "../sync/derived";
+import { hasOpenChildren, isClaimActive, isDevLocation, isFlameRunning } from "../sync/derived";
 import { hlcWallMs } from "../sync/hlc";
 import { PHOENIX_ROLES, TASK_STATUSES, TASK_TYPES, type HistoryEntry, type JsonValue, type Link, type Task, type TaskStatus, type TaskType } from "../sync/types";
 import { FIELD_LABELS, locationLabel, PHOENIX_LABELS, sourceLabel, STATUS_LABELS, TYPE_LABELS } from "../labels";
-import { createTask, deleteTask, dependentsCount, flame, moveTask, setParent, setStatus, toggleDone, updateTask } from "../state/actions";
+import { createTask, deleteTask, dependentsCount, flame, moveTask, setParent, setStatus, updateTask } from "../state/actions";
 import { api, data, now, pendingCount, taskIndex } from "../state/store";
-import { copyTaskId, pickLocation, pickTask, selectedId, setDetailId, setSelectedId } from "../state/ui";
-import { Row, TextField } from "./Fields";
-import { Icon } from "./Icon";
+import { copyTaskId, copyText, detailWide, pickLocation, pickTask, selectedId, setDetailId, setDetailWide, setDetailWidth, setSelectedId } from "../state/ui";
+import { TextField } from "./Fields";
+import { Icon, type IconName } from "./Icon";
+import { MarkdownField } from "./MarkdownField";
+import { CheckButton, ProgressBar, SubtaskTree } from "./TaskBits";
 
 /** Only http(s) and mailto links become clickable; anything else (javascript:, data: …) is shown as text. */
 export function safeHref(url: string): string | undefined {
@@ -48,7 +50,8 @@ export function TaskDetail(props: { id: string }) {
     });
   });
   return (
-    <aside ref={aside} class="detail" aria-label="Aufgabendetail" tabIndex={-1}>
+    <aside ref={aside} class="detail" classList={{ wide: detailWide() }} aria-label="Aufgabendetail" tabIndex={-1}>
+      <ResizeHandle />
       {/* Keyed: another task gets a fresh body, so unsent drafts never carry over. */}
       <Show when={props.id} keyed>
         {(id) => (
@@ -61,17 +64,55 @@ export function TaskDetail(props: { id: string }) {
   );
 }
 
+/** Drag the left edge to resize the panel (desktop). Double click resets. */
+function ResizeHandle() {
+  const onPointerDown = (e: PointerEvent) => {
+    if (e.button !== 0 || detailWide()) return;
+    e.preventDefault();
+    const handle = e.currentTarget as HTMLElement;
+    handle.setPointerCapture(e.pointerId);
+    document.documentElement.classList.add("resizing");
+    const move = (ev: PointerEvent) => setDetailWidth(window.innerWidth - ev.clientX);
+    const up = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", up);
+      document.documentElement.classList.remove("resizing");
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
+  };
+  return (
+    <div
+      class="detail-resize"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Breite des Detailbereichs"
+      title="Ziehen zum Anpassen, Doppelklick setzt zurück"
+      onPointerDown={onPointerDown}
+      onDblClick={() => setDetailWidth(560)}
+    />
+  );
+}
+
 function MissingTask() {
   return (
     <div class="detail-body">
-      <header class="detail-head">
+      <header class="detail-bar">
         <span class="muted">Aufgabe nicht gefunden oder gelöscht.</span>
-        <button class="btn btn-ghost btn-icon" aria-label="Schließen" onClick={() => setDetailId(null)}>
+        <span class="spacer" />
+        <button class="btn btn-ghost btn-icon" aria-label="Schließen (Esc)" title="Schließen (Esc)" onClick={() => setDetailId(null)}>
           <Icon name="x" />
         </button>
       </header>
     </div>
   );
+}
+
+function openTask(id: string) {
+  setSelectedId(id);
+  setDetailId(id);
 }
 
 function DetailBody(props: { task: Task; onMount: () => void }) {
@@ -81,281 +122,358 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
   const index = () => taskIndex();
   const location = () => index().location(t());
   const dev = () => isDevLocation(location(), (id) => data.projects[id]);
-  const children = () => index().childrenOf(t().id);
   const progress = () => index().progress(t().id);
   const parent = () => (t().parent_id ? data.tasks[t().parent_id!] : undefined);
+  const ancestors = () => {
+    const out: Task[] = [];
+    let p = parent();
+    while (p && out.length < 12) {
+      out.unshift(p);
+      p = p.parent_id ? data.tasks[p.parent_id] : undefined;
+    }
+    return out;
+  };
   const showDev = () => dev() || !!(t().plan || t().branch || t().pr_url || t().claimed_by);
 
   const set = (fields: Record<string, JsonValue>) => updateTask(t().id, fields);
 
   return (
     <div class="detail-body">
-      <header class="detail-head">
-        <button
-          class="check"
-          classList={{ done: t().status === "done", dropped: t().status === "dropped" }}
-          aria-label={t().status === "done" ? "Als offen markieren" : "Erledigt"}
-          onClick={() => toggleDone(t().id)}
-        >
-          <Show when={t().status === "done"}>
-            <Icon name="check" size={14} />
+      <header class="detail-bar">
+        <nav class="crumbs" aria-label="Ort der Aufgabe">
+          <Show
+            when={!parent()}
+            fallback={
+              <span class="crumb muted" title="Unteraufgaben liegen immer bei ihrer Wurzelaufgabe">
+                <Icon name="folder" size={14} />
+                {locationLabel(location())}
+              </span>
+            }
+          >
+            <button
+              class="crumb crumb-button"
+              onClick={() => pickLocation("Verschieben nach", (loc) => moveTask(t().id, loc))}
+              aria-label="Stelle ändern"
+              title="Verschieben"
+            >
+              <Icon name={location().kind === "inbox" ? "inbox" : "folder"} size={14} />
+              {locationLabel(location())}
+            </button>
           </Show>
+          <For each={ancestors()}>
+            {(a) => (
+              <>
+                <Icon name="right" size={12} />
+                <button class="crumb crumb-button crumb-task" title={a.title} onClick={() => openTask(a.id)}>
+                  {a.title}
+                </button>
+              </>
+            )}
+          </For>
+        </nav>
+        <span class="spacer" />
+        <RefCopy task={t()} />
+        <button
+          class="btn btn-ghost btn-icon hide-mobile"
+          aria-label={detailWide() ? "Schmale Ansicht" : "Breite Ansicht"}
+          title={detailWide() ? "Schmale Ansicht" : "Breite Ansicht"}
+          aria-pressed={detailWide()}
+          onClick={() => setDetailWide(!detailWide())}
+        >
+          <Icon name={detailWide() ? "collapse" : "expand"} />
         </button>
-        <TextField class="detail-title" label="Titel" value={t().title} onCommit={(v) => set({ title: v })} />
         <button class="btn btn-ghost btn-icon" aria-label="Schließen (Esc)" title="Schließen (Esc)" onClick={() => setDetailId(null)}>
           <Icon name="x" />
         </button>
       </header>
 
-      <Show when={t().status === "done" && hasOpenChildren(children())}>
-        <p class="notice notice-warning">Hinweis: Diese Aufgabe ist erledigt, hat aber noch offene Unteraufgaben.</p>
-      </Show>
+      <div class="detail-scroll">
+        <div class="detail-content">
+          <div class="detail-head">
+            <CheckButton task={t()} />
+            <TextField wrap class="detail-title" label="Titel" value={t().title} onCommit={(v) => set({ title: v })} />
+          </div>
 
-      <div class="detail-grid">
-        <Show when={t().ref || showDev()}>
-          <Row label={t().ref ? "Kennung" : "ID"}>
-            <button
-              class="btn btn-ghost btn-small mono task-id"
-              title={`${t().ref ? "Kennung" : "ID"} kopieren (y)`}
-              aria-label={t().ref ? "Kennung kopieren" : "ID kopieren"}
-              onClick={() => copyTaskId(t())}
-            >
-              <span class="task-id-text">{t().ref ?? t().id}</span>
-              <Icon name="copy" size={14} />
-            </button>
-          </Row>
-        </Show>
-
-        <Row label="Status">
-          <select
-            class="field"
-            aria-label="Status"
-            value={t().status}
-            onChange={(e) => {
-              if (!setStatus(t().id, e.currentTarget.value as TaskStatus)) e.currentTarget.value = t().status;
-            }}
-          >
-            <For each={TASK_STATUSES.filter((s) => s !== "review" || dev() || t().status === "review")}>
-              {(s) => <option value={s}>{STATUS_LABELS[s]}</option>}
-            </For>
-          </select>
-        </Row>
-
-        <Row label="Typ">
-          <select
-            class="field"
-            aria-label="Typ"
-            value={t().type}
-            disabled={!dev() && t().type === "aufgabe"}
-            title={dev() ? undefined : "Bugs und Features gibt es nur in Dev-Projekten."}
-            onChange={(e) => {
-              if (!set({ type: e.currentTarget.value as TaskType })) e.currentTarget.value = t().type;
-            }}
-          >
-            <For each={TASK_TYPES.filter((ty) => ty === "aufgabe" || dev() || t().type === ty)}>{(ty) => <option value={ty}>{TYPE_LABELS[ty]}</option>}</For>
-          </select>
-        </Row>
-
-        <Row label="Stelle">
-          <Show
-            when={parent()}
-            fallback={
-              <button
-                class="btn btn-ghost btn-small"
-                onClick={() => pickLocation("Verschieben nach", (loc) => moveTask(t().id, loc))}
-                aria-label="Stelle ändern"
-              >
-                {locationLabel(location())}
-              </button>
-            }
-          >
-            <span class="muted">{locationLabel(location())} (über die Elternaufgabe)</span>
+          <Show when={t().status === "done" && hasOpenChildren(index().childrenOf(t().id))}>
+            <p class="notice notice-warning">Hinweis: Diese Aufgabe ist erledigt, hat aber noch offene Unteraufgaben.</p>
           </Show>
-        </Row>
 
-        <Row label="Eltern">
-          <span class="inline-group">
-            <Show when={parent()} fallback={<span class="muted">—</span>}>
-              <button
-                class="link-button"
-                onClick={() => {
-                  setSelectedId(parent()!.id);
-                  setDetailId(parent()!.id);
+          <div class="props">
+            <Prop icon="circle" label="Status">
+              <select
+                class="prop-select status-select"
+                data-status={t().status}
+                aria-label="Status"
+                value={t().status}
+                onChange={(e) => {
+                  if (!setStatus(t().id, e.currentTarget.value as TaskStatus)) e.currentTarget.value = t().status;
                 }}
               >
-                {parent()!.title}
-              </button>
-            </Show>
-            <button
-              class="btn btn-ghost btn-small"
-              onClick={() => {
-                const exclude = new Set([t().id, ...index().descendantsOf(t().id).map((d) => d.id)]);
-                pickTask("Unter Aufgabe hängen", exclude, (pid) => setParent(t().id, pid));
-              }}
-            >
-              {parent() ? "Ändern" : "Unterordnen"}
-            </button>
-            <Show when={parent()}>
-              <button class="btn btn-ghost btn-small" onClick={() => setParent(t().id, null)}>
-                Lösen
-              </button>
-            </Show>
-          </span>
-        </Row>
+                <For each={TASK_STATUSES.filter((s) => s !== "review" || dev() || t().status === "review")}>
+                  {(s) => <option value={s}>{STATUS_LABELS[s]}</option>}
+                </For>
+              </select>
+            </Prop>
 
-        <Row label="Fällig">
-          <DueEditor task={t()} />
-        </Row>
+            <Prop icon={t().type === "bug" ? "bug" : t().type === "feature" ? "star" : "tag"} label="Typ">
+              <select
+                class="prop-select"
+                aria-label="Typ"
+                value={t().type}
+                disabled={!dev() && t().type === "aufgabe"}
+                title={dev() ? undefined : "Bugs und Features gibt es nur in Dev-Projekten."}
+                onChange={(e) => {
+                  if (!set({ type: e.currentTarget.value as TaskType })) e.currentTarget.value = t().type;
+                }}
+              >
+                <For each={TASK_TYPES.filter((ty) => ty === "aufgabe" || dev() || t().type === ty)}>{(ty) => <option value={ty}>{TYPE_LABELS[ty]}</option>}</For>
+              </select>
+            </Prop>
 
-        <Row label="Erinnerung">
-          <span class="inline-group">
-            <input
-              class="field"
-              type="datetime-local"
-              aria-label="Erinnerung"
-              value={toDatetimeLocalInput(t().remind_at)}
-              onChange={(e) => set({ remind_at: fromDatetimeLocalInput(e.currentTarget.value) })}
-            />
-            <Show when={t().remind_at}>
-              <button class="btn btn-ghost btn-small" aria-label="Erinnerung entfernen" onClick={() => set({ remind_at: null })}>
-                <Icon name="x" size={14} />
-              </button>
-            </Show>
-          </span>
-        </Row>
+            <Prop icon="calendar" label="Fällig">
+              <DateSlot isSet={!!t().due} label="Fälligkeit setzen">
+                {(autoOpen) => <DueEditor task={t()} autoOpen={autoOpen} />}
+              </DateSlot>
+            </Prop>
 
-        <Row label="Phönix">
-          <span class="inline-group">
-            <select
-              class="field"
-              aria-label="Phönix-Rolle"
-              value={t().phoenix?.role ?? ""}
-              onChange={(e) => {
-                const role = e.currentTarget.value;
-                set({ phoenix: role ? { role, fire: t().phoenix?.fire ?? fireOf(new Date(now())) } : null });
-              }}
-            >
-              <option value="">—</option>
-              <For each={PHOENIX_ROLES}>{(r) => <option value={r}>{PHOENIX_LABELS[r]}</option>}</For>
-            </select>
-            <Show when={t().phoenix}>
-              <TextField
-                class="field-short mono"
-                label="Feuer (ISO-Woche)"
-                value={t().phoenix!.fire}
-                placeholder="2026-W45"
-                onCommit={(fire) => set({ phoenix: { role: t().phoenix!.role, fire: fire.trim() } })}
-              />
+            <Prop icon="bell" label="Erinnerung">
+              <DateSlot isSet={!!t().remind_at} label="Erinnerung setzen">
+                {(autoOpen) => (
+                  <span class="prop-inline nowrap">
+                    <input
+                      ref={(el) => autoOpen(el)}
+                      class="prop-input"
+                      type="datetime-local"
+                      aria-label="Erinnerung"
+                      value={toDatetimeLocalInput(t().remind_at)}
+                      onChange={(e) => set({ remind_at: fromDatetimeLocalInput(e.currentTarget.value) })}
+                    />
+                    <Show when={t().remind_at}>
+                      <button class="btn btn-ghost btn-icon btn-xs" aria-label="Erinnerung entfernen" onClick={() => set({ remind_at: null })}>
+                        <Icon name="x" size={14} />
+                      </button>
+                    </Show>
+                  </span>
+                )}
+              </DateSlot>
+            </Prop>
+
+            <Prop icon="arrowUp" label="Eltern">
+              <span class="prop-inline">
+                <Show when={parent()}>
+                  <button class="prop-value link-button prop-link" title={parent()!.title} onClick={() => openTask(parent()!.id)}>
+                    {parent()!.title}
+                  </button>
+                </Show>
+                <button
+                  class="btn btn-ghost btn-small"
+                  onClick={() => {
+                    const exclude = new Set([t().id, ...index().descendantsOf(t().id).map((d) => d.id)]);
+                    pickTask("Unter Aufgabe hängen", exclude, (pid) => setParent(t().id, pid));
+                  }}
+                >
+                  {parent() ? "Ändern" : "Unterordnen"}
+                </button>
+                <Show when={parent()}>
+                  <button class="btn btn-ghost btn-small" onClick={() => setParent(t().id, null)}>
+                    Lösen
+                  </button>
+                </Show>
+              </span>
+            </Prop>
+
+            <Prop icon="flame" label="Phönix">
+              <span class="prop-inline">
+                <select
+                  class="prop-select"
+                  aria-label="Phönix-Rolle"
+                  value={t().phoenix?.role ?? ""}
+                  onChange={(e) => {
+                    const role = e.currentTarget.value;
+                    set({ phoenix: role ? { role, fire: t().phoenix?.fire ?? fireOf(new Date(now())) } : null });
+                  }}
+                >
+                  <option value="">—</option>
+                  <For each={PHOENIX_ROLES}>{(r) => <option value={r}>{PHOENIX_LABELS[r]}</option>}</For>
+                </select>
+                <Show when={t().phoenix}>
+                  <TextField
+                    class="prop-input fire-input mono"
+                    label="Feuer (ISO-Woche)"
+                    value={t().phoenix!.fire}
+                    placeholder="2026-W45"
+                    onCommit={(fire) => set({ phoenix: { role: t().phoenix!.role, fire: fire.trim() } })}
+                  />
+                </Show>
+              </span>
+            </Prop>
+          </div>
+
+          <Show when={t().phoenix}>
+            <div class="flame-strip" classList={{ burning: isFlameRunning(t()) }}>
+              <Icon name="flame" size={18} />
+              <span>{isFlameRunning(t()) ? "Flamme brennt" : "Bereit für eine Flamme"}</span>
+              <span class="spacer" />
               <button class="btn btn-small" classList={{ "btn-primary": !isFlameRunning(t()) }} onClick={() => void flame(t().id, isFlameRunning(t()) ? "stop" : "start")}>
                 <Icon name={isFlameRunning(t()) ? "stop" : "play"} size={14} />
                 {isFlameRunning(t()) ? "Flamme beenden" : "Flamme starten"}
               </button>
-            </Show>
-          </span>
-        </Row>
-      </div>
-
-      <section class="detail-section">
-        <h3>Beschreibung</h3>
-        <TextField multiline rows={5} label="Beschreibung (Markdown)" placeholder="Markdown …" value={t().description} onCommit={(v) => set({ description: v || null })} />
-      </section>
-
-      <section class="detail-section">
-        <h3>
-          Unteraufgaben
-          <Show when={progress().total > 0}>
-            <span class="chip">
-              {progress().done}/{progress().total}
-            </span>
+            </div>
           </Show>
-        </h3>
-        <ul class="subtree">
-          <For each={children()}>{(child) => <SubtaskNode task={child} depth={0} />}</For>
-        </ul>
-        <AddSubtask parentId={t().id} />
-      </section>
 
-      <section class="detail-section">
-        <h3>Links</h3>
-        <LinksEditor task={t()} />
-      </section>
+          <section class="detail-section">
+            <h3>
+              <Icon name="document" size={16} />
+              Beschreibung
+            </h3>
+            <MarkdownField label="Beschreibung (Markdown)" placeholder="Beschreibung schreiben … Markdown geht auch: **fett**, - Liste, [ ] Checkliste" value={t().description} onCommit={(v) => set({ description: v || null })} />
+          </section>
 
-      <section class="detail-section">
-        <h3>Vault</h3>
-        <VaultLinksEditor task={t()} />
-      </section>
+          <section class="detail-section">
+            <h3>
+              <Icon name="tree" size={16} />
+              Unteraufgaben
+              <Show when={progress().total > 0}>
+                <span class="chip chip-count">
+                  {progress().done}/{progress().total}
+                </span>
+                <ProgressBar done={progress().done} total={progress().total} label="Unteraufgaben erledigt" />
+              </Show>
+            </h3>
+            <SubtaskTree parentId={t().id} />
+            <AddSubtask parentId={t().id} />
+          </section>
 
-      <Show when={showDev()}>
-        <section class="detail-section">
-          <h3>Dev</h3>
-          <div class="detail-grid">
-            <Row label="Branch">
-              <TextField class="mono" label="Branch" value={t().branch} placeholder="feature/…" onCommit={(v) => set({ branch: v.trim() || null })} />
-            </Row>
-            <Row label="PR">
-              <span class="inline-group">
-                <TextField type="url" label="PR-Link" value={t().pr_url} placeholder="https://github.com/…" onCommit={(v) => set({ pr_url: v.trim() || null })} />
-                <Show when={t().pr_url}>
-                  <a class="btn btn-ghost btn-small" href={t().pr_url!} target="_blank" rel="noopener noreferrer">
-                    Öffnen
-                  </a>
-                </Show>
-              </span>
-            </Row>
-            <Row label="Reserviert">
-              <Show when={t().claimed_by} fallback={<span class="muted">—</span>}>
-                <span class="inline-group">
-                  <span>
-                    {t().claimed_by}
-                    <Show when={t().claim_expires_at}>
-                      <span class="muted">
-                        {" "}
-                        bis {formatInstant(t().claim_expires_at, new Date(now()))}
-                        {isClaimActive(t(), now()) ? "" : " (abgelaufen)"}
-                      </span>
+          <Show when={showDev()}>
+            <section class="detail-section dev-section">
+              <h3>
+                <Icon name="code" size={16} />
+                Dev
+              </h3>
+              <div class="props">
+                <Prop icon="branch" label="Branch">
+                  <span class="prop-inline">
+                    <TextField class="prop-input mono" label="Branch" value={t().branch} placeholder="feature/…" onCommit={(v) => set({ branch: v.trim() || null })} />
+                    <Show when={t().branch}>
+                      <button class="btn btn-ghost btn-icon btn-xs" aria-label="Branch kopieren" title="Branch kopieren" onClick={() => copyText(t().branch!, `Branch kopiert: ${t().branch}`)}>
+                        <Icon name="copy" size={14} />
+                      </button>
                     </Show>
                   </span>
-                  <button class="btn btn-ghost btn-small" onClick={() => set({ claimed_by: null, claim_expires_at: null })}>
-                    Aufheben
-                  </button>
-                </span>
-              </Show>
-            </Row>
-          </div>
-          <TextField multiline rows={6} label="Plan (Markdown)" placeholder="Plan …" value={t().plan} onCommit={(v) => set({ plan: v || null })} />
-        </section>
-      </Show>
+                </Prop>
+                <Prop icon="pullRequest" label="PR">
+                  <span class="prop-inline">
+                    <TextField class="prop-input" type="url" label="PR-Link" value={t().pr_url} placeholder="https://github.com/…" onCommit={(v) => set({ pr_url: v.trim() || null })} />
+                    <Show when={t().pr_url && safeHref(t().pr_url!)}>
+                      {(href) => (
+                        <a class="btn btn-ghost btn-icon btn-xs" href={href()} target="_blank" rel="noopener noreferrer" aria-label="PR öffnen" title="PR öffnen">
+                          <Icon name="external" size={14} />
+                        </a>
+                      )}
+                    </Show>
+                  </span>
+                </Prop>
+                <Prop icon="user" label="Reserviert">
+                  <Show when={t().claimed_by} fallback={<span class="prop-value muted">—</span>}>
+                    <span class="prop-inline">
+                      <span class="prop-value">
+                        {t().claimed_by}
+                        <Show when={t().claim_expires_at}>
+                          <span class="muted">
+                            {" "}
+                            bis {formatInstant(t().claim_expires_at, new Date(now()))}
+                            {isClaimActive(t(), now()) ? "" : " (abgelaufen)"}
+                          </span>
+                        </Show>
+                      </span>
+                      <button class="btn btn-ghost btn-small" onClick={() => set({ claimed_by: null, claim_expires_at: null })}>
+                        Aufheben
+                      </button>
+                    </span>
+                  </Show>
+                </Prop>
+              </div>
+              <h4>Plan</h4>
+              <MarkdownField label="Plan (Markdown)" placeholder="Plan …" value={t().plan} onCommit={(v) => set({ plan: v || null })} />
+            </section>
+          </Show>
 
-      <section class="detail-section detail-meta">
-        <span>Erstellt {hlcLabel(t().created_hlc)}</span>
-        <span>Geändert {hlcLabel(t().updated_hlc)}</span>
-        <a href={`#/aufgabe/${t().ref ?? t().id}`} title="Dauerhafter Link zu dieser Aufgabe (z. B. für den Vault)">
-          Link
-        </a>
-        <Show when={t().ref || !showDev()}>
-          <button class="link-button" title="UUID der Aufgabe kopieren" onClick={() => copyTaskId({ id: t().id, ref: null })}>
-            UUID kopieren
-          </button>
-        </Show>
-        <Show when={t().clickup_id}>
-          <span class="mono">ClickUp {t().clickup_id}</span>
-        </Show>
-        <Show when={t().timing_ref}>
-          <span class="mono">Timing {t().timing_ref}</span>
-        </Show>
-        <button
-          class="btn btn-danger btn-small"
-          onClick={() => {
-            const count = dependentsCount("task", t().id);
-            const msg = count > 0 ? `„${t().title}“ und ${count} Unteraufgabe(n) löschen?` : `„${t().title}“ löschen?`;
-            if (confirm(msg) && deleteTask(t().id)) setDetailId(null);
-          }}
-        >
-          <Icon name="trash" size={14} /> Löschen
-        </button>
-      </section>
+          <section class="detail-section">
+            <h3>
+              <Icon name="link" size={16} />
+              Links
+            </h3>
+            <LinksEditor task={t()} />
+          </section>
 
-      <History taskId={t().id} version={t().updated_hlc} />
+          <section class="detail-section">
+            <h3>
+              <Icon name="archive" size={16} />
+              Vault
+            </h3>
+            <VaultLinksEditor task={t()} />
+          </section>
+
+          <History taskId={t().id} version={t().updated_hlc} />
+
+          <section class="detail-section detail-meta">
+            <span>Erstellt {hlcLabel(t().created_hlc)}</span>
+            <span>Geändert {hlcLabel(t().updated_hlc)}</span>
+            <a href={`#/aufgabe/${t().ref ?? t().id}`} title="Dauerhafter Link zu dieser Aufgabe (z. B. für den Vault)">
+              Link
+            </a>
+            <Show when={t().ref}>
+              <button class="link-button" title="ID der Aufgabe kopieren" onClick={() => copyTaskId({ id: t().id, ref: null })}>
+                ID kopieren
+              </button>
+            </Show>
+            <Show when={t().clickup_id}>
+              <span class="mono">ClickUp {t().clickup_id}</span>
+            </Show>
+            <Show when={t().timing_ref}>
+              <span class="mono">Timing {t().timing_ref}</span>
+            </Show>
+            <button
+              class="btn btn-danger btn-small"
+              onClick={() => {
+                const count = dependentsCount("task", t().id);
+                const msg = count > 0 ? `„${t().title}“ und ${count} Unteraufgabe(n) löschen?` : `„${t().title}“ löschen?`;
+                if (confirm(msg) && deleteTask(t().id)) setDetailId(null);
+              }}
+            >
+              <Icon name="trash" size={14} /> Löschen
+            </button>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The task's reference (or ID) at the top of the panel: one click copies it. */
+function RefCopy(props: { task: Task }) {
+  const kind = () => (props.task.ref ? "Kennung" : "ID");
+  return (
+    <button
+      class="btn btn-ghost btn-small mono task-id"
+      title={`${kind()} kopieren (y)`}
+      aria-label={props.task.ref ? "Kennung kopieren" : "ID kopieren"}
+      onClick={() => copyTaskId(props.task)}
+    >
+      <Icon name="copy" size={14} />
+      <span class="task-id-text">{props.task.ref ?? "ID"}</span>
+    </button>
+  );
+}
+
+function Prop(props: { icon: IconName; label: string; children: JSX.Element }) {
+  return (
+    <div class="prop">
+      <span class="prop-label">
+        <Icon name={props.icon} size={15} />
+        {props.label}
+      </span>
+      <div class="prop-control">{props.children}</div>
     </div>
   );
 }
@@ -366,7 +484,39 @@ function hlcLabel(hlc: string): string {
   return Number.isFinite(ms) ? formatInstant(new Date(ms).toISOString(), new Date(now())) : "";
 }
 
-function DueEditor(props: { task: Task }) {
+/**
+ * An unset date shows a quiet "set" button instead of an empty native field
+ * (tt.mm.jjjj, --:--); clicking it reveals the field and opens its picker.
+ */
+function DateSlot(props: { isSet: boolean; label: string; children: (autoOpen: (el: HTMLInputElement) => void) => JSX.Element }) {
+  const [editing, setEditing] = createSignal(false);
+  const autoOpen = (el: HTMLInputElement) => {
+    if (!editing() || props.isSet) return;
+    queueMicrotask(() => {
+      el.focus();
+      try {
+        el.showPicker?.();
+      } catch {
+        // Some browsers allow the picker only on a direct click.
+      }
+    });
+    el.addEventListener("blur", () => setTimeout(() => !props.isSet && setEditing(false), 150), { once: true });
+  };
+  return (
+    <Show
+      when={props.isSet || editing()}
+      fallback={
+        <button class="prop-input unset prop-empty" onClick={() => setEditing(true)}>
+          {props.label}
+        </button>
+      }
+    >
+      {props.children(autoOpen)}
+    </Show>
+  );
+}
+
+function DueEditor(props: { task: Task; autoOpen?: (el: HTMLInputElement) => void }) {
   const info = () => parseDue(props.task.due);
   const commit = (date: string, time: string) => {
     if (!date) {
@@ -384,11 +534,19 @@ function DueEditor(props: { task: Task }) {
   let dateInput: HTMLInputElement | undefined;
   let timeInput: HTMLInputElement | undefined;
   return (
-    <span class="inline-group">
-      <input ref={dateInput} class="field" type="date" aria-label="Fälligkeitsdatum" value={info()?.date ?? ""} onChange={(e) => commit(e.currentTarget.value, timeInput?.value ?? "")} />
+    <span class="prop-inline nowrap">
+      <input
+        ref={(el) => {
+          dateInput = el;
+          props.autoOpen?.(el);
+        }}
+        class="prop-input date-input"
+        classList={{ unset: !info() }}
+        type="date" aria-label="Fälligkeitsdatum" value={info()?.date ?? ""} onChange={(e) => commit(e.currentTarget.value, timeInput?.value ?? "")} />
       <input
         ref={timeInput}
-        class="field field-short"
+        class="prop-input time-input"
+        classList={{ unset: !info()?.time }}
         type="time"
         aria-label="Fälligkeitsuhrzeit"
         value={info()?.time ?? ""}
@@ -396,7 +554,7 @@ function DueEditor(props: { task: Task }) {
         onChange={(e) => commit(dateInput?.value ?? "", e.currentTarget.value)}
       />
       <Show when={props.task.due}>
-        <button class="btn btn-ghost btn-small" aria-label="Fälligkeit entfernen" onClick={() => updateTask(props.task.id, { due: null })}>
+        <button class="btn btn-ghost btn-icon btn-xs" aria-label="Fälligkeit entfernen" onClick={() => updateTask(props.task.id, { due: null })}>
           <Icon name="x" size={14} />
         </button>
       </Show>
@@ -404,60 +562,36 @@ function DueEditor(props: { task: Task }) {
   );
 }
 
-function SubtaskNode(props: { task: Task; depth: number }) {
-  const children = () => taskIndex().childrenOf(props.task.id);
-  const progress = () => taskIndex().progress(props.task.id);
-  return (
-    <li class="subtask" data-task-id={props.task.id}>
-      <div class="subtask-row" classList={{ closed: isClosed(props.task.status) }}>
-        <button
-          class="check check-small"
-          classList={{ done: props.task.status === "done", dropped: props.task.status === "dropped" }}
-          aria-label={props.task.status === "done" ? "Als offen markieren" : "Erledigt"}
-          onClick={() => toggleDone(props.task.id)}
-        >
-          <Show when={props.task.status === "done"}>
-            <Icon name="check" size={12} />
-          </Show>
-        </button>
-        <button
-          class="link-button"
-          onClick={() => {
-            setSelectedId(props.task.id);
-            setDetailId(props.task.id);
-          }}
-        >
-          {props.task.title}
-        </button>
-        <Show when={progress().total > 0}>
-          <span class="chip">
-            {progress().done}/{progress().total}
-          </span>
-        </Show>
-      </div>
-      <Show when={children().length > 0 && props.depth < 12}>
-        <ul class="subtree">
-          <For each={children()}>{(c) => <SubtaskNode task={c} depth={props.depth + 1} />}</For>
-        </ul>
-      </Show>
-    </li>
-  );
-}
-
 function AddSubtask(props: { parentId: string }) {
   const [title, setTitle] = createSignal("");
   return (
     <form
-      class="inline-form"
+      class="add-row"
       onSubmit={(e) => {
         e.preventDefault();
+        // The field keeps the focus: type, Enter, type, Enter … for a whole checklist.
         if (title().trim() && createTask({ title: title(), parent_id: props.parentId })) setTitle("");
       }}
     >
-      <input class="field" placeholder="Unteraufgabe hinzufügen …" aria-label="Neue Unteraufgabe" value={title()} onInput={(e) => setTitle(e.currentTarget.value)} />
-      <button class="btn btn-small" type="submit" disabled={!title().trim()} aria-label="Unteraufgabe anlegen">
-        <Icon name="plus" size={14} />
-      </button>
+      <Icon name="plus" size={16} />
+      <input
+        class="add-input"
+        placeholder="Unteraufgabe hinzufügen … (Enter)"
+        aria-label="Neue Unteraufgabe"
+        value={title()}
+        onInput={(e) => setTitle(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape" && title()) {
+            e.stopPropagation();
+            setTitle("");
+          }
+        }}
+      />
+      <Show when={title().trim()}>
+        <button class="btn btn-primary btn-small" type="submit" aria-label="Unteraufgabe anlegen">
+          Anlegen
+        </button>
+      </Show>
     </form>
   );
 }
@@ -472,24 +606,27 @@ function LinksEditor(props: { task: Task }) {
       <ul class="link-list">
         <For each={props.task.links}>
           {(link, i) => (
-            <li>
+            <li class="link-item">
               <Icon name="link" size={14} />
-              <Show when={safeHref(link.url)} fallback={<span class="mono" title="Kein http(s)- oder mailto-Link">{link.title || link.url}</span>}>
+              <Show when={safeHref(link.url)} fallback={<span class="mono link-text" title="Kein http(s)- oder mailto-Link">{link.title || link.url}</span>}>
                 {(href) => (
-                  <a href={href()} target="_blank" rel="noopener noreferrer">
+                  <a class="link-text" href={href()} target="_blank" rel="noopener noreferrer" title={link.url}>
                     {link.title || link.url}
                   </a>
                 )}
               </Show>
-              <button class="btn btn-ghost btn-small" aria-label="Link entfernen" onClick={() => save(props.task.links.filter((_, j) => j !== i()))}>
-                <Icon name="x" size={12} />
+              <Show when={link.title}>
+                <span class="link-host muted">{hostOf(link.url)}</span>
+              </Show>
+              <button class="btn btn-ghost btn-icon btn-xs" aria-label="Link entfernen" onClick={() => save(props.task.links.filter((_, j) => j !== i()))}>
+                <Icon name="x" size={14} />
               </button>
             </li>
           )}
         </For>
       </ul>
       <form
-        class="inline-form"
+        class="add-row"
         onSubmit={(e) => {
           e.preventDefault();
           const u = url().trim();
@@ -500,14 +637,23 @@ function LinksEditor(props: { task: Task }) {
           }
         }}
       >
-        <input class="field" type="url" placeholder="https://…" aria-label="Link-URL" value={url()} onInput={(e) => setUrl(e.currentTarget.value)} />
-        <input class="field field-short" placeholder="Titel" aria-label="Link-Titel" value={title()} onInput={(e) => setTitle(e.currentTarget.value)} />
+        <Icon name="plus" size={16} />
+        <input class="add-input" type="url" placeholder="Link hinzufügen: https://…" aria-label="Link-URL" value={url()} onInput={(e) => setUrl(e.currentTarget.value)} />
+        <input class="add-input add-input-short" placeholder="Titel (optional)" aria-label="Link-Titel" value={title()} onInput={(e) => setTitle(e.currentTarget.value)} />
         <button class="btn btn-small" type="submit" disabled={!url().trim()} aria-label="Link hinzufügen">
-          <Icon name="plus" size={14} />
+          Hinzufügen
         </button>
       </form>
     </>
   );
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
 }
 
 function VaultLinksEditor(props: { task: Task }) {
@@ -519,28 +665,30 @@ function VaultLinksEditor(props: { task: Task }) {
       <ul class="link-list">
         <For each={props.task.vault_links}>
           {(link, i) => (
-            <li>
-              <a class="mono" href={href(link)}>
+            <li class="link-item">
+              <Icon name="document" size={14} />
+              <a class="mono link-text" href={href(link)}>
                 {link}
               </a>
-              <button class="btn btn-ghost btn-small" aria-label="Vault-Link entfernen" onClick={() => save(props.task.vault_links.filter((_, j) => j !== i()))}>
-                <Icon name="x" size={12} />
+              <button class="btn btn-ghost btn-icon btn-xs" aria-label="Vault-Link entfernen" onClick={() => save(props.task.vault_links.filter((_, j) => j !== i()))}>
+                <Icon name="x" size={14} />
               </button>
             </li>
           )}
         </For>
       </ul>
       <form
-        class="inline-form"
+        class="add-row"
         onSubmit={(e) => {
           e.preventDefault();
           const v = value().trim();
           if (v && save([...props.task.vault_links, v])) setValue("");
         }}
       >
-        <input class="field" placeholder="Pfad im Vault oder obsidian://…" aria-label="Vault-Link" value={value()} onInput={(e) => setValue(e.currentTarget.value)} />
+        <Icon name="plus" size={16} />
+        <input class="add-input" placeholder="Pfad im Vault oder obsidian://…" aria-label="Vault-Link" value={value()} onInput={(e) => setValue(e.currentTarget.value)} />
         <button class="btn btn-small" type="submit" disabled={!value().trim()} aria-label="Vault-Link hinzufügen">
-          <Icon name="plus" size={14} />
+          Hinzufügen
         </button>
       </form>
     </>
@@ -565,6 +713,8 @@ function describeValue(field: string, value: JsonValue): string {
   if (Array.isArray(value)) return `${value.length} Einträge`;
   return JSON.stringify(value);
 }
+
+const [historyOpen, setHistoryOpen] = createSignal(false);
 
 function History(props: { taskId: string; version: string }) {
   // Refetch shortly after changes settle (pushed and confirmed).
@@ -593,8 +743,17 @@ function History(props: { taskId: string; version: string }) {
   });
   const sorted = () => [...(entries() ?? [])].sort((a, b) => b.seq - a.seq);
   return (
-    <section class="detail-section history">
-      <h3>Änderungsprotokoll</h3>
+    <details class="detail-section history" open={historyOpen()} onToggle={(e) => setHistoryOpen(e.currentTarget.open)}>
+      <summary>
+        <h3>
+          <Icon name="history" size={16} />
+          Änderungsprotokoll
+          <Show when={(entries()?.length ?? 0) > 0}>
+            <span class="chip chip-count">{entries()!.length}</span>
+          </Show>
+          <Icon name="down" size={14} />
+        </h3>
+      </summary>
       <Show when={entries() !== null} fallback={<p class="muted">Protokoll nicht verfügbar.</p>}>
         <ul class="history-list">
           <For each={sorted()} fallback={<li class="muted">{entries.loading ? "Lädt …" : "Noch keine Einträge."}</li>}>
@@ -612,6 +771,6 @@ function History(props: { taskId: string; version: string }) {
           </For>
         </ul>
       </Show>
-    </section>
+    </details>
   );
 }

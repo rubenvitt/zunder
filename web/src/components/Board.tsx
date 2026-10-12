@@ -8,6 +8,7 @@ import { placeTask, warnIfOpenChildren } from "../state/actions";
 import { data, now, taskIndex } from "../state/store";
 import { registerList, selectedId, setActiveBoard, setDetailId, setSelectedId } from "../state/ui";
 import { Icon } from "./Icon";
+import { RefButton, SubtaskToggle, SubtaskTree } from "./TaskBits";
 import { TaskMeta } from "./TaskRow";
 
 export interface BoardProps {
@@ -168,6 +169,7 @@ function Card(props: {
   onDragEnd: () => void;
 }) {
   let ref: HTMLLIElement | undefined;
+  const [subtasksOpen, setSubtasksOpen] = createSignal(false);
   const project = () => {
     const loc = taskIndex().location(props.task);
     return loc.kind === "project" ? data.projects[loc.id] : undefined;
@@ -190,20 +192,34 @@ function Card(props: {
       }}
       tabIndex={-1}
     >
-      <Show when={props.devDetails && project()}>
-        <span class="card-project">{project()!.name}</span>
-      </Show>
+      <span class="card-top">
+        <Show when={props.devDetails && project()} fallback={<span class="spacer" />}>
+          <span class="card-project">{project()!.name}</span>
+        </Show>
+        <RefButton task={props.task} idFallback={props.devDetails} />
+      </span>
       <span class="task-title">{props.task.title}</span>
       <TaskMeta task={props.task} />
+      <Show when={taskIndex().progress(props.task.id).total > 0}>
+        <span class="card-subtasks-bar">
+          <SubtaskToggle task={props.task} open={subtasksOpen()} onToggle={() => setSubtasksOpen((o) => !o)} />
+        </span>
+      </Show>
+      <Show when={subtasksOpen()}>
+        <div class="card-subtasks" onClick={(e) => e.stopPropagation()}>
+          <SubtaskTree parentId={props.task.id} compact />
+        </div>
+      </Show>
       <Show when={props.devDetails && (props.task.branch || props.task.pr_url || isClaimActive(props.task, now()))}>
         <span class="card-dev">
           <Show when={props.task.branch}>
-            <span class="mono" title="Branch">
+            <span class="mono card-branch" title="Branch">
               <Icon name="branch" size={12} /> {props.task.branch}
             </span>
           </Show>
           <Show when={props.task.pr_url}>
-            <a href={props.task.pr_url!} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+            <a class="card-pr" href={props.task.pr_url!} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+              <Icon name="pullRequest" size={12} />
               PR
             </a>
           </Show>
