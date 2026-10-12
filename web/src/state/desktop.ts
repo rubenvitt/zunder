@@ -46,7 +46,8 @@ export async function initDesktop(backend?: TauriBackend): Promise<AppConfig> {
   app = await mod.TauriApp.connect(backend);
   app.on("sync", (event) => {
     setLastEvent(event);
-    if (event.ok) {
+    // A failed round also reports what it did before the error.
+    if (event.report) {
       setAppPending(event.report.pending);
       // Rolled back by the app; the view follows via zunder://changed.
       reportRejected(event.report.rejected);

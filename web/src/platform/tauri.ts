@@ -62,6 +62,8 @@ export interface SyncReport {
   cursor: number;
   pending: number;
   changed: boolean;
+  /** The server's log no longer matched (restored backup); confirmed data was reloaded. */
+  resynced?: boolean;
 }
 
 export interface AppErrorBody {
@@ -69,7 +71,8 @@ export interface AppErrorBody {
   message: string;
 }
 
-export type SyncEvent = { ok: true; report: SyncReport } | { ok: false; error: AppErrorBody };
+/** A failed round carries what it committed before the error in `report`. */
+export type SyncEvent = { ok: true; report: SyncReport } | { ok: false; error: AppErrorBody; report?: SyncReport };
 
 export interface ChangedEvent {
   cursor: number;

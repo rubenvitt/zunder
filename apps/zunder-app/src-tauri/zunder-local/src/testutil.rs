@@ -53,6 +53,8 @@ struct ServerState {
     offline: bool,
     /// The next push is processed but its response is lost.
     lose_push_response: bool,
+    /// How many more pulls succeed before every pull fails (`None` = all).
+    pull_budget: Option<usize>,
     pushes: usize,
     snapshots: usize,
     pulls: usize,
@@ -82,6 +84,20 @@ impl FakeServer {
 
     pub fn lose_next_push_response(&self) {
         self.inner.lock().unwrap().lose_push_response = true;
+    }
+
+    /// Lets the next `ok` pulls succeed and fails every pull after them
+    /// with a network error; `None` lifts the limit.
+    pub fn limit_pulls(&self, ok: Option<usize>) {
+        self.inner.lock().unwrap().pull_budget = ok;
+    }
+
+    /// Restores a "backup" holding the first `len` operations: later ones
+    /// are gone and their seq numbers are handed out again.
+    pub fn restore(&self, len: usize) {
+        let mut s = self.inner.lock().unwrap();
+        s.log.truncate(len);
+        s.state = State::from_ops(&s.log);
     }
 
     pub fn state(&self) -> State {
@@ -156,6 +172,11 @@ impl SyncApi for FakeServer {
     async fn pull(&self, since: i64, limit: u32) -> Result<PullPage> {
         let mut s = self.inner.lock().unwrap();
         Self::check_online(&mut s)?;
+        match s.pull_budget {
+            Some(0) => return Err(Error::Network("Pull abgebrochen (Test)".into())),
+            Some(n) => s.pull_budget = Some(n - 1),
+            None => {}
+        }
         s.pulls += 1;
         let start = usize::try_from(since).unwrap().min(s.log.len());
         let take = (limit as usize).min(self.page_size);
