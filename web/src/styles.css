@@ -2213,6 +2213,12 @@ html.resizing * {
   overflow-wrap: anywhere;
   user-select: all;
 }
+.feed-url {
+  margin: 0.5rem 0 0.75rem;
+}
+.feed-url .token-value {
+  margin: 0.25rem 0 0.4rem;
+}
 
 .login {
   height: 100%;

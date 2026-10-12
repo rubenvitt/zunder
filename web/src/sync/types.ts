@@ -283,6 +283,20 @@ export interface TimingCheck {
   error: string | null;
 }
 
+/** Calendar feed, see `GET /api/settings/calendar` (never contains the feed URL). */
+export interface CalendarSettings {
+  enabled: boolean;
+  created_at: string | null;
+}
+
+/** `POST /api/settings/calendar`: a new feed token; its URLs are shown only in this answer. */
+export interface CreatedCalendarFeed extends CalendarSettings {
+  /** Flames only. */
+  url: string;
+  /** Flames and every other task with a due time. */
+  url_all: string;
+}
+
 /** A device logged in with the Zunder app, see `GET /api/devices`. */
 export interface Device {
   id: string;

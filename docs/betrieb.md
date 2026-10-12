@@ -132,6 +132,23 @@ Leere Werte gelten als nicht gesetzt. Timing lässt sich statt über `.env` auch
 - Verwendung: Header `Authorization: Bearer zt_…`, sowohl für `/api/*` als auch für `/mcp`.
 - Darunter stehen unter **Verbundene Apps** die per OAuth verbundenen Clients (z. B. claude.ai) mit Ziel-Host und letzter Nutzung. **Trennen** widerruft die Verbindung sofort samt allen Tokens.
 
+## Kalender-Feed
+
+Geplante Flammen (Aufgaben mit Phönix-Rolle „Flamme“ und einer Fälligkeit mit Uhrzeit) stehen als Termine von zwei Stunden in einem abonnierbaren Kalender. Details im [Vertrag, 4.4](superpowers/plans/2026-10-11-zunder-implementation.md#44-kalender-feed).
+
+1. In der Web-UI unter **Einstellungen → Kalender** auf **Feed einrichten** klicken.
+2. Eine der beiden Adressen kopieren (sie wird **nur einmal** angezeigt):
+   - **Nur Flammen**: `https://zunder.rubeen.dev/calendar/zc_….ics`
+   - **Flammen und alle Aufgaben mit Uhrzeit**: dieselbe Adresse mit `?scope=all`; andere Aufgaben erscheinen mit 30 Minuten und als frei markiert.
+3. Im Kalender abonnieren, z. B. macOS-Kalender: **Ablage → Neues Kalenderabonnement**, Ort **iCloud** wählen, damit das Abo auf iPhone und in Fantastical ankommt; Aktualisierung alle 15 Minuten (oder häufiger, wenn die App es erlaubt).
+
+Gut zu wissen:
+
+- Die Adresse ist der Schlüssel: Wer sie kennt, sieht, was im Feed steht (Titel, Kennung, Ort und Zeit der Termine), aber nichts darüber hinaus, und ändern kann er nichts. Der Server speichert nur den SHA-256-Hash. Abo-Dienste (z. B. iCloud) und Proxy-Logs sehen die Adresse; sie gehört deshalb nicht in Notizen oder Chats.
+- **Neue Adresse erzeugen** macht die alte sofort ungültig (Abos neu einrichten), **Abschalten** beendet den Feed.
+- Ein Termin hängt fest an seiner Aufgabe: Verschieben ändert ihn, Erledigen setzt ein ✓ davor, Verwerfen oder Löschen entfernt ihn. Fälligkeiten nur mit Datum (ohne Uhrzeit) erscheinen nicht.
+- Für Skripte gibt es denselben Feed unter `/api/calendar.ics` mit einem API-Token.
+
 ## MCP verbinden
 
 Endpoint: `https://zunder.rubeen.dev/mcp` (Streamable HTTP, JSON-RPC 2.0, Protokollversion `2025-06-18`). Werkzeuge: siehe Vertrag, Abschnitt 4, und [`umstieg.md`](umstieg.md) für die Zuordnung zu den ClickUp-Werkzeugen.

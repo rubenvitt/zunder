@@ -186,6 +186,44 @@ test("Timing-Projekt aus der Liste wählen", async ({ page }) => {
   }
 });
 
+test("Kalender-Feed einrichten, neu erzeugen und abschalten", async ({ page }) => {
+  try {
+    await openApp(page, "#/einstellungen");
+    const status = page.getByTestId("calendar-status");
+    await expect(status).toContainText("Kein Feed eingerichtet");
+
+    await page.getByRole("button", { name: "Feed einrichten" }).click();
+    await expect(status).toContainText("Feed eingerichtet.");
+    const url = page.getByTestId("calendar-url");
+    await expect(url).toContainText(/\/calendar\/zc_[A-Za-z0-9_-]{43}\.ics$/);
+    const first = (await url.textContent())!.trim();
+    await expect(page.getByTestId("calendar-url-all")).toHaveText(`${first}?scope=all`);
+
+    // The real server answers the feed (the token in the path is the credential).
+    if (!isMock) {
+      const feed = await page.request.get(new URL(first).pathname);
+      expect(feed.status()).toBe(200);
+      expect(feed.headers()["content-type"]).toBe("text/calendar; charset=utf-8");
+      expect(await feed.text()).toContain("BEGIN:VCALENDAR");
+    }
+
+    // A new address replaces the old one; the URLs are shown only once.
+    page.once("dialog", (d) => void d.accept());
+    await page.getByRole("button", { name: "Neue Adresse erzeugen" }).click();
+    await expect(url).not.toHaveText(first);
+    if (!isMock) expect((await page.request.get(new URL(first).pathname)).status()).toBe(404);
+    await page.getByRole("button", { name: "Ausblenden" }).click();
+    await expect(url).toHaveCount(0);
+
+    page.once("dialog", (d) => void d.accept());
+    await page.getByRole("button", { name: "Abschalten" }).click();
+    await expect(status).toContainText("Kein Feed eingerichtet");
+    await expect(page.getByRole("button", { name: "Abschalten" })).toHaveCount(0);
+  } finally {
+    await page.request.delete("/api/settings/calendar", { headers: WEB_HEADERS });
+  }
+});
+
 test("Einstellungen über die Befehlspalette", async ({ page }) => {
   await openApp(page);
   await page.keyboard.press("Control+k");

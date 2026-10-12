@@ -17,6 +17,8 @@ import { MemoryLocalStore } from "../sync/local-store";
 import { asFlameResult, HttpError, NetworkError, type ApiClient, type SubscriptionHandlers, type SyncTransport } from "../sync/transport";
 import type {
   ApiToken,
+  CalendarSettings,
+  CreatedCalendarFeed,
   CreatedToken,
   Device,
   FlameResult,
@@ -355,6 +357,18 @@ export class TauriTransport implements SyncTransport, ApiClient {
   }
 
   timingProjects(): Promise<TimingProject[]> {
+    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+  }
+
+  calendarSettings(): Promise<CalendarSettings> {
+    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+  }
+
+  createCalendarFeed(): Promise<CreatedCalendarFeed> {
+    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+  }
+
+  disableCalendarFeed(): Promise<CalendarSettings> {
     return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
   }
 

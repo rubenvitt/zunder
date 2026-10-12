@@ -19,6 +19,7 @@ use zunder_core::Op;
 use super::extract::{parse_id, parse_uuid, ApiJson, ApiQuery};
 use crate::app::{App, CreatedToken, HistoryEntry, PullPage, PushResult, Snapshot, TokenInfo};
 use crate::auth::Principal;
+use crate::calendar::{CalendarSettings, CreatedCalendarFeed};
 use crate::error::{AppError, AppResult};
 use crate::flame::{self, FlameOutcome};
 use crate::oauth;
@@ -58,6 +59,13 @@ pub fn routes() -> Router<App> {
         )
         .route("/settings/timing/check", post(check_timing))
         .route("/settings/timing/projects", get(timing_projects))
+        .route(
+            "/settings/calendar",
+            get(calendar_settings)
+                .post(create_calendar_feed)
+                .delete(disable_calendar_feed),
+        )
+        .route("/calendar.ics", get(super::calendar::api_feed))
         .route("/devices", get(list_devices))
         .route("/devices/{id}", delete(revoke_device))
         .layer(DefaultBodyLimit::max(API_BODY_LIMIT))
@@ -398,6 +406,30 @@ async fn timing_projects(
 ) -> AppResult<Json<Vec<TimingProject>>> {
     require_browser_for_settings(&principal)?;
     Ok(Json(app.timing_projects().await?))
+}
+
+async fn calendar_settings(
+    State(app): State<App>,
+    principal: Principal,
+) -> AppResult<Json<CalendarSettings>> {
+    require_browser_for_settings(&principal)?;
+    Ok(Json(app.calendar_settings().await?))
+}
+
+async fn create_calendar_feed(
+    State(app): State<App>,
+    principal: Principal,
+) -> AppResult<(StatusCode, Json<CreatedCalendarFeed>)> {
+    require_browser_for_settings(&principal)?;
+    Ok((StatusCode::CREATED, Json(app.create_calendar_feed().await?)))
+}
+
+async fn disable_calendar_feed(
+    State(app): State<App>,
+    principal: Principal,
+) -> AppResult<Json<CalendarSettings>> {
+    require_browser_for_settings(&principal)?;
+    Ok(Json(app.disable_calendar_feed().await?))
 }
 
 async fn list_tokens(
