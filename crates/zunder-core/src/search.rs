@@ -31,6 +31,7 @@ const WEIGHT_DESCRIPTION: u32 = 3;
 const WEIGHT_PLAN: u32 = 2;
 const BONUS_WORD_START: u32 = 4;
 const BONUS_EXACT_TITLE: u32 = 50;
+/// Exact ClickUp ID or task reference (`ZUN-42`, any case).
 const SCORE_CLICKUP_ID: u32 = 1000;
 
 /// Searches all live entities. Results are ordered by score (descending),
@@ -78,8 +79,13 @@ fn score_entity(
     };
     let title = entity.str_value(title_field)?.to_owned();
 
+    let is_ref = || {
+        entity
+            .str_value(fields::task::REF)
+            .is_some_and(|r| r.eq_ignore_ascii_case(raw_query))
+    };
     if entity.kind() == EntityKind::Task
-        && entity.str_value(fields::task::CLICKUP_ID) == Some(raw_query)
+        && (entity.str_value(fields::task::CLICKUP_ID) == Some(raw_query) || is_ref())
     {
         return Some(SearchHit {
             entity: entity.kind(),

@@ -51,7 +51,7 @@ export const TASK_STATUSES: readonly TaskStatus[] = ["open", "in_progress", "rev
 export const PHOENIX_ROLES: readonly PhoenixRole[] = ["feuer_schritt", "flamme"];
 
 export const AREA_FIELDS = ["name", "state", "vault_path", "deleted"] as const;
-export const PROJECT_FIELDS = ["name", "area_id", "status", "kind", "repo", "description", "view", "deleted"] as const;
+export const PROJECT_FIELDS = ["name", "area_id", "status", "kind", "repo", "description", "view", "key", "deleted"] as const;
 export const TASK_FIELDS = [
   "title",
   "description",
@@ -74,6 +74,7 @@ export const TASK_FIELDS = [
   "flame_ended_at",
   "clickup_id",
   "rank",
+  "ref",
   "deleted",
 ] as const;
 
@@ -112,6 +113,8 @@ export interface Project extends EntityMeta {
   repo: string | null;
   description: string | null;
   view: ProjectView;
+  /** Prefix of the task references (`ZUN` → `ZUN-42`). */
+  key: string | null;
 }
 
 export interface Task extends EntityMeta {
@@ -136,6 +139,8 @@ export interface Task extends EntityMeta {
   flame_ended_at: string | null;
   clickup_id: string | null;
   rank: string | null;
+  /** Reference such as `ZUN-42`, assigned by the server (never by a client). */
+  ref: string | null;
   /** HLC of the winning status op, or created_hlc when the status was never set. */
   status_hlc: Hlc;
 }

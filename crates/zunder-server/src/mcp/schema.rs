@@ -172,7 +172,7 @@ fn task_ref() -> Vec<(&'static str, Value)> {
     vec![
         (
             "task_id",
-            string("ID der Aufgabe (UUID). Alternativ clickup_id angeben."),
+            string("ID der Aufgabe (UUID) oder ihre Kennung wie „ZUN-42“. Alternativ clickup_id angeben."),
         ),
         (
             "clickup_id",
@@ -271,7 +271,7 @@ pub fn definitions() -> Vec<ToolDef> {
                     ),
                     (
                         "parent_id",
-                        string("Nur direkte Unteraufgaben dieser Aufgabe (UUID oder ClickUp-ID einer importierten Aufgabe)."),
+                        string("Nur direkte Unteraufgaben dieser Aufgabe (UUID, Kennung wie „ZUN-42“ oder ClickUp-ID einer importierten Aufgabe)."),
                     ),
                     (
                         "claimed_by",
@@ -323,7 +323,7 @@ pub fn definitions() -> Vec<ToolDef> {
                         ("location", location()),
                         (
                             "parent_id",
-                            string("Elternaufgabe für eine Unteraufgabe: UUID oder ClickUp-ID einer importierten Aufgabe."),
+                            string("Elternaufgabe für eine Unteraufgabe: UUID, Kennung wie „ZUN-42“ oder ClickUp-ID einer importierten Aufgabe."),
                         ),
                     ],
                     task_fields(false),
@@ -365,7 +365,7 @@ pub fn definitions() -> Vec<ToolDef> {
                         ("location", location()),
                         (
                             "parent_id",
-                            nullable_string("Neue Elternaufgabe (UUID oder ClickUp-ID einer importierten Aufgabe) oder null, um die Aufgabe zu lösen."),
+                            nullable_string("Neue Elternaufgabe (UUID, Kennung wie „ZUN-42“ oder ClickUp-ID einer importierten Aufgabe) oder null, um die Aufgabe zu lösen."),
                         ),
                     ],
                 ),
@@ -541,6 +541,7 @@ pub fn definitions() -> Vec<ToolDef> {
                     ("status", enumeration(ProjectStatus::codes(), "Status (Standard active).")),
                     ("kind", enumeration(ProjectKind::codes(), "Art (Standard standard).")),
                     ("repo", string("GitHub-Repo owner/name (nur bei kind dev).")),
+                    ("key", string("Schlüssel für die Kennungen der Aufgaben, z. B. ZUN → ZUN-1, ZUN-2 … (Großbuchstaben und Ziffern, höchstens 10 Zeichen, eindeutig).")),
                     ("description", string("Beschreibung (Markdown).")),
                     (
                         "view",
@@ -566,6 +567,7 @@ pub fn definitions() -> Vec<ToolDef> {
                     ("status", enumeration(ProjectStatus::codes(), "active, paused oder completed.")),
                     ("kind", enumeration(ProjectKind::codes(), "standard oder dev.")),
                     ("repo", nullable_string("GitHub-Repo owner/name; null entfernt es.")),
+                    ("key", nullable_string("Schlüssel für die Kennungen (z. B. ZUN); null entfernt ihn. Vergebene Kennungen bleiben, neue Aufgaben zählen unter dem neuen Schlüssel.")),
                     ("description", nullable_string("Beschreibung (Markdown); null entfernt sie.")),
                     (
                         "view",

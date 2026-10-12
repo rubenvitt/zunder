@@ -270,12 +270,16 @@ function Shell() {
   );
 }
 
-/** "#/aufgabe/<id>" or "#/clickup/<clickup_id>": open the task over its home view. */
+/** "#/aufgabe/<id or ZUN-42>" or "#/clickup/<clickup_id>": open the task over its home view. */
 function TaskLink() {
   onMount(async () => {
     const r = route();
     if (r.view !== "aufgabe" && r.view !== "clickup") return;
-    const find = () => (r.view === "aufgabe" ? data.tasks[r.id] : Object.values(data.tasks).find((t) => t.clickup_id === r.id));
+    const reference = r.id.toUpperCase();
+    const find = () =>
+      r.view === "aufgabe"
+        ? (data.tasks[r.id] ?? Object.values(data.tasks).find((t) => t.ref === reference))
+        : Object.values(data.tasks).find((t) => t.clickup_id === r.id);
     let task = find();
     if (!task) {
       // A running app may not have pulled a task created a moment ago.

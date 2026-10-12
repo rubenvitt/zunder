@@ -5,6 +5,7 @@
 //! - [`hlc`]: hybrid logical clock and its wire format
 //! - [`op`]: field operations (unit of change and sync)
 //! - [`model`]: field names, enums, typed views and value validation
+//! - [`numbering`]: project keys and task references (`ZUN-42`)
 //! - [`state`]: materialized LWW state with derived data and snapshots
 //! - [`validate`]: push validation with stable rejection codes
 //! - [`builder`]: ergonomic construction of operation batches
@@ -14,6 +15,7 @@ pub mod builder;
 pub mod hlc;
 pub mod ids;
 pub mod model;
+pub mod numbering;
 pub mod op;
 pub mod search;
 pub mod state;
@@ -30,7 +32,10 @@ pub use model::{
 };
 pub use op::{EntityKind, Op};
 pub use state::{Progress, SnapshotEntity, State};
-pub use validate::{validate_push, PushOutcome, RejectCode, Rejection, Warning, WarningCode};
+pub use validate::{
+    validate_push, validate_push_as, Author, PushOutcome, RejectCode, Rejection, Warning,
+    WarningCode,
+};
 
 /// Compiles and runs the code examples of the crate README.
 #[cfg(doctest)]

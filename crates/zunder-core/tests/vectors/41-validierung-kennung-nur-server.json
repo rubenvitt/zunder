@@ -1,0 +1,122 @@
+{
+  "name": "validierung-kennung-nur-server",
+  "description": "Die Kennung (ref) einer Aufgabe vergibt nur der Server; Clients dürfen sie weder setzen noch zurücksetzen. Ungültige Schlüssel werden abgelehnt.",
+  "kind": "validate",
+  "now_ms": 1760000101000,
+  "state": [
+    {
+      "op_id": "0192a000-0000-7000-8000-0e0000000100",
+      "entity": "area",
+      "entity_id": "0192a000-0000-7000-8000-0a0000000001",
+      "field": "name",
+      "value": "Arbeit",
+      "hlc": "1760000000001:00000:seed"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-0e0000000101",
+      "entity": "project",
+      "entity_id": "0192a000-0000-7000-8000-0b0000000001",
+      "field": "name",
+      "value": "Zunder",
+      "hlc": "1760000000002:00000:seed"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-0e0000000102",
+      "entity": "project",
+      "entity_id": "0192a000-0000-7000-8000-0b0000000001",
+      "field": "area_id",
+      "value": "0192a000-0000-7000-8000-0a0000000001",
+      "hlc": "1760000000003:00000:seed"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-0e0000000103",
+      "entity": "project",
+      "entity_id": "0192a000-0000-7000-8000-0b0000000001",
+      "field": "key",
+      "value": "ZUN",
+      "hlc": "1760000000004:00000:seed"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-0e0000000104",
+      "entity": "project",
+      "entity_id": "0192a000-0000-7000-8000-0b0000000002",
+      "field": "name",
+      "value": "App",
+      "hlc": "1760000000005:00000:seed"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-0e0000000105",
+      "entity": "project",
+      "entity_id": "0192a000-0000-7000-8000-0b0000000002",
+      "field": "area_id",
+      "value": "0192a000-0000-7000-8000-0a0000000001",
+      "hlc": "1760000000006:00000:seed"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-0e0000000106",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-0c0000000001",
+      "field": "title",
+      "value": "Login reparieren",
+      "hlc": "1760000000007:00000:seed"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-0e0000000107",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-0c0000000001",
+      "field": "location",
+      "value": {
+        "kind": "project",
+        "id": "0192a000-0000-7000-8000-0b0000000001"
+      },
+      "hlc": "1760000000008:00000:seed"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-0e0000000108",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-0c0000000001",
+      "field": "ref",
+      "value": "ZUN-1",
+      "hlc": "1760000000009:00000:seed"
+    }
+  ],
+  "push": [
+    {
+      "op_id": "0192a000-0000-7000-8000-0e0000000210",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-0c0000000002",
+      "field": "title",
+      "value": "Neue Aufgabe",
+      "hlc": "1760000100001:00000:web-test"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-0e0000000211",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-0c0000000002",
+      "field": "ref",
+      "value": "ZUN-2",
+      "hlc": "1760000100002:00000:web-test"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-0e0000000212",
+      "entity": "task",
+      "entity_id": "0192a000-0000-7000-8000-0c0000000001",
+      "field": "ref",
+      "value": null,
+      "hlc": "1760000100003:00000:web-test"
+    },
+    {
+      "op_id": "0192a000-0000-7000-8000-0e0000000213",
+      "entity": "project",
+      "entity_id": "0192a000-0000-7000-8000-0b0000000002",
+      "field": "key",
+      "value": "app",
+      "hlc": "1760000100004:00000:web-test"
+    }
+  ],
+  "expected_rejected": {
+    "0192a000-0000-7000-8000-0c0000000002": "invalid_value",
+    "0192a000-0000-7000-8000-0c0000000001": "invalid_value",
+    "0192a000-0000-7000-8000-0b0000000002": "invalid_value"
+  }
+}

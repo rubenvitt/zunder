@@ -73,11 +73,11 @@ interface Rejection {
 
 const FIELDS: Record<string, string[]> = {
   area: ["name", "state", "vault_path", "deleted"],
-  project: ["name", "area_id", "status", "kind", "repo", "description", "view", "deleted"],
+  project: ["name", "area_id", "status", "kind", "repo", "description", "view", "key", "deleted"],
   task: [
     "title", "description", "type", "status", "location", "parent_id", "due", "remind_at", "vault_links", "links",
     "phoenix", "claimed_by", "claim_expires_at", "plan", "branch", "pr_url", "timing_ref", "flame_started_at",
-    "flame_ended_at", "clickup_id", "rank", "deleted",
+    "flame_ended_at", "clickup_id", "rank", "ref", "deleted",
   ],
 };
 const ENUMS: Record<string, string[]> = {
@@ -176,6 +176,9 @@ function checkOp(op: Op): [string, string] | null {
   if (Number(op.hlc.slice(0, 13)) > Date.now() + 24 * 3600 * 1000) {
     return ["future_hlc", "Der Zeitstempel liegt mehr als 24 Stunden in der Zukunft. Bitte die Uhr des Geräts prüfen."];
   }
+  if (op.entity === "task" && op.field === "ref") {
+    return ["invalid_value", "Die Kennung („ref“) vergibt der Server, sobald die Aufgabe in einem Projekt mit Schlüssel liegt."];
+  }
   if (op.value === null) {
     return REQUIRED[op.entity]!.includes(op.field) ? ["invalid_value", `Pflichtfeld „${op.field}“ kann nicht zurückgesetzt werden.`] : null;
   }
@@ -183,6 +186,9 @@ function checkOp(op: Op): [string, string] | null {
   if (allowed && !allowed.includes(String(op.value))) return ["invalid_value", `Ungültiger Wert für „${op.field}“.`];
   if ((op.field === "title" || op.field === "name") && (typeof op.value !== "string" || !op.value.trim())) {
     return ["invalid_value", `„${op.field}“ darf nicht leer sein.`];
+  }
+  if (op.entity === "project" && op.field === "key" && !/^[A-Z][A-Z0-9]{0,9}$/.test(String(op.value))) {
+    return ["invalid_value", "Ungültiger Schlüssel."];
   }
   if (op.field === "deleted" && typeof op.value !== "boolean") return ["invalid_value", "„deleted“ muss true oder false sein."];
   if ((op.field === "parent_id" || op.field === "area_id") && !UUID_RE.test(String(op.value))) {
@@ -252,6 +258,13 @@ function checkEntity(entity: EntityKind, id: string, pending: Map<string, Op[]>)
   } else if (entity === "project") {
     if (!aliveAfter("area", String(fields.area_id), pending)) return ["invalid_reference", "Der Bereich existiert nicht."];
     if (fields.repo && fields.kind !== "dev") return ["dev_only", "Ein Repo ist nur bei Dev-Projekten erlaubt."];
+    if (typeof fields.key === "string") {
+      const holder = [...new Set([...state.keys(), ...pending.keys()])].find((k) => {
+        const [kind, other] = k.split("/") as [EntityKind, string];
+        return kind === "project" && other !== id && aliveAfter(kind, other, pending) && fieldsAfter(kind, other, pending).key === fields.key;
+      });
+      if (holder) return ["invalid_value", `Der Schlüssel „${fields.key}“ gehört schon zum Projekt „${fieldsAfter("project", holder.split("/")[1]!, pending).name}“.`];
+    }
   }
   return null;
 }
@@ -318,8 +331,36 @@ function push(ops: Op[], source: string) {
       }
     }
   }
-  if (groups.size > 0) notify();
+  if (groups.size > 0) {
+    assignRefs();
+    notify();
+  }
   return { accepted, rejected, warnings, cursor: log.length };
+}
+
+/** Task references like the server (zunder_core::numbering): per key in creation order, never reused. */
+function assignRefs() {
+  const keyOf = (projectId: string | null) => {
+    const p = projectId ? state.get(key("project", projectId)) : undefined;
+    const k = p && p.fields.deleted?.value !== true ? p.fields.key?.value : undefined;
+    return typeof k === "string" ? k : null;
+  };
+  const tasks = [...state.values()].filter((e) => e.entity === "task");
+  const pending = tasks
+    .filter((e) => e.fields.deleted?.value !== true && typeof e.fields.ref?.value !== "string")
+    .map((e) => ({ e, k: keyOf(effectiveProject(e.id, new Map())) }))
+    .filter((x): x is { e: Entity; k: string } => x.k !== null)
+    .sort((a, b) => (a.e.created_hlc < b.e.created_hlc ? -1 : a.e.created_hlc > b.e.created_hlc ? 1 : a.e.id < b.e.id ? -1 : 1));
+  const last = new Map<string, number>();
+  for (const e of tasks) {
+    const m = /^([A-Z][A-Z0-9]*)-([1-9][0-9]*)$/.exec(String(e.fields.ref?.value ?? ""));
+    if (m) last.set(m[1]!, Math.max(last.get(m[1]!) ?? 0, Number(m[2])));
+  }
+  for (const { e, k } of pending) {
+    const n = (last.get(k) ?? 0) + 1;
+    last.set(k, n);
+    append({ op_id: randomUUID(), entity: "task", entity_id: e.id, field: "ref", value: `${k}-${n}`, hlc: serverHlc() }, "server");
+  }
 }
 
 function serverOps(entity: EntityKind, id: string, fields: Record<string, Json>, source = "server") {

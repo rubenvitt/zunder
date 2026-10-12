@@ -130,14 +130,14 @@ export function CommandPalette(props: { request: PaletteRequest }) {
       if (index.isDeleted(t) || exclude?.has(t.id)) continue;
       const where = locationLabel(index.location(t));
       const parent = t.parent_id ? data.tasks[t.parent_id]?.title : undefined;
-      const detail = [parent ? `↳ ${parent}` : where, isClosed(t.status) ? STATUS_LABELS[t.status] : ""].filter(Boolean).join(" · ");
+      const detail = [t.ref, parent ? `↳ ${parent}` : where, isClosed(t.status) ? STATUS_LABELS[t.status] : ""].filter(Boolean).join(" · ");
       out.push({
         key: `task:${t.id}`,
         group: "Aufgaben",
         label: t.title,
         detail,
-        hay: normalize(`${t.title} ${where} ${t.description ?? ""} ${t.plan ?? ""}`),
-        rank: 3,
+        hay: normalize(`${t.ref ?? ""} ${t.title} ${where} ${t.description ?? ""} ${t.plan ?? ""}`),
+        rank: t.ref && normalize(query().trim()) === normalize(t.ref) ? -1 : 3,
         dim: isClosed(t.status),
         run:
           props.request.mode === "task"

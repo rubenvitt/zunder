@@ -175,10 +175,17 @@ impl Args {
             .collect()
     }
 
-    /// `task_id` or `clickup_id`, `None` without either.
+    /// `task_id` (UUID or reference like `ZUN-42`) or `clickup_id`, `None`
+    /// without either.
     pub fn optional_task_ref(&self) -> AppResult<Option<TaskRef>> {
         let clickup = self.non_empty_str("clickup_id")?.map(str::to_owned);
-        TaskRef::from_args(self.id("task_id")?, clickup).map_err(invalid)
+        let task_id = match self.str("task_id")? {
+            None => None,
+            Some(s) => Some(task_address(s).ok_or_else(|| {
+                invalid("„task_id“ muss eine UUID (klein, mit Bindestrichen) oder eine Kennung wie „ZUN-42“ sein.")
+            })?),
+        };
+        TaskRef::from_args(task_id, clickup).map_err(invalid)
     }
 
     /// `task_id` or `clickup_id` (exactly one).
@@ -187,18 +194,23 @@ impl Args {
             .ok_or_else(|| invalid("task_id oder clickup_id fehlt."))
     }
 
-    /// A reference to another task (e.g. `parent_id`): a canonical UUID or
-    /// the ClickUp ID of an imported task. `None` when absent, `Some(None)`
-    /// for an explicit `null`.
+    /// A reference to another task (e.g. `parent_id`): a canonical UUID, a
+    /// reference like `ZUN-42` or the ClickUp ID of an imported task. `None`
+    /// when absent, `Some(None)` for an explicit `null`.
     pub fn task_link(&self, key: &str) -> AppResult<Option<Option<TaskRef>>> {
         if self.raw(key).is_some_and(Value::is_null) {
             return Ok(Some(None));
         }
         Ok(self.non_empty_str(key)?.map(|s| {
-            Some(match zunder_core::ids::parse_canonical(s) {
-                Some(id) => TaskRef::Id(id),
-                None => TaskRef::ClickUp(s.trim().to_owned()),
-            })
+            Some(task_address(s).unwrap_or_else(|| TaskRef::ClickUp(s.trim().to_owned())))
         }))
     }
+}
+
+/// A UUID or a task reference (`zun-42` counts as `ZUN-42`).
+fn task_address(s: &str) -> Option<TaskRef> {
+    if let Some(id) = zunder_core::ids::parse_canonical(s) {
+        return Some(TaskRef::Id(id));
+    }
+    zunder_core::numbering::normalize_ref(s).map(TaskRef::Key)
 }
