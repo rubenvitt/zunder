@@ -30,7 +30,8 @@ test("Tastenkürzel wirken nicht auf unsichtbare Aufgaben der vorigen Sicht", as
   await page.keyboard.press("i");
   await expect(row(page, `Inbox eins ${s}`)).toBeVisible();
   await page.locator(".sidebar").getByRole("link", { name: "API-Tokens" }).click();
-  await expect(page.locator(".view-head h1")).toBeVisible();
+  // The click returns before the hash route switches; the Inbox heading would pass too.
+  await expect(page.locator(".view-head h1")).toHaveText("API-Tokens");
   for (const key of ["j", "x", "k", "x"]) await page.keyboard.press(key);
 
   await expect(detail(page)).toBeHidden();
