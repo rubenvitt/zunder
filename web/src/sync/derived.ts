@@ -1,5 +1,6 @@
 // Derived data per contract 2.4 and 5: effective location via the root ancestor,
-// subtask progress, status_changed_at and the 3-day hiding of closed tasks.
+// subtask progress, status_changed_at, the 3-day hiding of closed tasks, task
+// references and the blocking relations in both directions.
 
 import { hlcWallMs } from "./hlc";
 import { defaultRank } from "./rank";
@@ -120,15 +121,17 @@ export function sameLocation(a: Location, b: Location): boolean {
 }
 
 /**
- * Index over all tasks: children lists (sorted), effective locations and deletion
- * state, computed eagerly once per state change (so a reactive wrapper tracks
- * every field it depends on).
+ * Index over all tasks: children lists (sorted), effective locations, deletion
+ * state, references and blocking relations, computed eagerly once per state change
+ * (so a reactive wrapper tracks every field it depends on).
  */
 export class TaskIndex {
   readonly byId = new Map<string, Task>();
   private readonly children = new Map<string, Task[]>();
   private readonly effective = new Map<string, Location>();
   private readonly deleted = new Map<string, boolean>();
+  private readonly refs = new Map<string, Task>();
+  private readonly waiting = new Map<string, Task[]>();
 
   constructor(tasks: Iterable<Task>) {
     for (const t of tasks) this.byId.set(t.id, t);
@@ -144,6 +147,41 @@ export class TaskIndex {
       this.effective.set(t.id, loc.kind === "area" || loc.kind === "project" ? { kind: loc.kind, id: loc.id } : { kind: loc.kind });
       this.deleted.set(t.id, isEffectivelyDeleted(t, this.lookup));
     }
+    for (const t of this.byId.values()) {
+      if (this.deleted.get(t.id)) continue;
+      if (t.ref) this.refs.set(t.ref, t);
+      for (const b of t.blocked_by) {
+        if (!this.isLive(b)) continue;
+        let list = this.waiting.get(b);
+        if (!list) this.waiting.set(b, (list = []));
+        list.push(t);
+      }
+    }
+    for (const list of this.waiting.values()) list.sort(compareTasks);
+  }
+
+  private isLive(id: string): boolean {
+    return this.byId.has(id) && !this.deleted.get(id);
+  }
+
+  /** Live task with this reference (e.g. "ZUN-42"; case sensitive, references are upper case). */
+  byRef(ref: string): Task | undefined {
+    return this.refs.get(ref);
+  }
+
+  /** Live tasks this one waits for (`blocked_by` in stored order; deleted ones no longer block). */
+  blockersOf(task: Task): Task[] {
+    return task.blocked_by.filter((id) => this.isLive(id)).map((id) => this.byId.get(id)!);
+  }
+
+  /** Blockers that are neither done nor dropped: the task cannot start yet. */
+  openBlockersOf(task: Task): Task[] {
+    return this.blockersOf(task).filter((b) => !isClosed(b.status));
+  }
+
+  /** Live tasks waiting for this one (the reverse of their `blocked_by`), in rank order. */
+  blockedBy(id: string): Task[] {
+    return this.waiting.get(id) ?? [];
   }
 
   readonly lookup: TaskLookup = (id) => this.byId.get(id);

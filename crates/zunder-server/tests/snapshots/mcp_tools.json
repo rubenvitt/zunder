@@ -184,6 +184,14 @@
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
+        "blocked_by": {
+          "description": "Aufgaben, die vorher erledigt sein müssen (IDs, Kennungen wie „ZUN-42“ oder ClickUp-IDs); ersetzt die ganze Liste. Die Gegenrichtung („blocks“) ergibt sich daraus. Eine Aufgabe kann nicht sich selbst und nicht gegenseitig mit einer anderen blockieren.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
         "branch": {
           "description": "Git-Branch der Umsetzung.",
           "type": "string"
@@ -339,6 +347,17 @@
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
+        "blocked_by": {
+          "description": "Aufgaben, die vorher erledigt sein müssen (IDs, Kennungen wie „ZUN-42“ oder ClickUp-IDs); ersetzt die ganze Liste. [] oder null entfernt alle. Die Gegenrichtung („blocks“) ergibt sich daraus. Eine Aufgabe kann nicht sich selbst und nicht gegenseitig mit einer anderen blockieren.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "branch": {
           "description": "Git-Branch der Umsetzung. null entfernt den Wert.",
           "type": [

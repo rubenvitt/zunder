@@ -136,6 +136,19 @@ fn vault_links() -> Value {
     })
 }
 
+fn blocked_by(nullable: bool) -> Value {
+    json!({
+        "type": if nullable { json!(["array", "null"]) } else { json!("array") },
+        "description": format!(
+            "Aufgaben, die vorher erledigt sein müssen (IDs, Kennungen wie „ZUN-42“ oder ClickUp-IDs); \
+             ersetzt die ganze Liste.{} Die Gegenrichtung („blocks“) ergibt sich daraus. Eine Aufgabe \
+             kann nicht sich selbst und nicht gegenseitig mit einer anderen blockieren.",
+            if nullable { " [] oder null entfernt alle." } else { "" }
+        ),
+        "items": {"type": "string", "minLength": 1},
+    })
+}
+
 fn phoenix() -> Value {
     json!({
         "type": ["object", "null"],
@@ -202,6 +215,7 @@ fn task_fields(nullable: bool) -> Vec<(&'static str, Value)> {
         ("links", links()),
         ("vault_links", vault_links()),
         ("phoenix", phoenix()),
+        ("blocked_by", blocked_by(nullable)),
         ("plan", text("Plan (Markdown), z. B. aus dem Dev-Modus.")),
         ("branch", text("Git-Branch der Umsetzung.")),
         ("pr_url", text("URL des Pull Requests (http/https).")),

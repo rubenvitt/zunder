@@ -48,6 +48,16 @@ export function TaskMeta(props: { task: Task; showLocation?: boolean; showRef?: 
       <Show when={props.task.status !== "open" && props.task.status !== "done"}>
         <span class={`chip chip-status-${props.task.status}`}>{STATUS_LABELS[props.task.status]}</span>
       </Show>
+      <Show when={!isClosed(props.task.status) && taskIndex().openBlockersOf(props.task)}>
+        {(blockers) => (
+          <Show when={blockers().length > 0}>
+            <span class="chip chip-status-blocked chip-waiting" title={`Wartet auf: ${blockers().map((b) => (b.ref ? `${b.ref} ${b.title}` : b.title)).join(", ")}`}>
+              <Icon name="lock" size={12} />
+              {blockers().length}
+            </span>
+          </Show>
+        )}
+      </Show>
       <DueChip task={props.task} />
       <Show when={props.showProgress && progress().total > 0}>
         <span class="chip chip-count" title="Unteraufgaben erledigt">

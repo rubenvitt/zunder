@@ -8,7 +8,7 @@ import { locationLabel, STATUS_LABELS } from "../labels";
 import { isTauri } from "../platform/runtime";
 import { navigate } from "../state/router";
 import { api, areaList, data, projectList, taskIndex } from "../state/store";
-import { setCaptureOpen, setDetailId, setHelpOpen, setPalette, setSelectedId, setStructureEdit, toast, type PaletteRequest } from "../state/ui";
+import { setCaptureOpen, setDetailId, setHelpOpen, setPalette, setSelectedId, setStructureEdit, sidebarHidden, toast, toggleSidebar, type PaletteRequest } from "../state/ui";
 import { Modal } from "./Modal";
 
 interface Item {
@@ -94,6 +94,7 @@ export function CommandPalette(props: { request: PaletteRequest }) {
       go("Gehe zu Phönix", () => navigate({ view: "phoenix" }), "g p"),
       go("Neuer Bereich", () => setStructureEdit({ kind: "area" })),
       go("Neues Projekt", () => setStructureEdit({ kind: "project" })),
+      go(sidebarHidden() ? "Seitenleiste einblenden" : "Seitenleiste ausblenden", toggleSidebar, "⌘B"),
       go("Tastenkürzel anzeigen", () => setHelpOpen(true), "?"),
       ...account,
     ];
@@ -124,7 +125,10 @@ export function CommandPalette(props: { request: PaletteRequest }) {
 
   const taskItems = createMemo((): Item[] => {
     const index = taskIndex();
-    const exclude = props.request.mode === "task" ? props.request.excludeIds : null;
+    const req = props.request;
+    const exclude = req.mode === "task" ? req.excludeIds : null;
+    // Read now: once an item runs, the palette is closed and its request gone.
+    const onPick = req.mode === "task" ? req.onPick : null;
     const out: Item[] = [];
     for (const t of index.byId.values()) {
       if (index.isDeleted(t) || exclude?.has(t.id)) continue;
@@ -139,13 +143,12 @@ export function CommandPalette(props: { request: PaletteRequest }) {
         hay: normalize(`${t.ref ?? ""} ${t.title} ${where} ${t.description ?? ""} ${t.plan ?? ""}`),
         rank: t.ref && normalize(query().trim()) === normalize(t.ref) ? -1 : 3,
         dim: isClosed(t.status),
-        run:
-          props.request.mode === "task"
-            ? () => (props.request as Extract<PaletteRequest, { mode: "task" }>).onPick(t.id)
-            : () => {
-                setSelectedId(t.id);
-                setDetailId(t.id);
-              },
+        run: onPick
+          ? () => onPick(t.id)
+          : () => {
+              setSelectedId(t.id);
+              setDetailId(t.id);
+            },
       });
     }
     return out;

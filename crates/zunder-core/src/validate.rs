@@ -53,12 +53,12 @@ pub enum RejectCode {
     /// A project change (kind → standard) or a move of a parent task would
     /// leave `bug`/`feature`/`review` tasks outside a dev project.
     DevTasksPresent,
-    /// A reference (`location`, `area_id`, `parent_id`) points to a missing,
-    /// tombstoned or wrong-kind entity.
+    /// A reference (`location`, `area_id`, `parent_id`, a new entry of
+    /// `blocked_by`) points to a missing, tombstoned or wrong-kind entity.
     InvalidReference,
     /// Deleting the entity would leave live entities referencing it.
     HasDependents,
-    /// `parent_id` would create a cycle.
+    /// `parent_id` or `blocked_by` would create a cycle.
     Cycle,
     /// `wall_ms` of the HLC is more than 24 h in the future.
     FutureHlc,
@@ -685,6 +685,9 @@ impl Checker<'_> {
         } else if let Some(target) = task.own_location().target() {
             self.broken_reference(key, &reference_fields, target);
         }
+        if self.changed_any(key, &[f::BLOCKED_BY]) {
+            self.check_blocked_by(task);
+        }
 
         let dev_only_type = task.task_type().is_dev_only();
         let dev_only_status = task.task_status().is_dev_only();
@@ -775,6 +778,74 @@ impl Checker<'_> {
                 format!("{what} ist nur in Dev-Projekten erlaubt."),
             );
         }
+    }
+
+    /// Blockers newly added to `blocked_by` must be other live tasks that do
+    /// not (directly or transitively) wait for this task themselves. Entries
+    /// that were already there are kept as they are: deleting a blocker is
+    /// allowed (it simply no longer blocks), and an unrelated edit must not
+    /// fail because of it.
+    fn check_blocked_by(&mut self, task: &Entity) {
+        let key = (EntityKind::Task, task.id());
+        let before: HashSet<Id> = self
+            .before
+            .entity(EntityKind::Task, task.id())
+            .map(|e| e.blocked_by().into_iter().collect())
+            .unwrap_or_default();
+        for blocker in task.blocked_by() {
+            if before.contains(&blocker) {
+                continue;
+            }
+            if blocker == task.id() {
+                self.blame(
+                    key,
+                    RejectCode::InvalidValue,
+                    "Eine Aufgabe kann nicht von sich selbst blockiert werden.",
+                );
+                return;
+            }
+            let Some(entity) = self.scratch.live_entity(EntityKind::Task, blocker) else {
+                let message = if self.scratch.entity(EntityKind::Task, blocker).is_some() {
+                    "Die blockierende Aufgabe ist gelöscht."
+                } else {
+                    "Die blockierende Aufgabe existiert nicht."
+                };
+                self.blame(key, RejectCode::InvalidReference, message);
+                return;
+            };
+            if self.waits_for(blocker, task.id()) {
+                let title = entity.str_value(fields::task::TITLE).unwrap_or_default();
+                self.blame(
+                    key,
+                    RejectCode::Cycle,
+                    format!(
+                        "„{title}“ wartet selbst (direkt oder über andere Aufgaben) auf diese Aufgabe. Zwei Aufgaben können sich nicht gegenseitig blockieren."
+                    ),
+                );
+                return;
+            }
+        }
+    }
+
+    /// Whether live task `from` waits for `target` along `blocked_by`
+    /// (through live tasks only) in the scratch state.
+    fn waits_for(&self, from: Id, target: Id) -> bool {
+        let mut seen = HashSet::from([from]);
+        let mut stack = vec![from];
+        while let Some(id) = stack.pop() {
+            let Some(entity) = self.scratch.live_entity(EntityKind::Task, id) else {
+                continue;
+            };
+            for next in entity.blocked_by() {
+                if next == target {
+                    return true;
+                }
+                if seen.insert(next) {
+                    stack.push(next);
+                }
+            }
+        }
+        false
     }
 
     /// A comment needs a live task when it is written to one (created, moved

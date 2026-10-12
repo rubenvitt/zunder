@@ -23,6 +23,7 @@ export function Toasts() {
 const SHORTCUTS: [string, string][] = [
   ["n", "Neue Aufgabe erfassen"],
   ["⌘K / Strg+K, /", "Suche und Befehle"],
+  ["⌘B / Strg+B", "Seitenleiste ein- und ausblenden"],
   ["j / k", "Nächste / vorige Aufgabe"],
   ["Enter", "Aufgabe öffnen"],
   ["x", "Erledigt umschalten"],

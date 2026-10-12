@@ -65,7 +65,7 @@ Befehls- und Ereignisvertrag: [`apps/zunder-app/README.md`](../apps/zunder-app/R
 
 ## Bedienung
 
-Tastatur: `n` erfassen, `⌘K`/`Strg+K` oder `/` Suche, `j`/`k` bewegen, `Enter` öffnen, `x` erledigt, `Esc` schließen, in der Inbox `a` zuordnen, `l` lose, `d` verwerfen, auf dem Board `h`/`l` Spalte wechseln, `Shift+H`/`Shift+L` Karte verschieben, `Shift+J`/`Shift+K` umsortieren, `v` Liste/Board, `g h/i/l/b/d/p` Sichtwechsel, `?` Übersicht.
+Tastatur: `n` erfassen, `⌘K`/`Strg+K` oder `/` Suche, `⌘B`/`Strg+B` Seitenleiste ein/aus, `j`/`k` bewegen, `Enter` öffnen, `x` erledigt, `Esc` schließen, in der Inbox `a` zuordnen, `l` lose, `d` verwerfen, auf dem Board `h`/`l` Spalte wechseln, `Shift+H`/`Shift+L` Karte verschieben, `Shift+J`/`Shift+K` umsortieren, `v` Liste/Board, `g h/i/l/b/d/p` Sichtwechsel, `?` Übersicht.
 
 Mobil: Sichten als Tabs unten, großes ＋ zum Erfassen, in der Inbox nach rechts wischen = lose, nach links = verwerfen.
 

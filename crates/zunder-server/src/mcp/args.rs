@@ -207,6 +207,35 @@ impl Args {
     }
 }
 
+impl Args {
+    /// A list of references to other tasks (e.g. `blocked_by`), each like
+    /// [`Args::task_link`]. `None` when absent, `Some(None)` for an
+    /// explicit `null`.
+    pub fn task_links(&self, key: &str) -> AppResult<Option<Option<Vec<TaskRef>>>> {
+        let Some(value) = self.raw(key) else {
+            return Ok(None);
+        };
+        if value.is_null() {
+            return Ok(Some(None));
+        }
+        let items = value
+            .as_array()
+            .ok_or_else(|| invalid(format!("„{key}“ muss eine Liste sein.")))?;
+        items
+            .iter()
+            .map(|item| match item.as_str().map(str::trim) {
+                Some(s) if !s.is_empty() => {
+                    Ok(task_address(s).unwrap_or_else(|| TaskRef::ClickUp(s.to_owned())))
+                }
+                _ => Err(invalid(format!(
+                    "„{key}“ darf nur nicht-leere Texte (ID, Kennung oder ClickUp-ID) enthalten."
+                ))),
+            })
+            .collect::<AppResult<Vec<_>>>()
+            .map(|refs| Some(Some(refs)))
+    }
+}
+
 /// A UUID or a task reference (`zun-42` counts as `ZUN-42`).
 fn task_address(s: &str) -> Option<TaskRef> {
     if let Some(id) = zunder_core::ids::parse_id(s) {

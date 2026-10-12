@@ -81,6 +81,9 @@ pub mod fields {
         /// When the owner decided to leave the task without a due date on
         /// purpose ("bewusst undatiert"); unset = no decision.
         pub const UNDATED_ACK: &str = "undated_ack";
+        /// Tasks that have to be finished before this one (IDs). The reverse
+        /// direction ("blocks") is derived, not stored.
+        pub const BLOCKED_BY: &str = "blocked_by";
         /// Human-readable reference (`ZUN-42`). Assigned once by the server,
         /// never changed afterwards (see [`crate::numbering`]).
         pub const REF: &str = "ref";
@@ -108,6 +111,7 @@ pub mod fields {
             CLICKUP_ID,
             RANK,
             UNDATED_ACK,
+            BLOCKED_BY,
             REF,
             DELETED,
         ];
@@ -153,6 +157,9 @@ pub mod fields {
 
 /// Maximum length (in characters) of task titles and area/project names.
 pub const MAX_TITLE_CHARS: usize = 500;
+
+/// Maximum number of entries in a task's `blocked_by`.
+pub const MAX_BLOCKED_BY: usize = 100;
 
 macro_rules! string_enum {
     (
@@ -591,6 +598,9 @@ pub struct Task {
     /// When the task was marked as deliberately undated.
     #[serde(with = "time::serde::rfc3339::option")]
     pub undated_ack: Option<OffsetDateTime>,
+    /// IDs of the tasks this one waits for (as stored; may name deleted
+    /// tasks, which no longer block).
+    pub blocked_by: Vec<Id>,
     /// Reference such as `ZUN-42`, once the server has assigned it.
     #[serde(rename = "ref")]
     pub reference: Option<String>,
@@ -638,6 +648,8 @@ enum Shape {
     Due,
     Timestamp,
     StringList,
+    /// Distinct canonical IDs, at most [`MAX_BLOCKED_BY`].
+    IdList,
     Links,
     Phoenix,
     Repo,
@@ -682,6 +694,7 @@ fn shape_of(kind: EntityKind, field: &str) -> Option<Shape> {
             | t::FLAME_ENDED_AT
             | t::UNDATED_ACK => Shape::Timestamp,
             t::VAULT_LINKS => Shape::StringList,
+            t::BLOCKED_BY => Shape::IdList,
             t::LINKS => Shape::Links,
             t::PHOENIX => Shape::Phoenix,
             t::PR_URL => Shape::HttpUrl,
@@ -829,6 +842,22 @@ fn check_shape(shape: Shape, field: &str, value: &Value) -> Result<(), ValueErro
             if !ok {
                 return Err(ValueError::invalid(format!(
                     "„{field}“ muss eine Liste nicht-leerer Texte sein."
+                )));
+            }
+        }
+        Shape::IdList => {
+            let ok = value.as_array().is_some_and(|items| {
+                let mut seen = std::collections::HashSet::new();
+                items.len() <= MAX_BLOCKED_BY
+                    && items.iter().all(|v| {
+                        v.as_str()
+                            .and_then(Id::parse)
+                            .is_some_and(|id| seen.insert(id))
+                    })
+            });
+            if !ok {
+                return Err(ValueError::invalid(format!(
+                    "„{field}“ muss eine Liste verschiedener Aufgaben-IDs sein (höchstens {MAX_BLOCKED_BY})."
                 )));
             }
         }
@@ -1198,6 +1227,17 @@ mod tests {
             json!([{"url": "https://example.org", "extra": 1}]),
         );
         bad(EntityKind::Task, "links", json!([{"title": "x"}]));
+        ok(EntityKind::Task, "blocked_by", json!([ID]));
+        ok(EntityKind::Task, "blocked_by", json!([]));
+        ok(EntityKind::Task, "blocked_by", json!(null));
+        bad(EntityKind::Task, "blocked_by", json!(ID));
+        bad(EntityKind::Task, "blocked_by", json!([ID, ID]));
+        bad(EntityKind::Task, "blocked_by", json!(["ZUN-1"]));
+        bad(EntityKind::Task, "blocked_by", json!([ID.to_uppercase()]));
+        let many: Vec<String> = (0..=MAX_BLOCKED_BY)
+            .map(|_| crate::ids::Id::new().to_string())
+            .collect();
+        bad(EntityKind::Task, "blocked_by", json!(many));
         ok(
             EntityKind::Task,
             "phoenix",

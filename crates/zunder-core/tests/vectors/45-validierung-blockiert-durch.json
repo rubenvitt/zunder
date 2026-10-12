@@ -1,0 +1,186 @@
+{
+  "name": "validierung-blockiert-durch",
+  "description": "„blocked_by“: neue Einträge müssen andere lebende Aufgaben sein und dürfen keinen Kreis bilden; schon vorhandene tote Einträge stören nicht, und eine blockierende Aufgabe darf gelöscht werden.",
+  "kind": "validate",
+  "now_ms": 1760000101000,
+  "state": [
+    {
+      "op_id": "v000900010000e0000000001",
+      "entity": "task",
+      "entity_id": "v000900010000c0000000001",
+      "field": "title",
+      "value": "Angebot einholen",
+      "hlc": "1760000000001:00000:seed"
+    },
+    {
+      "op_id": "v000900010000e0000000002",
+      "entity": "task",
+      "entity_id": "v000900010000c0000000002",
+      "field": "title",
+      "value": "Vertrag unterschreiben",
+      "hlc": "1760000000002:00000:seed"
+    },
+    {
+      "op_id": "v000900010000e0000000003",
+      "entity": "task",
+      "entity_id": "v000900010000c0000000002",
+      "field": "blocked_by",
+      "value": [
+        "v000900010000c0000000001"
+      ],
+      "hlc": "1760000000003:00000:seed"
+    },
+    {
+      "op_id": "v000900010000e0000000004",
+      "entity": "task",
+      "entity_id": "v000900010000c0000000003",
+      "field": "title",
+      "value": "Umzug",
+      "hlc": "1760000000004:00000:seed"
+    },
+    {
+      "op_id": "v000900010000e0000000005",
+      "entity": "task",
+      "entity_id": "v000900010000c0000000003",
+      "field": "blocked_by",
+      "value": [
+        "v000900010000c0000000002",
+        "v000900010000c0000000009"
+      ],
+      "hlc": "1760000000005:00000:seed"
+    },
+    {
+      "op_id": "v000900010000e0000000006",
+      "entity": "task",
+      "entity_id": "v000900010000c0000000004",
+      "field": "title",
+      "value": "Alt",
+      "hlc": "1760000000006:00000:seed"
+    },
+    {
+      "op_id": "v000900010000e0000000007",
+      "entity": "task",
+      "entity_id": "v000900010000c0000000004",
+      "field": "deleted",
+      "value": true,
+      "hlc": "1760000000007:00000:seed"
+    },
+    {
+      "op_id": "v000900010000e0000000008",
+      "entity": "task",
+      "entity_id": "v000900010000c0000000008",
+      "field": "title",
+      "value": "Kisten bestellen",
+      "hlc": "1760000000008:00000:seed"
+    },
+    {
+      "op_id": "v000900010000e0000000009",
+      "entity": "task",
+      "entity_id": "v000900010000c0000000008",
+      "field": "blocked_by",
+      "value": [
+        "v000900010000c0000000004"
+      ],
+      "hlc": "1760000000009:00000:seed"
+    },
+    {
+      "op_id": "v000900010000e0000000010",
+      "entity": "task",
+      "entity_id": "v000900010000c0000000009",
+      "field": "title",
+      "value": "Vorbereitung",
+      "hlc": "1760000000010:00000:seed"
+    }
+  ],
+  "push": [
+    {
+      "op_id": "v000900010000e0000000011",
+      "entity": "task",
+      "entity_id": "v000900010000c0000000001",
+      "field": "blocked_by",
+      "value": [
+        "v000900010000c0000000003"
+      ],
+      "hlc": "1760000100001:00000:web-test"
+    },
+    {
+      "op_id": "v000900010000e0000000012",
+      "entity": "task",
+      "entity_id": "v000900010000c0000000005",
+      "field": "title",
+      "value": "Neu",
+      "hlc": "1760000100002:00000:web-test"
+    },
+    {
+      "op_id": "v000900010000e0000000013",
+      "entity": "task",
+      "entity_id": "v000900010000c0000000005",
+      "field": "blocked_by",
+      "value": [
+        "v000900010000c0000000005"
+      ],
+      "hlc": "1760000100003:00000:web-test"
+    },
+    {
+      "op_id": "v000900010000e0000000014",
+      "entity": "task",
+      "entity_id": "v000900010000c0000000006",
+      "field": "title",
+      "value": "Wartet auf Gelöschtes",
+      "hlc": "1760000100004:00000:web-test"
+    },
+    {
+      "op_id": "v000900010000e0000000015",
+      "entity": "task",
+      "entity_id": "v000900010000c0000000006",
+      "field": "blocked_by",
+      "value": [
+        "v000900010000c0000000004"
+      ],
+      "hlc": "1760000100005:00000:web-test"
+    },
+    {
+      "op_id": "v000900010000e0000000016",
+      "entity": "task",
+      "entity_id": "v000900010000c0000000007",
+      "field": "title",
+      "value": "Wartet auf Unbekanntes",
+      "hlc": "1760000100006:00000:web-test"
+    },
+    {
+      "op_id": "v000900010000e0000000017",
+      "entity": "task",
+      "entity_id": "v000900010000c0000000007",
+      "field": "blocked_by",
+      "value": [
+        "v000900010000c0000000077"
+      ],
+      "hlc": "1760000100007:00000:web-test"
+    },
+    {
+      "op_id": "v000900010000e0000000018",
+      "entity": "task",
+      "entity_id": "v000900010000c0000000008",
+      "field": "blocked_by",
+      "value": [
+        "v000900010000c0000000004",
+        "v000900010000c0000000001"
+      ],
+      "hlc": "1760000100008:00000:web-test"
+    },
+    {
+      "op_id": "v000900010000e0000000019",
+      "entity": "task",
+      "entity_id": "v000900010000c0000000009",
+      "field": "deleted",
+      "value": true,
+      "hlc": "1760000100009:00000:web-test"
+    }
+  ],
+  "expected_rejected": {
+    "v000900010000c0000000001": "cycle",
+    "v000900010000c0000000005": "invalid_value",
+    "v000900010000c0000000006": "invalid_reference",
+    "v000900010000c0000000007": "invalid_reference"
+  }
+}

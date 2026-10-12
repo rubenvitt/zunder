@@ -5,6 +5,7 @@ import { ShortcutHelp, Toasts } from "./components/Overlays";
 import { QuickCapture } from "./components/QuickCapture";
 import { StructureForm } from "./components/StructureForm";
 import { TaskDetail } from "./components/TaskDetail";
+import { TaskHoverCard } from "./components/TaskLinks";
 import { installKeyboard } from "./keys";
 import { installDetailHistory, NARROW_LAYOUT } from "./state/back";
 import { isTauri } from "./platform/runtime";
@@ -12,7 +13,7 @@ import { isUnauthorized } from "./sync/transport";
 import { navigate, parseRoute, route, type Route, type ViewName } from "./state/router";
 import { inboxCount } from "./state/selectors";
 import { api, data, getEngine, pendingCount, ready, setNotifier, startSync, syncStatus, taskIndex } from "./state/store";
-import { captureOpen, detailId, detailWide, detailWidth, helpOpen, openSearch, palette, setCaptureOpen, setDetailId, setHelpOpen, setSelectedId, structureEdit, toast } from "./state/ui";
+import { captureOpen, detailId, detailWide, detailWidth, helpOpen, openSearch, palette, setCaptureOpen, setDetailId, setHelpOpen, setSelectedId, sidebarHidden, structureEdit, toast } from "./state/ui";
 import { Logo } from "./components/Logo";
 import { preloadEditor } from "./components/MarkdownField";
 import { InboxView, LooseView, TodayView } from "./views/Lists";
@@ -125,7 +126,7 @@ function Shell() {
   const mobileTitle = () => NAV.find((n) => n.view === route().view)?.label ?? "Zunder";
 
   return (
-    <div class="app" classList={{ "detail-open": !!detailId(), "detail-wide": !!detailId() && detailWide() }} style={{ "--detail": `${detailWidth()}px` }}>
+    <div class="app" classList={{ "detail-open": !!detailId(), "detail-wide": !!detailId() && detailWide(), "sidebar-hidden": sidebarHidden() }} style={{ "--detail": `${detailWidth()}px` }}>
       <nav class="sidebar" aria-label="Sichten">
         <div class="brand">
           <Logo size={26} />
@@ -276,6 +277,7 @@ function Shell() {
         <ShortcutHelp />
       </Show>
       <Toasts />
+      <TaskHoverCard />
     </div>
   );
 }

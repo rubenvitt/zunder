@@ -1624,3 +1624,90 @@ async fn undated_tasks_can_be_acknowledged() {
         assert_eq!(code, "invalid_arguments", "{bad}");
     }
 }
+
+#[tokio::test]
+async fn blocked_by_in_both_directions() {
+    let (s, t) = setup().await;
+    let (_, _, project) = structure(&s, &t).await;
+    mcp_ok(
+        &s,
+        &t,
+        "update_project",
+        json!({"project_id": project, "key": "UMZ"}),
+    )
+    .await;
+    let offer = create(
+        &s,
+        &t,
+        json!({"title": "Angebot einholen", "location": {"kind": "project", "id": project}}),
+    )
+    .await;
+    let imported = imported_task(&s, "86blk1", "Kartons").await;
+
+    // References, ClickUp IDs and IDs are resolved; repeats dropped.
+    let r = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Vertrag", "blocked_by": ["umz-1", "86blk1", offer]}),
+    )
+    .await;
+    let contract = r["task"]["id"].as_str().unwrap().to_owned();
+    let blockers = r["task"]["blocked_by"].as_array().unwrap();
+    assert_eq!(blockers.len(), 2);
+    assert_eq!(blockers[0]["id"], offer.as_str());
+    assert_eq!(blockers[0]["ref"], "UMZ-1");
+    assert_eq!(blockers[0]["title"], "Angebot einholen");
+    assert_eq!(blockers[0]["status"], "open");
+    assert_eq!(blockers[1]["id"], imported.as_str());
+
+    // The reverse direction is derived.
+    let r = mcp_ok(&s, &t, "get_task", json!({"task_id": "UMZ-1"})).await;
+    assert_eq!(r["task"]["blocks"][0]["id"], contract.as_str());
+    assert_eq!(r["task"]["blocked_by"], json!([]));
+    let r = mcp_ok(&s, &t, "filter_tasks", json!({"location": "project"})).await;
+    let listed = r["tasks"].as_array().unwrap();
+    assert_eq!(listed[0]["blocks"][0]["title"], "Vertrag");
+
+    // Waiting for each other is refused with the core's message.
+    let (code, message) = mcp_err(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": offer, "blocked_by": [contract]}),
+    )
+    .await;
+    assert_eq!(code, "cycle");
+    assert!(message.contains("Vertrag"), "{message}");
+    let (code, _) = mcp_err(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": offer, "blocked_by": ["UMZ-99"]}),
+    )
+    .await;
+    assert_eq!(code, "not_found");
+    let (code, _) = mcp_err(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": offer, "blocked_by": "UMZ-1"}),
+    )
+    .await;
+    assert_eq!(code, "invalid_arguments");
+
+    // A deleted blocker no longer blocks; null clears the list.
+    mcp_ok(&s, &t, "delete_task", json!({"clickup_id": "86blk1"})).await;
+    let r = mcp_ok(&s, &t, "get_task", json!({"task_id": contract})).await;
+    assert_eq!(r["task"]["blocked_by"].as_array().unwrap().len(), 1);
+    let r = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": contract, "blocked_by": null}),
+    )
+    .await;
+    assert_eq!(r["task"]["blocked_by"], json!([]));
+    let r = mcp_ok(&s, &t, "get_task", json!({"task_id": "UMZ-1"})).await;
+    assert_eq!(r["task"]["blocks"], json!([]));
+}

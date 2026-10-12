@@ -17,6 +17,7 @@ import {
   setHelpOpen,
   setPalette,
   setSelectedId,
+  toggleSidebar,
 } from "./state/ui";
 import { inboxActions } from "./views/Lists";
 import { toggleCurrentProjectView } from "./views/Structure";
@@ -82,6 +83,14 @@ export function installKeyboard(): () => void {
       return;
     }
     if (e.defaultPrevented || e.isComposing) return;
+    // ⌘B / Ctrl+B: sidebar on/off. In the Markdown editor it stays "bold".
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "b") {
+      const target = e.target instanceof HTMLElement ? e.target : null;
+      if (target?.isContentEditable || anyOverlayOpen()) return;
+      e.preventDefault();
+      toggleSidebar();
+      return;
+    }
     if (e.key === "Escape") {
       if (anyOverlayOpen()) return;
       if (isTyping(e.target)) {

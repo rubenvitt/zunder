@@ -52,6 +52,12 @@ export function copyTaskId(task: { id: string; ref: string | null }): void {
 export const [selectedId, setSelectedId] = createSignal<string | null>(null);
 export const [detailId, setDetailId] = createSignal<string | null>(null);
 
+/** Opens a task in the detail panel and selects it (links between tasks, mentions). */
+export function openTask(id: string): void {
+  setSelectedId(id);
+  setDetailId(id);
+}
+
 /** The keyboard-navigable task list of the current view (registered by the view). */
 const NO_LIST: Accessor<Task[]> = () => [];
 const [activeList, setActiveListSignal] = createSignal<Accessor<Task[]>>(NO_LIST);
@@ -129,6 +135,16 @@ function store(key: string, value: string): void {
   } catch {
     // Private mode or blocked storage: the setting lasts for this session only.
   }
+}
+
+// Sidebar (desktop): ⌘B / Ctrl+B hides it for more room, remembered per device.
+const [sidebarHidden, setSidebarHiddenSignal] = createSignal(stored("zunder.sidebarHidden") === "1");
+export { sidebarHidden };
+
+export function toggleSidebar(): void {
+  const hidden = !sidebarHidden();
+  setSidebarHiddenSignal(hidden);
+  store("zunder.sidebarHidden", hidden ? "1" : "0");
 }
 
 export const DETAIL_MIN_WIDTH = 380;
