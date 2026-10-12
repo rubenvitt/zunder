@@ -37,20 +37,37 @@ jobs:
       tag: ${{ steps.release.outputs.tag }}
       notes: ${{ steps.release.outputs.notes }}
     steps:
-      # semantic-release releases only when this commit is still the head
-      # of main; a newer push gets its own run.
-      - uses: actions/checkout@v7
+      # Only the head of main is released (semantic-release checks that too);
+      # an older commit, whose CI finished late, gets nothing. Its checkout
+      # may predate .github/release, so stop before setting up anything.
+      - id: head
+        name: Noch Kopf von main?
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          head=$(gh api "repos/${{ github.repository }}/git/ref/heads/main" --jq .object.sha)
+          if [ "$head" = "$SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "$SHA ist nicht mehr der Kopf von main ($head), kein Release"
+          fi
+      - if: steps.head.outputs.current
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
-      - uses: actions/setup-node@v7
+      - if: steps.head.outputs.current
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: .github/release/package-lock.json
-      - run: npm ci --no-audit --no-fund
+      - if: steps.head.outputs.current
+        run: npm ci --no-audit --no-fund
         working-directory: .github/release
       - id: release
+        if: steps.head.outputs.current
         name: semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
