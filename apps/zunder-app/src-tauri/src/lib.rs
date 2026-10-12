@@ -12,6 +12,7 @@
 //!   and when the webview reports the network is back)
 //! - [`notify`]: local reminders (OS scheduler on mobile, in-process timer
 //!   on desktop)
+//! - [`update`]: self-update from GitHub Releases (desktop only)
 
 use std::sync::Mutex;
 
@@ -22,6 +23,8 @@ use zunder_local::{LocalStore, Syncer};
 pub mod background;
 pub mod commands;
 pub mod notify;
+#[cfg(desktop)]
+pub mod update;
 
 /// Events sent to the webview.
 pub mod events {
@@ -60,11 +63,36 @@ fn online_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
         .build()
 }
 
+/// A native app never zooms: no pinch or double-tap zoom and no auto-zoom
+/// into focused inputs (iOS zooms into fields below 16px). Only in the app;
+/// the browser keeps zoom for accessibility.
+#[cfg(mobile)]
+const NO_ZOOM_SCRIPT: &str = r#"
+document.addEventListener('DOMContentLoaded', function () {
+  var meta = document.querySelector('meta[name="viewport"]');
+  if (meta) {
+    meta.content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
+  }
+});
+"#;
+
+#[cfg(mobile)]
+fn no_zoom_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    tauri::plugin::Builder::new("zunder-no-zoom")
+        .js_init_script(NO_ZOOM_SCRIPT)
+        .build()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
-        .plugin(online_plugin())
+        .plugin(online_plugin());
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    #[cfg(mobile)]
+    let builder = builder.plugin(no_zoom_plugin());
+    let app = builder
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
@@ -84,6 +112,8 @@ pub fn run() {
             });
             notify::start(app.handle().clone());
             background::start(app.handle().clone());
+            #[cfg(desktop)]
+            update::start(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

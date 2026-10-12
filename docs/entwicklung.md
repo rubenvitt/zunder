@@ -109,7 +109,7 @@ Shell-Skripte (z. B. `deploy/generate-secrets.sh`) mit `shellcheck` prüfen.
 | `e2e` | Server (Release) und Web-UI bauen, Chromium installieren, Playwright mit `ZUNDER_E2E_BACKEND=real` (Binärdatei aus `ZUNDER_SERVER_BIN`), danach gegen den Mock; bei Fehlern wird der Report hochgeladen |
 | `image` | nach grünen Checks: Multi-Arch-Image (amd64 + arm64) bauen, bei Pull Requests nur bauen (Dockerfile und arm64-Cross-Build werden vor dem Merge geprüft, Cache nur lesend); bei `main` und Tags zusätzlich nach `ghcr.io/<owner>/zunder` mit den Tags `latest`, `sha-<commit>` und SemVer |
 
-Die Tauri-Hülle (`zunder-app`) wird in der CI nicht gebaut: `src-tauri` gehört nicht zum Root-Workspace, braucht unter Linux webkit2gtk/GTK und für Mobile Xcode bzw. Android-SDK und ist nicht Teil des ausgelieferten Containers. Ihre Logik steckt in `zunder-core` (Job `rust`) und `zunder-local` (Job `local`).
+Die Tauri-Hülle (`zunder-app`) baut ein eigener Workflow (`.github/workflows/app.yml`) auf macOS: bei Pull Requests, die App, Web-UI oder `zunder-core` berühren, nur bauen; bei Tags `v*` signiert, notarisiert und als GitHub-Release mit `latest.json` für die Selbstaktualisierung (siehe [`apps/zunder-app/README.md`](../apps/zunder-app/README.md#updates-und-releases)). Linux, Windows und die Mobil-Apps baut die CI nicht. Die Logik der App steckt in `zunder-core` (Job `rust`) und `zunder-local` (Job `local`).
 
 ## Image lokal bauen
 
