@@ -227,6 +227,14 @@ export interface CreatedToken extends ApiToken {
   token: string;
 }
 
+/** A device logged in with the Zunder app, see `GET /api/devices`. */
+export interface Device {
+  id: string;
+  name: string;
+  created_at?: string;
+  last_used_at?: string | null;
+}
+
 /** An app connected via OAuth (e.g. a claude.ai connector), see `GET /api/oauth/clients`. */
 export interface OAuthClient {
   id: string;

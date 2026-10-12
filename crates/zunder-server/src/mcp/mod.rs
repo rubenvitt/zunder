@@ -34,7 +34,7 @@ use serde_json::{json, Map, Value};
 
 use crate::app::{App, Source};
 use crate::auth::middleware::bearer_token;
-use crate::auth::Principal;
+use crate::auth::{Principal, PrincipalKind};
 use crate::error::AppError;
 use crate::oauth;
 
@@ -117,7 +117,8 @@ fn challenge(app: &App, error: Option<&str>) -> Response {
 }
 
 /// Authenticates `/mcp`: OAuth access tokens (`zoa_…`) via the built-in
-/// authorization server, everything else as API or bootstrap token.
+/// authorization server, everything else as API or bootstrap token. Device
+/// tokens of the app are only for `/api`.
 async fn authenticate(app: &App, headers: &HeaderMap) -> Result<Principal, Response> {
     let token = match bearer_token(headers) {
         Ok(Some(token)) => token,
@@ -130,8 +131,10 @@ async fn authenticate(app: &App, headers: &HeaderMap) -> Result<Principal, Respo
         app.authenticate_token(token).await
     };
     match found {
-        Ok(Some(principal)) => Ok(principal),
-        Ok(None) => Err(challenge(app, Some("invalid_token"))),
+        Ok(Some(principal)) if !matches!(principal.kind, PrincipalKind::Device { .. }) => {
+            Ok(principal)
+        }
+        Ok(_) => Err(challenge(app, Some("invalid_token"))),
         Err(e) => Err(e.into_response()),
     }
 }

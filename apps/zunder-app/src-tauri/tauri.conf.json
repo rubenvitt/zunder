@@ -48,6 +48,21 @@
       "endpoints": [
         "https://github.com/rubenvitt/zunder/releases/latest/download/latest.json"
       ]
+    },
+    "deep-link": {
+      "mobile": [
+        {
+          "scheme": [
+            "dev.rubeen.zunder"
+          ],
+          "appLink": false
+        }
+      ],
+      "desktop": {
+        "schemes": [
+          "dev.rubeen.zunder"
+        ]
+      }
     }
   }
 }

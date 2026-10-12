@@ -13,6 +13,7 @@
 //! - [`notify`]: local reminders (OS scheduler on mobile, in-process timer
 //!   on desktop)
 //! - [`update`]: self-update from GitHub Releases (desktop only)
+//! - [`login`]: login in the system browser, back via deep link
 
 use std::sync::Mutex;
 
@@ -22,6 +23,7 @@ use zunder_local::{LocalStore, Syncer};
 
 pub mod background;
 pub mod commands;
+pub mod login;
 pub mod notify;
 #[cfg(desktop)]
 pub mod update;
@@ -36,6 +38,9 @@ pub mod events {
     /// (what the failed round committed before the error). Not sent for a
     /// round cut short by a server switch (`reconfigured`).
     pub const SYNC: &str = "zunder://sync";
+    /// A login finished (the browser came back to the app); payload
+    /// `{"ok": true}` or `{"ok": false, "error": {"code", "message"}}`.
+    pub const LOGIN: &str = "zunder://login";
 }
 
 /// File name of the local database in the app data directory.
@@ -86,6 +91,8 @@ fn no_zoom_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(online_plugin());
     #[cfg(desktop)]
@@ -110,6 +117,20 @@ pub fn run() {
                 sync_wake: Notify::new(),
                 reminders: notify::Reminders::default(),
             });
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        login::handle_url(&handle, url);
+                    }
+                });
+                // Started by the callback (the OS may have ended the app
+                // while the browser was in front).
+                for url in app.deep_link().get_current()?.unwrap_or_default() {
+                    login::handle_url(app.handle(), url);
+                }
+            }
             notify::start(app.handle().clone());
             background::start(app.handle().clone());
             #[cfg(desktop)]
@@ -122,6 +143,7 @@ pub fn run() {
             commands::sync_now,
             commands::get_config,
             commands::set_config,
+            commands::login_start,
             commands::task_history,
             commands::flame_start,
             commands::flame_stop,

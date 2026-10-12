@@ -171,6 +171,63 @@ test("Verbundene App (OAuth) auf der Token-Seite trennen", async ({ page }) => {
   await expect(clientRow).toHaveCount(0);
 });
 
+/**
+ * Logs in a device like the Zunder app. Real backend: registration with the app scheme,
+ * consent with the browser session (the redirect to the app is read, not followed),
+ * code with PKCE for the sync API, then a sync call with the device token. Mock: a seeded
+ * device.
+ */
+async function loginDevice(page: Page, name: string): Promise<void> {
+  if (isMock) {
+    const res = await page.request.post("/__test/device", { data: { name } });
+    expect(res.ok()).toBe(true);
+    return;
+  }
+  const callback = "dev.rubeen.zunder:/oauth";
+  const reg = await page.request.post("/oauth/register", { data: { client_name: name, redirect_uris: [callback] } });
+  expect(reg.status(), await reg.text()).toBe(201);
+  const clientId = ((await reg.json()) as { client_id: string }).client_id;
+  const verifier = randomBytes(32).toString("base64url");
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  await page.goto("/healthz");
+  const origin = new URL(page.url()).origin;
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: clientId,
+    redirect_uri: callback,
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+    state: "e2e",
+    resource: `${origin}/api`,
+  });
+  const consent = await page.request.get(`/oauth/authorize?${params.toString()}`);
+  const html = await consent.text();
+  expect(html).toContain("als Gerät");
+  const requestId = /name="request_id" value="([^"]+)"/.exec(html)?.[1] ?? "";
+  const allowed = await page.request.post("/oauth/authorize", { form: { request_id: requestId, decision: "allow" }, maxRedirects: 0 });
+  expect(allowed.status()).toBe(303);
+  const code = new URL(allowed.headers()["location"] ?? "").searchParams.get("code") ?? "";
+  const token = await page.request.post("/oauth/token", {
+    form: { grant_type: "authorization_code", code, redirect_uri: callback, client_id: clientId, code_verifier: verifier, resource: `${origin}/api` },
+  });
+  expect(token.ok(), await token.text()).toBe(true);
+  const { access_token } = (await token.json()) as { access_token: string };
+  expect(access_token).toMatch(/^zd_/);
+  const snapshot = await page.request.get("/api/snapshot", { headers: { Authorization: `Bearer ${access_token}` } });
+  expect(snapshot.ok()).toBe(true);
+}
+
+test("Gerät (Zunder-App) auf der Token-Seite abmelden", async ({ page }) => {
+  const name = `iPhone ${suffix()}`;
+  await loginDevice(page, name);
+  await openApp(page, "#/tokens");
+  const deviceRow = page.locator("tr[data-device-id]", { hasText: name });
+  await expect(deviceRow).toBeVisible();
+  page.once("dialog", (d) => void d.accept());
+  await deviceRow.getByRole("button", { name: "Abmelden" }).click();
+  await expect(deviceRow).toHaveCount(0);
+});
+
 test("Tastenkürzel-Übersicht mit ?", async ({ page }) => {
   await openApp(page);
   await page.keyboard.press("?");

@@ -40,6 +40,8 @@ pub enum Error {
     Notification(String),
     #[error("Der Server wurde während des Abgleichs gewechselt; der Abgleich beginnt neu")]
     Reconfigured,
+    #[error("Anmeldung: {0}")]
+    Login(String),
 }
 
 impl Error {
@@ -58,6 +60,7 @@ impl Error {
             Error::Protocol(_) => "protocol",
             Error::Notification(_) => "notification",
             Error::Reconfigured => "reconfigured",
+            Error::Login(_) => "login",
         }
     }
 

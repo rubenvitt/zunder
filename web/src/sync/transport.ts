@@ -4,6 +4,7 @@
 import type {
   ApiToken,
   CreatedToken,
+  Device,
   FlameResult,
   HistoryEntry,
   Me,
@@ -75,6 +76,8 @@ export interface ApiClient {
   revokeToken(id: string): Promise<void>;
   listOAuthClients(): Promise<OAuthClient[]>;
   revokeOAuthClient(id: string): Promise<void>;
+  listDevices(): Promise<Device[]>;
+  revokeDevice(id: string): Promise<void>;
   logout(): Promise<void>;
 }
 
@@ -190,6 +193,14 @@ export class HttpTransport implements SyncTransport, ApiClient {
 
   async revokeOAuthClient(id: string): Promise<void> {
     await this.request("DELETE", `/api/oauth/clients/${encodeURIComponent(id)}`);
+  }
+
+  listDevices(): Promise<Device[]> {
+    return this.request<Device[]>("GET", "/api/devices").then((data) => (Array.isArray(data) ? data : []));
+  }
+
+  async revokeDevice(id: string): Promise<void> {
+    await this.request("DELETE", `/api/devices/${encodeURIComponent(id)}`);
   }
 
   async logout(): Promise<void> {
