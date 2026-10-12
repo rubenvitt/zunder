@@ -8,7 +8,7 @@ import { PHOENIX_ROLES, TASK_STATUSES, TASK_TYPES, type HistoryEntry, type JsonV
 import { FIELD_LABELS, locationLabel, PHOENIX_LABELS, sourceLabel, STATUS_LABELS, TYPE_LABELS } from "../labels";
 import { createTask, deleteTask, dependentsCount, flame, moveTask, setParent, setStatus, toggleDone, updateTask } from "../state/actions";
 import { api, data, now, pendingCount, taskIndex } from "../state/store";
-import { pickLocation, pickTask, selectedId, setDetailId, setSelectedId } from "../state/ui";
+import { copyTaskId, pickLocation, pickTask, selectedId, setDetailId, setSelectedId } from "../state/ui";
 import { Row, TextField } from "./Fields";
 import { Icon } from "./Icon";
 
@@ -112,6 +112,15 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
       </Show>
 
       <div class="detail-grid">
+        <Show when={showDev()}>
+          <Row label="ID">
+            <button class="btn btn-ghost btn-small mono task-id" title="ID kopieren (y)" aria-label="ID kopieren" onClick={() => copyTaskId(t().id)}>
+              <span class="task-id-text">{t().id}</span>
+              <Icon name="copy" size={14} />
+            </button>
+          </Row>
+        </Show>
+
         <Row label="Status">
           <select
             class="field"
@@ -318,6 +327,11 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
         <a href={`#/aufgabe/${t().id}`} title="Dauerhafter Link zu dieser Aufgabe (z. B. für den Vault)">
           Link
         </a>
+        <Show when={!showDev()}>
+          <button class="link-button" title="ID kopieren (y)" onClick={() => copyTaskId(t().id)}>
+            ID kopieren
+          </button>
+        </Show>
         <Show when={t().clickup_id}>
           <span class="mono">ClickUp {t().clickup_id}</span>
         </Show>

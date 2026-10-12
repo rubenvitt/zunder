@@ -7,6 +7,7 @@ import {
   activeBoard,
   activeList,
   anyOverlayOpen,
+  copyTaskId,
   detailId,
   openSearch,
   palette,
@@ -165,6 +166,13 @@ export function installKeyboard(): () => void {
       case "x": {
         const task = selectedTask();
         if (task) toggleDone(task.id);
+        else handled = false;
+        break;
+      }
+      case "y": {
+        // The open task first, then the selected row: "yank" the id for an agent.
+        const id = detailId() ?? selectedTask()?.id;
+        if (id && data.tasks[id]) copyTaskId(id);
         else handled = false;
         break;
       }

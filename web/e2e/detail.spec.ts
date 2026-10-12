@@ -161,3 +161,31 @@ test("Dunkles Design: Text auf Fehler-Toasts ist dunkel", async ({ page }) => {
   await expect(toast).toBeVisible();
   expect(await toast.evaluate((el) => getComputedStyle(el).color)).toBe("rgb(22, 19, 15)");
 });
+
+test("Dev-Aufgabe: ID per Klick und mit y kopieren", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
+  const s = suffix();
+  const seeder = new Seeder();
+  const area = seeder.area(`Arbeit ${s}`);
+  const project = seeder.project(`App ${s}`, area, { kind: "dev" });
+  const a = seeder.task(`Erste ${s}`, { location: { kind: "project", id: project } });
+  const b = seeder.task(`Zweite ${s}`, { location: { kind: "project", id: project } });
+  await seeder.push(page);
+  await openApp(page, `#/bereiche/project/${project}`);
+
+  // Detail panel: the id is shown right at the top and copies on click.
+  const card = (title: string) => page.locator(".card", { hasText: title });
+  await card(`Erste ${s}`).click();
+  await detail(page).getByRole("button", { name: "ID kopieren" }).click();
+  await expect(page.locator(".toast")).toContainText(a);
+  await expect.poll(clipboard).toBe(a);
+
+  // Keyboard: y copies the selected task, with or without the panel.
+  await page.keyboard.press("Escape");
+  await expect(detail(page)).toBeHidden();
+  await card(`Zweite ${s}`).click();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("y");
+  await expect.poll(clipboard).toBe(b);
+});

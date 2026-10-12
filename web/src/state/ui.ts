@@ -26,6 +26,23 @@ export function dismissToast(id: number): void {
   setToasts((list) => list.filter((t) => t.id !== id));
 }
 
+/** Copies text to the clipboard and confirms with a toast (or warns if that is not possible). */
+export function copyText(text: string, done: string): void {
+  if (!navigator.clipboard) {
+    toast("Kopieren nicht möglich.", "warning");
+    return;
+  }
+  void navigator.clipboard.writeText(text).then(
+    () => toast(done),
+    () => toast("Kopieren nicht möglich.", "warning"),
+  );
+}
+
+/** The task id is what agents need (claim_task, get_task …), so it is one key or click away. */
+export function copyTaskId(id: string): void {
+  copyText(id, `ID kopiert: ${id}`);
+}
+
 // ---- Selection and detail panel ---------------------------------------
 
 export const [selectedId, setSelectedId] = createSignal<string | null>(null);
