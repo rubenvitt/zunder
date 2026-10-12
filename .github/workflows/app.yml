@@ -9,6 +9,7 @@ name: App
 # (apps/zunder-app/src-tauri/src/update.rs). The tag sets the app version.
 # The release stays a draft until every asset is uploaded, so
 # releases/latest never points to a release without latest.json.
+# A release also uploads the iOS app to TestFlight (job ios).
 # Third-party actions are pinned to commits: this job holds the signing keys.
 on:
   push:
@@ -134,3 +135,80 @@ jobs:
         run: |
           gh api --method PATCH "repos/${{ github.repository }}/releases/$RELEASE_ID" \
             -F draft=false -f make_latest=true > /dev/null
+
+  # iOS app to TestFlight, releases only (the build needs signing). Xcode
+  # signs automatically through the App Store Connect API key (Admin role:
+  # it creates the distribution certificate and profile itself). The app
+  # record for dev.rubeen.zunder must exist in App Store Connect. The Xcode
+  # project (gen/apple) is not checked in and is generated here.
+  ios:
+    name: iOS (TestFlight)
+    if: inputs.tag || startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: aarch64-apple-ios
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: ios
+          workspaces: apps/zunder-app/src-tauri -> target
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            apps/zunder-app/package-lock.json
+            web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: apps/zunder-app
+      - run: npm ci --no-audit --no-fund
+        working-directory: web
+
+      - name: API-Schlüssel ablegen
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          for name in APPLE_API_ISSUER APPLE_API_KEY APPLE_API_KEY_P8; do
+            [ -n "${!name}" ] || { echo "::error::Secret $name fehlt"; exit 1; }
+          done
+          # altool only looks for the key here, under this name.
+          dir="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$dir"
+          printf '%s\n' "$APPLE_API_KEY_P8" > "$dir/AuthKey_$APPLE_API_KEY.p8"
+          echo "APPLE_API_KEY_PATH=$dir/AuthKey_$APPLE_API_KEY.p8" >> "$GITHUB_ENV"
+
+      - name: Xcode-Projekt erzeugen
+        working-directory: apps/zunder-app
+        run: |
+          command -v xcodegen > /dev/null || brew install xcodegen
+          npx tauri ios init --ci --skip-targets-install
+          # init brings Tauri's placeholder icons; ours are opaque (App Store rule).
+          cp src-tauri/icons/ios/*.png src-tauri/gen/apple/Assets.xcassets/AppIcon.appiconset/
+
+      - name: Bauen und signieren
+        working-directory: apps/zunder-app
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        # The tag is the version (CFBundleShortVersionString and CFBundleVersion).
+        run: |
+          npx tauri ios build --ci --export-method app-store-connect \
+            --config "{\"version\":\"${TAG#v}\"}"
+
+      - name: Zu TestFlight hochladen
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          xcrun altool --upload-app --type ios \
+            --file apps/zunder-app/src-tauri/gen/apple/build/arm64/Zunder.ipa \
+            --apiKey "$APPLE_API_KEY" --apiIssuer "$APPLE_API_ISSUER"

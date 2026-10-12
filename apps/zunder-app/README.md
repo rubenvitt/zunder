@@ -84,7 +84,9 @@ Secrets im Repo, Originale im 1Password-Tresor „Dev“:
 |---|---|
 | `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Zunder App Updater-Signierschlüssel |
 | `APPLE_CERTIFICATE` (p12, base64), `APPLE_CERTIFICATE_PASSWORD` | Zunder – Developer ID Application (.p12) |
-| `APPLE_API_KEY`, `APPLE_API_ISSUER`, `APPLE_API_KEY_P8` | Zunder – Apple Notarisierung (App Store Connect API) |
+| `APPLE_API_KEY`, `APPLE_API_ISSUER`, `APPLE_API_KEY_P8` | Zunder – App Store Connect API (Admin, CI): Schlüssel „Zunder CI“, für Notarisierung, iOS-Signatur und TestFlight |
+
+Derselbe Workflow lädt bei jedem Release auch die iOS-App zu TestFlight hoch (Job `ios`): `tauri ios init` erzeugt das Xcode-Projekt, die Icons aus `src-tauri/icons/ios` ersetzen die Platzhalter, `tauri ios build --export-method app-store-connect` baut und signiert, `xcrun altool --upload-app` lädt hoch. Signiert wird automatisch über den App-Store-Connect-API-Schlüssel (Xcode legt Distributionszertifikat und Profil selbst an); dafür braucht der Schlüssel die Rolle **Admin**. Version und Build-Nummer kommen aus dem Tag. `src-tauri/Info.ios.plist` erklärt die Verschlüsselung als ausgenommen (nur HTTPS), damit TestFlight nicht nach der Exportkonformität fragt. Nach der Verarbeitung durch Apple (meist 10–30 Minuten) steht der Build den internen TestFlight-Testern zur Verfügung. Einmalig von Hand: App-Eintrag für `dev.rubeen.zunder` in App Store Connect anlegen und eine interne Testgruppe einrichten. Wird ein Release-Lauf wiederholt, lehnt Apple den Upload ab, weil die Build-Nummer schon existiert.
 
 Geht der Updater-Schlüssel verloren, können installierte Apps keine Updates mehr annehmen; dann hilft nur eine Neuinstallation von Hand.
 
@@ -114,6 +116,7 @@ Hinweise:
 - **iOS:** Höchstens 64 ausstehende lokale Benachrichtigungen pro App. Zunder plant deshalb immer nur die 64 nächsten; weiter entfernte rücken nach, sobald die App wieder läuft (Start, Rückkehr in den Vordergrund, Sync).
 - **Zeitpunkte ans Plugin** (`zunder_local::schedule::plugin_time`): `tauri-plugin-notification` 2.x sendet die Zeit als `…:ss.<9 Ziffern>Z`. iOS liest sie als lokale Uhrzeit (ohne Zeitzone), Android liest alle neun Nachkommastellen als Millisekunden. Die App übergibt deshalb volle Sekunden (aufgerundet) und auf iOS die lokale Uhrzeit des Zeitpunkts als UTC beschriftet (Versatz zum Zeitpunkt selbst, also über Sommer-/Winterzeit hinweg richtig). Bei einem Update des Plugins prüfen, ob das noch nötig ist.
 - Die App fragt beim Start nach der Benachrichtigungs-Berechtigung.
+- **iOS-Icons** dürfen keinen Alphakanal haben, sonst lehnt App Store Connect den Upload ab. `npm run icons` erzeugt sie aus `icon-ios.svg` und entfernt den Alphakanal danach mit ImageMagick (`magick`). Die CI kopiert `src-tauri/icons/ios` nach `tauri ios init` ins Xcode-Projekt (init bringt sonst Tauri-Platzhalter mit).
 - **iOS-Build** (`npx tauri ios build --export-method debugging`) ist lokal mit Xcode 27 gebaut und auf einem iPhone installiert (`xcrun devicectl device install app --device <ID> src-tauri/gen/apple/build/arm64/Zunder.ipa`). Signiert wird automatisch mit dem Team aus `bundle.iOS.developmentTeam`. Android ist nicht eingerichtet (kein SDK/NDK).
 
 ## Anmeldung
