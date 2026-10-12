@@ -518,6 +518,24 @@ input[type="checkbox"] {
 .chip-count {
   font-variant-numeric: tabular-nums;
 }
+.chip-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  margin-right: -0.2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.chip-clear:hover,
+.chip-clear:focus-visible {
+  background: color-mix(in srgb, currentColor 18%, transparent);
+}
 .ref-button {
   cursor: copy;
   border: 1px solid transparent;

@@ -1,15 +1,26 @@
-import { createMemo, createSignal, For, onMount, Show } from "solid-js";
+import { createMemo, createSignal, For, onMount, Show, untrack } from "solid-js";
+import { captureContext } from "../capture/context";
 import { parseCapture, slugify } from "../capture/parse";
 import { formatDue } from "../sync/dates";
 import { locationLabel } from "../labels";
 import { createTask } from "../state/actions";
-import { areaList, now, projectList } from "../state/store";
+import { route } from "../state/router";
+import { areaList, data, now, projectList } from "../state/store";
 import { setCaptureOpen, toast } from "../state/ui";
 import { Icon } from "./Icon";
 import { Modal } from "./Modal";
 
 export function QuickCapture() {
   const [text, setText] = createSignal("");
+  // Preselected from the view the capture was opened in; a #tag overrides it.
+  const [preset, setPreset] = createSignal(
+    untrack(() =>
+      captureContext(route(), {
+        hasArea: (id) => !!data.areas[id] && !data.areas[id]!.deleted,
+        hasProject: (id) => !!data.projects[id] && !data.projects[id]!.deleted,
+      }),
+    ),
+  );
   let input: HTMLInputElement | undefined;
 
   const structure = createMemo(() => ({
@@ -17,6 +28,13 @@ export function QuickCapture() {
     projects: projectList().filter((p) => p.status !== "completed"),
   }));
   const parsed = createMemo(() => parseCapture(text(), new Date(now()), structure()));
+  const target = () => parsed().location ?? preset() ?? { kind: "inbox" as const };
+  const fromPreset = () => !parsed().location && preset() !== null;
+
+  function clearPreset() {
+    setPreset(null);
+    input?.focus();
+  }
 
   const suggestions = createMemo(() => {
     const m = /(?:^|\s)#([^\s#]*)$/.exec(text());
@@ -40,9 +58,10 @@ export function QuickCapture() {
     const raw = text().trim();
     if (!raw) return;
     const result = parsed();
-    const id = createTask({ title: result.title, location: result.location, due: result.due, remind_at: result.remind_at });
+    const location = target();
+    const id = createTask({ title: result.title, location, due: result.due, remind_at: result.remind_at });
     if (!id) return;
-    toast(`Erfasst in ${locationLabel(result.location ?? { kind: "inbox" })}.`);
+    toast(`Erfasst in ${locationLabel(location)}.`);
     setText("");
     setCaptureOpen(false);
   }
@@ -69,18 +88,28 @@ export function QuickCapture() {
             if (e.key === "Tab" && suggestions().length > 0) {
               e.preventDefault();
               complete(suggestions()[0]!.slug);
+            } else if (e.key === "Backspace" && text() === "" && preset()) {
+              e.preventDefault();
+              clearPreset();
             }
           }}
           aria-label="Titel der neuen Aufgabe"
         />
         </div>
         <div class="capture-preview" aria-live="polite">
-          <Show when={text().trim()} fallback={<span class="muted">Landet in der Inbox. <kbd>#</kbd> ordnet zu, „morgen 9:00“ setzt Fälligkeit. <kbd>Enter</kbd> speichert.</span>}>
+          <Show when={text().trim()} fallback={<span class="muted">Landet in</span>}>
             <span class="capture-title">{parsed().title}</span>
-            <span class="chip">
-              <Icon name={parsed().location ? "folder" : "inbox"} size={12} />
-              {locationLabel(parsed().location ?? { kind: "inbox" })}
-            </span>
+          </Show>
+          <span class="chip capture-location" classList={{ "chip-accent": fromPreset() }}>
+            <Icon name={target().kind === "inbox" ? "inbox" : "folder"} size={12} />
+            {locationLabel(target())}
+            <Show when={fromPreset()}>
+              <button type="button" class="chip-clear" title="Vorauswahl entfernen (Rücktaste im leeren Feld)" aria-label="Vorauswahl entfernen, in die Inbox" onClick={clearPreset}>
+                <Icon name="x" size={10} />
+              </button>
+            </Show>
+          </span>
+          <Show when={text().trim()} fallback={<span class="muted"><kbd>#</kbd> ordnet zu, „morgen 9:00“ setzt Fälligkeit. <kbd>Enter</kbd> speichert.</span>}>
             <Show when={parsed().due}>
               <span class="chip chip-accent">
                 <Icon name="calendar" size={12} />
