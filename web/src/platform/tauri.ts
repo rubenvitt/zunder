@@ -103,10 +103,30 @@ export interface ChangedEvent {
 /** A login in the system browser finished (the browser came back to the app). */
 export type LoginEvent = { ok: true } | { ok: false; error: AppErrorBody };
 
+/** Self-update of the desktop app (check_update, zunder://update). */
+export interface UpdateStatus {
+  /** Version installed and waiting for a restart. */
+  installed: string | null;
+  /** The last check since the app started. */
+  last_check: LastSync | null;
+}
+
+/** Result of app_info: the app itself (not the server). */
+export interface AppInfo {
+  version: string;
+  /** Desktop app: menu bar, start at login, self-update. */
+  desktop: boolean;
+  /** Starts at login; null on mobile or when unknown. */
+  autostart: boolean | null;
+  /** null on mobile. */
+  update: UpdateStatus | null;
+}
+
 export const EVENTS = {
   changed: "zunder://changed",
   sync: "zunder://sync",
   login: "zunder://login",
+  update: "zunder://update",
 } as const;
 
 // ---- Backend: invoke + listen (real Tauri API or a test double) ----------
@@ -176,12 +196,14 @@ export const SETTINGS_UNSUPPORTED = "Einstellungen des Servers lassen sich nur i
 // ---- The app's commands ----------------------------------------------------
 
 type Handler<T> = (payload: T) => void;
+type AppEventName = keyof typeof EVENTS;
 
 export class TauriApp {
   private readonly handlers = {
     sync: new Set<Handler<SyncEvent>>(),
     changed: new Set<Handler<ChangedEvent>>(),
     login: new Set<Handler<LoginEvent>>(),
+    update: new Set<Handler<UpdateStatus>>(),
   };
   private unlisten: UnlistenFn[] = [];
 
@@ -194,6 +216,7 @@ export class TauriApp {
       app.backend.listen<SyncEvent>(EVENTS.sync, (e) => app.dispatch("sync", e.payload)),
       app.backend.listen<ChangedEvent>(EVENTS.changed, (e) => app.dispatch("changed", e.payload)),
       app.backend.listen<LoginEvent>(EVENTS.login, (e) => app.dispatch("login", e.payload)),
+      app.backend.listen<UpdateStatus>(EVENTS.update, (e) => app.dispatch("update", e.payload)),
     ]);
     return app;
   }
@@ -201,7 +224,8 @@ export class TauriApp {
   on(event: "sync", handler: Handler<SyncEvent>): () => void;
   on(event: "changed", handler: Handler<ChangedEvent>): () => void;
   on(event: "login", handler: Handler<LoginEvent>): () => void;
-  on(event: "sync" | "changed" | "login", handler: Handler<never>): () => void {
+  on(event: "update", handler: Handler<UpdateStatus>): () => void;
+  on(event: AppEventName, handler: Handler<never>): () => void {
     const set = this.handlers[event] as Set<Handler<never>>;
     set.add(handler);
     return () => set.delete(handler);
@@ -212,7 +236,7 @@ export class TauriApp {
     this.unlisten = [];
   }
 
-  private dispatch(event: "sync" | "changed" | "login", payload: unknown): void {
+  private dispatch(event: AppEventName, payload: unknown): void {
     for (const handler of this.handlers[event] as Set<Handler<unknown>>) {
       try {
         handler(payload);
@@ -261,6 +285,28 @@ export class TauriApp {
 
   flame(taskId: string, action: "start" | "stop"): Promise<unknown> {
     return this.call(action === "start" ? "flame_start" : "flame_stop", { task_id: taskId });
+  }
+
+  appInfo(): Promise<AppInfo> {
+    return this.call("app_info");
+  }
+
+  /** Starts the app at login (hidden in the menu bar); returns the new state. */
+  setAutostart(enabled: boolean): Promise<boolean> {
+    return this.call("set_autostart", { enabled });
+  }
+
+  /** Looks for a newer version now and installs it (active after restartApp). */
+  checkUpdate(): Promise<UpdateStatus> {
+    return this.call("check_update");
+  }
+
+  restartApp(): Promise<void> {
+    return this.call("restart_app");
+  }
+
+  testNotification(): Promise<void> {
+    return this.call("test_notification");
   }
 }
 

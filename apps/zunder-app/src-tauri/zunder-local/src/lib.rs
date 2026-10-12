@@ -30,7 +30,10 @@ mod testutil;
 pub use client::{FlameAction, HttpClient, SyncApi};
 pub use error::{Error, Result};
 pub use login::PendingLogin;
-pub use reminders::{plan_schedule, upcoming_reminders, Reminder, SchedulePlan, ScheduledReminder};
+pub use reminders::{
+    catch_up_notices, missed_reminders, plan_schedule, upcoming_reminders, Notice, Reminder,
+    SchedulePlan, ScheduledReminder,
+};
 pub use store::{
     ApplyResult, ConfigUpdate, ConfigView, LastSync, LocalSnapshot, LocalStore, Remote,
 };

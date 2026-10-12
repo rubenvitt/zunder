@@ -6,13 +6,16 @@
 //! into Tauri:
 //!
 //! - [`commands`]: `local_snapshot`, `local_apply`, `sync_now`,
-//!   `get_config`, `set_config`, and the server calls `task_history`,
-//!   `flame_start`, `flame_stop`
+//!   `get_config`, `set_config`, the server calls `task_history`,
+//!   `flame_start`, `flame_stop`, and the app settings `app_info`,
+//!   `set_autostart`, `check_update`, `restart_app`, `test_notification`
 //! - [`background`]: sync loop (every 30 s, after local changes, on resume
 //!   and when the webview reports the network is back)
 //! - [`notify`]: local reminders (OS scheduler on mobile, in-process timer
 //!   on desktop)
 //! - [`update`]: self-update from GitHub Releases (desktop only)
+//! - [`desktop`]: menu bar icon, keep running when the window is closed,
+//!   start at login (desktop only)
 //! - [`login`]: login in the system browser, back via deep link
 
 use std::sync::Mutex;
@@ -23,6 +26,8 @@ use zunder_local::{LocalStore, Syncer};
 
 pub mod background;
 pub mod commands;
+#[cfg(desktop)]
+pub mod desktop;
 pub mod login;
 pub mod notify;
 #[cfg(desktop)]
@@ -41,6 +46,9 @@ pub mod events {
     /// A login finished (the browser came back to the app); payload
     /// `{"ok": true}` or `{"ok": false, "error": {"code", "message"}}`.
     pub const LOGIN: &str = "zunder://login";
+    /// A newer version was installed and waits for a restart (desktop);
+    /// payload: the update status as returned by `app_info`.
+    pub const UPDATE: &str = "zunder://update";
 }
 
 /// File name of the local database in the app data directory.
@@ -96,11 +104,17 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(online_plugin());
     #[cfg(desktop)]
-    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    let builder = builder
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(desktop::autostart_plugin())
+        .manage(update::Updates::default());
     #[cfg(mobile)]
     let builder = builder.plugin(no_zoom_plugin());
     let app = builder
         .setup(|app| {
+            create_main_window(app)?;
+            #[cfg(desktop)]
+            desktop::setup(app)?;
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
             // The database holds the API token: owner only (also for
@@ -147,17 +161,39 @@ pub fn run() {
             commands::task_history,
             commands::flame_start,
             commands::flame_stop,
+            commands::app_info,
+            commands::set_autostart,
+            commands::check_update,
+            commands::restart_app,
+            commands::test_notification,
         ])
         .build(tauri::generate_context!())
         .expect("Zunder konnte nicht starten");
 
-    app.run(|handle, event| {
-        if let RunEvent::Resumed = event {
+    app.run(|handle, event| match event {
+        RunEvent::Resumed => {
             // Back in the foreground (mobile): catch up right away.
             if let Some(state) = handle.try_state::<AppState>() {
                 state.sync_wake.notify_one();
             }
             notify::refresh(handle);
         }
+        // Dock icon clicked (macOS) while the window is hidden.
+        #[cfg(target_os = "macos")]
+        RunEvent::Reopen { .. } => desktop::show_main(handle),
+        _ => {}
     });
+}
+
+/// Creates the window from `tauri.conf.json` (`create: false` there). On the
+/// desktop it stays hidden when the autostart entry started the app.
+fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
+    let Some(config) = app.config().app.windows.first().cloned() else {
+        return Ok(());
+    };
+    let builder = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?;
+    #[cfg(desktop)]
+    let builder = builder.visible(config.visible && !desktop::started_hidden());
+    builder.build()?;
+    Ok(())
 }

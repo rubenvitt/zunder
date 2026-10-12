@@ -218,6 +218,60 @@ pub fn due_in_window(state: &State, after_ms: i64, until_ms: i64) -> Vec<Reminde
     due
 }
 
+/// How far back the desktop app catches up on reminders that fell due while
+/// it was not running.
+pub const CATCH_UP_WINDOW_MS: i64 = 7 * 24 * 60 * 60 * 1000;
+
+/// Up to this many missed reminders are shown one by one; more are
+/// summarized in a single notification.
+pub const CATCH_UP_SINGLE_MAX: usize = 3;
+
+/// A notification to show right away.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Notice {
+    pub title: String,
+    pub body: String,
+}
+
+/// Reminders that fell due while the desktop app was not running: after
+/// `last_check_ms` (the last check of the previous run), at most
+/// [`CATCH_UP_WINDOW_MS`] back, up to `now_ms`. Nothing without a previous
+/// check (first start).
+pub fn missed_reminders(state: &State, last_check_ms: Option<i64>, now_ms: i64) -> Vec<Reminder> {
+    let Some(last) = last_check_ms else {
+        return Vec::new();
+    };
+    let after = last.max(now_ms.saturating_sub(CATCH_UP_WINDOW_MS));
+    if after >= now_ms {
+        return Vec::new();
+    }
+    due_in_window(state, after, now_ms)
+}
+
+/// The notifications for missed reminders: one each for a few, a summary
+/// for more.
+pub fn catch_up_notices(missed: &[Reminder]) -> Vec<Notice> {
+    if missed.len() <= CATCH_UP_SINGLE_MAX {
+        return missed
+            .iter()
+            .map(|r| Notice {
+                title: r.title.clone(),
+                body: format!("Verpasst – {}", r.body),
+            })
+            .collect();
+    }
+    let mut titles: Vec<&str> = missed
+        .iter()
+        .take(CATCH_UP_SINGLE_MAX)
+        .map(|r| r.title.as_str())
+        .collect();
+    titles.push("…");
+    vec![Notice {
+        title: format!("{} verpasste Erinnerungen", missed.len()),
+        body: titles.join(", "),
+    }]
+}
+
 /// Time of the next reminder after `now_ms`.
 pub fn next_reminder_at(state: &State, now_ms: i64) -> Option<i64> {
     upcoming_reminders(state, now_ms, 1)
@@ -555,5 +609,54 @@ mod tests {
         let fired = due_in_window(&w.state, NOW + MIN, NOW + 10 * MIN);
         assert_eq!(fired.len(), 1);
         assert_eq!(fired[0].kind, ReminderKind::Due);
+    }
+
+    #[test]
+    fn missed_reminders_since_the_last_check() {
+        let mut w = World::new();
+        let a = w.task("A");
+        w.set(a, f::REMIND_AT, json!(rfc3339(NOW + MIN)));
+        let b = w.task("B");
+        w.set(b, f::DUE, json!(rfc3339(NOW + 3 * MIN)));
+        let later = NOW + 10 * MIN;
+
+        // First start: nothing to catch up on.
+        assert!(missed_reminders(&w.state, None, later).is_empty());
+        let missed = missed_reminders(&w.state, Some(NOW), later);
+        assert_eq!(missed.len(), 2);
+        // Already shown before the last check.
+        let missed = missed_reminders(&w.state, Some(NOW + MIN), later);
+        assert_eq!(missed.len(), 1);
+        assert_eq!(missed[0].title, "B");
+        // Clock went backwards.
+        assert!(missed_reminders(&w.state, Some(later + MIN), later).is_empty());
+        // Only the last week counts.
+        let much_later = NOW + 2 * MIN + CATCH_UP_WINDOW_MS;
+        let missed = missed_reminders(&w.state, Some(NOW - MIN), much_later);
+        assert_eq!(missed.len(), 1);
+        assert_eq!(missed[0].title, "B");
+    }
+
+    #[test]
+    fn few_missed_reminders_are_shown_one_by_one_more_are_summarized() {
+        let few: Vec<_> = (1..=3)
+            .map(|i| reminder(i, ReminderKind::Remind, NOW, &format!("T{i}")))
+            .collect();
+        let notices = catch_up_notices(&few);
+        assert_eq!(notices.len(), 3);
+        assert_eq!(notices[0].title, "T1");
+        assert_eq!(notices[0].body, "Verpasst – Erinnerung");
+
+        let many: Vec<_> = (1..=5)
+            .map(|i| reminder(i, ReminderKind::Remind, NOW, &format!("T{i}")))
+            .collect();
+        assert_eq!(
+            catch_up_notices(&many),
+            vec![Notice {
+                title: "5 verpasste Erinnerungen".into(),
+                body: "T1, T2, T3, …".into(),
+            }]
+        );
+        assert!(catch_up_notices(&[]).is_empty());
     }
 }
