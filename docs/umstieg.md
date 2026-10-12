@@ -155,19 +155,19 @@ Die Zunder-Werkzeuge spiegeln die genutzten ClickUp-Aufrufe. Die Umstellung ist 
 | `clickup_move_task` | `move_task` | Neue Stelle und/oder neuer `parent_id` (ID, Kennung oder ClickUp-ID). Unteraufgaben wandern mit ihrer Wurzel. |
 | `clickup_delete_task` | `delete_task` | Setzt einen Tombstone (Aufgabe samt Unteraufgaben) statt endgültig zu löschen; der Verlauf bleibt über `get_task_history` lesbar. **Nicht rückgängig zu machen** über MCP oder die Oberfläche: Alle anderen Werkzeuge melden die Aufgabe als gelöscht. Das Datenmodell kann zwar wiederherstellen (`deleted: false`, [Vertrag](superpowers/plans/2026-10-11-zunder-implementation.md) Abschnitt 2.3), aber nur über eine rohe Operation an `/api/sync/push`. Skills sollten deshalb vor dem Löschen nachfragen oder lieber auf `dropped` setzen. |
 | `clickup_search` | `search` | Volltext über Titel, Beschreibung und Plan, auch erledigte Aufgaben. Trifft zusätzlich Projekte und Bereiche. |
-| `clickup_create_task_comment` | – | Zunder hat **keine Kommentare** (bewusst, Spec Abschnitt 2). Ersatz siehe unten. |
+| `clickup_create_task_comment` | `add_comment` | `task_id` und `body` (Markdown); `author` optional, sonst der Token-Name. `get_task` liefert die Kommentare unter `comments`. Weitere Fälle siehe unten. |
 | `clickup_add_time_entry`, `clickup_start_time_tracking` (und Stoppen) | `start_flame` / `stop_flame` oder Timing direkt | Zeiterfassung liegt bei **Timing**. An einer Aufgabe: `start_flame`/`stop_flame` startet bzw. stoppt über die Timing-Brücke einen Timer und merkt sich `timing_ref`. Wie `clickup_stop_time_tracking` braucht `stop_flame` keine Aufgabe: ohne `task_id`/`clickup_id` endet die laufende Flamme; `filter_tasks {flame_running: true}` ersetzt `clickup_get_current_time_entry`. Nachträgliche Einträge ohne Aufgabenbezug direkt über den Timing-MCP (`create_time_entry`, `start_timer`, `stop_timer`). |
 | Hierarchie-/Listen-Abfragen (falls genutzt) | `list_structure` | Bereiche und Projekte mit IDs, statt Spaces/Ordner/Listen. |
 
-Für den Dev-Modus kommen `claim_task`, `release_task` und `decompose_task` dazu, für die Struktur `create_area`, `update_area`, `create_project`, `update_project`, für den Verlauf `get_task_history`.
+Für den Dev-Modus kommen `claim_task`, `release_task` und `decompose_task` dazu, für die Struktur `create_area`, `update_area`, `create_project`, `update_project`, für den Verlauf `get_task_history`, für Zwischenstände `add_comment`.
 
-### Ersatz für Kommentare
+### Kommentare und ihr Ersatz
 
 Je nach Zweck des bisherigen Kommentars:
 
 | Bisheriger Kommentar | In Zunder |
 |---|---|
-| Notiz, Zwischenstand, Kontext | an die Beschreibung anhängen: `update_task` mit `description` = bisherige Beschreibung + Abschnitt `## Notizen` mit Datum je Eintrag. Vorher `get_task` lesen, damit nichts überschrieben wird. |
+| Notiz, Zwischenstand, Kontext | `add_comment`; die Beschreibung bleibt unverändert. |
 | Ergebnis eines Agenten im Dev-Modus | strukturierte Felder `plan`, `branch`, `pr_url` per `update_task` |
 | „Wer hat wann was geändert?“ | entfällt als Kommentar: Das Änderungsprotokoll (`get_task_history`) zeichnet jede Änderung mit Zeit und Quelle (`web`, `api:<token-name>`, z. B. `api:import` für den ClickUp-Import, `mcp:<token-name>`, `server`) automatisch auf. |
 | Verweis auf eine Notiz | `vault_links` (Vault-Pfad oder `obsidian://`-URI) |

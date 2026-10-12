@@ -46,7 +46,7 @@ export function upgradeId(s: string): string {
 
 /** Converts legacy UUIDs in the ID-valued fields (core: op::upgrade_legacy_value). */
 export function upgradeValue(entity: EntityKind, field: string, value: JsonValue): JsonValue {
-  if ((entity === "project" && field === "area_id") || (entity === "task" && field === "parent_id")) {
+  if ((entity === "project" && field === "area_id") || (entity === "task" && field === "parent_id") || (entity === "comment" && field === "task_id")) {
     return typeof value === "string" ? upgradeId(value) : value;
   }
   if (entity === "task" && field === "location" && value && typeof value === "object" && !Array.isArray(value) && typeof value.id === "string") {

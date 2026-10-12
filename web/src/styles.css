@@ -1866,6 +1866,54 @@ html.resizing * {
   font-size: 0.8em;
 }
 
+/* ---- Comments ------------------------------------------------------------------ */
+
+.comment-list {
+  list-style: none;
+  margin: 0 0 0.6rem;
+  padding: 0;
+}
+.comment {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.comment-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.84rem;
+}
+.comment-author {
+  font-weight: 600;
+  color: var(--text-2);
+}
+.comment-author.agent {
+  font-family: var(--mono);
+  font-size: 0.9em;
+}
+.comment-head .btn {
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.comment:hover .comment-head .btn,
+.comment-head .btn:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .comment-head .btn {
+    opacity: 1;
+  }
+}
+.comment-form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.4rem;
+}
+.comment-input {
+  min-height: 3.2rem;
+}
+
 /* ---- Markdown field ------------------------------------------------------------ */
 
 .md-field {

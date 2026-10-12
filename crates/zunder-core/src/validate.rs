@@ -327,7 +327,7 @@ pub fn validate_push_as(state: &State, ops: &[Op], now_ms: u64, author: Author) 
 }
 
 /// The entity a live entity references and depends on: a task's parent, or
-/// the location target of a root task; a project's area.
+/// the location target of a root task; a project's area; a comment's task.
 fn reference_of(scratch: &Overlay<'_>, key: Key) -> Option<Key> {
     let entity = scratch.live_entity(key.0, key.1)?;
     match key.0 {
@@ -337,6 +337,7 @@ fn reference_of(scratch: &Overlay<'_>, key: Key) -> Option<Key> {
             Some(parent) => Some((EntityKind::Task, parent)),
             None => entity.own_location().target(),
         },
+        EntityKind::Comment => entity.comment_task_id().map(|t| (EntityKind::Task, t)),
     }
 }
 
@@ -373,6 +374,7 @@ fn reject_dependents(
             };
             let what = match (key.0, target.0) {
                 (EntityKind::Task, EntityKind::Task) => "die übergeordnete Aufgabe",
+                (_, EntityKind::Task) => "die Aufgabe",
                 (_, EntityKind::Project) => "das Projekt",
                 _ => "der Bereich",
             };
@@ -396,6 +398,7 @@ fn this_dative(kind: EntityKind) -> &'static str {
         EntityKind::Area => "diesem Bereich",
         EntityKind::Project => "diesem Projekt",
         EntityKind::Task => "dieser Aufgabe",
+        EntityKind::Comment => "diesem Kommentar",
     }
 }
 
@@ -577,6 +580,7 @@ impl Checker<'_> {
             EntityKind::Area => {}
             EntityKind::Project => self.check_project(entity),
             EntityKind::Task => self.check_task(entity),
+            EntityKind::Comment => self.check_comment(entity),
         }
     }
 
@@ -773,6 +777,19 @@ impl Checker<'_> {
         }
     }
 
+    /// A comment needs a live task when it is written to one (created, moved
+    /// or restored). Comments do not block deleting their task: they are
+    /// hidden with it and come back when it is restored.
+    fn check_comment(&mut self, comment: &Entity) {
+        let key = (EntityKind::Comment, comment.id());
+        let via = [fields::comment::TASK_ID, fields::DELETED];
+        if let Some(task) = comment.comment_task_id() {
+            if self.changed_any(key, &via) {
+                self.broken_reference(key, &via, (EntityKind::Task, task));
+            }
+        }
+    }
+
     /// Whether `task_id` lies on a parent cycle in the scratch state.
     fn in_cycle(&self, task_id: Id) -> bool {
         let mut seen = HashSet::new();
@@ -805,6 +822,7 @@ fn definite_article(kind: EntityKind) -> &'static str {
         EntityKind::Area => "Der",
         EntityKind::Project => "Das",
         EntityKind::Task => "Die",
+        EntityKind::Comment => "Der",
     }
 }
 
@@ -813,6 +831,7 @@ fn indefinite_accusative(kind: EntityKind) -> &'static str {
         EntityKind::Area => "einen Bereich",
         EntityKind::Project => "ein Projekt",
         EntityKind::Task => "eine Aufgabe",
+        EntityKind::Comment => "einen Kommentar",
     }
 }
 
@@ -821,6 +840,7 @@ fn dependent_phrase(kind: EntityKind) -> &'static str {
         EntityKind::Area => "noch ein Bereich",
         EntityKind::Project => "noch ein Projekt",
         EntityKind::Task => "noch eine Aufgabe",
+        EntityKind::Comment => "noch ein Kommentar",
     }
 }
 

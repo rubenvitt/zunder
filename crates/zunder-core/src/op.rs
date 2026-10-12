@@ -16,16 +16,24 @@ pub enum EntityKind {
     Area,
     Project,
     Task,
+    /// A comment on a task (status notes from agents, remarks).
+    Comment,
 }
 
 impl EntityKind {
-    pub const ALL: [EntityKind; 3] = [EntityKind::Area, EntityKind::Project, EntityKind::Task];
+    pub const ALL: [EntityKind; 4] = [
+        EntityKind::Area,
+        EntityKind::Project,
+        EntityKind::Task,
+        EntityKind::Comment,
+    ];
 
     pub fn as_str(self) -> &'static str {
         match self {
             EntityKind::Area => "area",
             EntityKind::Project => "project",
             EntityKind::Task => "task",
+            EntityKind::Comment => "comment",
         }
     }
 
@@ -35,6 +43,7 @@ impl EntityKind {
             EntityKind::Area => "Bereich",
             EntityKind::Project => "Projekt",
             EntityKind::Task => "Aufgabe",
+            EntityKind::Comment => "Kommentar",
         }
     }
 }
@@ -57,6 +66,7 @@ impl FromStr for EntityKind {
             "area" => Ok(EntityKind::Area),
             "project" => Ok(EntityKind::Project),
             "task" => Ok(EntityKind::Task),
+            "comment" => Ok(EntityKind::Comment),
             other => Err(UnknownEntityKind(other.to_owned())),
         }
     }
@@ -114,18 +124,19 @@ impl From<WireOp> for Op {
 }
 
 /// Converts legacy UUIDs in the ID-valued fields (`area_id`, `parent_id`,
-/// the `id` of a `location`) to their IDs ([`crate::ids::Id::from_legacy`]).
+/// the `id` of a `location`, a comment's `task_id`) to their IDs
+/// ([`crate::ids::Id::from_legacy`]).
 pub fn upgrade_legacy_value(entity: EntityKind, field: &str, value: &mut Value) {
-    use crate::model::fields::{project, task};
+    use crate::model::fields::{comment, project, task};
     fn upgrade(v: &mut Value) {
         if let Some(id) = v.as_str().and_then(crate::ids::upgrade_legacy_str) {
             *v = Value::String(id);
         }
     }
     match (entity, field) {
-        (EntityKind::Project, project::AREA_ID) | (EntityKind::Task, task::PARENT_ID) => {
-            upgrade(value)
-        }
+        (EntityKind::Project, project::AREA_ID)
+        | (EntityKind::Task, task::PARENT_ID)
+        | (EntityKind::Comment, comment::TASK_ID) => upgrade(value),
         (EntityKind::Task, task::LOCATION) => {
             if let Some(id) = value.get_mut("id") {
                 upgrade(id);

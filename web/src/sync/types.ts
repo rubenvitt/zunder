@@ -3,7 +3,7 @@
 /** HLC string "<wall_ms:13>:<counter:5>:<node>". */
 export type Hlc = string;
 
-export type EntityKind = "area" | "project" | "task";
+export type EntityKind = "area" | "project" | "task" | "comment";
 
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
@@ -78,14 +78,18 @@ export const TASK_FIELDS = [
   "deleted",
 ] as const;
 
+export const COMMENT_FIELDS = ["task_id", "body", "author", "deleted"] as const;
+
 export type AreaField = (typeof AREA_FIELDS)[number];
 export type ProjectField = (typeof PROJECT_FIELDS)[number];
 export type TaskField = (typeof TASK_FIELDS)[number];
+export type CommentField = (typeof COMMENT_FIELDS)[number];
 
 export const FIELDS_BY_ENTITY: Record<EntityKind, readonly string[]> = {
   area: AREA_FIELDS,
   project: PROJECT_FIELDS,
   task: TASK_FIELDS,
+  comment: COMMENT_FIELDS,
 };
 
 // ---- Materialized entities (winning values with defaults applied) ------
@@ -143,6 +147,14 @@ export interface Task extends EntityMeta {
   ref: string | null;
   /** HLC of the winning status op, or created_hlc when the status was never set. */
   status_hlc: Hlc;
+}
+
+export interface Comment extends EntityMeta {
+  task_id: string;
+  /** Markdown. */
+  body: string;
+  /** Agent or tool that wrote it; null = the owner. */
+  author: string | null;
 }
 
 // ---- HTTP API payloads ---------------------------------------------------

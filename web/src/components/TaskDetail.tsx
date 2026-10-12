@@ -6,8 +6,8 @@ import { hasOpenChildren, isClaimActive, isDevLocation, isFlameRunning } from ".
 import { hlcWallMs } from "../sync/hlc";
 import { PHOENIX_ROLES, TASK_STATUSES, TASK_TYPES, type HistoryEntry, type JsonValue, type Link, type Task, type TaskStatus, type TaskType } from "../sync/types";
 import { FIELD_LABELS, locationLabel, PHOENIX_LABELS, sourceLabel, STATUS_LABELS, TYPE_LABELS } from "../labels";
-import { createTask, deleteTask, dependentsCount, flame, moveTask, setParent, setStatus, updateTask } from "../state/actions";
-import { api, data, now, pendingCount, taskIndex } from "../state/store";
+import { addComment, createTask, deleteComment, deleteTask, dependentsCount, flame, moveTask, setParent, setStatus, updateComment, updateTask } from "../state/actions";
+import { api, commentsOf, data, now, pendingCount, taskIndex } from "../state/store";
 import { copyTaskId, copyText, detailWide, pickLocation, pickTask, selectedId, setDetailId, setDetailWide, setDetailWidth, setSelectedId } from "../state/ui";
 import { TextField } from "./Fields";
 import { Icon, type IconName } from "./Icon";
@@ -414,6 +414,8 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
             <VaultLinksEditor task={t()} />
           </section>
 
+          <Comments taskId={t().id} />
+
           <History taskId={t().id} version={t().updated_hlc} />
 
           <section class="detail-section detail-meta">
@@ -692,6 +694,90 @@ function VaultLinksEditor(props: { task: Task }) {
         </button>
       </form>
     </>
+  );
+}
+
+/** Comments of a task (notes, status updates from agents), oldest first. */
+function Comments(props: { taskId: string }) {
+  const [draft, setDraft] = createSignal("");
+  const comments = () => commentsOf(props.taskId);
+  const send = () => {
+    if (draft().trim() && addComment(props.taskId, draft())) setDraft("");
+  };
+  return (
+    <section class="detail-section comments">
+      <h3>
+        <Icon name="comment" size={16} />
+        Kommentare
+        <Show when={comments().length > 0}>
+          <span class="chip chip-count">{comments().length}</span>
+        </Show>
+      </h3>
+      <ul class="comment-list">
+        <For each={comments()}>
+          {(c) => (
+            <li class="comment" data-comment-id={c.id}>
+              <div class="comment-head">
+                <span class="comment-author" classList={{ agent: !!c.author }}>
+                  {c.author ?? "Du"}
+                </span>
+                <span class="muted" title={new Date(hlcWallMs(c.created_hlc)).toLocaleString("de-DE")}>
+                  {hlcLabel(c.created_hlc)}
+                </span>
+                <span class="spacer" />
+                <button
+                  class="btn btn-ghost btn-icon btn-xs"
+                  aria-label="Kommentar löschen"
+                  title="Kommentar löschen"
+                  onClick={() => confirm("Kommentar löschen?") && deleteComment(c.id)}
+                >
+                  <Icon name="trash" size={14} />
+                </button>
+              </div>
+              <MarkdownField
+                class="comment-body"
+                label="Kommentar (Markdown)"
+                value={c.body}
+                onCommit={(v) => {
+                  // An emptied comment keeps its text; deleting is explicit.
+                  if (v.trim()) updateComment(c.id, v);
+                }}
+              />
+            </li>
+          )}
+        </For>
+      </ul>
+      <form
+        class="comment-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          send();
+        }}
+      >
+        <textarea
+          class="field comment-input"
+          rows={2}
+          placeholder="Kommentar schreiben … (Markdown, ⌘/Strg+Enter sendet)"
+          aria-label="Neuer Kommentar"
+          value={draft()}
+          onInput={(e) => setDraft(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              send();
+            } else if (e.key === "Escape" && draft()) {
+              e.stopPropagation();
+              setDraft("");
+            }
+          }}
+        />
+        <Show when={draft().trim()}>
+          <button class="btn btn-primary btn-small" type="submit">
+            Kommentieren
+          </button>
+        </Show>
+      </form>
+    </section>
   );
 }
 

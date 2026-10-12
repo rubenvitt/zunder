@@ -50,12 +50,23 @@ export const REQUIRED_FIELDS: Record<EntityKind, readonly string[]> = {
   area: ["name"],
   project: ["name", "area_id"],
   task: ["title"],
+  comment: ["task_id", "body"],
 };
 
-const KIND_LABEL: Record<EntityKind, string> = { area: "Bereich", project: "Projekt", task: "Aufgabe" };
-const DEFINITE: Record<EntityKind, string> = { area: "Der", project: "Das", task: "Die" };
-const INDEFINITE_ACC: Record<EntityKind, string> = { area: "einen Bereich", project: "ein Projekt", task: "eine Aufgabe" };
-const DEPENDENT: Record<EntityKind, string> = { area: "noch ein Bereich", project: "noch ein Projekt", task: "noch eine Aufgabe" };
+const KIND_LABEL: Record<EntityKind, string> = { area: "Bereich", project: "Projekt", task: "Aufgabe", comment: "Kommentar" };
+const DEFINITE: Record<EntityKind, string> = { area: "Der", project: "Das", task: "Die", comment: "Der" };
+const INDEFINITE_ACC: Record<EntityKind, string> = {
+  area: "einen Bereich",
+  project: "ein Projekt",
+  task: "eine Aufgabe",
+  comment: "einen Kommentar",
+};
+const DEPENDENT: Record<EntityKind, string> = {
+  area: "noch ein Bereich",
+  project: "noch ein Projekt",
+  task: "noch eine Aufgabe",
+  comment: "noch ein Kommentar",
+};
 
 export { isCanonicalId } from "./ids";
 
@@ -124,6 +135,7 @@ export function parseStrictLocation(v: JsonValue | undefined): Location | null {
 type Shape =
   | "title"
   | "text"
+  | "body"
   | "bool"
   | "id"
   | "location"
@@ -176,6 +188,7 @@ const SHAPES: Record<EntityKind, Record<string, Shape>> = {
     ref: "task_ref",
     deleted: "bool",
   },
+  comment: { task_id: "id", body: "body", author: "title", deleted: "bool" },
 };
 
 const FIELD_LABELS: Record<string, string> = {
@@ -191,6 +204,9 @@ const FIELD_LABELS: Record<string, string> = {
   location: "Stelle",
   parent_id: "Elternaufgabe",
   area_id: "Bereich",
+  task_id: "Aufgabe",
+  body: "Text",
+  author: "Autor",
 };
 
 const label = (field: string) => FIELD_LABELS[field] ?? `„${field}“`;
@@ -200,6 +216,7 @@ function shapeOk(shape: Shape, v: JsonValue): boolean {
   switch (shape) {
     case "title":
     case "text":
+    case "body":
       return typeof v === "string";
     case "bool":
       return typeof v === "boolean";
@@ -255,13 +272,22 @@ export function checkField(entity: EntityKind, field: string, value: JsonValue):
     }
     return null;
   }
-  if (shape === "title") {
+  if (shape === "title" || shape === "body") {
     if (typeof value !== "string") return { code: "invalid_value", message: `${label(field)} muss ein Text sein.` };
     // Blank = only Unicode White_Space, the set Rust's str::trim strips (JS trim differs: it
     // keeps U+0085 and strips U+FEFF).
     if (/^\p{White_Space}*$/u.test(value)) {
-      return { code: "invalid_value", message: entity === "task" ? "Eine Aufgabe braucht einen Titel." : `${DEFINITE[entity]} ${KIND_LABEL[entity]} braucht einen Namen.` };
+      const message =
+        entity === "comment"
+          ? field === "body"
+            ? "Ein Kommentar braucht Text."
+            : `${label(field)} darf nicht leer sein.`
+          : entity === "task"
+            ? "Eine Aufgabe braucht einen Titel."
+            : `${DEFINITE[entity]} ${KIND_LABEL[entity]} braucht einen Namen.`;
+      return { code: "invalid_value", message };
     }
+    if (shape === "body") return null;
     if ([...value].length > TITLE_MAX) {
       return { code: "invalid_value", message: `${label(field)} darf höchstens ${TITLE_MAX} Zeichen lang sein.` };
     }
@@ -446,6 +472,7 @@ class Checker {
     }
     if (kind === "project") this.checkProject(e);
     else if (kind === "task") this.checkTask(e);
+    else if (kind === "comment") this.checkComment(e);
   }
 
   private brokenReference(kind: EntityKind, id: string, via: readonly string[], targetKind: EntityKind, targetId: string): void {
@@ -486,6 +513,13 @@ class Checker {
         "Ein Repo ist nur bei Dev-Projekten erlaubt. Bitte „repo“ zurücksetzen oder die Art „dev“ wählen.",
       );
     }
+  }
+
+  /** A comment needs a live task when written to one; it never blocks deleting its task. */
+  private checkComment(c: EntityState): void {
+    const task = strValue(c, "task_id");
+    const via = ["task_id", "deleted"];
+    if (isCanonicalId(task) && this.changedAny("comment", c.id, via)) this.brokenReference("comment", c.id, via, "task", task);
   }
 
   private checkTask(t: EntityState): void {
@@ -586,7 +620,7 @@ function neighbourhood(scratch: View, changed: ReadonlyMap<Key, ReadonlySet<stri
     out.set(key, [kind, id]);
     if (kind === "area") touchedAreas.add(id);
     else if (kind === "project") touchedProjects.add(id);
-    else touchedTasks.push(id);
+    else if (kind === "task") touchedTasks.push(id);
   }
   if (touchedAreas.size > 0) {
     for (const p of scratch.entities("project")) {
@@ -626,7 +660,7 @@ export function validateOps(base: EntityStore, ops: readonly Op[], nowMs: number
     set.add(op.entity);
   }
   const failed = new Set<Key>();
-  const otherKinds = (kind: EntityKind, id: string) => (["area", "project", "task"] as const).filter((k) => k !== kind && base.has(k, id));
+  const otherKinds = (kind: EntityKind, id: string) => (["area", "project", "task", "comment"] as const).filter((k) => k !== kind && base.has(k, id));
   for (const op of ops) {
     const key = keyOf(op.entity, op.entity_id);
     if (failed.has(key)) continue;
@@ -686,6 +720,7 @@ export function validateOps(base: EntityStore, ops: readonly Op[], nowMs: number
  * Entity plus all live dependents, dependents last (core: OpBatch::delete_cascade):
  * a task with its descendants; a project with the tasks located in it; an area
  * with its projects (and their tasks) and the tasks located directly in it.
+ * Comments stay: they are hidden with their task and return when it is restored.
  */
 export function deleteCascade(base: EntityStore, kind: EntityKind, id: string): [EntityKind, string][] {
   const view = new View(base);
@@ -698,7 +733,7 @@ export function deleteCascade(base: EntityStore, kind: EntityKind, id: string): 
       const eff = view.effectiveLocation(t.id);
       if (eff?.kind === "project" && eff.id === id) out.push(["task", t.id]);
     }
-  } else {
+  } else if (kind === "area") {
     for (const p of view.entities("project")) {
       if (!isDeleted(p) && areaId(p) === id) out.push(...deleteCascade(base, "project", p.id));
     }

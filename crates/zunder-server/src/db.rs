@@ -22,6 +22,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0003_settings.sql"),
     include_str!("../migrations/0004_devices.sql"),
     include_str!("../migrations/0005_cuid2.sql"),
+    include_str!("../migrations/0006_comments.sql"),
 ];
 
 /// The schema version this binary expects.
@@ -1241,6 +1242,63 @@ mod tests {
         drop(conn);
         // reopening does not re-run migrations
         open(&dir.path().join("zunder.db")).unwrap();
+    }
+
+    #[test]
+    fn schema_6_rebuilds_tables_for_comments_and_keeps_the_cursor() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut conn = Connection::open(dir.path().join("zunder.db")).unwrap();
+        for (index, sql) in MIGRATIONS.iter().take(5).enumerate() {
+            conn.execute_batch(sql).unwrap();
+            conn.pragma_update(None, "user_version", index as i64 + 1)
+                .unwrap();
+        }
+        conn.execute_batch(
+            "INSERT INTO users (id, created_at) VALUES ('u', 0);
+             INSERT INTO ops (seq, op_id, owner_id, entity, entity_id, field, value_json, hlc,
+                              source, received_at)
+                 VALUES (7, 'o1', 'u', 'task', 't1', 'title', '\"A\"', 'h', 'web', 0),
+                        (9, 'o2', 'u', 'task', 't1', 'title', '\"B\"', 'h', 'web', 0);
+             DELETE FROM ops WHERE seq = 9;
+             INSERT INTO entities VALUES ('u', 'task', 't1', 'h', 'h', 0, '{}');",
+        )
+        .unwrap();
+        assert!(conn
+            .execute(
+                "INSERT INTO entities VALUES ('u', 'comment', 'c1', 'h', 'h', 0, '{}')",
+                [],
+            )
+            .is_err());
+        migrate(&mut conn).unwrap();
+
+        let ops: i64 = conn
+            .query_row("SELECT count(*) FROM ops WHERE seq = 7", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(ops, 1);
+        conn.execute(
+            "INSERT INTO ops (op_id, owner_id, entity, entity_id, field, value_json, hlc,
+                              source, received_at)
+                 VALUES ('o3', 'u', 'comment', 'c1', 'body', '\"x\"', 'h', 'web', 0)",
+            [],
+        )
+        .unwrap();
+        // seq 9 was handed out before; it is never reused.
+        assert_eq!(conn.last_insert_rowid(), 10);
+        conn.execute(
+            "INSERT INTO entities VALUES ('u', 'comment', 'c1', 'h', 'h', 0, '{}')",
+            [],
+        )
+        .unwrap();
+        let entities: i64 = conn
+            .query_row("SELECT count(*) FROM entities", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(entities, 2);
+        assert!(conn
+            .execute(
+                "INSERT INTO entities VALUES ('u', 'note', 'n1', 'h', 'h', 0, '{}')",
+                [],
+            )
+            .is_err());
     }
 
     #[test]

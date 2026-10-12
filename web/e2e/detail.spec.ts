@@ -3,7 +3,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 import { fromLegacy } from "../src/sync/ids";
-import { entityFields, openApp, prepare, row, Seeder, suffix } from "./fixtures";
+import { entityFields, newId, openApp, prepare, row, Seeder, suffix } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
   await prepare(page);
@@ -298,4 +298,39 @@ test("Dev-Board: Unteraufgaben aufklappen und ihre ID mit einem Klick kopieren",
   await expect.poll(clipboard).toBe(parent);
   await sub.locator(".subtask-title").click();
   await expect(detail(page).getByLabel("Titel", { exact: true })).toHaveValue(`Teilschritt ${s}`);
+});
+
+test("Kommentare: Agenten-Stand erscheint, eigener Kommentar wird gespeichert und gelöscht", async ({ page }) => {
+  const s = suffix();
+  const seeder = new Seeder();
+  const id = seeder.task(`Kommentiert ${s}`, { location: { kind: "loose" }, description: "Ziel" });
+  const agentComment = seeder.raw("comment", newId(), { task_id: id, body: "Stand: **Backup** läuft.", author: "claude-code" });
+  await seeder.push(page);
+  await openLoose(page, `Kommentiert ${s}`);
+
+  const comments = detail(page).locator("section.comments");
+  const first = comments.locator(`[data-comment-id="${agentComment}"]`);
+  await expect(first.locator(".comment-author")).toHaveText("claude-code");
+  await expect(first.locator("strong")).toHaveText("Backup");
+
+  // An agent posts while the panel is open: it shows up live.
+  seeder.raw("comment", newId(), { task_id: id, body: "Fertig.", author: "claude-code" });
+  await seeder.push(page);
+  await expect(comments.locator(".comment")).toHaveCount(2);
+
+  const input = comments.getByRole("textbox", { name: "Neuer Kommentar" });
+  await input.fill("Danke, sieht gut aus.");
+  await input.press("Control+Enter");
+  await expect(input).toHaveValue("");
+  const own = comments.locator(".comment").last();
+  await expect(own.locator(".comment-author")).toHaveText("Du");
+  const ownId = (await own.getAttribute("data-comment-id"))!;
+  await expect.poll(async () => (await entityFields(page, "comment", ownId)).body).toBe("Danke, sieht gut aus.");
+  expect((await entityFields(page, "task", id)).description).toBe("Ziel");
+
+  page.once("dialog", (d) => void d.accept());
+  await own.hover();
+  await own.getByRole("button", { name: "Kommentar löschen" }).click();
+  await expect(comments.locator(".comment")).toHaveCount(2);
+  await expect.poll(async () => (await entityFields(page, "comment", ownId)).deleted).toBe(true);
 });

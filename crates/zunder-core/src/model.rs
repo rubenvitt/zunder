@@ -110,12 +110,25 @@ pub mod fields {
         pub const REQUIRED: &[&str] = &[TITLE];
     }
 
+    pub mod comment {
+        /// The task the comment belongs to.
+        pub const TASK_ID: &str = "task_id";
+        /// Markdown text, not empty.
+        pub const BODY: &str = "body";
+        /// Who wrote it (agent or tool name); unset = the owner.
+        pub const AUTHOR: &str = "author";
+        pub const DELETED: &str = super::DELETED;
+        pub const ALL: &[&str] = &[TASK_ID, BODY, AUTHOR, DELETED];
+        pub const REQUIRED: &[&str] = &[TASK_ID, BODY];
+    }
+
     /// All known fields of an entity kind.
     pub fn all(kind: EntityKind) -> &'static [&'static str] {
         match kind {
             EntityKind::Area => area::ALL,
             EntityKind::Project => project::ALL,
             EntityKind::Task => task::ALL,
+            EntityKind::Comment => comment::ALL,
         }
     }
 
@@ -125,6 +138,7 @@ pub mod fields {
             EntityKind::Area => area::REQUIRED,
             EntityKind::Project => project::REQUIRED,
             EntityKind::Task => task::REQUIRED,
+            EntityKind::Comment => comment::REQUIRED,
         }
     }
 
@@ -576,6 +590,16 @@ pub struct Task {
     pub deleted: bool,
 }
 
+/// Typed view of a comment.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Comment {
+    pub id: Id,
+    pub task_id: Id,
+    pub body: String,
+    pub author: Option<String>,
+    pub deleted: bool,
+}
+
 /// Rejection of a single field value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValueError {
@@ -598,6 +622,8 @@ enum Shape {
     /// Non-empty (after trimming) text of at most [`MAX_TITLE_CHARS`] chars.
     Title,
     Text,
+    /// Non-empty (after trimming) text without length limit.
+    Body,
     Bool,
     Enum(fn() -> Vec<&'static str>),
     Id,
@@ -614,7 +640,7 @@ enum Shape {
 }
 
 fn shape_of(kind: EntityKind, field: &str) -> Option<Shape> {
-    use fields::{area as a, project as p, task as t};
+    use fields::{area as a, comment as c, project as p, task as t};
     if field == fields::DELETED {
         return Some(Shape::Bool);
     }
@@ -658,6 +684,12 @@ fn shape_of(kind: EntityKind, field: &str) -> Option<Shape> {
             | t::TIMING_REF
             | t::CLICKUP_ID
             | t::RANK => Shape::Text,
+            _ => return None,
+        },
+        EntityKind::Comment => match field {
+            c::TASK_ID => Shape::Id,
+            c::BODY => Shape::Body,
+            c::AUTHOR => Shape::Title,
             _ => return None,
         },
     };
@@ -713,6 +745,13 @@ fn check_shape(shape: Shape, field: &str, value: &Value) -> Result<(), ValueErro
         }
         Shape::Text => {
             text()?;
+        }
+        Shape::Body => {
+            if text()?.trim().is_empty() {
+                return Err(ValueError::invalid(format!(
+                    "„{field}“ darf nicht leer sein."
+                )));
+            }
         }
         Shape::Bool => {
             if !value.is_boolean() {

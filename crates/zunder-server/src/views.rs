@@ -1,4 +1,4 @@
-//! Representations of tasks, areas and projects for MCP tools and the flame
+//! Representations of tasks, comments, areas and projects for MCP tools and the flame
 //! endpoints, plus resolving task addresses (`task_id` as UUID or reference
 //! like `ZUN-42`, or `clickup_id`).
 //!
@@ -12,8 +12,8 @@ use serde::Serialize;
 use zunder_core::ids::Id;
 use zunder_core::model::format_rfc3339;
 use zunder_core::{
-    AreaState, Due, EntityKind, Link, Location, Phoenix, Progress, ProjectKind, ProjectStatus,
-    ProjectView as ProjectViewMode, State, Task, TaskStatus, TaskType,
+    AreaState, Comment, Due, EntityKind, Link, Location, Phoenix, Progress, ProjectKind,
+    ProjectStatus, ProjectView as ProjectViewMode, State, Task, TaskStatus, TaskType,
 };
 
 use crate::app::format_ms;
@@ -115,6 +115,49 @@ pub struct TaskView {
     /// Subtask tree (only from `get_task`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subtasks: Option<Vec<TaskView>>,
+    /// Live comments, oldest first (only from `get_task`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comments: Option<Vec<CommentView>>,
+}
+
+/// A comment as returned by tools.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CommentView {
+    pub id: Id,
+    pub task_id: Id,
+    pub body: String,
+    /// Agent or tool that wrote it; `null` = the owner.
+    pub author: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl CommentView {
+    /// The view of a comment (also tombstoned ones); `None` if unknown.
+    pub fn build(state: &State, id: Id) -> Option<Self> {
+        let comment = state.comment(id)?;
+        Some(Self::of(state, comment))
+    }
+
+    /// The live comments of a task, oldest first.
+    pub fn of_task(state: &State, task_id: Id) -> Vec<Self> {
+        state
+            .comments_of(task_id)
+            .into_iter()
+            .map(|c| Self::of(state, c))
+            .collect()
+    }
+
+    fn of(state: &State, comment: Comment) -> Self {
+        CommentView {
+            id: comment.id,
+            task_id: comment.task_id,
+            created_at: hlc_time(state.created_at(EntityKind::Comment, comment.id)),
+            updated_at: hlc_time(state.updated_at(EntityKind::Comment, comment.id)),
+            body: comment.body,
+            author: comment.author,
+        }
+    }
 }
 
 /// Whether a flame runs on the task: started and not ended since.
@@ -162,6 +205,7 @@ impl TaskView {
             status_changed_at: hlc_time(state.status_changed_at(id)),
             progress: state.progress(id),
             subtasks,
+            comments: None,
             title: task.title,
             description: task.description,
             task_type: task.task_type,

@@ -75,6 +75,7 @@ fn score_entity(
         ),
         EntityKind::Project => (fields::project::NAME, &[]),
         EntityKind::Area => (fields::area::NAME, &[]),
+        EntityKind::Comment => return None,
     };
     let title = entity.str_value(title_field)?.to_owned();
 

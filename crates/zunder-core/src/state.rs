@@ -17,8 +17,8 @@ use serde_json::Value;
 
 use crate::hlc::Hlc;
 use crate::model::{
-    fields, Area, AreaState, Location, Project, ProjectKind, ProjectStatus, ProjectView, Task,
-    TaskStatus, TaskType,
+    fields, Area, AreaState, Comment, Location, Project, ProjectKind, ProjectStatus, ProjectView,
+    Task, TaskStatus, TaskType,
 };
 use crate::op::{EntityKind, Op};
 
@@ -187,6 +187,15 @@ impl Entity {
         }
     }
 
+    /// The task a comment belongs to (only meaningful for comments).
+    pub fn comment_task_id(&self) -> Option<Id> {
+        if self.kind == EntityKind::Comment {
+            self.id_value(fields::comment::TASK_ID)
+        } else {
+            None
+        }
+    }
+
     /// The task's own `location` (default inbox; invalid values read as inbox).
     pub fn own_location(&self) -> Location {
         self.parsed(fields::task::LOCATION).unwrap_or_default()
@@ -277,6 +286,17 @@ impl Entity {
             clickup_id: self.string(f::CLICKUP_ID),
             rank: self.string(f::RANK),
             reference: self.string(f::REF),
+            deleted: self.is_deleted(),
+        })
+    }
+
+    fn to_comment(&self) -> Option<Comment> {
+        use fields::comment as f;
+        Some(Comment {
+            id: self.id,
+            task_id: self.id_value(f::TASK_ID)?,
+            body: self.string(f::BODY)?,
+            author: self.string(f::AUTHOR),
             deleted: self.is_deleted(),
         })
     }
@@ -467,6 +487,24 @@ impl State {
     /// Typed task view. `None` if missing or without a title.
     pub fn task(&self, id: Id) -> Option<Task> {
         self.entity(EntityKind::Task, id)?.to_task()
+    }
+
+    /// Typed comment view. `None` if missing or without task/body.
+    pub fn comment(&self, id: Id) -> Option<Comment> {
+        self.entity(EntityKind::Comment, id)?.to_comment()
+    }
+
+    /// Live comments of a task, oldest first (by creation HLC, then ID).
+    /// Scans all comments; their number stays small for one person.
+    pub fn comments_of(&self, task_id: Id) -> Vec<Comment> {
+        let mut found: Vec<(&Hlc, Comment)> = self
+            .entities_of(EntityKind::Comment)
+            .filter(|e| !e.is_deleted())
+            .filter_map(|e| Some((e.created_at(), e.to_comment()?)))
+            .filter(|(_, c)| c.task_id == task_id)
+            .collect();
+        found.sort_by(|(a, x), (b, y)| a.cmp(b).then(x.id.cmp(&y.id)));
+        found.into_iter().map(|(_, c)| c).collect()
     }
 
     /// All areas, including tombstoned ones.

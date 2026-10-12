@@ -122,6 +122,22 @@ export function shorten(text: string, max = 40): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
+// ---- Comments ---------------------------------------------------------
+
+/** Writes a comment on a task as the owner (no author); returns its id or null when refused. */
+export function addComment(taskId: string, body: string): string | null {
+  const id = newId();
+  return apply([{ entity: "comment", id, fields: { task_id: taskId, body } }]) ? id : null;
+}
+
+export function updateComment(id: string, body: string): boolean {
+  return apply([{ entity: "comment", id, fields: { body } }]);
+}
+
+export function deleteComment(id: string): boolean {
+  return apply([{ entity: "comment", id, fields: { deleted: true } }]);
+}
+
 // ---- Areas and projects -----------------------------------------------
 
 export function createArea(name: string): string | null {
