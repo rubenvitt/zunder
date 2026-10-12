@@ -103,13 +103,16 @@ Shell-Skripte (z. B. `deploy/generate-secrets.sh`) mit `shellcheck` prüfen.
 
 | Job | Inhalt |
 |---|---|
+| `commits` | nur bei Pull Requests: commitlint prüft, dass jeder Commit des PRs ein Conventional Commit ist (Merge-Commits ausgenommen) |
 | `rust` | `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` (mit Cache), danach `zunder-import run` gegen den echten Server |
 | `local` | `zunder-local` im Tauri-Workspace: `fmt`, `clippy -p zunder-local`, Tests, Sync gegen den echten Server |
 | `web` | `npm ci`, `typecheck`, `test` (inkl. gemeinsamer Testvektoren), `build` in `web/` |
 | `e2e` | Server (Release) und Web-UI bauen, Chromium installieren, Playwright mit `ZUNDER_E2E_BACKEND=real` (Binärdatei aus `ZUNDER_SERVER_BIN`), danach gegen den Mock; bei Fehlern wird der Report hochgeladen |
 | `image` | nach grünen Checks: Multi-Arch-Image (amd64 + arm64) bauen, bei Pull Requests nur bauen (Dockerfile und arm64-Cross-Build werden vor dem Merge geprüft, Cache nur lesend); bei `main` und Tags zusätzlich nach `ghcr.io/<owner>/zunder` mit den Tags `latest`, `sha-<commit>` und SemVer |
 
-Die Tauri-Hülle (`zunder-app`) baut ein eigener Workflow (`.github/workflows/app.yml`) auf macOS: bei Pull Requests, die App, Web-UI oder `zunder-core` berühren, nur bauen; bei Tags `v*` signiert, notarisiert und als GitHub-Release mit `latest.json` für die Selbstaktualisierung (siehe [`apps/zunder-app/README.md`](../apps/zunder-app/README.md#updates-und-releases)). Linux, Windows und die Mobil-Apps baut die CI nicht. Die Logik der App steckt in `zunder-core` (Job `rust`) und `zunder-local` (Job `local`).
+Die Tauri-Hülle (`zunder-app`) baut ein eigener Workflow (`.github/workflows/app.yml`) auf macOS: bei Pull Requests, die App, Web-UI oder `zunder-core` berühren, nur bauen; bei Releases signiert, notarisiert und als GitHub-Release mit `latest.json` für die Selbstaktualisierung (siehe [`apps/zunder-app/README.md`](../apps/zunder-app/README.md#updates-und-releases)). Linux, Windows und die Mobil-Apps baut die CI nicht. Die Logik der App steckt in `zunder-core` (Job `rust`) und `zunder-local` (Job `local`).
+
+Releases legt [`.github/workflows/release.yml`](../.github/workflows/release.yml) nach jedem grünen CI-Lauf auf `main` an: semantic-release bestimmt die nächste Version aus den Conventional Commits, Tag `vX.Y.Z` setzen, SemVer-Tags an das Image hängen, `app.yml` für das App-Release aufrufen. Regeln für die Version in [`apps/zunder-app/README.md`](../apps/zunder-app/README.md#updates-und-releases).
 
 ## Image lokal bauen
 
@@ -125,4 +128,5 @@ Mehr zum Image (Cross-Kompilierung, Caching, Laufzeit) in [`betrieb.md`](betrieb
 ## Commits
 
 - Kleine, in sich geschlossene Commits mit aussagekräftiger Nachricht (deutsch oder englisch).
-- Release: Tag `vX.Y.Z` auf `main` setzen; die CI baut und veröffentlicht das Image mit den passenden Versions-Tags.
+- Format: [Conventional Commits](https://www.conventionalcommits.org/de/v1.0.0/), `typ(bereich): Beschreibung`, etwa `feat(web): Filter speichern`, `fix(server): Token läuft nicht mehr zu früh ab`, `docs: Betrieb ergänzt`. Typen: `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, `build`, `ci`, `chore`, `style`, `revert`. Bereich optional (`server`, `web`, `app`, `core`, `import`, `local`). Breaking Change: `typ!:` oder `BREAKING CHANGE:` im Text. Die CI (Job `commits`) prüft das bei jedem Pull Request.
+- Release: passiert nach jedem grünen Push auf `main` von selbst. `fix:`/`perf:` gibt ein Patch-, `feat:` ein Minor-, ein Breaking Change ein Major-Release; Commits nur mit anderen Typen lösen keins aus.

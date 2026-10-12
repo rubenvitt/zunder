@@ -246,7 +246,7 @@ Manuelle Kopien bewusst nicht nach `/data/backups/` legen, damit die Rotation si
 
 ## Updates
 
-- Jeder Push auf `main` baut `ghcr.io/rubenvitt/zunder:latest` neu (dazu `sha-<kurz>` und den vollen Commit-SHA als Tag). Ein Git-Tag `v1.2.3` erzeugt zusätzlich `1.2.3`, `1.2` und `1`.
+- Jeder Push auf `main` baut `ghcr.io/rubenvitt/zunder:latest` neu (dazu `sha-<kurz>` und den vollen Commit-SHA als Tag). Jedes Release (automatisch nach einem grünen Push auf `main` mit `feat:`/`fix:`-Commits, siehe [`apps/zunder-app/README.md`](../apps/zunder-app/README.md#updates-und-releases)) hängt zusätzlich die Versions-Tags an, etwa `1.2.3`, `1.2` und `1` (bei `0.x` ohne den Major-Tag).
 - Einspielen von Hand: `cd ~/server/zunder && docker compose pull && docker compose up -d` (oder `~/server/server.sh update` für alle Stacks). Mit eingetragenem deploy-agent passiert das nach jedem grünen Push auf `main` automatisch (siehe [Automatisches Ausrollen](#automatisches-ausrollen-optional)).
 - Vorher ein manuelles Backup ziehen (siehe oben). Datenbank-Migrationen laufen beim Start des Servers.
 - **Zurückrollen:** in `compose.yaml` statt `latest` den vorherigen Tag eintragen (`sha-<commit>` oder Versionsnummer) und `docker compose up -d`. Hat die neue Version das Schema migriert, zusätzlich das Backup von vor dem Update wiederherstellen.

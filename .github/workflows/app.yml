@@ -1,10 +1,14 @@
 name: App
 
 # Desktop app (macOS, Apple Silicon). Pull requests that touch the app, the
-# web UI or zunder-core only build it. Version tags (v*) build it signed with
-# the Developer ID, notarize it and publish a GitHub release with
-# latest.json; installed apps update themselves from there
+# web UI or zunder-core only build it. A release (release.yml calls this
+# workflow with the tag after every green push to main; a version tag v*
+# pushed by hand starts it directly) builds it signed with the Developer ID,
+# notarizes it and publishes a GitHub release with latest.json; installed
+# apps update themselves from there
 # (apps/zunder-app/src-tauri/src/update.rs). The tag sets the app version.
+# The release stays a draft until every asset is uploaded, so
+# releases/latest never points to a release without latest.json.
 # Third-party actions are pinned to commits: this job holds the signing keys.
 on:
   push:
@@ -16,6 +20,16 @@ on:
       - "crates/zunder-core/**"
       - ".github/workflows/app.yml"
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      tag:
+        description: Version tag (vX.Y.Z) to build and publish
+        type: string
+        required: true
+      notes:
+        description: Release notes (semantic-release); empty lets GitHub generate them
+        type: string
+        default: ""
 
 concurrency:
   group: app-${{ github.ref }}
@@ -37,9 +51,12 @@ jobs:
     permissions:
       contents: write
     env:
-      RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
+      # Empty: build only.
+      TAG: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name) || '' }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
       - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
@@ -59,12 +76,12 @@ jobs:
         working-directory: web
 
       - name: Bauen
-        if: env.RELEASE != 'true'
+        if: env.TAG == ''
         working-directory: apps/zunder-app
         run: npm run build -- --bundles app
 
       - name: Release vorbereiten
-        if: env.RELEASE == 'true'
+        if: env.TAG != ''
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -79,12 +96,13 @@ jobs:
           done
           printf '%s\n' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
           # The updater only installs strictly higher versions, so the tag is the version.
-          version="${GITHUB_REF_NAME#v}"
+          version="${TAG#v}"
           printf '{"version":"%s","bundle":{"createUpdaterArtifacts":true}}\n' "$version" \
             > "$RUNNER_TEMP/release.conf.json"
 
-      - name: Bauen, signieren, notarisieren, veröffentlichen
-        if: env.RELEASE == 'true'
+      - name: Bauen, signieren, notarisieren, hochladen
+        id: tauri
+        if: env.TAG != ''
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -99,6 +117,20 @@ jobs:
         with:
           projectPath: apps/zunder-app
           args: --config ${{ runner.temp }}/release.conf.json
-          tagName: ${{ github.ref_name }}
+          tagName: ${{ env.TAG }}
           releaseName: Zunder __VERSION__
-          releaseBody: "Desktop-App für macOS (Apple Silicon). Installierte Apps aktualisieren sich selbst."
+          releaseBody: |
+            Desktop-App für macOS (Apple Silicon). Installierte Apps aktualisieren sich selbst.
+
+            ${{ inputs.notes }}
+          generateReleaseNotes: ${{ !inputs.notes }}
+          releaseDraft: true
+
+      - name: Release veröffentlichen
+        if: env.TAG != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ steps.tauri.outputs.releaseId }}
+        run: |
+          gh api --method PATCH "repos/${{ github.repository }}/releases/$RELEASE_ID" \
+            -F draft=false -f make_latest=true > /dev/null

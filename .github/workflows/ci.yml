@@ -31,6 +31,31 @@ env:
 # against the real server.
 
 jobs:
+  # Conventional Commits drive the version (release.yml); merge commits are
+  # ignored. Only the commits a pull request adds are checked.
+  commits:
+    name: Commits (Conventional Commits)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: .github/release/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: .github/release
+      - name: commitlint
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          .github/release/node_modules/.bin/commitlint \
+            --config .github/release/commitlint.config.mjs --from "$BASE" --to "$HEAD" --verbose
+
   rust:
     name: Rust (fmt, clippy, test)
     runs-on: ubuntu-24.04
