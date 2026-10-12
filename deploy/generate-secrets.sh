@@ -181,7 +181,7 @@ echo ""
 ZUNDER_TIMING_TOKEN=$(prompt_optional_secret "ZUNDER_TIMING_TOKEN" "Timing API token")
 set_var ZUNDER_TIMING_TOKEN CHANGEME_OPTIONAL "$ZUNDER_TIMING_TOKEN"
 
-ZUNDER_TIMING_PROJECT=$(prompt_optional_value "ZUNDER_TIMING_PROJECT" "Timing project ID")
+ZUNDER_TIMING_PROJECT=$(prompt_optional_value "ZUNDER_TIMING_PROJECT" "Timing project (self link /projects/<id> or project title)")
 set_var ZUNDER_TIMING_PROJECT CHANGEME_OPTIONAL "$ZUNDER_TIMING_PROJECT"
 
 # ============================================================================
