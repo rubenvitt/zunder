@@ -231,25 +231,31 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
             </Prop>
 
             <Prop icon="calendar" label="Fällig">
-              <DueEditor task={t()} />
+              <DateSlot isSet={!!t().due} label="Fälligkeit setzen">
+                {(autoOpen) => <DueEditor task={t()} autoOpen={autoOpen} />}
+              </DateSlot>
             </Prop>
 
             <Prop icon="bell" label="Erinnerung">
-              <span class="prop-inline">
-                <input
-                  class="prop-input"
-                  classList={{ unset: !t().remind_at }}
-                  type="datetime-local"
-                  aria-label="Erinnerung"
-                  value={toDatetimeLocalInput(t().remind_at)}
-                  onChange={(e) => set({ remind_at: fromDatetimeLocalInput(e.currentTarget.value) })}
-                />
-                <Show when={t().remind_at}>
-                  <button class="btn btn-ghost btn-icon btn-xs" aria-label="Erinnerung entfernen" onClick={() => set({ remind_at: null })}>
-                    <Icon name="x" size={14} />
-                  </button>
-                </Show>
-              </span>
+              <DateSlot isSet={!!t().remind_at} label="Erinnerung setzen">
+                {(autoOpen) => (
+                  <span class="prop-inline nowrap">
+                    <input
+                      ref={(el) => autoOpen(el)}
+                      class="prop-input"
+                      type="datetime-local"
+                      aria-label="Erinnerung"
+                      value={toDatetimeLocalInput(t().remind_at)}
+                      onChange={(e) => set({ remind_at: fromDatetimeLocalInput(e.currentTarget.value) })}
+                    />
+                    <Show when={t().remind_at}>
+                      <button class="btn btn-ghost btn-icon btn-xs" aria-label="Erinnerung entfernen" onClick={() => set({ remind_at: null })}>
+                        <Icon name="x" size={14} />
+                      </button>
+                    </Show>
+                  </span>
+                )}
+              </DateSlot>
             </Prop>
 
             <Prop icon="arrowUp" label="Eltern">
@@ -478,7 +484,39 @@ function hlcLabel(hlc: string): string {
   return Number.isFinite(ms) ? formatInstant(new Date(ms).toISOString(), new Date(now())) : "";
 }
 
-function DueEditor(props: { task: Task }) {
+/**
+ * An unset date shows a quiet "set" button instead of an empty native field
+ * (tt.mm.jjjj, --:--); clicking it reveals the field and opens its picker.
+ */
+function DateSlot(props: { isSet: boolean; label: string; children: (autoOpen: (el: HTMLInputElement) => void) => JSX.Element }) {
+  const [editing, setEditing] = createSignal(false);
+  const autoOpen = (el: HTMLInputElement) => {
+    if (!editing() || props.isSet) return;
+    queueMicrotask(() => {
+      el.focus();
+      try {
+        el.showPicker?.();
+      } catch {
+        // Some browsers allow the picker only on a direct click.
+      }
+    });
+    el.addEventListener("blur", () => setTimeout(() => !props.isSet && setEditing(false), 150), { once: true });
+  };
+  return (
+    <Show
+      when={props.isSet || editing()}
+      fallback={
+        <button class="prop-input unset prop-empty" onClick={() => setEditing(true)}>
+          {props.label}
+        </button>
+      }
+    >
+      {props.children(autoOpen)}
+    </Show>
+  );
+}
+
+function DueEditor(props: { task: Task; autoOpen?: (el: HTMLInputElement) => void }) {
   const info = () => parseDue(props.task.due);
   const commit = (date: string, time: string) => {
     if (!date) {
@@ -496,8 +534,15 @@ function DueEditor(props: { task: Task }) {
   let dateInput: HTMLInputElement | undefined;
   let timeInput: HTMLInputElement | undefined;
   return (
-    <span class="prop-inline">
-      <input ref={dateInput} class="prop-input" classList={{ unset: !info() }} type="date" aria-label="Fälligkeitsdatum" value={info()?.date ?? ""} onChange={(e) => commit(e.currentTarget.value, timeInput?.value ?? "")} />
+    <span class="prop-inline nowrap">
+      <input
+        ref={(el) => {
+          dateInput = el;
+          props.autoOpen?.(el);
+        }}
+        class="prop-input date-input"
+        classList={{ unset: !info() }}
+        type="date" aria-label="Fälligkeitsdatum" value={info()?.date ?? ""} onChange={(e) => commit(e.currentTarget.value, timeInput?.value ?? "")} />
       <input
         ref={timeInput}
         class="prop-input time-input"

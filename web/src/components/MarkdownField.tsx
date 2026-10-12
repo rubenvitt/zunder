@@ -169,15 +169,22 @@ export function MarkdownField(props: MarkdownFieldProps) {
       <Show when={source()}>
         <TextField multiline autosize class="md-source mono" label={props.label} value={props.value} placeholder={props.placeholder} onCommit={props.onCommit} />
       </Show>
-      <div ref={host} class="md-host" hidden={source()} onClick={(e) => {
-        // A click on the empty area below the text starts writing at the end.
-        const ed = editor();
-        if (ed && e.target === host) ed.commands.focus("end");
-      }}>
-        <Show when={!editor()}>
+      {/* The editor owns the host's children: nothing else may render into it. */}
+      <div
+        ref={host}
+        class="md-host"
+        hidden={source() || !editor()}
+        onClick={(e) => {
+          // A click on the empty area below the text starts writing at the end.
+          const ed = editor();
+          if (ed && e.target === host) ed.commands.focus("end");
+        }}
+      />
+      <Show when={!editor() && !source()}>
+        <div class="md-host">
           <div class="md-content md-loading">{stored() || props.placeholder}</div>
-        </Show>
-      </div>
+        </div>
+      </Show>
     </div>
   );
 }

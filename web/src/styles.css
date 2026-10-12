@@ -1175,6 +1175,15 @@ html.resizing * {
   min-height: 1.8rem;
   padding-block: 0.12rem;
   font-size: 0.88rem;
+  flex-wrap: wrap;
+  row-gap: 0.15rem;
+}
+.subtree.compact .subtask-title {
+  flex: 1 1 7rem;
+}
+.subtree.compact .subtree {
+  padding-left: 0.6rem;
+  margin-left: 0.45rem;
 }
 .subtask-title {
   flex: 1;
@@ -1286,7 +1295,7 @@ html.resizing * {
 .board {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(250px, 1fr);
+  grid-auto-columns: minmax(220px, 1fr);
   gap: 0.75rem;
   overflow-x: auto;
   padding-bottom: 1rem;
@@ -1583,15 +1592,15 @@ html.resizing * {
 
 .props {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
-  gap: 0.1rem 1.25rem;
+  grid-template-columns: repeat(auto-fill, minmax(21rem, 1fr));
+  gap: 0.1rem 1.5rem;
   padding: 0.35rem 0;
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
 }
 .prop {
   display: grid;
-  grid-template-columns: 7.2rem minmax(0, 1fr);
+  grid-template-columns: 6.6rem minmax(0, 1fr);
   align-items: center;
   gap: 0.5rem;
   min-height: 2.25rem;
@@ -1634,14 +1643,10 @@ html.resizing * {
 .prop-select {
   appearance: none;
   -webkit-appearance: none;
-  padding-right: 1.5rem;
-  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
-  background-position:
-    calc(100% - 0.75rem) 55%,
-    calc(100% - 0.45rem) 55%;
-  background-size:
-    0.3rem 0.3rem,
-    0.3rem 0.3rem;
+  padding-right: 1.6rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' fill='none' stroke='%238a8178' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-position: right 0.4rem center;
+  background-size: 0.75rem;
   background-repeat: no-repeat;
 }
 .prop-select:hover:not(:disabled),
@@ -1673,8 +1678,24 @@ html.resizing * {
   color: var(--muted);
   font-weight: 400;
 }
+.prop-inline.nowrap {
+  flex-wrap: nowrap;
+}
+.prop-empty {
+  text-align: left;
+}
+.date-input {
+  width: 9.2rem;
+}
 .time-input {
-  width: 6.2rem;
+  width: 6.4rem;
+}
+.time-input.unset {
+  opacity: 0.55;
+}
+.time-input.unset:hover,
+.time-input.unset:focus {
+  opacity: 1;
 }
 .time-input:disabled {
   display: none;
@@ -1698,16 +1719,14 @@ html.resizing * {
 .status-select {
   padding-left: 1.45rem;
   background-image:
-    radial-gradient(circle, var(--status-color, var(--border-strong)) 0 4px, transparent 4.5px), linear-gradient(45deg, transparent 50%, var(--muted) 50%),
-    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    radial-gradient(circle closest-side, var(--status-color, var(--border-strong)) 0 90%, transparent 100%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' fill='none' stroke='%238a8178' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-position:
-    0.25rem 50%,
-    calc(100% - 0.75rem) 55%,
-    calc(100% - 0.45rem) 55%;
+    0.5rem center,
+    right 0.4rem center;
   background-size:
-    1rem 1rem,
-    0.3rem 0.3rem,
-    0.3rem 0.3rem;
+    0.55rem 0.55rem,
+    0.75rem;
   background-repeat: no-repeat;
 }
 .status-select[data-status="in_progress"] {
@@ -2452,7 +2471,11 @@ html.resizing * {
     min-height: 0;
     margin-bottom: 0.6rem;
   }
-  .view > .view-head:not(:has(> :not(h1, .hide-mobile))) {
+  /* The tab bar already counts the inbox. */
+  .view > .view-head .count-badge {
+    display: none;
+  }
+  .view > .view-head:not(:has(> :not(h1, .hide-mobile, .count-badge))) {
     margin: 0;
   }
   .view {
@@ -2472,9 +2495,10 @@ html.resizing * {
   .row-subtasks {
     padding-left: 2.4rem;
   }
-  .view-split {
+  .view.view-split {
     grid-template-columns: minmax(0, 1fr);
     height: auto;
+    padding: 0;
   }
   .tree {
     border-right: 0;

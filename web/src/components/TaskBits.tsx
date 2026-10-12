@@ -3,11 +3,11 @@
 
 import { createSignal, For, Show } from "solid-js";
 import { formatDue, localDate, parseDue } from "../sync/dates";
-import { isClosed } from "../sync/derived";
+import { isClosed, isDevLocation } from "../sync/derived";
 import type { Task } from "../sync/types";
 import { STATUS_LABELS } from "../labels";
 import { toggleDone } from "../state/actions";
-import { now, taskIndex } from "../state/store";
+import { data, now, taskIndex } from "../state/store";
 import { copyTaskId, setDetailId, setSelectedId } from "../state/ui";
 import { Icon } from "./Icon";
 
@@ -124,7 +124,8 @@ function SubtaskNode(props: { task: Task; compact?: boolean; depth: number }) {
             {progress().done}/{progress().total}
           </span>
         </Show>
-        <RefButton task={props.task} />
+        {/* Agents address tasks by reference or ID: in dev projects every subtask offers one. */}
+        <RefButton task={props.task} idFallback={isDevLocation(taskIndex().location(props.task), (id) => data.projects[id])} />
       </div>
       <Show when={children().length > 0 && open() && props.depth < 12}>
         <SubtaskTree parentId={props.task.id} compact={props.compact} depth={props.depth + 1} />
