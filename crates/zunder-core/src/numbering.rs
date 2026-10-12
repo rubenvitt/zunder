@@ -12,7 +12,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use uuid::Uuid;
+use crate::ids::Id;
 
 use crate::model::{fields, Location, Task};
 use crate::op::{EntityKind, Op};
@@ -84,13 +84,13 @@ impl State {
     }
 
     /// The key of a live project, if it has one.
-    pub fn project_key(&self, project_id: Uuid) -> Option<&str> {
+    pub fn project_key(&self, project_id: Id) -> Option<&str> {
         self.live_entity(EntityKind::Project, project_id)?
             .str_value(fields::project::KEY)
     }
 
     /// The live project with this key, if any.
-    pub fn project_by_key(&self, key: &str) -> Option<Uuid> {
+    pub fn project_by_key(&self, key: &str) -> Option<Id> {
         self.entities_of(EntityKind::Project)
             .find(|e| !e.is_deleted() && e.str_value(fields::project::KEY) == Some(key))
             .map(Entity::id)
@@ -101,8 +101,8 @@ impl State {
 /// every live task in `scope` without a reference whose effective project
 /// has a key. Per key, tasks are numbered in creation order, continuing
 /// after the largest number ever given under that key.
-pub fn pending_refs(state: &State, scope: Scope<'_>) -> Vec<(Uuid, String)> {
-    let candidates: Vec<Uuid> = match scope {
+pub fn pending_refs(state: &State, scope: Scope<'_>) -> Vec<(Id, String)> {
+    let candidates: Vec<Id> = match scope {
         Scope::All => state
             .entities_of(EntityKind::Task)
             .map(Entity::id)
@@ -151,17 +151,17 @@ pub fn pending_refs(state: &State, scope: Scope<'_>) -> Vec<(Uuid, String)> {
     out
 }
 
-fn candidates_of(state: &State, ops: &[Op]) -> Vec<Uuid> {
-    let mut seen: HashSet<Uuid> = HashSet::new();
+fn candidates_of(state: &State, ops: &[Op]) -> Vec<Id> {
+    let mut seen: HashSet<Id> = HashSet::new();
     let mut out = Vec::new();
-    let mut add = |id: Uuid, out: &mut Vec<Uuid>| {
+    let mut add = |id: Id, out: &mut Vec<Id>| {
         if seen.insert(id) {
             out.push(id);
         }
     };
-    let mut projects: HashSet<Uuid> = HashSet::new();
+    let mut projects: HashSet<Id> = HashSet::new();
     // Tasks whose subtree was added (a push holds many ops per task).
-    let mut expanded: HashSet<Uuid> = HashSet::new();
+    let mut expanded: HashSet<Id> = HashSet::new();
     for op in ops {
         match op.entity {
             EntityKind::Task if expanded.insert(op.entity_id) => {

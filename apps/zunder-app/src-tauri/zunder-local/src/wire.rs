@@ -1,7 +1,7 @@
 //! Request and response bodies of the server's sync API (contract section 3).
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+use zunder_core::ids::Id;
 use zunder_core::{Op, Rejection, SnapshotEntity, Warning};
 
 /// Body of `POST /api/sync/push`.
@@ -14,7 +14,7 @@ pub struct PushRequest<'a> {
 /// Response of `POST /api/sync/push`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PushResponse {
-    pub accepted: Vec<Uuid>,
+    pub accepted: Vec<Id>,
     pub rejected: Vec<Rejection>,
     pub warnings: Vec<Warning>,
     pub cursor: i64,

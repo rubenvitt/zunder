@@ -9,7 +9,7 @@
 use std::collections::HashSet;
 
 use serde::Serialize;
-use uuid::Uuid;
+use zunder_core::ids::Id;
 use zunder_core::model::format_rfc3339;
 use zunder_core::{
     AreaState, Due, EntityKind, Link, Location, Phoenix, Progress, ProjectKind, ProjectStatus,
@@ -25,13 +25,13 @@ pub struct LocationView {
     /// `inbox`, `loose`, `area` or `project`.
     pub kind: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<Uuid>,
+    pub id: Option<Id>,
     /// Name of the area or project.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     /// For projects: the area the project belongs to.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub area_id: Option<Uuid>,
+    pub area_id: Option<Id>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub area_name: Option<String>,
 }
@@ -77,7 +77,7 @@ pub fn location_kind(location: Location) -> &'static str {
 /// A task as returned by tools.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TaskView {
-    pub id: Uuid,
+    pub id: Id,
     /// Reference such as `ZUN-42` (tasks in projects with a key).
     #[serde(rename = "ref")]
     pub reference: Option<String>,
@@ -88,7 +88,7 @@ pub struct TaskView {
     pub status: TaskStatus,
     /// Effective location (the root task's location for subtasks).
     pub location: LocationView,
-    pub parent_id: Option<Uuid>,
+    pub parent_id: Option<Id>,
     pub due: Option<Due>,
     pub remind_at: Option<String>,
     pub links: Vec<Link>,
@@ -141,7 +141,7 @@ fn hlc_time(hlc: Option<&zunder_core::Hlc>) -> String {
 impl TaskView {
     /// The view of a task (also tombstoned ones); `None` if unknown.
     /// `with_subtasks` adds the tree of live subtasks.
-    pub fn build(state: &State, id: Uuid, now_ms: u64, with_subtasks: bool) -> Option<Self> {
+    pub fn build(state: &State, id: Id, now_ms: u64, with_subtasks: bool) -> Option<Self> {
         let task = state.task(id)?;
         let location = state.effective_location(id).unwrap_or(task.location);
         let subtasks = with_subtasks.then(|| {
@@ -182,9 +182,15 @@ impl TaskView {
     }
 }
 
-fn subtask_tree(state: &State, id: Uuid, now_ms: u64, seen: &mut HashSet<Uuid>) -> Vec<TaskView> {
+fn subtask_tree(state: &State, id: Id, now_ms: u64, seen: &mut HashSet<Id>) -> Vec<TaskView> {
     let mut out = Vec::new();
-    for child in state.children(id) {
+    // Creation order (IDs are random since CUID2).
+    let mut children = state.children(id);
+    children.sort_by(|a, b| {
+        let created = |id: &Id| state.created_at(EntityKind::Task, *id);
+        created(a).cmp(&created(b)).then(a.cmp(b))
+    });
+    for child in children {
         if !seen.insert(child) {
             continue;
         }
@@ -199,14 +205,14 @@ fn subtask_tree(state: &State, id: Uuid, now_ms: u64, seen: &mut HashSet<Uuid>) 
 /// An area as returned by tools.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct AreaView {
-    pub id: Uuid,
+    pub id: Id,
     pub name: String,
     pub state: AreaState,
     pub vault_path: Option<String>,
 }
 
 impl AreaView {
-    pub fn build(state: &State, id: Uuid) -> Option<Self> {
+    pub fn build(state: &State, id: Id) -> Option<Self> {
         let area = state.area(id)?;
         Some(AreaView {
             id,
@@ -220,9 +226,9 @@ impl AreaView {
 /// A project as returned by tools.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ProjectView {
-    pub id: Uuid,
+    pub id: Id,
     pub name: String,
-    pub area_id: Uuid,
+    pub area_id: Id,
     pub area_name: Option<String>,
     pub status: ProjectStatus,
     pub kind: ProjectKind,
@@ -234,7 +240,7 @@ pub struct ProjectView {
 }
 
 impl ProjectView {
-    pub fn build(state: &State, id: Uuid) -> Option<Self> {
+    pub fn build(state: &State, id: Id) -> Option<Self> {
         let project = state.project(id)?;
         Some(ProjectView {
             id,
@@ -254,7 +260,7 @@ impl ProjectView {
 /// How a tool addresses a task.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TaskRef {
-    Id(Uuid),
+    Id(Id),
     /// A reference such as `ZUN-42` (canonical form).
     Key(String),
     ClickUp(String),
@@ -280,12 +286,10 @@ impl TaskRef {
     /// The ID this reference stands for, whether or not such a task exists:
     /// a `clickup_id` is looked up among live tasks, then mapped to the
     /// deterministic import ID.
-    pub fn candidate_id(&self, state: &State) -> Uuid {
+    pub fn candidate_id(&self, state: &State) -> Id {
         match self {
             TaskRef::Id(id) => *id,
-            TaskRef::Key(reference) => state
-                .task_by_ref(reference, true)
-                .map_or(Uuid::nil(), |t| t.id),
+            TaskRef::Key(reference) => state.task_by_ref(reference, true).map_or(Id::MIN, |t| t.id),
             TaskRef::ClickUp(clickup_id) => match state.task_by_clickup_id(clickup_id) {
                 Some(task) => task.id,
                 None => zunder_core::ids::clickup_entity_id(EntityKind::Task, clickup_id),
@@ -295,7 +299,7 @@ impl TaskRef {
 
     /// Resolves to the ID of an existing task (see [`TaskRef::candidate_id`]).
     /// Tombstoned tasks only resolve with `allow_deleted`.
-    pub fn resolve(&self, state: &State, allow_deleted: bool) -> AppResult<Uuid> {
+    pub fn resolve(&self, state: &State, allow_deleted: bool) -> AppResult<Id> {
         let id = self.candidate_id(state);
         let Some(entity) = state.entity(EntityKind::Task, id) else {
             return Err(AppError::NotFound(match self {

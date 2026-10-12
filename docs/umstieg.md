@@ -149,10 +149,10 @@ Die Zunder-Werkzeuge spiegeln die genutzten ClickUp-Aufrufe. Die Umstellung ist 
 | ClickUp-MCP | Zunder-MCP | Hinweise |
 |---|---|---|
 | `clickup_filter_tasks` | `filter_tasks` | `list_ids` → `project_id`, `area_id` oder `location` (`inbox`, `loose`, `area`, `project`). `statuses` → `status[]` mit englischen Codes. `due_date_gt`/`due_date_lt` → `due_after`/`due_before`. `date_closed_gt`/`date_closed_lt` → `closed_after`/`closed_before`. `page` → `offset` (Seitengröße `limit`, höchstens 500; das Ergebnis nennt `next_offset`). `order_by`/`reverse` → `order_by` (`due`, `created`, `updated`, `status_changed`) und `reverse`. Geschlossene nur mit `include_closed: true` (oder einem `closed_*`-Filter). Zuständige, Tags und Prioritäten gibt es nicht. Neu: `type[]`, `phoenix_role`, `phoenix_fire`, `parent_id` (UUID oder ClickUp-ID), `claimed_by`, `flame_running`. |
-| `clickup_get_task` | `get_task` | `task_id` (Zunder-UUID) **oder** `clickup_id`. Liefert den Unteraufgaben-Baum und den Fortschritt immer mit; ein Schalter für Unteraufgaben entfällt. |
+| `clickup_get_task` | `get_task` | `task_id` (Zunder-ID oder Kennung wie `ZUN-42`) **oder** `clickup_id`. Liefert den Unteraufgaben-Baum und den Fortschritt immer mit; ein Schalter für Unteraufgaben entfällt. |
 | `clickup_create_task` | `create_task` | `list_id` → Stelle (`location` bzw. Projekt/Bereich); ohne Stelle landet die Aufgabe in der Inbox. `parent` → `parent_id` (die ClickUp-ID einer importierten Aufgabe funktioniert unverändert). `markdown_description` → `description`. `due_date` als `YYYY-MM-DD` oder RFC 3339. Priorität, Tags, Zuständige entfallen. |
 | `clickup_update_task` | `update_task` | `task_id` oder `clickup_id` plus die zu ändernden Felder. Status als englischer Code. `null` setzt ein optionales Feld zurück. Verschieben läuft über `move_task`. |
-| `clickup_move_task` | `move_task` | Neue Stelle und/oder neuer `parent_id` (UUID oder ClickUp-ID). Unteraufgaben wandern mit ihrer Wurzel. |
+| `clickup_move_task` | `move_task` | Neue Stelle und/oder neuer `parent_id` (ID, Kennung oder ClickUp-ID). Unteraufgaben wandern mit ihrer Wurzel. |
 | `clickup_delete_task` | `delete_task` | Setzt einen Tombstone (Aufgabe samt Unteraufgaben) statt endgültig zu löschen; der Verlauf bleibt über `get_task_history` lesbar. **Nicht rückgängig zu machen** über MCP oder die Oberfläche: Alle anderen Werkzeuge melden die Aufgabe als gelöscht. Das Datenmodell kann zwar wiederherstellen (`deleted: false`, [Vertrag](superpowers/plans/2026-10-11-zunder-implementation.md) Abschnitt 2.3), aber nur über eine rohe Operation an `/api/sync/push`. Skills sollten deshalb vor dem Löschen nachfragen oder lieber auf `dropped` setzen. |
 | `clickup_search` | `search` | Volltext über Titel, Beschreibung und Plan, auch erledigte Aufgaben. Trifft zusätzlich Projekte und Bereiche. |
 | `clickup_create_task_comment` | – | Zunder hat **keine Kommentare** (bewusst, Spec Abschnitt 2). Ersatz siehe unten. |
@@ -241,7 +241,7 @@ Funke ersetzt den ClickUp-Aufruf durch einen Push an Zunder. Die erfasste Aufgab
 - Endpoint: `POST https://zunder.rubeen.dev/api/sync/push`
 - Auth: `Authorization: Bearer zt_…` mit eigenem Token je Gerät (z. B. `funke-iphone`), abgelegt im Schlüsselbund und per App Group mit der Watch geteilt.
 - Anlegen = mehrere Feld-Operationen mit derselben `entity_id` in **einem** Push.
-- IDs: kanonische UUID, **klein geschrieben** (Swifts `UUID().uuidString` ist groß und muss `lowercased()` werden). Der Vertrag sieht UUIDv7 vor, also zeitgeordnet.
+- IDs: seit Schema 3 CUID2-Form, 24 Zeichen `^[a-z][a-z0-9]{23}$` (z. B. ein zufälliger Kleinbuchstabe und 23 zufällige Zeichen aus `0-9a-z`). Eine kanonische UUID (klein, mit Bindestrichen; Swifts `UUID().uuidString` muss `lowercased()` werden) nimmt der Server weiter an und rechnet sie fest um; die Antwort nennt die IDs so, wie sie gesendet wurden. Ein Funke, der noch UUIDv7 erzeugt, läuft also unverändert weiter.
 - HLC: `"<13 Stellen Unix-ms>:<5 Stellen Zähler>:<Knoten>"`, Knoten z. B. `funke-3f9a1c2e` (`[a-z0-9-]`, höchstens 36 Zeichen, je Gerät fest). Innerhalb einer Millisekunde zählt der Zähler hoch.
 - Offline: Operationen in einer lokalen Warteschlange halten und **mit denselben `op_id`s** erneut senden. Der Server erkennt Wiederholungen und nimmt sie als `accepted` an, ohne sie doppelt zu speichern.
 

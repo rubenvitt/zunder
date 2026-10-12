@@ -172,7 +172,7 @@ fn task_ref() -> Vec<(&'static str, Value)> {
     vec![
         (
             "task_id",
-            string("ID der Aufgabe (UUID) oder ihre Kennung wie „ZUN-42“. Alternativ clickup_id angeben."),
+            string("ID der Aufgabe oder ihre Kennung wie „ZUN-42“. Alternativ clickup_id angeben."),
         ),
         (
             "clickup_id",
@@ -271,7 +271,7 @@ pub fn definitions() -> Vec<ToolDef> {
                     ),
                     (
                         "parent_id",
-                        string("Nur direkte Unteraufgaben dieser Aufgabe (UUID, Kennung wie „ZUN-42“ oder ClickUp-ID einer importierten Aufgabe)."),
+                        string("Nur direkte Unteraufgaben dieser Aufgabe (ID, Kennung wie „ZUN-42“ oder ClickUp-ID einer importierten Aufgabe)."),
                     ),
                     (
                         "claimed_by",
@@ -323,7 +323,7 @@ pub fn definitions() -> Vec<ToolDef> {
                         ("location", location()),
                         (
                             "parent_id",
-                            string("Elternaufgabe für eine Unteraufgabe: UUID, Kennung wie „ZUN-42“ oder ClickUp-ID einer importierten Aufgabe."),
+                            string("Elternaufgabe für eine Unteraufgabe: ID, Kennung wie „ZUN-42“ oder ClickUp-ID einer importierten Aufgabe."),
                         ),
                     ],
                     task_fields(false),
@@ -365,7 +365,7 @@ pub fn definitions() -> Vec<ToolDef> {
                         ("location", location()),
                         (
                             "parent_id",
-                            nullable_string("Neue Elternaufgabe (UUID, Kennung wie „ZUN-42“ oder ClickUp-ID einer importierten Aufgabe) oder null, um die Aufgabe zu lösen."),
+                            nullable_string("Neue Elternaufgabe (ID, Kennung wie „ZUN-42“ oder ClickUp-ID einer importierten Aufgabe) oder null, um die Aufgabe zu lösen."),
                         ),
                     ],
                 ),
@@ -504,7 +504,7 @@ pub fn definitions() -> Vec<ToolDef> {
                     ("name", string("Name (Pflicht).")),
                     ("state", enumeration(AreaState::codes(), "Zustand (Standard active).")),
                     ("vault_path", string("Pfad der Notiz im Vault (nur Info).")),
-                    ("id", string("Optionale eigene ID (UUID, klein, mit Bindestrichen).")),
+                    ("id", string("Optionale eigene ID, z. B. die zunder_id aus dem Vault (24 Zeichen; eine alte UUID wird fest umgerechnet).")),
                 ],
                 &["name"],
             ),
@@ -547,7 +547,7 @@ pub fn definitions() -> Vec<ToolDef> {
                         "view",
                         enumeration(ProjectView::codes(), "Ansicht (Standard: board bei dev, sonst list)."),
                     ),
-                    ("id", string("Optionale eigene ID (UUID, klein, mit Bindestrichen).")),
+                    ("id", string("Optionale eigene ID, z. B. die zunder_id aus dem Vault (24 Zeichen; eine alte UUID wird fest umgerechnet).")),
                 ],
                 &["name", "area_id"],
             ),

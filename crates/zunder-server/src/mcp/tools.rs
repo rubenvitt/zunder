@@ -7,8 +7,8 @@ use std::sync::OnceLock;
 
 use serde_json::{json, Map, Value};
 use time::Date;
-use uuid::Uuid;
 use zunder_core::hlc::system_time_ms;
+use zunder_core::ids::Id;
 use zunder_core::model::fields::{area as fa, project as fp, task as ft};
 use zunder_core::search::search;
 use zunder_core::{
@@ -141,7 +141,7 @@ fn to_json<T: serde::Serialize>(value: &T) -> AppResult<Value> {
 }
 
 /// The view of a task after a change, with the warnings of the change.
-fn task_result(app: &App, id: Uuid, warnings: &[zunder_core::Warning]) -> AppResult<Value> {
+fn task_result(app: &App, id: Id, warnings: &[zunder_core::Warning]) -> AppResult<Value> {
     let view = app
         .read(|s| TaskView::build(s, id, system_time_ms(), false))
         .ok_or_else(|| AppError::NotFound(format!("Aufgabe {id} nicht gefunden.")))?;
@@ -162,14 +162,14 @@ fn present(args: &Args, keys: &[&'static str], keep_null: bool) -> Vec<(&'static
         .collect()
 }
 
-fn live_area(state: &State, id: Uuid) -> AppResult<()> {
+fn live_area(state: &State, id: Id) -> AppResult<()> {
     state
         .live_entity(EntityKind::Area, id)
         .map(|_| ())
         .ok_or_else(|| AppError::NotFound(format!("Bereich {id} nicht gefunden.")))
 }
 
-fn live_project(state: &State, id: Uuid) -> AppResult<()> {
+fn live_project(state: &State, id: Id) -> AppResult<()> {
     state
         .live_entity(EntityKind::Project, id)
         .map(|_| ())
@@ -177,7 +177,7 @@ fn live_project(state: &State, id: Uuid) -> AppResult<()> {
 }
 
 /// Whether a field change would actually change the stored value.
-fn changes(state: &State, kind: EntityKind, id: Uuid, field: &str, value: &Value) -> bool {
+fn changes(state: &State, kind: EntityKind, id: Id, field: &str, value: &Value) -> bool {
     let current = state
         .entity(kind, id)
         .and_then(|e| e.field(field))
@@ -189,8 +189,8 @@ fn changes(state: &State, kind: EntityKind, id: Uuid, field: &str, value: &Value
 
 struct TaskFilter {
     location: Option<String>,
-    area_id: Option<Uuid>,
-    project_id: Option<Uuid>,
+    area_id: Option<Id>,
+    project_id: Option<Id>,
     statuses: Option<Vec<TaskStatus>>,
     types: Option<Vec<TaskType>>,
     phoenix_role: Option<PhoenixRole>,
@@ -203,7 +203,7 @@ struct TaskFilter {
     /// `parent_id` as given (UUID or ClickUp ID) …
     parent: Option<TaskRef>,
     /// … and resolved against the state that is being filtered.
-    parent_id: Option<Uuid>,
+    parent_id: Option<Id>,
     claimed_by: Option<String>,
     flame_running: Option<bool>,
     order_by: OrderBy,
@@ -545,7 +545,7 @@ async fn list_structure(app: &App, args: &Args) -> AppResult<Value> {
     app.read_blocking(move |state| {
         let mut inbox = 0usize;
         let mut loose = 0usize;
-        let mut open: HashMap<Uuid, usize> = HashMap::new();
+        let mut open: HashMap<Id, usize> = HashMap::new();
         for task in state.live_tasks().filter(|t| !t.status.is_closed()) {
             match state.effective_location(task.id).unwrap_or(task.location) {
                 Location::Inbox => inbox += 1,
@@ -857,7 +857,7 @@ async fn decompose_task(app: &App, source: Source, args: &Args) -> AppResult<Val
 
 // ----- structure ----------------------------------------------------------------------
 
-fn new_entity_id(state: &State, wanted: Option<Uuid>) -> AppResult<Uuid> {
+fn new_entity_id(state: &State, wanted: Option<Id>) -> AppResult<Id> {
     match wanted {
         Some(id) if state.kinds_of(id).next().is_some() => Err(AppError::Conflict(format!(
             "Die ID {id} ist bereits vergeben."
@@ -964,7 +964,7 @@ async fn update_project(app: &App, source: Source, args: &Args) -> AppResult<Val
 
 // ----- flames ---------------------------------------------------------------------------
 
-fn resolve_live(app: &App, target: &TaskRef) -> AppResult<Uuid> {
+fn resolve_live(app: &App, target: &TaskRef) -> AppResult<Id> {
     app.read(|s| target.resolve(s, false))
 }
 

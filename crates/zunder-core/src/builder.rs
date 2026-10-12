@@ -17,9 +17,9 @@
 //! assert_eq!(ops.len(), 5); // title, type, status, location, status
 //! ```
 
+use crate::ids::Id;
 use serde_json::Value;
 use time::OffsetDateTime;
-use uuid::Uuid;
 
 use crate::hlc::Clock;
 use crate::ids;
@@ -34,7 +34,7 @@ use crate::state::State;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NewArea {
     /// Explicit ID (e.g. deterministic import ID); a UUIDv7 otherwise.
-    pub id: Option<Uuid>,
+    pub id: Option<Id>,
     pub name: String,
     pub state: AreaState,
     pub vault_path: Option<String>,
@@ -52,9 +52,9 @@ impl NewArea {
 /// Fields for a new project.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewProject {
-    pub id: Option<Uuid>,
+    pub id: Option<Id>,
     pub name: String,
-    pub area_id: Uuid,
+    pub area_id: Id,
     pub status: ProjectStatus,
     pub kind: ProjectKind,
     pub repo: Option<String>,
@@ -66,7 +66,7 @@ pub struct NewProject {
 }
 
 impl NewProject {
-    pub fn new(name: impl Into<String>, area_id: Uuid) -> Self {
+    pub fn new(name: impl Into<String>, area_id: Id) -> Self {
         Self {
             id: None,
             name: name.into(),
@@ -84,13 +84,13 @@ impl NewProject {
 /// Fields for a new task. Unset optional fields are not written.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NewTask {
-    pub id: Option<Uuid>,
+    pub id: Option<Id>,
     pub title: String,
     pub description: Option<String>,
     pub task_type: TaskType,
     pub status: TaskStatus,
     pub location: Location,
-    pub parent_id: Option<Uuid>,
+    pub parent_id: Option<Id>,
     pub due: Option<Due>,
     pub remind_at: Option<OffsetDateTime>,
     pub vault_links: Vec<String>,
@@ -113,7 +113,7 @@ impl NewTask {
     }
 
     /// A subtask of `parent_id` (its own location is irrelevant).
-    pub fn subtask(title: impl Into<String>, parent_id: Uuid) -> Self {
+    pub fn subtask(title: impl Into<String>, parent_id: Id) -> Self {
         Self {
             parent_id: Some(parent_id),
             ..Self::new(title)
@@ -159,41 +159,43 @@ impl<'c> OpBatch<'c> {
     pub fn set(
         &mut self,
         entity: EntityKind,
-        entity_id: Uuid,
+        entity_id: Id,
         field: &str,
         value: impl Into<Value>,
     ) -> &mut Self {
         let hlc = self.clock.now(self.physical_ms);
+        let mut value = value.into();
+        crate::op::upgrade_legacy_value(entity, field, &mut value);
         self.ops.push(Op {
             op_id: ids::new_id(),
             entity,
             entity_id,
             field: field.to_owned(),
-            value: value.into(),
+            value,
             hlc,
         });
         self
     }
 
-    pub fn set_area(&mut self, id: Uuid, field: &str, value: impl Into<Value>) -> &mut Self {
+    pub fn set_area(&mut self, id: Id, field: &str, value: impl Into<Value>) -> &mut Self {
         self.set(EntityKind::Area, id, field, value)
     }
 
-    pub fn set_project(&mut self, id: Uuid, field: &str, value: impl Into<Value>) -> &mut Self {
+    pub fn set_project(&mut self, id: Id, field: &str, value: impl Into<Value>) -> &mut Self {
         self.set(EntityKind::Project, id, field, value)
     }
 
-    pub fn set_task(&mut self, id: Uuid, field: &str, value: impl Into<Value>) -> &mut Self {
+    pub fn set_task(&mut self, id: Id, field: &str, value: impl Into<Value>) -> &mut Self {
         self.set(EntityKind::Task, id, field, value)
     }
 
     /// Resets an optional field (`value: null`).
-    pub fn clear(&mut self, entity: EntityKind, id: Uuid, field: &str) -> &mut Self {
+    pub fn clear(&mut self, entity: EntityKind, id: Id, field: &str) -> &mut Self {
         self.set(entity, id, field, Value::Null)
     }
 
     /// Creates an area; returns its ID.
-    pub fn create_area(&mut self, new: NewArea) -> Uuid {
+    pub fn create_area(&mut self, new: NewArea) -> Id {
         use fields::area as f;
         let id = new.id.unwrap_or_else(ids::new_id);
         self.set_area(id, f::NAME, new.name);
@@ -205,7 +207,7 @@ impl<'c> OpBatch<'c> {
     }
 
     /// Creates a project; returns its ID.
-    pub fn create_project(&mut self, new: NewProject) -> Uuid {
+    pub fn create_project(&mut self, new: NewProject) -> Id {
         use fields::project as f;
         let id = new.id.unwrap_or_else(ids::new_id);
         self.set_project(id, f::NAME, new.name);
@@ -229,7 +231,7 @@ impl<'c> OpBatch<'c> {
 
     /// Creates a task; returns its ID. `title`, `type`, `status` and
     /// `location` are always written, everything else only when set.
-    pub fn create_task(&mut self, new: NewTask) -> Uuid {
+    pub fn create_task(&mut self, new: NewTask) -> Id {
         use fields::task as f;
         let id = new.id.unwrap_or_else(ids::new_id);
         self.set_task(id, f::TITLE, new.title);
@@ -271,25 +273,25 @@ impl<'c> OpBatch<'c> {
         id
     }
 
-    pub fn set_status(&mut self, task_id: Uuid, status: TaskStatus) -> &mut Self {
+    pub fn set_status(&mut self, task_id: Id, status: TaskStatus) -> &mut Self {
         self.set_task(task_id, fields::task::STATUS, status)
     }
 
     /// Moves a task to a location and detaches it from any parent
     /// (`location` + `parent_id: null`).
-    pub fn move_task(&mut self, task_id: Uuid, location: Location) -> &mut Self {
+    pub fn move_task(&mut self, task_id: Id, location: Location) -> &mut Self {
         self.set_task(task_id, fields::task::LOCATION, location);
         self.clear(EntityKind::Task, task_id, fields::task::PARENT_ID)
     }
 
     /// Sets or clears the parent of a task.
-    pub fn set_parent(&mut self, task_id: Uuid, parent_id: Option<Uuid>) -> &mut Self {
+    pub fn set_parent(&mut self, task_id: Id, parent_id: Option<Id>) -> &mut Self {
         let value = parent_id.map_or(Value::Null, |p| Value::String(p.to_string()));
         self.set_task(task_id, fields::task::PARENT_ID, value)
     }
 
     /// Tombstones a single entity.
-    pub fn delete(&mut self, entity: EntityKind, id: Uuid) -> &mut Self {
+    pub fn delete(&mut self, entity: EntityKind, id: Id) -> &mut Self {
         self.set(entity, id, fields::DELETED, true)
     }
 
@@ -297,7 +299,7 @@ impl<'c> OpBatch<'c> {
     /// it, so the push passes validation: a task with all descendants; a
     /// project with all tasks located in it; an area with its projects (and
     /// their tasks) and the tasks located directly in it.
-    pub fn delete_cascade(&mut self, state: &State, entity: EntityKind, id: Uuid) -> &mut Self {
+    pub fn delete_cascade(&mut self, state: &State, entity: EntityKind, id: Id) -> &mut Self {
         for (kind, dep) in cascade(state, entity, id) {
             self.delete(kind, dep);
         }
@@ -319,7 +321,7 @@ impl<'c> OpBatch<'c> {
 }
 
 /// `(kind, id)` of an entity and all its live dependents, dependents last.
-fn cascade(state: &State, entity: EntityKind, id: Uuid) -> Vec<(EntityKind, Uuid)> {
+fn cascade(state: &State, entity: EntityKind, id: Id) -> Vec<(EntityKind, Id)> {
     let mut out = vec![(entity, id)];
     match entity {
         EntityKind::Task => {
@@ -339,7 +341,7 @@ fn cascade(state: &State, entity: EntityKind, id: Uuid) -> Vec<(EntityKind, Uuid
             );
         }
         EntityKind::Area => {
-            let projects: Vec<Uuid> = state
+            let projects: Vec<Id> = state
                 .live_projects()
                 .filter(|p| p.area_id == id)
                 .map(|p| p.id)
@@ -472,7 +474,7 @@ mod tests {
 
         let mut batch = OpBatch::new(&mut clock, NOW + 20);
         batch.delete_cascade(&state, EntityKind::Area, area);
-        let deleted: std::collections::HashSet<Uuid> =
+        let deleted: std::collections::HashSet<Id> =
             batch.ops().iter().map(|o| o.entity_id).collect();
         assert_eq!(
             deleted,

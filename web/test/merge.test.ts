@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { cmpJson, EntityStore, mergeOps, wins } from "../src/sync/merge";
 import { op, permutations, shuffled } from "./helpers";
 
-const T = "01929c3e-0000-7000-8000-000000000001";
+const T = "v00070008000000000000001";
 
 describe("LWW merge", () => {
   it("later HLC wins per field", () => {
@@ -21,8 +21,8 @@ describe("LWW merge", () => {
   });
 
   it("op_id breaks HLC ties (greater wins), independent of order", () => {
-    const a = op("task", T, "title", "kleiner", 1000, { opId: "01929c3e-0000-7000-8000-00000000000a" });
-    const b = op("task", T, "title", "größer", 1000, { opId: "01929c3e-0000-7000-8000-00000000000b" });
+    const a = op("task", T, "title", "kleiner", 1000, { opId: "v0007000800000000000000a" });
+    const b = op("task", T, "title", "größer", 1000, { opId: "v0007000800000000000000b" });
     expect(mergeOps([a, b]).toValues()[`task/${T}`]!.title).toBe("größer");
     expect(mergeOps([b, a]).toValues()[`task/${T}`]!.title).toBe("größer");
   });
@@ -55,7 +55,7 @@ describe("LWW merge", () => {
 
   it("random interleavings converge (associativity via split stores)", () => {
     const ops = Array.from({ length: 60 }, (_, i) =>
-      op("task", i % 2 ? T : "01929c3e-0000-7000-8000-000000000002", i % 3 ? "title" : "status", `v${i}`, 1000 + (i % 7), {
+      op("task", i % 2 ? T : "v00070008000000000000002", i % 3 ? "title" : "status", `v${i}`, 1000 + (i % 7), {
         counter: i % 4,
         node: i % 5 ? "web-a" : "server",
       }),
@@ -83,7 +83,7 @@ describe("LWW merge", () => {
   });
 
   it("identical HLC and op_id fall back to a fixed order on the value", () => {
-    const a = op("task", T, "title", "A", 5, { opId: "0192a000-0000-7000-8000-0000000000ff" });
+    const a = op("task", T, "title", "A", 5, { opId: "v000700080000000000000ff" });
     const b = { ...a, value: "B" };
     expect(mergeOps([a, b]).toValues()).toEqual(mergeOps([b, a]).toValues());
     expect(mergeOps([a, b]).get("task", T)!.fields.title!.value).toBe("B");

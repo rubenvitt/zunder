@@ -3,6 +3,7 @@
 // even faulty duplicates converge. Commutative, associative and idempotent;
 // validation is not part of the merge.
 
+import { upgradeId, upgradeOp, upgradeValue } from "./ids";
 import type { EntityKind, Hlc, JsonValue, Op, Snapshot } from "./types";
 
 export interface FieldState {
@@ -81,8 +82,9 @@ export function wins(candidate: FieldState, current: FieldState): boolean {
 export class EntityStore {
   private readonly map = new Map<string, EntityState>();
 
-  /** Applies one op; returns true when the entity's visible state changed. */
-  apply(op: Op): boolean {
+  /** Applies one op (legacy UUIDs converted); returns true when the entity's visible state changed. */
+  apply(raw: Op): boolean {
+    const op = upgradeOp(raw);
     return this.applyField(op.entity, op.entity_id, op.field, { value: op.value, hlc: op.hlc, op_id: op.op_id });
   }
 
@@ -110,11 +112,13 @@ export class EntityStore {
   loadSnapshot(snapshot: Snapshot): void {
     this.map.clear();
     for (const e of snapshot.entities) {
+      const id = upgradeId(e.entity_id);
       for (const [field, f] of Object.entries(e.fields)) {
-        this.applyField(e.entity, e.entity_id, field, { value: f.value, hlc: f.hlc, op_id: f.op_id ?? "" });
+        const value = upgradeValue(e.entity, field, f.value);
+        this.applyField(e.entity, id, field, { value, hlc: f.hlc, op_id: upgradeId(f.op_id ?? "") });
       }
       // created_hlc (contract 3) also covers ops whose values were overwritten since.
-      const target = this.map.get(entityKey(e.entity, e.entity_id));
+      const target = this.map.get(entityKey(e.entity, id));
       if (target && e.created_hlc && e.created_hlc < target.created_hlc) target.created_hlc = e.created_hlc;
     }
   }

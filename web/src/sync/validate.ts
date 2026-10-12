@@ -3,6 +3,7 @@
 // authority. Shared validation vectors (kind "validate" in
 // crates/zunder-core/tests/vectors) keep both sides in step.
 
+import { isCanonicalId } from "./ids";
 import { isRfc3339, isValidDue, isValidFire } from "./dates";
 import { entityKey, EntityStore, wins, type EntityState } from "./merge";
 import {
@@ -56,11 +57,7 @@ const DEFINITE: Record<EntityKind, string> = { area: "Der", project: "Das", task
 const INDEFINITE_ACC: Record<EntityKind, string> = { area: "einen Bereich", project: "ein Projekt", task: "eine Aufgabe" };
 const DEPENDENT: Record<EntityKind, string> = { area: "noch ein Bereich", project: "noch ein Projekt", task: "noch eine Aufgabe" };
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
-export function isCanonicalUuid(v: unknown): v is string {
-  return typeof v === "string" && UUID_RE.test(v);
-}
+export { isCanonicalId } from "./ids";
 
 function isObject(v: JsonValue | undefined): v is { [key: string]: JsonValue } {
   return !!v && typeof v === "object" && !Array.isArray(v);
@@ -120,7 +117,7 @@ export function parseStrictLocation(v: JsonValue | undefined): Location | null {
   if (!isObject(v) || !onlyKeys(v, ["kind", "id"])) return null;
   const id = v.id ?? null;
   if ((v.kind === "inbox" || v.kind === "loose") && id === null) return { kind: v.kind };
-  if ((v.kind === "area" || v.kind === "project") && isCanonicalUuid(id)) return { kind: v.kind, id };
+  if ((v.kind === "area" || v.kind === "project") && isCanonicalId(id)) return { kind: v.kind, id };
   return null;
 }
 
@@ -207,7 +204,7 @@ function shapeOk(shape: Shape, v: JsonValue): boolean {
     case "bool":
       return typeof v === "boolean";
     case "id":
-      return isCanonicalUuid(v);
+      return isCanonicalId(v);
     case "location":
       return parseStrictLocation(v) !== null;
     case "due":
@@ -377,13 +374,13 @@ function isDeleted(e: EntityState): boolean {
 function parentId(e: EntityState): string | null {
   if (e.entity !== "task") return null;
   const v = strValue(e, "parent_id");
-  return isCanonicalUuid(v) ? v : null;
+  return isCanonicalId(v) ? v : null;
 }
 
 function areaId(e: EntityState): string | null {
   if (e.entity !== "project") return null;
   const v = strValue(e, "area_id");
-  return isCanonicalUuid(v) ? v : null;
+  return isCanonicalId(v) ? v : null;
 }
 
 function ownLocation(e: EntityState): Location {

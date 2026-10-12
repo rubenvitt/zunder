@@ -14,7 +14,7 @@ export function op(
   counter += 1;
   const hlc = `${String(wallMs).padStart(13, "0")}:${String(options.counter ?? 0).padStart(5, "0")}:${options.node ?? "test"}`;
   return {
-    op_id: options.opId ?? `00000000-0000-7000-8000-${String(counter).padStart(12, "0")}`,
+    op_id: options.opId ?? `o${String(counter).padStart(23, "0")}`,
     entity,
     entity_id: entityId,
     field,

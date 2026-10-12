@@ -16,9 +16,9 @@ use common::{client_clock, ops, Auth, TestServer, BOOTSTRAP};
 
 const BOOT: Auth<'static> = Auth::Bearer(BOOTSTRAP);
 
-fn new_task_ops(title: &str) -> (uuid::Uuid, Vec<Op>) {
+fn new_task_ops(title: &str) -> (zunder_core::ids::Id, Vec<Op>) {
     let mut clock = client_clock();
-    let mut id = uuid::Uuid::nil();
+    let mut id = zunder_core::ids::Id::MIN;
     let ops = ops(&mut clock, |b| id = b.create_task(NewTask::new(title)));
     (id, ops)
 }
@@ -209,7 +209,7 @@ async fn future_hlc_is_rejected() {
 async fn warnings_are_returned() {
     let s = TestServer::new().await;
     let mut clock = client_clock();
-    let mut parent = uuid::Uuid::nil();
+    let mut parent = zunder_core::ids::Id::MIN;
     let create = ops(&mut clock, |b| {
         parent = b.create_task(NewTask::new("Eltern"));
         b.create_task(NewTask::subtask("Kind", parent));
@@ -671,7 +671,7 @@ async fn task_history_with_sources() {
 
     let r = s
         .get(
-            &format!("/api/tasks/{}/history", uuid::Uuid::now_v7()),
+            &format!("/api/tasks/{}/history", zunder_core::ids::new_id()),
             BOOT,
         )
         .await;

@@ -13,8 +13,8 @@ use std::path::Path;
 use anyhow::{bail, Context, Result};
 use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-use zunder_core::ids::{clickup_entity_id, deterministic_id, parse_canonical};
+use zunder_core::ids::Id;
+use zunder_core::ids::{clickup_entity_id, deterministic_id, parse_id};
 use zunder_core::model::is_valid_repo;
 use zunder_core::{AreaState, EntityKind, ProjectKind, ProjectStatus, TaskStatus, TaskType};
 
@@ -199,7 +199,7 @@ impl Mapping {
                         "{ctx}: Bereich {:?} ist in [areas] nicht definiert",
                         project.area
                     ));
-                    Uuid::nil()
+                    Id::MIN
                 }
             };
             let kind: ProjectKind = parse_code(&ctx, "kind", project.kind.as_deref(), &mut errors);
@@ -325,8 +325,8 @@ fn parse_code<T: std::str::FromStr + Default>(
 /// The Zunder ID of an area or project:
 ///
 /// - `existing_id` → that ID (nothing is created)
-/// - `clickup_id` → `UUIDv5("clickup:<kind>:<clickup_id>")`
-/// - neither → `UUIDv5("import:<kind>:<key>")`
+/// - `clickup_id` → `deterministic_id("clickup:<kind>:<clickup_id>")`
+/// - neither → `deterministic_id("import:<kind>:<key>")`
 fn entity_id(
     ctx: &str,
     kind: EntityKind,
@@ -334,15 +334,15 @@ fn entity_id(
     clickup_id: &Option<String>,
     existing_id: &Option<String>,
     errors: &mut Vec<String>,
-) -> (Uuid, bool) {
+) -> (Id, bool) {
     if let Some(existing) = existing_id.as_deref().map(str::trim) {
-        return match parse_canonical(existing) {
+        return match parse_id(existing) {
             Some(id) => (id, true),
             None => {
                 errors.push(format!(
-                    "{ctx}.existing_id: {existing:?} ist keine UUID in Kleinschreibung mit Bindestrichen"
+                    "{ctx}.existing_id: {existing:?} ist keine Zunder-ID"
                 ));
-                (Uuid::nil(), true)
+                (Id::MIN, true)
             }
         };
     }
@@ -418,7 +418,7 @@ pub struct Resolved {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedArea {
     pub key: String,
-    pub id: Uuid,
+    pub id: Id,
     pub name: String,
     pub state: AreaState,
     /// Maps onto an existing Zunder area; nothing is written for it.
@@ -428,9 +428,9 @@ pub struct ResolvedArea {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedProject {
     pub key: String,
-    pub id: Uuid,
+    pub id: Id,
     pub name: String,
-    pub area_id: Uuid,
+    pub area_id: Id,
     pub status: ProjectStatus,
     pub kind: ProjectKind,
     pub repo: Option<String>,
@@ -811,7 +811,7 @@ pub fn render(mapping: &Mapping, team_name: &str, generated_on: &str) -> String 
          # {} ({}). Bitte prüfen und anpassen, dann mit `zunder-import report` kontrollieren.\n\
          #\n\
          # Bereiche und Projekte bekommen stabile IDs aus ihrer ClickUp-ID (clickup_id).\n\
-         # Mit existing_id = \"<uuid>\" wird stattdessen auf einen bestehenden Zunder-Bereich\n\
+         # Mit existing_id = \"<zunder_id>\" wird stattdessen auf einen bestehenden Zunder-Bereich\n\
          # bzw. ein bestehendes Projekt abgebildet; dann legt der Import dafür nichts an.\n\
          # Eigene Bereiche/Projekte dürfen ergänzt werden (ohne clickup_id: ID aus dem Schlüssel).\n\
          #\n\

@@ -9,19 +9,19 @@
 
 use std::collections::{BTreeSet, HashMap};
 
-use uuid::Uuid;
+use crate::ids::Id;
 
 use super::{Entity, FieldEntry, Lookup, State};
 use crate::op::{EntityKind, Op};
 
-type Key = (EntityKind, Uuid);
+type Key = (EntityKind, Id);
 
 pub(crate) struct Overlay<'a> {
     base: &'a State,
     /// Touched entities after applying the push (base copy plus operations).
     entities: HashMap<Key, Entity>,
     /// Child sets that differ from the base; they replace the base set.
-    children: HashMap<Uuid, BTreeSet<Uuid>>,
+    children: HashMap<Id, BTreeSet<Id>>,
 }
 
 impl<'a> Overlay<'a> {
@@ -92,7 +92,7 @@ impl<'a> Overlay<'a> {
         self.entities.len()
     }
 
-    fn reparent(&mut self, child: Uuid, old: Option<Uuid>, new: Option<Uuid>) {
+    fn reparent(&mut self, child: Id, old: Option<Id>, new: Option<Id>) {
         if let Some(old) = old {
             self.child_set_mut(old).remove(&child);
         }
@@ -101,7 +101,7 @@ impl<'a> Overlay<'a> {
         }
     }
 
-    fn child_set_mut(&mut self, parent: Uuid) -> &mut BTreeSet<Uuid> {
+    fn child_set_mut(&mut self, parent: Id) -> &mut BTreeSet<Id> {
         let base = self.base;
         self.children
             .entry(parent)
@@ -110,13 +110,13 @@ impl<'a> Overlay<'a> {
 }
 
 impl Lookup for Overlay<'_> {
-    fn entity(&self, kind: EntityKind, id: Uuid) -> Option<&Entity> {
+    fn entity(&self, kind: EntityKind, id: Id) -> Option<&Entity> {
         self.entities
             .get(&(kind, id))
             .or_else(|| self.base.entities.get(&(kind, id)))
     }
 
-    fn child_set(&self, parent: Uuid) -> Option<&BTreeSet<Uuid>> {
+    fn child_set(&self, parent: Id) -> Option<&BTreeSet<Id>> {
         self.children
             .get(&parent)
             .or_else(|| self.base.children.get(&parent))
@@ -186,7 +186,7 @@ mod tests {
                 copy.descendants(uid(id))
             );
         }
-        let mut ids: Vec<Uuid> = overlay.entities_of(T).map(Entity::id).collect();
+        let mut ids: Vec<Id> = overlay.entities_of(T).map(Entity::id).collect();
         ids.sort();
         assert_eq!(ids, [10, 11, 12, 13].map(uid));
         // Only the touched entities were copied; the base is unchanged.

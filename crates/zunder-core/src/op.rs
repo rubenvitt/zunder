@@ -3,9 +3,9 @@
 use std::fmt;
 use std::str::FromStr;
 
+use crate::ids::Id;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use uuid::Uuid;
 
 use crate::hlc::Hlc;
 
@@ -70,19 +70,69 @@ impl FromStr for EntityKind {
 /// {"op_id":"…","entity":"task","entity_id":"…","field":"title","value":"…","hlc":"…"}
 /// ```
 ///
-/// IDs must be canonical (lowercase, hyphenated) UUID strings and `value` is
-/// required (`null` resets an optional field).
+/// IDs are written in canonical form ([`Id`]); legacy UUIDs are accepted when
+/// reading and converted, also inside ID-valued fields (see
+/// [`upgrade_legacy_value`]). `value` is required (`null` resets an optional
+/// field).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(from = "WireOp")]
 pub struct Op {
-    #[serde(with = "crate::ids::canonical")]
-    pub op_id: Uuid,
+    pub op_id: Id,
     pub entity: EntityKind,
-    #[serde(with = "crate::ids::canonical")]
-    pub entity_id: Uuid,
+    pub entity_id: Id,
     pub field: String,
     #[serde(deserialize_with = "present_value")]
     pub value: Value,
     pub hlc: Hlc,
+}
+
+/// The JSON form as read, before legacy IDs in values are converted.
+#[derive(Deserialize)]
+struct WireOp {
+    op_id: Id,
+    entity: EntityKind,
+    entity_id: Id,
+    field: String,
+    #[serde(deserialize_with = "present_value")]
+    value: Value,
+    hlc: Hlc,
+}
+
+impl From<WireOp> for Op {
+    fn from(w: WireOp) -> Op {
+        let mut value = w.value;
+        upgrade_legacy_value(w.entity, &w.field, &mut value);
+        Op {
+            op_id: w.op_id,
+            entity: w.entity,
+            entity_id: w.entity_id,
+            field: w.field,
+            value,
+            hlc: w.hlc,
+        }
+    }
+}
+
+/// Converts legacy UUIDs in the ID-valued fields (`area_id`, `parent_id`,
+/// the `id` of a `location`) to their IDs ([`crate::ids::Id::from_legacy`]).
+pub fn upgrade_legacy_value(entity: EntityKind, field: &str, value: &mut Value) {
+    use crate::model::fields::{project, task};
+    fn upgrade(v: &mut Value) {
+        if let Some(id) = v.as_str().and_then(crate::ids::upgrade_legacy_str) {
+            *v = Value::String(id);
+        }
+    }
+    match (entity, field) {
+        (EntityKind::Project, project::AREA_ID) | (EntityKind::Task, task::PARENT_ID) => {
+            upgrade(value)
+        }
+        (EntityKind::Task, task::LOCATION) => {
+            if let Some(id) = value.get_mut("id") {
+                upgrade(id);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Like `Value::deserialize`, but used via `deserialize_with` (without
@@ -104,8 +154,8 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    const OP_ID: &str = "01929c3e-0000-7000-8000-000000000001";
-    const ENTITY_ID: &str = "01929c3e-0000-7000-8000-0000000000aa";
+    const OP_ID: &str = "o0000000000000000000000a";
+    const ENTITY_ID: &str = "tz4a98xxat96iws9zmbrgj3a";
 
     #[test]
     fn json_matches_contract() {
@@ -162,5 +212,34 @@ mod tests {
             assert_eq!(kind.as_str().parse::<EntityKind>().unwrap(), kind);
         }
         assert!("tasks".parse::<EntityKind>().is_err());
+    }
+
+    #[test]
+    fn legacy_uuids_are_converted_when_reading() {
+        let legacy = "01929c3e-0000-7000-8000-0000000000aa";
+        let parent = "01929c3e-0000-7000-8000-0000000000bb";
+        let id = |s: &str| crate::ids::Id::parse_any(s).unwrap().to_string();
+        let op: Op = serde_json::from_value(json!({
+            "op_id": "01929c3e-0000-7000-8000-000000000001", "entity": "task",
+            "entity_id": legacy, "field": "parent_id", "value": parent,
+            "hlc": "1728650000000:00000:a"
+        }))
+        .unwrap();
+        assert_eq!(op.entity_id.to_string(), id(legacy));
+        assert_eq!(op.value, json!(id(parent)));
+        let op: Op = serde_json::from_value(json!({
+            "op_id": OP_ID, "entity": "task", "entity_id": ENTITY_ID,
+            "field": "location", "value": {"kind": "project", "id": legacy},
+            "hlc": "1728650000000:00000:a"
+        }))
+        .unwrap();
+        assert_eq!(op.value, json!({"kind": "project", "id": id(legacy)}));
+        // Other text fields stay as they are.
+        let op: Op = serde_json::from_value(json!({
+            "op_id": OP_ID, "entity": "task", "entity_id": ENTITY_ID,
+            "field": "title", "value": legacy, "hlc": "1728650000000:00000:a"
+        }))
+        .unwrap();
+        assert_eq!(op.value, json!(legacy));
     }
 }

@@ -4,12 +4,12 @@
 use std::fmt;
 use std::str::FromStr;
 
+use crate::ids::Id;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use time::format_description::well_known::Rfc3339;
 use time::macros::format_description;
 use time::{Date, OffsetDateTime, Weekday};
-use uuid::Uuid;
 
 use crate::op::EntityKind;
 use crate::validate::RejectCode;
@@ -308,12 +308,10 @@ pub enum Location {
     Inbox,
     Loose,
     Area {
-        #[serde(with = "crate::ids::canonical")]
-        id: Uuid,
+        id: Id,
     },
     Project {
-        #[serde(with = "crate::ids::canonical")]
-        id: Uuid,
+        id: Id,
     },
 }
 
@@ -324,8 +322,8 @@ pub enum Location {
 #[serde(deny_unknown_fields)]
 struct RawLocation {
     kind: String,
-    #[serde(default, with = "crate::ids::canonical::option")]
-    id: Option<Uuid>,
+    #[serde(default)]
+    id: Option<Id>,
 }
 
 impl TryFrom<RawLocation> for Location {
@@ -347,7 +345,7 @@ impl Location {
     }
 
     /// The referenced entity, if any.
-    pub fn target(self) -> Option<(EntityKind, Uuid)> {
+    pub fn target(self) -> Option<(EntityKind, Id)> {
         match self {
             Location::Inbox | Location::Loose => None,
             Location::Area { id } => Some((EntityKind::Area, id)),
@@ -517,8 +515,7 @@ pub struct Link {
 /// Typed view of an area.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Area {
-    #[serde(with = "crate::ids::canonical")]
-    pub id: Uuid,
+    pub id: Id,
     pub name: String,
     pub state: AreaState,
     pub vault_path: Option<String>,
@@ -528,11 +525,9 @@ pub struct Area {
 /// Typed view of a project.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Project {
-    #[serde(with = "crate::ids::canonical")]
-    pub id: Uuid,
+    pub id: Id,
     pub name: String,
-    #[serde(with = "crate::ids::canonical")]
-    pub area_id: Uuid,
+    pub area_id: Id,
     pub status: ProjectStatus,
     pub kind: ProjectKind,
     pub repo: Option<String>,
@@ -546,8 +541,7 @@ pub struct Project {
 /// Typed view of a task.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Task {
-    #[serde(with = "crate::ids::canonical")]
-    pub id: Uuid,
+    pub id: Id,
     pub title: String,
     pub description: Option<String>,
     #[serde(rename = "type")]
@@ -556,8 +550,7 @@ pub struct Task {
     /// The task's own location. For subtasks it is ignored; use
     /// [`crate::state::State::effective_location`].
     pub location: Location,
-    #[serde(with = "crate::ids::canonical::option")]
-    pub parent_id: Option<Uuid>,
+    pub parent_id: Option<Id>,
     pub due: Option<Due>,
     #[serde(with = "time::serde::rfc3339::option")]
     pub remind_at: Option<OffsetDateTime>,
@@ -740,19 +733,28 @@ fn check_shape(shape: Shape, field: &str, value: &Value) -> Result<(), ValueErro
         }
         Shape::Id => {
             let s = text()?;
-            if crate::ids::parse_canonical(s).is_none() {
+            if Id::parse(s).is_none() {
                 return Err(ValueError::invalid(format!(
-                    "„{field}“ muss eine UUID (klein, mit Bindestrichen) sein."
+                    "„{field}“ muss eine ID sein (24 Kleinbuchstaben und Ziffern, beginnend mit einem Buchstaben)."
                 )));
             }
         }
         Shape::Location => {
-            serde_json::from_value::<Location>(value.clone()).map_err(|_| {
-                ValueError::invalid(
-                    "„location“ muss {\"kind\":\"inbox\"}, {\"kind\":\"loose\"}, \
+            // Only canonical IDs are stored (legacy UUIDs are converted on input).
+            let canonical_id = value
+                .get("id")
+                .and_then(Value::as_str)
+                .is_none_or(|s| Id::parse(s).is_some());
+            serde_json::from_value::<Location>(value.clone())
+                .ok()
+                .filter(|_| canonical_id)
+                .ok_or(())
+                .map_err(|_| {
+                    ValueError::invalid(
+                        "„location“ muss {\"kind\":\"inbox\"}, {\"kind\":\"loose\"}, \
                      {\"kind\":\"area\",\"id\":…} oder {\"kind\":\"project\",\"id\":…} sein.",
-                )
-            })?;
+                    )
+                })?;
         }
         Shape::Due => {
             let s = text()?;
@@ -902,7 +904,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    const ID: &str = "01929c3e-0000-7000-8000-0000000000aa";
+    const ID: &str = "tz4a98xxat96iws9zmbrgj3a";
 
     fn ok(kind: EntityKind, field: &str, value: Value) {
         if let Err(e) = validate_field_value(kind, field, &value) {
@@ -959,7 +961,7 @@ mod tests {
     fn location_serde() {
         assert_eq!(Location::Inbox.to_value(), json!({"kind": "inbox"}));
         assert_eq!(Location::Loose.to_value(), json!({"kind": "loose"}));
-        let id = Uuid::parse_str(ID).unwrap();
+        let id = Id::parse(ID).unwrap();
         assert_eq!(
             Location::Project { id }.to_value(),
             json!({"kind": "project", "id": ID})

@@ -17,17 +17,17 @@ const A: EntityKind = EntityKind::Area;
 
 /// IDs of the fixture entities.
 struct Ids {
-    area: Uuid,
-    area2: Uuid,
-    standard: Uuid,
-    dev: Uuid,
-    dev2: Uuid,
-    inbox_task: Uuid,
-    bug: Uuid,
-    parent: Uuid,
-    feature_child: Uuid,
-    standard_task: Uuid,
-    area_task: Uuid,
+    area: Id,
+    area2: Id,
+    standard: Id,
+    dev: Id,
+    dev2: Id,
+    inbox_task: Id,
+    bug: Id,
+    parent: Id,
+    feature_child: Id,
+    standard_task: Id,
+    area_task: Id,
 }
 
 fn fixture() -> (State, Ids) {
@@ -190,7 +190,7 @@ fn repeat_of_a_rejected_op_is_rejected_too() {
     let outcome = push(&state, &pushed);
     assert!(outcome.accepted.is_empty(), "{:?}", outcome.accepted);
     assert!(outcome.new_ops.is_empty());
-    let rejected: Vec<(Uuid, RejectCode)> =
+    let rejected: Vec<(Id, RejectCode)> =
         outcome.rejected.iter().map(|r| (r.op_id, r.code)).collect();
     assert_eq!(
         rejected,
@@ -660,7 +660,7 @@ fn rejection_cascades_to_entities_depending_on_rejected_ones() {
         b.set_task(ids.inbox_task, "title", "unabhängig");
     });
     let outcome = push(&state, &ops);
-    let by_entity: HashMap<Uuid, RejectCode> = outcome
+    let by_entity: HashMap<Id, RejectCode> = outcome
         .rejected
         .iter()
         .map(|r| {
@@ -706,7 +706,7 @@ fn deep_dependency_chains_are_rejected_in_one_pass() {
     assert!(outcome.accepted.is_empty());
     assert!(outcome.new_ops.is_empty());
     assert_eq!(outcome.rejected.len(), ops.len());
-    let mut causes: HashMap<Uuid, RejectCode> = HashMap::new();
+    let mut causes: HashMap<Id, RejectCode> = HashMap::new();
     for r in &outcome.rejected {
         let entity = ops.iter().find(|o| o.op_id == r.op_id).unwrap().entity_id;
         causes.entry(entity).or_insert(r.code);
@@ -760,13 +760,13 @@ fn chains_into_rejected_projects_and_areas_cascade() {
     CHECK_PASSES.with(|n| n.set(0));
     let outcome = push(&state, &ops);
     assert!(CHECK_PASSES.with(|n| n.get()) <= 2);
-    let accepted: Vec<Uuid> = ops
+    let accepted: Vec<Id> = ops
         .iter()
         .filter(|o| o.entity_id == ids.inbox_task)
         .map(|o| o.op_id)
         .collect();
     assert_eq!(outcome.accepted, accepted);
-    let mut causes: HashMap<Uuid, RejectCode> = HashMap::new();
+    let mut causes: HashMap<Id, RejectCode> = HashMap::new();
     for r in &outcome.rejected {
         let entity = ops.iter().find(|o| o.op_id == r.op_id).unwrap().entity_id;
         if r.code != RejectCode::EntityRejected {

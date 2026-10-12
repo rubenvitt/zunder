@@ -89,6 +89,8 @@ export function compareTasks(a: Task, b: Task): number {
   const ka = sortKey(a);
   const kb = sortKey(b);
   if (ka !== kb) return ka < kb ? -1 : 1;
+  // Same default rank (same millisecond): creation order, IDs are random.
+  if (a.created_hlc !== b.created_hlc) return a.created_hlc < b.created_hlc ? -1 : 1;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 

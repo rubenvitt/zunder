@@ -93,7 +93,7 @@ target = "project:werkzeugkiste"   # area:<schlüssel> | project:<schlüssel> | 
 "eingefroren" = "blocked"          # vorher leer
 ```
 
-- **IDs:** Bereiche und Projekte bekommen stabile IDs aus ihrer `clickup_id` (UUIDv5). Mit `existing_id` legt der Import nichts an und verweist auf den vorhandenen Eintrag (er muss in Zunder existieren). Bei Projekten muss `kind` dann der Art des vorhandenen Projekts entsprechen, denn davon hängen die Dev-Regeln ab; `run` bricht sonst vor dem Schreiben ab. Eigene Bereiche oder Projekte ohne `clickup_id` sind erlaubt; ihre ID entsteht aus dem Schlüssel.
+- **IDs:** Bereiche und Projekte bekommen stabile IDs aus ihrer `clickup_id` (fest abgeleitet, dieselben wie vor der Umstellung auf CUID2). Mit `existing_id` legt der Import nichts an und verweist auf den vorhandenen Eintrag (er muss in Zunder existieren). Bei Projekten muss `kind` dann der Art des vorhandenen Projekts entsprechen, denn davon hängen die Dev-Regeln ab; `run` bricht sonst vor dem Schreiben ab. Eigene Bereiche oder Projekte ohne `clickup_id` sind erlaubt; ihre ID entsteht aus dem Schlüssel.
 - **Ziele:** `skip` lässt eine Liste weg, `loose` legt ihre Aufgaben unter „Lose“ ab.
 - **Typen:** `[type_tags]` übersetzt ClickUp-Tags in `bug` oder `feature`.
 - **Dev-Regeln:** `review`, `bug` und `feature` gibt es nur in Dev-Projekten. Anderswo wird daraus `in_progress` bzw. `aufgabe`; der Bericht listet diese Fälle.
@@ -139,7 +139,7 @@ Neu angelegte Aufgaben tragen ihre ClickUp-Zeitpunkte: Die Operationen sind auf 
 
 ### 6. Erneut importieren
 
-Aufgaben-IDs werden aus der ClickUp-ID abgeleitet (UUIDv5), daher aktualisiert ein erneuter Lauf statt zu duplizieren:
+Aufgaben-IDs werden fest aus der ClickUp-ID abgeleitet, daher aktualisiert ein erneuter Lauf statt zu duplizieren:
 
 - Unveränderte Aufgaben erzeugen keine Operation; ein Lauf ohne Änderungen in ClickUp schreibt nichts.
 - Bei den vom Import verwalteten Feldern (Titel, Beschreibung, Typ, Status, Stelle, Eltern, Fälligkeit, Links, Rang, `clickup_id`) gewinnt ClickUp. Ist ein Feld in ClickUp leer geworden, wird es in Zunder geleert.

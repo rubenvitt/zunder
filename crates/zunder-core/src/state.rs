@@ -10,10 +10,10 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
+use crate::ids::Id;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use uuid::Uuid;
 
 use crate::hlc::Hlc;
 use crate::model::{
@@ -32,8 +32,7 @@ pub struct FieldEntry {
     #[serde(deserialize_with = "crate::op::present_value")]
     pub value: Value,
     pub hlc: Hlc,
-    #[serde(with = "crate::ids::canonical")]
-    pub op_id: Uuid,
+    pub op_id: Id,
 }
 
 impl FieldEntry {
@@ -50,7 +49,7 @@ impl FieldEntry {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Entity {
     kind: EntityKind,
-    id: Uuid,
+    id: Id,
     fields: BTreeMap<String, FieldEntry>,
     /// Smallest HLC of any operation ever applied to this entity.
     created: Hlc,
@@ -61,11 +60,11 @@ struct Merged {
     /// Field winner replaced or creation HLC lowered.
     changed: bool,
     /// For a task whose winning `parent_id` changed: old and new parent.
-    parent_move: Option<(Option<Uuid>, Option<Uuid>)>,
+    parent_move: Option<(Option<Id>, Option<Id>)>,
 }
 
 impl Entity {
-    fn new(kind: EntityKind, id: Uuid, created: Hlc) -> Self {
+    fn new(kind: EntityKind, id: Id, created: Hlc) -> Self {
         Entity {
             kind,
             id,
@@ -106,7 +105,7 @@ impl Entity {
         self.kind
     }
 
-    pub fn id(&self) -> Uuid {
+    pub fn id(&self) -> Id {
         self.id
     }
 
@@ -146,8 +145,8 @@ impl Entity {
             .unwrap_or_default()
     }
 
-    fn id_value(&self, name: &str) -> Option<Uuid> {
-        self.str_value(name).and_then(crate::ids::parse_canonical)
+    fn id_value(&self, name: &str) -> Option<Id> {
+        self.str_value(name).and_then(crate::ids::parse_id)
     }
 
     /// This entity in the snapshot format.
@@ -180,7 +179,7 @@ impl Entity {
     }
 
     /// The task's own `parent_id` (only meaningful for tasks).
-    pub fn parent_id(&self) -> Option<Uuid> {
+    pub fn parent_id(&self) -> Option<Id> {
         if self.kind == EntityKind::Task {
             self.id_value(fields::task::PARENT_ID)
         } else {
@@ -205,7 +204,7 @@ impl Entity {
         self.code(fields::project::KIND)
     }
 
-    pub fn area_id(&self) -> Option<Uuid> {
+    pub fn area_id(&self) -> Option<Id> {
         if self.kind == EntityKind::Project {
             self.id_value(fields::project::AREA_ID)
         } else {
@@ -291,12 +290,13 @@ pub struct Progress {
     pub total: usize,
 }
 
-/// One entity in the snapshot format of `GET /api/snapshot`.
+/// One entity in the snapshot format of `GET /api/snapshot`. Legacy UUIDs
+/// are converted when reading, also inside ID-valued fields.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(from = "WireSnapshotEntity")]
 pub struct SnapshotEntity {
     pub entity: EntityKind,
-    #[serde(with = "crate::ids::canonical")]
-    pub entity_id: Uuid,
+    pub entity_id: Id,
     /// Smallest HLC of any operation on the entity (derived `created_at`).
     /// Optional when reading; defaults to the smallest field HLC.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -304,14 +304,38 @@ pub struct SnapshotEntity {
     pub fields: BTreeMap<String, FieldEntry>,
 }
 
+#[derive(Deserialize)]
+struct WireSnapshotEntity {
+    entity: EntityKind,
+    entity_id: Id,
+    #[serde(default)]
+    created_hlc: Option<Hlc>,
+    fields: BTreeMap<String, FieldEntry>,
+}
+
+impl From<WireSnapshotEntity> for SnapshotEntity {
+    fn from(w: WireSnapshotEntity) -> Self {
+        let mut fields = w.fields;
+        for (name, entry) in &mut fields {
+            crate::op::upgrade_legacy_value(w.entity, name, &mut entry.value);
+        }
+        SnapshotEntity {
+            entity: w.entity,
+            entity_id: w.entity_id,
+            created_hlc: w.created_hlc,
+            fields,
+        }
+    }
+}
+
 /// The materialized state of all entities.
 #[derive(Debug, Clone, Default)]
 pub struct State {
-    entities: BTreeMap<(EntityKind, Uuid), Entity>,
+    entities: BTreeMap<(EntityKind, Id), Entity>,
     /// Derived index: parent task -> tasks whose winning `parent_id` is it.
-    children: HashMap<Uuid, BTreeSet<Uuid>>,
+    children: HashMap<Id, BTreeSet<Id>>,
     /// Every op_id applied so far (winners and losers).
-    known_ops: HashSet<Uuid>,
+    known_ops: HashSet<Id>,
 }
 
 /// Two states are equal when their entities (all registers and derived
@@ -352,7 +376,7 @@ impl State {
     fn merge_entry(
         &mut self,
         kind: EntityKind,
-        id: Uuid,
+        id: Id,
         field: &str,
         entry: FieldEntry,
         created: &Hlc,
@@ -380,24 +404,24 @@ impl State {
     }
 
     /// Whether an operation with this ID has been applied (or marked known).
-    pub fn knows_op(&self, op_id: &Uuid) -> bool {
+    pub fn knows_op(&self, op_id: &Id) -> bool {
         self.known_ops.contains(op_id)
     }
 
     /// Records an op ID as known without applying anything (e.g. when the
     /// state was loaded from a snapshot and the full op log lives elsewhere).
-    pub fn mark_op_known(&mut self, op_id: Uuid) {
+    pub fn mark_op_known(&mut self, op_id: Id) {
         self.known_ops.insert(op_id);
     }
 
     // ----- raw access -------------------------------------------------------
 
-    pub fn entity(&self, kind: EntityKind, id: Uuid) -> Option<&Entity> {
+    pub fn entity(&self, kind: EntityKind, id: Id) -> Option<&Entity> {
         self.entities.get(&(kind, id))
     }
 
     /// The entity if it exists and is not tombstoned.
-    pub fn live_entity(&self, kind: EntityKind, id: Uuid) -> Option<&Entity> {
+    pub fn live_entity(&self, kind: EntityKind, id: Id) -> Option<&Entity> {
         Lookup::live_entity(self, kind, id)
     }
 
@@ -409,12 +433,12 @@ impl State {
     /// All entities of one kind (including tombstoned ones).
     pub fn entities_of(&self, kind: EntityKind) -> impl Iterator<Item = &Entity> {
         self.entities
-            .range((kind, Uuid::nil())..=(kind, Uuid::max()))
+            .range((kind, Id::MIN)..=(kind, Id::MAX))
             .map(|(_, e)| e)
     }
 
     /// Kinds under which an ID exists (normally at most one).
-    pub fn kinds_of(&self, id: Uuid) -> impl Iterator<Item = EntityKind> + '_ {
+    pub fn kinds_of(&self, id: Id) -> impl Iterator<Item = EntityKind> + '_ {
         EntityKind::ALL
             .into_iter()
             .filter(move |k| self.entities.contains_key(&(*k, id)))
@@ -431,17 +455,17 @@ impl State {
     // ----- typed views ------------------------------------------------------
 
     /// Typed area view. `None` if missing or without a name.
-    pub fn area(&self, id: Uuid) -> Option<Area> {
+    pub fn area(&self, id: Id) -> Option<Area> {
         self.entity(EntityKind::Area, id)?.to_area()
     }
 
     /// Typed project view. `None` if missing or without name/area.
-    pub fn project(&self, id: Uuid) -> Option<Project> {
+    pub fn project(&self, id: Id) -> Option<Project> {
         self.entity(EntityKind::Project, id)?.to_project()
     }
 
     /// Typed task view. `None` if missing or without a title.
-    pub fn task(&self, id: Uuid) -> Option<Task> {
+    pub fn task(&self, id: Id) -> Option<Task> {
         self.entity(EntityKind::Task, id)?.to_task()
     }
 
@@ -484,17 +508,17 @@ impl State {
 
     // ----- derived data -----------------------------------------------------
 
-    pub fn created_at(&self, kind: EntityKind, id: Uuid) -> Option<&Hlc> {
+    pub fn created_at(&self, kind: EntityKind, id: Id) -> Option<&Hlc> {
         self.entity(kind, id).map(Entity::created_at)
     }
 
-    pub fn updated_at(&self, kind: EntityKind, id: Uuid) -> Option<&Hlc> {
+    pub fn updated_at(&self, kind: EntityKind, id: Id) -> Option<&Hlc> {
         self.entity(kind, id).map(Entity::updated_at)
     }
 
     /// HLC of the winning `status` operation; the creation HLC if the status
     /// was never set (default `open`).
-    pub fn status_changed_at(&self, task_id: Uuid) -> Option<&Hlc> {
+    pub fn status_changed_at(&self, task_id: Id) -> Option<&Hlc> {
         let e = self.entity(EntityKind::Task, task_id)?;
         Some(
             e.field(fields::task::STATUS)
@@ -505,18 +529,18 @@ impl State {
 
     /// Root of a task's parent chain. Stops at a missing parent; `None` if
     /// the task is missing or the chain contains a cycle.
-    pub fn root_task(&self, task_id: Uuid) -> Option<Uuid> {
+    pub fn root_task(&self, task_id: Id) -> Option<Id> {
         Lookup::root_task(self, task_id)
     }
 
     /// Effective location of a task: the location of its root task (the own
     /// location of subtasks is ignored). `None` if missing or cyclic.
-    pub fn effective_location(&self, task_id: Uuid) -> Option<Location> {
+    pub fn effective_location(&self, task_id: Id) -> Option<Location> {
         Lookup::effective_location(self, task_id)
     }
 
     /// The project a task effectively belongs to, if any.
-    pub fn effective_project(&self, task_id: Uuid) -> Option<Uuid> {
+    pub fn effective_project(&self, task_id: Id) -> Option<Id> {
         match self.effective_location(task_id)? {
             Location::Project { id } => Some(id),
             _ => None,
@@ -530,34 +554,34 @@ impl State {
 
     /// IDs of all tasks whose winning `parent_id` is `task_id` (including
     /// tombstoned ones), ordered by ID.
-    pub fn child_ids(&self, task_id: Uuid) -> impl Iterator<Item = Uuid> + '_ {
+    pub fn child_ids(&self, task_id: Id) -> impl Iterator<Item = Id> + '_ {
         self.children.get(&task_id).into_iter().flatten().copied()
     }
 
     /// Live direct subtasks of a task, ordered by ID.
-    pub fn children(&self, task_id: Uuid) -> Vec<Uuid> {
+    pub fn children(&self, task_id: Id) -> Vec<Id> {
         Lookup::children(self, task_id)
     }
 
     /// All live descendants (depth first, cycle safe), excluding the task.
-    pub fn descendants(&self, task_id: Uuid) -> Vec<Uuid> {
+    pub fn descendants(&self, task_id: Id) -> Vec<Id> {
         Lookup::descendants(self, task_id)
     }
 
     /// Progress of the direct, live subtasks (dropped ones excluded).
-    pub fn progress(&self, task_id: Uuid) -> Progress {
+    pub fn progress(&self, task_id: Id) -> Progress {
         Lookup::progress(self, task_id)
     }
 
     /// Number of live direct subtasks that are neither done nor dropped.
-    pub fn open_subtask_count(&self, task_id: Uuid) -> usize {
+    pub fn open_subtask_count(&self, task_id: Id) -> usize {
         Lookup::open_subtask_count(self, task_id)
     }
 
     /// Whether a task appears in the default views at `now_ms`: tombstoned
     /// tasks never; done/dropped tasks only until [`CLOSED_VISIBLE_MS`] after
     /// `status_changed_at`. Search ignores this rule.
-    pub fn is_visible_by_default(&self, task_id: Uuid, now_ms: u64) -> bool {
+    pub fn is_visible_by_default(&self, task_id: Id, now_ms: u64) -> bool {
         let Some(e) = self.live_entity(EntityKind::Task, task_id) else {
             return false;
         };
@@ -621,17 +645,17 @@ impl State {
 /// by the validation [`Overlay`], so derived data is computed the same way on
 /// both.
 pub(crate) trait Lookup {
-    fn entity(&self, kind: EntityKind, id: Uuid) -> Option<&Entity>;
+    fn entity(&self, kind: EntityKind, id: Id) -> Option<&Entity>;
 
     /// Tasks whose winning `parent_id` is `parent` (including tombstoned
     /// ones).
-    fn child_set(&self, parent: Uuid) -> Option<&BTreeSet<Uuid>>;
+    fn child_set(&self, parent: Id) -> Option<&BTreeSet<Id>>;
 
-    fn live_entity(&self, kind: EntityKind, id: Uuid) -> Option<&Entity> {
+    fn live_entity(&self, kind: EntityKind, id: Id) -> Option<&Entity> {
         self.entity(kind, id).filter(|e| !e.is_deleted())
     }
 
-    fn root_task(&self, task_id: Uuid) -> Option<Uuid> {
+    fn root_task(&self, task_id: Id) -> Option<Id> {
         let mut current = self.entity(EntityKind::Task, task_id)?;
         let mut seen = HashSet::from([task_id]);
         while let Some(parent) = current
@@ -646,7 +670,7 @@ pub(crate) trait Lookup {
         Some(current.id)
     }
 
-    fn effective_location(&self, task_id: Uuid) -> Option<Location> {
+    fn effective_location(&self, task_id: Id) -> Option<Location> {
         let root = self.root_task(task_id)?;
         Some(self.entity(EntityKind::Task, root)?.own_location())
     }
@@ -660,7 +684,7 @@ pub(crate) trait Lookup {
         }
     }
 
-    fn children(&self, task_id: Uuid) -> Vec<Uuid> {
+    fn children(&self, task_id: Id) -> Vec<Id> {
         self.child_set(task_id)
             .into_iter()
             .flatten()
@@ -669,10 +693,10 @@ pub(crate) trait Lookup {
             .collect()
     }
 
-    fn descendants(&self, task_id: Uuid) -> Vec<Uuid> {
+    fn descendants(&self, task_id: Id) -> Vec<Id> {
         let mut out = Vec::new();
         let mut seen = HashSet::from([task_id]);
-        let mut stack: Vec<Uuid> = self.children(task_id).into_iter().rev().collect();
+        let mut stack: Vec<Id> = self.children(task_id).into_iter().rev().collect();
         while let Some(id) = stack.pop() {
             if !seen.insert(id) {
                 continue;
@@ -683,7 +707,7 @@ pub(crate) trait Lookup {
         out
     }
 
-    fn progress(&self, task_id: Uuid) -> Progress {
+    fn progress(&self, task_id: Id) -> Progress {
         let mut progress = Progress::default();
         for child in self.children(task_id) {
             let Some(e) = self.entity(EntityKind::Task, child) else {
@@ -701,18 +725,18 @@ pub(crate) trait Lookup {
         progress
     }
 
-    fn open_subtask_count(&self, task_id: Uuid) -> usize {
+    fn open_subtask_count(&self, task_id: Id) -> usize {
         let p = self.progress(task_id);
         p.total - p.done
     }
 }
 
 impl Lookup for State {
-    fn entity(&self, kind: EntityKind, id: Uuid) -> Option<&Entity> {
+    fn entity(&self, kind: EntityKind, id: Id) -> Option<&Entity> {
         self.entities.get(&(kind, id))
     }
 
-    fn child_set(&self, parent: Uuid) -> Option<&BTreeSet<Uuid>> {
+    fn child_set(&self, parent: Id) -> Option<&BTreeSet<Id>> {
         self.children.get(&parent)
     }
 }

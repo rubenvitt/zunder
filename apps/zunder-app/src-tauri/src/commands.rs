@@ -3,8 +3,8 @@
 //! `{"code", "message"}`.
 
 use tauri::{AppHandle, Manager, State};
-use uuid::Uuid;
 use zunder_core::hlc::system_time_ms;
+use zunder_core::ids::Id;
 use zunder_core::Op;
 use zunder_local::sync::lock;
 use zunder_local::{
@@ -77,7 +77,7 @@ pub fn set_config(
 #[tauri::command(rename_all = "snake_case")]
 pub async fn task_history(
     state: State<'_, AppState>,
-    task_id: Uuid,
+    task_id: Id,
 ) -> Result<Vec<HistoryEntry>, Error> {
     let client = state.syncer.client(&state.store)?;
     client.task_history(task_id).await
@@ -86,20 +86,20 @@ pub async fn task_history(
 /// Starts the task's flame on the server (Timing bridge) and syncs, so the
 /// flame fields the server wrote arrive right away (`zunder://changed`).
 #[tauri::command(rename_all = "snake_case")]
-pub async fn flame_start(app: AppHandle, task_id: Uuid) -> Result<serde_json::Value, Error> {
+pub async fn flame_start(app: AppHandle, task_id: Id) -> Result<serde_json::Value, Error> {
     flame(&app, task_id, FlameAction::Start).await
 }
 
 /// Stops the task's flame on the server and syncs. Without a running flame
 /// the server answers 409 (`server` error).
 #[tauri::command(rename_all = "snake_case")]
-pub async fn flame_stop(app: AppHandle, task_id: Uuid) -> Result<serde_json::Value, Error> {
+pub async fn flame_stop(app: AppHandle, task_id: Id) -> Result<serde_json::Value, Error> {
     flame(&app, task_id, FlameAction::Stop).await
 }
 
 async fn flame(
     app: &AppHandle,
-    task_id: Uuid,
+    task_id: Id,
     action: FlameAction,
 ) -> Result<serde_json::Value, Error> {
     let state = app.state::<AppState>();

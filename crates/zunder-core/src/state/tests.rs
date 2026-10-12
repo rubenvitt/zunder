@@ -499,7 +499,7 @@ fn arb_ops_and_permutation() -> impl Strategy<Value = (Vec<Op>, Vec<Op>)> {
 
 fn assert_index_consistent(s: &State) {
     for e in s.entities_of(T) {
-        let expected: Vec<Uuid> = s
+        let expected: Vec<Id> = s
             .entities_of(T)
             .filter(|c| c.parent_id() == Some(e.id()))
             .map(|c| c.id())

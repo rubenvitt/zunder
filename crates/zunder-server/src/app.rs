@@ -25,6 +25,7 @@ use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 use zunder_core::hlc::system_time_ms;
+use zunder_core::ids::Id;
 use zunder_core::model::fields;
 use zunder_core::numbering::{pending_refs, Scope};
 use zunder_core::{
@@ -75,7 +76,7 @@ impl Source {
 /// Result of a push (contract: response of `POST /api/sync/push`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PushResult {
-    pub accepted: Vec<Uuid>,
+    pub accepted: Vec<Id>,
     pub rejected: Vec<Rejection>,
     pub warnings: Vec<Warning>,
     /// Cursor after the push (largest `seq`).
@@ -481,7 +482,7 @@ impl App {
     }
 
     /// The change history of a task (all its operations with source).
-    pub async fn task_history(&self, task_id: Uuid) -> AppResult<Vec<HistoryEntry>> {
+    pub async fn task_history(&self, task_id: Id) -> AppResult<Vec<HistoryEntry>> {
         let known = self.read(|s| s.entity(EntityKind::Task, task_id).is_some());
         if !known {
             return Err(AppError::NotFound("Aufgabe nicht gefunden".into()));
@@ -664,7 +665,7 @@ impl App {
         let raw = auth::new_api_token();
         let hash = auth::sha256_hex(&raw);
         let row = TokenRow {
-            id: zunder_core::ids::new_id(),
+            id: Uuid::now_v7(),
             user_id,
             name,
             created_at: now_ms(),
@@ -980,8 +981,7 @@ impl Validated {
 /// The materialized form of every entity touched by `ops` after applying
 /// them, computed on a scratch state holding only those entities.
 fn touched_entities(state: &State, ops: &[Op]) -> Vec<SnapshotEntity> {
-    let keys: BTreeSet<(EntityKind, Uuid)> =
-        ops.iter().map(|op| (op.entity, op.entity_id)).collect();
+    let keys: BTreeSet<(EntityKind, Id)> = ops.iter().map(|op| (op.entity, op.entity_id)).collect();
     let existing: Vec<SnapshotEntity> = keys
         .iter()
         .filter_map(|(kind, id)| state.entity(*kind, *id))

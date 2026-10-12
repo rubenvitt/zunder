@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
-use uuid::Uuid;
 use zunder_core::hlc::system_time_ms;
+use zunder_core::ids::Id;
 use zunder_core::model::fields::task as f;
 use zunder_core::{Location, NewArea, NewTask, RejectCode};
 
@@ -263,7 +263,7 @@ async fn a_round_that_fails_on_a_later_page_reports_the_earlier_ones() {
 }
 
 /// Two devices that both pulled the first `ops` from `server`.
-async fn synced_device(server: &FakeServer, ui: &mut Author) -> (Mutex<LocalStore>, Uuid) {
+async fn synced_device(server: &FakeServer, ui: &mut Author) -> (Mutex<LocalStore>, Id) {
     let device = store();
     let (task, ops) = ui.create(|b| b.create_task(NewTask::new("Vor dem Backup")));
     apply(&device, &ops);

@@ -6,6 +6,7 @@ use axum::http::request::Parts;
 use axum::http::StatusCode;
 use serde::de::DeserializeOwned;
 use uuid::Uuid;
+use zunder_core::ids::Id;
 
 use crate::error::AppError;
 
@@ -57,8 +58,13 @@ fn query_rejection(rejection: QueryRejection) -> AppError {
     ))
 }
 
-/// Parses a canonical ID from a path segment.
-pub fn parse_id(raw: &str) -> Result<Uuid, AppError> {
-    zunder_core::ids::parse_canonical(raw)
+/// Parses an entity ID from a path segment (a legacy UUID is converted).
+pub fn parse_id(raw: &str) -> Result<Id, AppError> {
+    Id::parse_any(raw).ok_or_else(|| AppError::bad_request(format!("Ungültige ID: {raw}")))
+}
+
+/// Parses the UUID of a token or session from a path segment.
+pub fn parse_uuid(raw: &str) -> Result<Uuid, AppError> {
+    zunder_core::ids::parse_legacy_uuid(raw)
         .ok_or_else(|| AppError::bad_request(format!("Ungültige ID: {raw}")))
 }

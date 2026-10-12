@@ -14,8 +14,8 @@
 //! point (HTTP or MCP) triggered them.
 
 use serde::Serialize;
-use uuid::Uuid;
 use zunder_core::hlc::system_time_ms;
+use zunder_core::ids::Id;
 use zunder_core::model::fields::task as f;
 use zunder_core::{EntityKind, State, Warning};
 
@@ -55,27 +55,27 @@ pub struct FlameOutcome {
     /// Whether the flame on `task` runs after the action.
     pub running: bool,
     /// Tasks whose running flame was ended by this start.
-    pub stopped_task_ids: Vec<Uuid>,
+    pub stopped_task_ids: Vec<Id>,
     /// Starting an already running flame changes nothing.
     pub unchanged: bool,
     pub timing: TimingUsage,
     pub warnings: Vec<Warning>,
 }
 
-fn live_task(state: &State, id: Uuid) -> AppResult<zunder_core::Task> {
+fn live_task(state: &State, id: Id) -> AppResult<zunder_core::Task> {
     state
         .task(id)
         .filter(|t| !t.deleted)
         .ok_or_else(|| AppError::NotFound(format!("Aufgabe {id} nicht gefunden.")))
 }
 
-fn view(app: &App, id: Uuid) -> AppResult<TaskView> {
+fn view(app: &App, id: Id) -> AppResult<TaskView> {
     app.read(|s| TaskView::build(s, id, system_time_ms(), false))
         .ok_or_else(|| AppError::NotFound(format!("Aufgabe {id} nicht gefunden.")))
 }
 
 /// Starts a flame on a live task.
-pub async fn start(app: &App, task_id: Uuid) -> AppResult<FlameOutcome> {
+pub async fn start(app: &App, task_id: Id) -> AppResult<FlameOutcome> {
     let (title, already_running, timing_ref) = app.read(|s| {
         live_task(s, task_id).map(|t| (t.title.clone(), flame_running(&t), t.timing_ref))
     })?;
@@ -128,7 +128,7 @@ pub async fn start(app: &App, task_id: Uuid) -> AppResult<FlameOutcome> {
     let committed = app
         .mutate_atomic(Source::Server, move |state, batch| {
             live_task(state, task_id)?;
-            let previous: Vec<Uuid> = state
+            let previous: Vec<Id> = state
                 .live_tasks()
                 .filter(|t| t.id != task_id && flame_running(t))
                 .map(|t| t.id)
@@ -168,7 +168,7 @@ pub async fn start(app: &App, task_id: Uuid) -> AppResult<FlameOutcome> {
 }
 
 /// Stops the running flame of a task.
-pub async fn stop(app: &App, task_id: Uuid) -> AppResult<FlameOutcome> {
+pub async fn stop(app: &App, task_id: Id) -> AppResult<FlameOutcome> {
     let (running, timing_ref) =
         app.read(|s| live_task(s, task_id).map(|t| (flame_running(&t), t.timing_ref)))?;
     if !running {

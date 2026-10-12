@@ -1,14 +1,14 @@
 //! Helpers for unit tests.
 
+use crate::ids::Id;
 use serde_json::Value;
-use uuid::Uuid;
 
 use crate::hlc::Hlc;
 use crate::op::{EntityKind, Op};
 
-/// Deterministic, canonical test UUID.
-pub fn uid(n: u128) -> Uuid {
-    Uuid::from_u128(0x01929c3e_0000_7000_8000_000000000000 | n)
+/// Deterministic test ID, ordered like `n`.
+pub fn uid(n: u128) -> Id {
+    Id::parse(&format!("t{n:023}")).expect("valid test ID")
 }
 
 pub fn hlc(s: &str) -> Hlc {

@@ -2,6 +2,7 @@
 // unsafe links are not clickable, flame/Timing feedback, links to single tasks.
 
 import { expect, test, type Page } from "@playwright/test";
+import { fromLegacy } from "../src/sync/ids";
 import { entityFields, openApp, prepare, row, Seeder, suffix } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
@@ -228,4 +229,14 @@ test("Projektschlüssel: Aufgaben bekommen Kennungen wie ZUN-1", async ({ page, 
   await page.keyboard.press("Escape");
   await openApp(page, `#/aufgabe/${key.toLowerCase()}-1`);
   await expect(detail(page).getByLabel("Titel", { exact: true })).toHaveValue(`Erste ${s}`);
+});
+
+test("Alte Links mit UUID (vor CUID2) öffnen dieselbe Aufgabe", async ({ page }) => {
+  const s = suffix();
+  const legacy = "0192a000-0000-7000-8000-0c00000000e2";
+  const seeder = new Seeder();
+  seeder.raw("task", fromLegacy(legacy), { title: `Alter Link ${s}`, location: { kind: "loose" } });
+  await seeder.push(page);
+  await openApp(page, `#/aufgabe/${legacy}`);
+  await expect(detail(page).getByLabel("Titel", { exact: true })).toHaveValue(`Alter Link ${s}`);
 });

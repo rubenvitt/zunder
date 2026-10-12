@@ -7,8 +7,8 @@
 //! projects and areas by name. Closed tasks are included; tombstoned
 //! entities are not.
 
+use crate::ids::Id;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::model::fields;
 use crate::op::EntityKind;
@@ -18,8 +18,7 @@ use crate::state::{Entity, State};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SearchHit {
     pub entity: EntityKind,
-    #[serde(with = "crate::ids::canonical")]
-    pub entity_id: Uuid,
+    pub entity_id: Id,
     /// Title of a task or name of a project/area.
     pub title: String,
     /// Higher is better.
@@ -216,7 +215,7 @@ mod tests {
     use crate::hlc::{Clock, NodeId};
     use crate::model::TaskStatus;
 
-    fn fixture() -> (State, [Uuid; 6]) {
+    fn fixture() -> (State, [Id; 6]) {
         let mut clock = Clock::new(NodeId::new("test").unwrap());
         let mut b = OpBatch::new(&mut clock, 1_760_000_000_000);
         let area = b.create_area(NewArea::new("Gesundheit"));
@@ -236,7 +235,7 @@ mod tests {
         )
     }
 
-    fn ids(hits: &[SearchHit]) -> Vec<Uuid> {
+    fn ids(hits: &[SearchHit]) -> Vec<Id> {
         hits.iter().map(|h| h.entity_id).collect()
     }
 

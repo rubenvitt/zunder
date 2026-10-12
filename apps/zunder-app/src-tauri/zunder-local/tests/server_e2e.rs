@@ -13,7 +13,6 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use uuid::Uuid;
 use zunder_core::hlc::system_time_ms;
 use zunder_core::model::fields::task as f;
 use zunder_core::{Clock, EntityKind, Location, NewArea, NewTask, NodeId, Op, OpBatch, RejectCode};
@@ -242,6 +241,9 @@ async fn history_and_flames_with_the_api_token() {
     assert_eq!(err.code(), "server");
     assert!(err.to_string().contains("409"), "{err}");
 
-    let err = client.task_history(Uuid::now_v7()).await.unwrap_err();
+    let err = client
+        .task_history(zunder_core::ids::new_id())
+        .await
+        .unwrap_err();
     assert!(err.to_string().contains("404"), "{err}");
 }

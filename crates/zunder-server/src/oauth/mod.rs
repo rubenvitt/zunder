@@ -438,7 +438,7 @@ pub async fn register(app: &App, metadata: Value) -> Result<RegisteredClient, OA
 
     let now = now_ms();
     let row = OAuthClientRow {
-        id: zunder_core::ids::new_id().to_string(),
+        id: uuid::Uuid::now_v7().to_string(),
         name,
         redirect_uris,
         created_at: now,
@@ -514,7 +514,7 @@ pub async fn issue_code(app: &App, grant: CodeGrant) -> AppResult<String> {
         code_challenge: grant.code_challenge,
         resource: grant.resource,
         scope: grant.scope,
-        family_id: zunder_core::ids::new_id().to_string(),
+        family_id: uuid::Uuid::now_v7().to_string(),
         created_at: now,
         expires_at: now + CODE_TTL_MS,
         used_at: None,
@@ -561,7 +561,7 @@ fn issue_pair(
             conn,
             &auth::sha256_hex(raw),
             &OAuthTokenRow {
-                id: zunder_core::ids::new_id().to_string(),
+                id: uuid::Uuid::now_v7().to_string(),
                 kind,
                 client_id: family.client_id.to_owned(),
                 user_id: family.user_id,
