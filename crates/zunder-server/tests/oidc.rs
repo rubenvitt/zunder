@@ -1,10 +1,10 @@
 //! OIDC login against a local mock provider (discovery, JWKS, token
-//! endpoint) with test-only RSA keys from `tests/fixtures`.
+//! endpoint) with RSA keys generated when the tests run.
 
 mod common;
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use axum::extract::State;
 use axum::http::{header, Request, StatusCode};
@@ -17,10 +17,60 @@ use zunder_server::config::OidcConfig;
 
 use common::{test_config, Auth, TestResponse, TestServer};
 
-const TEST_KEY: &str = include_str!("fixtures/oidc-test-key.pem");
-const TEST_JWK: &str = include_str!("fixtures/oidc-test-key.jwk.json");
-const OTHER_KEY: &str = include_str!("fixtures/oidc-other-key.pem");
-const OTHER_JWK: &str = include_str!("fixtures/oidc-other-key.jwk.json");
+/// An RSA signing key of the mock provider with its public JWK.
+struct TestKey {
+    kid: &'static str,
+    pem: String,
+    jwk: Value,
+}
+
+impl TestKey {
+    fn generate(kid: &'static str) -> Self {
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        use base64::Engine;
+        use rsa::pkcs8::{EncodePrivateKey, LineEnding};
+        use rsa::traits::PublicKeyParts;
+
+        let key = rsa::RsaPrivateKey::new(&mut rsa::rand_core::OsRng, 2048).unwrap();
+        let pem = key
+            .to_pkcs8_pem(LineEnding::LF)
+            .unwrap()
+            .as_str()
+            .to_owned();
+        let b64 = |bytes: Vec<u8>| URL_SAFE_NO_PAD.encode(bytes);
+        let jwk = json!({
+            "kty": "RSA",
+            "use": "sig",
+            "alg": "RS256",
+            "kid": kid,
+            "n": b64(key.n().to_bytes_be()),
+            "e": b64(key.e().to_bytes_be()),
+        });
+        Self { kid, pem, jwk }
+    }
+}
+
+/// The provider's two keys, generated once per test binary (no private
+/// key material lives in the repository).
+fn keys() -> &'static [TestKey; 2] {
+    static KEYS: OnceLock<[TestKey; 2]> = OnceLock::new();
+    KEYS.get_or_init(|| {
+        [
+            TestKey::generate("oidc-test-key"),
+            TestKey::generate("oidc-other-key"),
+        ]
+    })
+}
+
+/// The key the provider publishes first.
+fn test_key() -> &'static TestKey {
+    &keys()[0]
+}
+
+/// A second key: for forged signatures and key rotation.
+fn other_key() -> &'static TestKey {
+    &keys()[1]
+}
 const CLIENT_ID: &str = "zunder";
 const CLIENT_SECRET: &str = "geheim-fuer-tests";
 const SUBJECT: &str = "person-1";
@@ -65,7 +115,7 @@ impl Idp {
                 nonce: String::new(),
                 challenge: String::new(),
                 mode: Mode::Good,
-                jwks: vec![serde_json::from_str(TEST_JWK).unwrap()],
+                jwks: vec![serde_json::from_value(test_key().jwk.clone()).unwrap()],
                 token_requests: 0,
             })),
         };
@@ -158,7 +208,7 @@ async fn token(
         "email_verified": true,
         "name": "Person Beispiel",
     });
-    let (mut pem, mut kid) = (TEST_KEY, "oidc-test-key");
+    let (mut pem, mut kid) = (test_key().pem.as_str(), test_key().kid);
     match c.mode {
         Mode::Good => {}
         Mode::WrongNonce => claims["nonce"] = json!("other-nonce"),
@@ -168,10 +218,10 @@ async fn token(
             claims["exp"] = json!(now - 3600);
             claims["iat"] = json!(now - 7200);
         }
-        Mode::ForgedSignature => pem = OTHER_KEY,
+        Mode::ForgedSignature => pem = &other_key().pem,
         Mode::OtherSubject => claims["sub"] = json!("person-2"),
         Mode::EmailUnverified => claims["email_verified"] = json!(false),
-        Mode::RotatedKey => (pem, kid) = (OTHER_KEY, "oidc-other-key"),
+        Mode::RotatedKey => (pem, kid) = (&other_key().pem, other_key().kid),
     }
     Ok(Json(json!({
         "access_token": "access",
@@ -343,7 +393,7 @@ async fn rotated_keys_are_fetched_again() {
     // The provider rotates to its second key; the cached JWKS lacks it.
     {
         let mut c = idp.control.lock().unwrap();
-        c.jwks = vec![serde_json::from_str(OTHER_JWK).unwrap()];
+        c.jwks = vec![serde_json::from_value(other_key().jwk.clone()).unwrap()];
         c.mode = Mode::RotatedKey;
     }
     let r = login(&s, &idp).await;
@@ -420,15 +470,14 @@ async fn unreachable_provider_is_reported() {
 fn symmetric_tokens_are_refused() {
     // alg confusion: an HS256 token "signed" with the public key material
     let jwks: jsonwebtoken::jwk::JwkSet =
-        serde_json::from_value(json!({"keys": [serde_json::from_str::<Value>(TEST_JWK).unwrap()]}))
-            .unwrap();
+        serde_json::from_value(json!({"keys": [test_key().jwk.clone()]})).unwrap();
     let mut header = Header::new(Algorithm::HS256);
     header.kid = Some("oidc-test-key".into());
     let now = now_secs();
     let token = jsonwebtoken::encode(
         &header,
         &json!({"iss": "i", "sub": "s", "aud": CLIENT_ID, "exp": now + 60, "iat": now, "nonce": "n"}),
-        &EncodingKey::from_secret(TEST_JWK.as_bytes()),
+        &EncodingKey::from_secret(test_key().jwk.to_string().as_bytes()),
     )
     .unwrap();
     let err = verify_id_token(&token, &jwks, "i", CLIENT_ID, "n").unwrap_err();
@@ -437,16 +486,16 @@ fn symmetric_tokens_are_refused() {
     // the same claims signed properly verify
     let good = sign(
         &json!({"iss": "i", "sub": "s", "aud": CLIENT_ID, "exp": now + 60, "iat": now, "nonce": "n"}),
-        TEST_KEY,
-        "oidc-test-key",
+        &test_key().pem,
+        test_key().kid,
     );
     let claims = verify_id_token(&good, &jwks, "i", CLIENT_ID, "n").unwrap();
     assert_eq!(claims.sub, "s");
     // several audiences require azp
     let multi = sign(
         &json!({"iss": "i", "sub": "s", "aud": [CLIENT_ID, "x"], "exp": now + 60, "iat": now, "nonce": "n"}),
-        TEST_KEY,
-        "oidc-test-key",
+        &test_key().pem,
+        test_key().kid,
     );
     assert!(verify_id_token(&multi, &jwks, "i", CLIENT_ID, "n").is_err());
 }
