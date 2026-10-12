@@ -77,7 +77,7 @@ Das Skript
 
 - erzeugt `ZUNDER_SESSION_SECRET` (64 Zeichen, zufällig),
 - fragt Issuer, Client ID, Client Secret und die erlaubte E-Mail ab,
-- fragt optional Timing-Token und Timing-Projekt ab (leer lassen = Timing-Brücke aus),
+- fragt optional Timing-Token und Timing-Projekt ab (leer lassen = Timing-Brücke aus; beides lässt sich auch später in der Web-UI unter **Einstellungen** eintragen),
 - schreibt das Ergebnis nach `.env` neben `compose.yaml` (Rechte 600). `compose.yaml` lädt sie per `env_file`.
 
 `.env.example` bleibt unverändert: Es ist die Vorlage mit den Platzhaltern `WILL_BE_GENERATED`, `CHANGEME_MANUAL` und `CHANGEME_OPTIONAL`. Im Repo ist `deploy/.env` von Git ignoriert.
@@ -115,13 +115,13 @@ Dann `https://zunder.rubeen.dev` im Browser öffnen, über Pocket-ID anmelden un
 | `ZUNDER_OIDC_ALLOWED_EMAIL` | E-Mail des eigenen Pocket-ID-Kontos | `.env`, manuell |
 | `ZUNDER_OIDC_ALLOWED_SUBJECT` | Alternative zur E-Mail: `sub` des Kontos (in Pocket-ID die Benutzer-ID) | nicht gesetzt; bei Bedarf in `compose.yaml` ergänzen |
 | `ZUNDER_SESSION_SECRET` | zufällig | `.env`, generiert |
-| `ZUNDER_TIMING_TOKEN` | Timing-API-Token | `.env`, optional (leer = aus) |
-| `ZUNDER_TIMING_PROJECT` | Timing-Projekt für Flammen: Self-Link (z. B. `/projects/1`) oder Projekttitel, wird unverändert an Timing gegeben (eine reine Zahl liest Timing als Titel) | `.env`, optional |
+| `ZUNDER_TIMING_TOKEN` | Timing-API-Token | `.env`, optional (leer = aus); ein Token aus den **Einstellungen** der Web-UI hat Vorrang |
+| `ZUNDER_TIMING_PROJECT` | Timing-Projekt für Flammen: Self-Link (z. B. `/projects/1`) oder Projekttitel, wird unverändert an Timing gegeben (eine reine Zahl liest Timing als Titel) | `.env`, optional; ein Projekt aus den **Einstellungen** hat Vorrang |
 | `ZUNDER_BOOTSTRAP_TOKEN` | fester API-Token `zt_…` | nicht gesetzt; nur für Tests oder eine Inbetriebnahme ohne Web-Login |
 | `ZUNDER_DEV_AUTH` | `true` = Login ohne OIDC | **nie in Produktion**, nur lokal |
 | `ZUNDER_DEV_AUTH_ALLOW_REMOTE` | `true` = Dev-Auth auch mit nicht lokaler `ZUNDER_BIND` (nur für einen lokalen Container mit `-p 127.0.0.1:…`) | **nie in Produktion** |
 
-Leere Werte gelten als nicht gesetzt. Wer das Session-Secret ändert, meldet alle Browser-Sessions ab; API-Tokens bleiben gültig.
+Leere Werte gelten als nicht gesetzt. Timing lässt sich statt über `.env` auch in der Web-UI unter **Einstellungen** einrichten: Die Werte liegen dann in der Datenbank (Tabelle `settings`, der Token im Klartext, also auch in den Backups), gelten sofort ohne Neustart und überschreiben die beiden Variablen; „Zurücksetzen“ dort lässt wieder die Variablen gelten. Wer das Session-Secret ändert, meldet alle Browser-Sessions ab; API-Tokens bleiben gültig.
 
 ## API-Tokens
 
@@ -254,7 +254,7 @@ Manuelle Kopien bewusst nicht nach `/data/backups/` legen, damit die Rotation si
 
 ### Umstellung der IDs auf CUID2 (einmalig)
 
-Die erste Version mit Schema 3 stellt beim Start alle IDs von UUID auf CUID2 um, ohne Zutun:
+Die erste Version mit Schema 4 stellt beim Start alle IDs von UUID auf CUID2 um, ohne Zutun:
 
 1. Sie schreibt `backups/vor-cuid2-<UTC-Zeit>.db` (wird nie automatisch gelöscht).
 2. Sie rechnet Oplog und Bezüge in einer Transaktion um und baut den Zustand neu auf. Im Log steht `IDs switched to CUID2` mit der Zahl der Operationen.
@@ -265,7 +265,7 @@ Vorher bzw. danach:
 - **Apps zuerst aktualisieren.** Web-UI und App (ab dieser Version) rechnen ihre gespeicherten Daten und noch nicht abgeglichene Änderungen beim Start selbst um. Eine ältere App-Version kann mit dem umgestellten Server nicht mehr abgleichen.
 - **Alte IDs funktionieren weiter** als Eingabe: im MCP (`task_id`, `area_id`, `project_id`), in Links `#/aufgabe/<uuid>`, beim Import (`existing_id`) und in Pushes von Clients, die noch UUIDs erzeugen (Funke). Die Umrechnung ist fest, deshalb muss nichts sofort angepasst werden.
 - **Vault:** Die `zunder_id`s in den Notizen sind noch die alten. Mit der Zuordnungsliste lassen sie sich ersetzen; bis dahin findet das MCP die Bereiche und Projekte auch über die alte ID.
-- **Zurückrollen:** Eine ältere Version startet nicht mit Schema 3. Dann `vor-cuid2-….db` wie unter [Wiederherstellen](#wiederherstellen) einspielen; alles, was seit der Umstellung geändert wurde, ist danach weg.
+- **Zurückrollen:** Eine ältere Version startet nicht mit Schema 4. Dann `vor-cuid2-….db` wie unter [Wiederherstellen](#wiederherstellen) einspielen; alles, was seit der Umstellung geändert wurde, ist danach weg.
 
 ## Fehlersuche
 

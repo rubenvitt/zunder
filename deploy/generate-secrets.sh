@@ -177,6 +177,7 @@ set_var ZUNDER_OIDC_ALLOWED_EMAIL CHANGEME_MANUAL "$ZUNDER_OIDC_ALLOWED_EMAIL"
 # ============================================================================
 echo ""
 echo "⏱️  Timing-Brücke (optional):"
+echo "   Leer lassen und später in der Web-UI unter „Einstellungen“ eintragen geht auch."
 echo ""
 
 ZUNDER_TIMING_TOKEN=$(prompt_optional_secret "ZUNDER_TIMING_TOKEN" "Timing API token")

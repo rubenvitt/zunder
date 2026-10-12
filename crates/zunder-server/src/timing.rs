@@ -1,7 +1,7 @@
 //! Client for the Timing web API (<https://web.timingapp.com/docs/>), used by
 //! the flame service ([`crate::flame`]).
 //!
-//! Only two operations are needed:
+//! Three operations are needed:
 //!
 //! - **start**: `POST /time-entries/start` with `title` and optionally
 //!   `project`. Timing stops a running timer by itself when a new one
@@ -12,19 +12,17 @@
 //!   stop a timer the user started elsewhere, the client first asks for the
 //!   running timer (`GET /time-entries/running`, a redirect to the entry or
 //!   404) and only stops it when it is the entry Zunder started.
+//! - **check**: the same `GET /time-entries/running` tells whether Timing
+//!   accepts the token (settings view, "Verbindung prüfen").
 //!
 //! The bridge sits behind [`TimingApi`] so the flame service does not depend
 //! on HTTP details; tests run [`TimingClient`] against a mock server.
-
-use std::sync::Arc;
 
 use futures_util::future::BoxFuture;
 use reqwest::{Method, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use url::Url;
-
-use crate::config::TimingConfig;
 
 /// Base URL of the Timing web API.
 pub const DEFAULT_BASE_URL: &str = "https://web.timingapp.com/api/v1";
@@ -70,6 +68,9 @@ pub trait TimingApi: Send + Sync {
     /// because another timer was started in Timing).
     fn stop_if_running<'a>(&'a self, self_ref: &'a str)
         -> BoxFuture<'a, Result<bool, TimingError>>;
+
+    /// Checks that Timing is reachable and accepts the token.
+    fn check(&self) -> BoxFuture<'_, Result<(), TimingError>>;
 }
 
 /// HTTP implementation of [`TimingApi`].
@@ -100,16 +101,6 @@ impl TimingClient {
             base_url: base_url.as_str().trim_end_matches('/').to_owned(),
             token: token.into(),
         }
-    }
-
-    /// Builds the bridge from the configuration (`None` without token).
-    pub fn from_config(
-        config: Option<&TimingConfig>,
-        http: reqwest::Client,
-    ) -> Option<Arc<dyn TimingApi>> {
-        config.map(|c| {
-            Arc::new(TimingClient::new(http, &c.base_url, c.token.clone())) as Arc<dyn TimingApi>
-        })
     }
 
     async fn send(
@@ -213,6 +204,10 @@ impl TimingApi for TimingClient {
                 _ => Ok(false),
             }
         })
+    }
+
+    fn check(&self) -> BoxFuture<'_, Result<(), TimingError>> {
+        Box::pin(async move { self.running().await.map(|_| ()) })
     }
 }
 

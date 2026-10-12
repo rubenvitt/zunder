@@ -16,7 +16,7 @@
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock, RwLockReadGuard};
 
 use anyhow::Context;
 use rusqlite::Connection;
@@ -37,6 +37,10 @@ use crate::auth::{self, Principal, PrincipalKind};
 use crate::config::Config;
 use crate::db::{self, TokenRow, User};
 use crate::error::{AppError, AppResult};
+use crate::settings::{
+    EffectiveTiming, TimingCheck, TimingOverrides, TimingSettings, TimingUpdate, TIMING_PREFIX,
+    TIMING_PROJECT_KEY, TIMING_TOKEN_KEY,
+};
 use crate::timing::{TimingApi, TimingClient};
 
 /// Node ID of the server's own clock.
@@ -176,7 +180,37 @@ struct Inner {
     events: broadcast::Sender<i64>,
     shutdown: CancellationToken,
     bootstrap_hash: Option<String>,
-    timing: Option<Arc<dyn TimingApi>>,
+    /// Client for outgoing requests (Timing bridge).
+    http: reqwest::Client,
+    timing: RwLock<TimingState>,
+}
+
+/// The Timing bridge as configured right now (environment plus settings).
+#[derive(Clone)]
+pub struct TimingBridge {
+    pub api: Arc<dyn TimingApi>,
+    /// Project for new time entries.
+    pub project: Option<String>,
+}
+
+struct TimingState {
+    overrides: TimingOverrides,
+    bridge: Option<TimingBridge>,
+}
+
+impl TimingState {
+    fn new(config: &Config, http: &reqwest::Client, overrides: TimingOverrides) -> Self {
+        let effective = EffectiveTiming::resolve(config.timing.as_ref(), &overrides);
+        let bridge = effective.token.map(|token| TimingBridge {
+            api: Arc::new(TimingClient::new(
+                http.clone(),
+                &config.timing_base_url,
+                token,
+            )) as Arc<dyn TimingApi>,
+            project: effective.project,
+        });
+        Self { overrides, bridge }
+    }
 }
 
 struct Writer {
@@ -193,6 +227,10 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+fn read_lock<T>(l: &RwLock<T>) -> RwLockReadGuard<'_, T> {
+    l.read().unwrap_or_else(PoisonError::into_inner)
+}
+
 pub(crate) fn now_ms() -> i64 {
     i64::try_from(system_time_ms()).unwrap_or(i64::MAX)
 }
@@ -207,23 +245,20 @@ pub fn format_ms(ms: i64) -> String {
 impl App {
     /// Opens (and migrates) the database in `config.data_dir`, loads the
     /// state and resumes the server clock. The Timing bridge is built from
-    /// `config.timing` with the default HTTP client.
+    /// `config.timing` and the stored settings with the default HTTP client.
     pub async fn open(config: Config) -> anyhow::Result<App> {
-        let timing =
-            TimingClient::from_config(config.timing.as_ref(), crate::default_http_client()?);
-        Self::open_with_timing(config, timing).await
+        Self::open_with_http_client(config, crate::default_http_client()?).await
     }
 
-    /// Like [`App::open`] with an explicit Timing bridge (`None` = flames
-    /// only record their timestamps).
-    pub async fn open_with_timing(
+    /// Like [`App::open`] with a custom HTTP client for the Timing bridge.
+    pub async fn open_with_http_client(
         config: Config,
-        timing: Option<Arc<dyn TimingApi>>,
+        http: reqwest::Client,
     ) -> anyhow::Result<App> {
-        tokio::task::spawn_blocking(move || Self::open_blocking(config, timing)).await?
+        tokio::task::spawn_blocking(move || Self::open_blocking(config, http)).await?
     }
 
-    fn open_blocking(config: Config, timing: Option<Arc<dyn TimingApi>>) -> anyhow::Result<App> {
+    fn open_blocking(config: Config, http: reqwest::Client) -> anyhow::Result<App> {
         std::fs::create_dir_all(&config.data_dir).with_context(|| {
             format!(
                 "Datenverzeichnis {} lässt sich nicht anlegen",
@@ -264,6 +299,8 @@ impl App {
             "state loaded"
         );
         let bootstrap_hash = config.bootstrap_token.as_deref().map(auth::sha256_hex);
+        let overrides = TimingOverrides::from_rows(&db::settings(&conn, TIMING_PREFIX)?);
+        let timing = TimingState::new(&config, &http, overrides);
         let app = App {
             inner: Arc::new(Inner {
                 owner_id: owner.id,
@@ -276,7 +313,8 @@ impl App {
                 events,
                 shutdown: CancellationToken::new(),
                 bootstrap_hash,
-                timing,
+                timing: RwLock::new(timing),
+                http,
                 config,
             }),
         };
@@ -299,9 +337,80 @@ impl App {
         self.inner.owner_id
     }
 
-    /// The Timing bridge, if configured.
-    pub fn timing(&self) -> Option<&Arc<dyn TimingApi>> {
-        self.inner.timing.as_ref()
+    /// The Timing bridge, if a token is configured (environment or
+    /// settings). Callers keep the returned bridge for one action, so a
+    /// settings change in between does not mix two configurations.
+    pub fn timing(&self) -> Option<TimingBridge> {
+        read_lock(&self.inner.timing).bridge.clone()
+    }
+
+    /// The Timing settings for the settings view.
+    pub fn timing_settings(&self) -> TimingSettings {
+        let state = read_lock(&self.inner.timing);
+        TimingSettings::build(self.inner.config.timing.as_ref(), &state.overrides)
+    }
+
+    /// Stores changed Timing settings; they apply to the next flame.
+    pub async fn update_timing_settings(&self, update: TimingUpdate) -> AppResult<TimingSettings> {
+        let update = update.validated()?;
+        self.change_timing_settings(move |conn, overrides, now| {
+            if let Some(token) = &update.token {
+                db::set_setting(conn, TIMING_TOKEN_KEY, token, now)?;
+            }
+            if let Some(project) = &update.project {
+                db::set_setting(conn, TIMING_PROJECT_KEY, project, now)?;
+            }
+            overrides.apply(&update);
+            Ok(())
+        })
+        .await
+    }
+
+    /// Removes the stored Timing settings; the environment applies again.
+    pub async fn reset_timing_settings(&self) -> AppResult<TimingSettings> {
+        self.change_timing_settings(|conn, overrides, _| {
+            db::delete_settings(conn, TIMING_PREFIX)?;
+            *overrides = TimingOverrides::default();
+            Ok(())
+        })
+        .await
+    }
+
+    /// Writes settings under the writer lock and rebuilds the bridge, so
+    /// concurrent changes apply in the order they were stored.
+    async fn change_timing_settings<F>(&self, change: F) -> AppResult<TimingSettings>
+    where
+        F: FnOnce(&Connection, &mut TimingOverrides, i64) -> anyhow::Result<()> + Send + 'static,
+    {
+        let app = self.clone();
+        self.blocking(move |inner| {
+            let writer = lock(&inner.writer);
+            let mut overrides = read_lock(&inner.timing).overrides.clone();
+            change(&writer.conn, &mut overrides, now_ms())?;
+            let state = TimingState::new(&inner.config, &inner.http, overrides);
+            *inner.timing.write().unwrap_or_else(PoisonError::into_inner) = state;
+            drop(writer);
+            tracing::info!("Timing settings changed");
+            Ok(app.timing_settings())
+        })
+        .await
+    }
+
+    /// Asks Timing whether it accepts the configured token.
+    pub async fn check_timing(&self) -> AppResult<TimingCheck> {
+        let bridge = self
+            .timing()
+            .ok_or_else(|| AppError::Conflict("Timing ist nicht eingerichtet.".into()))?;
+        Ok(match bridge.api.check().await {
+            Ok(()) => TimingCheck {
+                ok: true,
+                error: None,
+            },
+            Err(e) => TimingCheck {
+                ok: false,
+                error: Some(e.to_string()),
+            },
+        })
     }
 
     /// Cancelled on shutdown; long-running streams and tasks stop then.

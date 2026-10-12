@@ -41,7 +41,7 @@ src/capture/    Parser der Kurzschreibweise („Zahnarzt anrufen morgen 9:00 #ge
 src/state/      Solid-Store über der Engine, Router, Aktionen, Auswahl und Overlays;
                 desktop.ts: Verbindung und Sync-Status der App (nur in der App geladen)
 src/components/ Liste, Board, Aufgabendetail, Schnellerfassung, Befehlspalette …
-src/views/      Heute, Inbox, Lose, Bereiche → Projekte, Dev, Phönix, Tokens, Login;
+src/views/      Heute, Inbox, Lose, Bereiche → Projekte, Dev, Phönix, Tokens, Einstellungen, Login;
                 Desktop.tsx: Start, Einrichtung und Verbindung in der App (nur dort geladen)
 test/           Vitest (inkl. gemeinsamer Testvektoren aus crates/zunder-core/tests/vectors)
 e2e/            Playwright-Tests und Mock-Server

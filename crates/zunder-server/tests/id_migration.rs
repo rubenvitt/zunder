@@ -1,5 +1,5 @@
 //! Switching IDs to CUID2: a database from before (UUIDs in the op log,
-//! schema 2) is backed up and rewritten on start; legacy IDs keep working as
+//! schema 3) is backed up and rewritten on start; legacy IDs keep working as
 //! input.
 
 mod common;
@@ -54,7 +54,7 @@ fn write_legacy_data(s: &TestServer) {
         .unwrap();
     }
     db.execute("DELETE FROM entities", []).unwrap();
-    db.pragma_update(None, "user_version", 2).unwrap();
+    db.pragma_update(None, "user_version", 3).unwrap();
 }
 
 #[tokio::test]
@@ -103,7 +103,7 @@ async fn legacy_database_is_backed_up_and_rewritten() {
     let version: i64 = old
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 2);
+    assert_eq!(version, 3);
     let legacy_rows: i64 = old
         .query_row(
             "SELECT COUNT(*) FROM ops WHERE length(entity_id) = 36",
