@@ -703,39 +703,64 @@ impl App {
     }
 
     /// Writes a backup (`VACUUM INTO`) to `<data>/backups/zunder-<local
-    /// timestamp>.db` and keeps the newest [`BACKUPS_TO_KEEP`].
+    /// timestamp>.db` and keeps the newest [`BACKUPS_TO_KEEP`]. Also removes
+    /// expired sessions and stale OAuth rows, whether or not the backup
+    /// succeeds.
     pub async fn backup_now(&self) -> AppResult<PathBuf> {
         self.blocking(|inner| {
-            let dir = inner.config.backup_dir();
-            std::fs::create_dir_all(&dir).context("Backup-Verzeichnis anlegen")?;
-            let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
-            let mut dest = dir.join(format!("zunder-{stamp}.db"));
-            let mut n = 1;
-            while dest.exists() {
-                dest = dir.join(format!("zunder-{stamp}-{n}.db"));
-                n += 1;
-            }
-            let conn = Connection::open(inner.config.db_path()).context("Datenbank öffnen")?;
-            db::vacuum_into(&conn, &dest)?;
-            prune_backups(&dir, BACKUPS_TO_KEEP)?;
-            let (purged, purged_clients) = {
+            let purged = (|| -> AppResult<(usize, usize)> {
                 let writer = lock(&inner.writer);
                 let now = now_ms();
-                (
+                Ok((
                     db::purge_expired_sessions(&writer.conn, now)?,
                     db::purge_oauth(&writer.conn, now, now - crate::oauth::STALE_CLIENT_MS)?,
-                )
-            };
-            tracing::info!(
-                path = %dest.display(),
-                purged_sessions = purged,
-                purged_oauth_clients = purged_clients,
-                "backup written"
-            );
+                ))
+            })();
+            match &purged {
+                Ok((sessions, clients)) => tracing::info!(
+                    purged_sessions = sessions,
+                    purged_oauth_clients = clients,
+                    "expired sessions and OAuth rows removed"
+                ),
+                Err(e) => tracing::error!(error = %e, "removing expired sessions failed"),
+            }
+            let dir = inner.config.backup_dir();
+            let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+            let conn = Connection::open(inner.config.db_path()).context("Datenbank öffnen")?;
+            let dest = write_backup(&conn, &dir, &stamp)?;
+            tracing::info!(path = %dest.display(), "backup written");
             Ok(dest)
         })
         .await
     }
+}
+
+/// Writes `zunder-<stamp>.db` into `dir` and prunes old backups. The copy
+/// is written under a temporary name and renamed only when complete, so a
+/// failed `VACUUM INTO` (disk full, I/O error) never leaves a truncated
+/// file that rotation would count as a backup.
+fn write_backup(conn: &Connection, dir: &std::path::Path, stamp: &str) -> anyhow::Result<PathBuf> {
+    std::fs::create_dir_all(dir).context("Backup-Verzeichnis anlegen")?;
+    let mut dest = dir.join(format!("zunder-{stamp}.db"));
+    let mut n = 1;
+    while dest.exists() {
+        dest = dir.join(format!("zunder-{stamp}-{n}.db"));
+        n += 1;
+    }
+    let name = dest
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("zunder");
+    let tmp = dir.join(format!(".{name}.tmp"));
+    let _ = std::fs::remove_file(&tmp);
+    let written = db::vacuum_into(conn, &tmp)
+        .and_then(|()| std::fs::rename(&tmp, &dest).context("Backup umbenennen"));
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    prune_backups(dir, BACKUPS_TO_KEEP)?;
+    Ok(dest)
 }
 
 /// The error for rejected operations: the code of the first real rejection
@@ -773,15 +798,22 @@ fn token_info(row: &TokenRow) -> TokenInfo {
 }
 
 /// Deletes all but the `keep` newest `zunder-*.db` files in `dir` (names
-/// sort chronologically).
+/// sort chronologically), and leftover temporary files of interrupted
+/// backups.
 fn prune_backups(dir: &std::path::Path, keep: usize) -> anyhow::Result<()> {
-    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)?
+    let name_of = |p: &PathBuf| p.file_name().and_then(|n| n.to_str()).map(str::to_owned);
+    let paths: Vec<PathBuf> = std::fs::read_dir(dir)?
         .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| {
-            p.file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.starts_with("zunder-") && n.ends_with(".db"))
-        })
+        .collect();
+    for stale in paths
+        .iter()
+        .filter(|p| name_of(p).is_some_and(|n| n.starts_with(".zunder-") && n.ends_with(".db.tmp")))
+    {
+        let _ = std::fs::remove_file(stale);
+    }
+    let mut files: Vec<PathBuf> = paths
+        .into_iter()
+        .filter(|p| name_of(p).is_some_and(|n| n.starts_with("zunder-") && n.ends_with(".db")))
         .collect();
     files.sort();
     let excess = files.len().saturating_sub(keep);
@@ -931,6 +963,45 @@ mod tests {
         assert_eq!(names.len(), 15);
         assert_eq!(names[0], "other.txt");
         assert_eq!(names[1], "zunder-20261006-030000.db");
+    }
+
+    #[test]
+    fn failed_backup_leaves_no_file_behind() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = Connection::open(dir.path().join("live.db")).unwrap();
+        conn.execute_batch("CREATE TABLE t (x); INSERT INTO t VALUES (1);")
+            .unwrap();
+        let backups = dir.path().join("backups");
+        for i in 0..BACKUPS_TO_KEEP {
+            std::fs::create_dir_all(&backups).unwrap();
+            std::fs::write(backups.join(format!("zunder-202601{i:02}-030000.db")), "x").unwrap();
+        }
+        // A directory in the way of the temporary file makes VACUUM INTO fail.
+        std::fs::create_dir_all(backups.join(".zunder-20261011-030000.db.tmp/x")).unwrap();
+        assert!(write_backup(&conn, &backups, "20261011-030000").is_err());
+        assert!(!backups.join("zunder-20261011-030000.db").exists());
+        let count = |dir: &std::path::Path| {
+            std::fs::read_dir(dir)
+                .unwrap()
+                .filter(|e| {
+                    let name = e.as_ref().unwrap().file_name().into_string().unwrap();
+                    name.starts_with("zunder-") && name.ends_with(".db")
+                })
+                .count()
+        };
+        assert_eq!(count(&backups), BACKUPS_TO_KEEP, "no good backup pruned");
+
+        // The next backup succeeds, is complete and replaces the oldest.
+        std::fs::remove_dir_all(backups.join(".zunder-20261011-030000.db.tmp")).unwrap();
+        std::fs::write(backups.join(".zunder-20261010-030000.db.tmp"), "partial").unwrap();
+        let dest = write_backup(&conn, &backups, "20261012-030000").unwrap();
+        let copy = Connection::open(&dest).unwrap();
+        let x: i64 = copy.query_row("SELECT x FROM t", [], |r| r.get(0)).unwrap();
+        assert_eq!(x, 1);
+        assert_eq!(count(&backups), BACKUPS_TO_KEEP);
+        assert!(!backups.join("zunder-20260100-030000.db").exists());
+        assert!(!backups.join(".zunder-20261010-030000.db.tmp").exists());
+        assert!(!backups.join(".zunder-20261012-030000.db.tmp").exists());
     }
 
     #[test]
