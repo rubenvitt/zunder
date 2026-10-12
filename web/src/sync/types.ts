@@ -74,6 +74,7 @@ export const TASK_FIELDS = [
   "flame_ended_at",
   "clickup_id",
   "rank",
+  "undated_ack",
   "ref",
   "deleted",
 ] as const;
@@ -143,6 +144,8 @@ export interface Task extends EntityMeta {
   flame_ended_at: string | null;
   clickup_id: string | null;
   rank: string | null;
+  /** When the task was marked as deliberately undated ("bewusst undatiert"). */
+  undated_ack: string | null;
   /** Reference such as `ZUN-42`, assigned by the server (never by a client). */
   ref: string | null;
   /** HLC of the winning status op, or created_hlc when the status was never set. */

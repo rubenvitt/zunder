@@ -132,6 +132,7 @@ export function toTask(e: EntityState): Task {
     flame_ended_at: str(value(e, "flame_ended_at")),
     clickup_id: str(value(e, "clickup_id")),
     rank: str(value(e, "rank")),
+    undated_ack: str(value(e, "undated_ack")),
     ref: str(value(e, "ref")),
     status_hlc: e.fields.status?.hlc ?? min,
   };

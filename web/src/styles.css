@@ -518,6 +518,11 @@ input[type="checkbox"] {
 .chip-count {
   font-variant-numeric: tabular-nums;
 }
+/* "Bewusst ohne Fälligkeit" in the detail, with its remove button inside. */
+.undated-ack {
+  height: 1.6rem;
+  padding-right: 0;
+}
 .ref-button {
   cursor: copy;
   border: 1px solid transparent;

@@ -394,6 +394,7 @@ async fn create_get_update_with_history() {
         "location",
         "parent_id",
         "due",
+        "undated_ack",
         "remind_at",
         "links",
         "vault_links",
@@ -1500,4 +1501,126 @@ async fn running_flame_can_be_found_and_stopped_without_its_task() {
     assert_eq!(r["count"], 0);
     let (code, _) = mcp_err(&s, &t, "stop_flame", json!({})).await;
     assert_eq!(code, "conflict");
+}
+
+#[tokio::test]
+async fn undated_tasks_can_be_acknowledged() {
+    let (s, t) = setup().await;
+    let open = create(&s, &t, json!({"title": "A"})).await;
+    let marked = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "B", "undated_ack": true}),
+    )
+    .await;
+    assert!(marked["task"]["undated_ack"].is_string());
+    create(&s, &t, json!({"title": "C", "due": "2026-10-20"})).await;
+    // A mark from 20 weeks ago (client clock and value in the past).
+    let old = create(&s, &t, json!({"title": "D"})).await;
+    let long_ago = zunder_core::hlc::system_time_ms() - 20 * 7 * DAY_MS;
+    let mut clock = Clock::new(NodeId::new("web-alt").unwrap());
+    let mut batch = OpBatch::new(&mut clock, long_ago);
+    batch.set_task(
+        zunder_core::ids::parse_id(&old).unwrap(),
+        "undated_ack",
+        zunder_core::model::format_rfc3339(
+            time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(long_ago) * 1_000_000)
+                .unwrap(),
+        ),
+    );
+    let r = s.push(Auth::Bearer(BOOTSTRAP), &batch.into_ops()).await;
+    assert!(r.json()["rejected"].as_array().unwrap().is_empty());
+
+    let f = |args: Value| {
+        let s = &s;
+        let t = &t;
+        // Sorted: the old mark makes D the oldest task (smallest HLC).
+        async move {
+            let mut got = titles(&mcp_ok(s, t, "filter_tasks", args).await);
+            got.sort();
+            got
+        }
+    };
+    assert_eq!(f(json!({"has_due": true})).await, ["C"]);
+    assert_eq!(f(json!({"has_due": false})).await, ["A", "B", "D"]);
+    assert_eq!(f(json!({"undated_ack": true})).await, ["B", "D"]);
+    assert_eq!(
+        f(json!({"has_due": false, "undated_ack": false})).await,
+        ["A"]
+    );
+    // Wiedervorlage: an old mark counts as expired.
+    assert_eq!(
+        f(json!({"has_due": false, "undated_ack": false, "undated_ack_weeks": 12})).await,
+        ["A", "D"]
+    );
+    assert_eq!(
+        f(json!({"undated_ack": true, "undated_ack_weeks": 12})).await,
+        ["B"]
+    );
+    assert_eq!(
+        f(json!({"undated_ack": true, "undated_ack_weeks": 21})).await,
+        ["B", "D"]
+    );
+
+    // true marks now (and renews an old mark), false and null remove it.
+    let r = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": open, "undated_ack": true}),
+    )
+    .await;
+    assert!(r["task"]["undated_ack"].is_string());
+    let r = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": old, "undated_ack": true}),
+    )
+    .await;
+    let renewed = r["task"]["undated_ack"].as_str().unwrap();
+    let renewed =
+        time::OffsetDateTime::parse(renewed, &time::format_description::well_known::Rfc3339)
+            .unwrap();
+    assert!(renewed.unix_timestamp_nanos() / 1_000_000 > i128::from(long_ago));
+    assert_eq!(
+        f(json!({"undated_ack": true, "undated_ack_weeks": 1})).await,
+        ["A", "B", "D"]
+    );
+    let r = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": open, "undated_ack": false}),
+    )
+    .await;
+    assert_eq!(r["task"]["undated_ack"], Value::Null);
+    let r = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": old, "undated_ack": null}),
+    )
+    .await;
+    assert_eq!(r["task"]["undated_ack"], Value::Null);
+    assert_eq!(f(json!({"undated_ack": true})).await, ["B"]);
+
+    let (code, _) = mcp_err(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": open, "undated_ack": "2026-10-12T09:00:00Z"}),
+    )
+    .await;
+    assert_eq!(code, "invalid_arguments");
+    for bad in [
+        json!({"undated_ack_weeks": 4}),
+        json!({"undated_ack": false, "undated_ack_weeks": 0}),
+        json!({"undated_ack": false, "undated_ack_weeks": 521}),
+        json!({"has_due": "nein"}),
+    ] {
+        let (code, _) = mcp_err(&s, &t, "filter_tasks", bad.clone()).await;
+        assert_eq!(code, "invalid_arguments", "{bad}");
+    }
 }

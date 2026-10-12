@@ -285,6 +285,9 @@ impl Entity {
                 .and_then(crate::model::parse_rfc3339),
             clickup_id: self.string(f::CLICKUP_ID),
             rank: self.string(f::RANK),
+            undated_ack: self
+                .str_value(f::UNDATED_ACK)
+                .and_then(crate::model::parse_rfc3339),
             reference: self.string(f::REF),
             deleted: self.is_deleted(),
         })

@@ -172,6 +172,14 @@ fn task_view_serializes_with_contract_names() {
             json!("2026-10-12T09:00:00+02:00"),
             h(1, 2, "a"),
         ),
+        op(
+            4,
+            T,
+            4,
+            "undated_ack",
+            json!("2026-10-12T08:00:00Z"),
+            h(1, 3, "a"),
+        ),
     ];
     let s = apply_all(&ops);
     let v = serde_json::to_value(s.task(uid(4)).unwrap()).unwrap();
@@ -179,6 +187,7 @@ fn task_view_serializes_with_contract_names() {
     assert_eq!(v["location"], json!({"kind": "inbox"}));
     assert_eq!(v["phoenix"], json!({"role": "flamme", "fire": "2026-W45"}));
     assert_eq!(v["remind_at"], json!("2026-10-12T09:00:00+02:00"));
+    assert_eq!(v["undated_ack"], json!("2026-10-12T08:00:00Z"));
     assert_eq!(v["parent_id"], Value::Null);
 }
 

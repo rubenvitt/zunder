@@ -53,6 +53,9 @@ const SUBTASK_FIELDS: &[&str] = &[
     ft::PLAN,
 ];
 
+/// Highest accepted `undated_ack_weeks` of filter_tasks (ten years).
+const MAX_UNDATED_ACK_WEEKS: u64 = 520;
+
 const MAX_SUBTASKS: usize = 50;
 const MAX_AGENT_CHARS: usize = 200;
 
@@ -208,6 +211,10 @@ struct TaskFilter {
     parent_id: Option<Id>,
     claimed_by: Option<String>,
     flame_running: Option<bool>,
+    has_due: Option<bool>,
+    undated_ack: Option<bool>,
+    /// A mark older than this many weeks counts as expired.
+    undated_ack_weeks: Option<u64>,
     order_by: OrderBy,
     reverse: bool,
     offset: usize,
@@ -295,6 +302,16 @@ impl TaskFilter {
         };
         let closed_after = moment(args, "closed_after")?;
         let closed_before = moment(args, "closed_before")?;
+        let undated_ack = args.bool("undated_ack")?;
+        let undated_ack_weeks = match args.value("undated_ack_weeks") {
+            None => None,
+            Some(_) if undated_ack.is_none() => {
+                return Err(invalid(
+                    "„undated_ack_weeks“ wirkt nur zusammen mit „undated_ack“.",
+                ))
+            }
+            Some(_) => Some(args.int("undated_ack_weeks", 1, MAX_UNDATED_ACK_WEEKS, 1)?),
+        };
         Ok(TaskFilter {
             location,
             area_id: args.id("area_id")?,
@@ -315,6 +332,9 @@ impl TaskFilter {
             parent_id: None,
             claimed_by: args.str("claimed_by")?.map(str::to_owned),
             flame_running: args.bool("flame_running")?,
+            has_due: args.bool("has_due")?,
+            undated_ack,
+            undated_ack_weeks,
             order_by: args
                 .code("order_by", &ORDER_BY_CODES)?
                 .unwrap_or(OrderBy::Due),
@@ -401,6 +421,15 @@ impl TaskFilter {
         {
             return false;
         }
+        if self.has_due.is_some_and(|has| task.due.is_some() != has) {
+            return false;
+        }
+        if self
+            .undated_ack
+            .is_some_and(|marked| self.undated_ack_valid(task, now) != marked)
+        {
+            return false;
+        }
         let due = task.due.map(|d| d.date());
         if self.due_before.is_some_and(|b| due.is_none_or(|d| d > b)) {
             return false;
@@ -417,6 +446,19 @@ impl TaskFilter {
             }
         }
         true
+    }
+
+    /// Whether the task carries an "undated on purpose" mark that has not
+    /// expired (`undated_ack_weeks`) at `now`.
+    fn undated_ack_valid(&self, task: &zunder_core::Task, now: u64) -> bool {
+        let Some(marked) = task.undated_ack else {
+            return false;
+        };
+        self.undated_ack_weeks.is_none_or(|weeks| {
+            let marked_ms = marked.unix_timestamp_nanos() / 1_000_000;
+            let max_age_ms = i128::from(weeks) * 7 * 24 * 60 * 60 * 1000;
+            marked_ms + max_age_ms > i128::from(now)
+        })
     }
 }
 
@@ -627,6 +669,9 @@ async fn create_task(app: &App, source: Source, args: &Args) -> AppResult<Value>
         .unwrap_or_else(|| Location::Inbox.to_value());
     let parent = args.task_link("parent_id")?.flatten();
     let mut fields = present(args, TASK_FIELDS, false);
+    if let Some(ack) = undated_ack_value(args)?.filter(|v| !v.is_null()) {
+        fields.push((ft::UNDATED_ACK, ack));
+    }
     let task_type = take(&mut fields, ft::TYPE).unwrap_or_else(|| TaskType::Aufgabe.into());
     let status = take(&mut fields, ft::STATUS).unwrap_or_else(|| TaskStatus::Open.into());
     let (id, warnings) = app
@@ -658,6 +703,21 @@ fn parent_value(state: &State, parent: &TaskRef) -> AppResult<Value> {
     Ok(Value::String(id.to_string()))
 }
 
+/// The value written to `undated_ack`: `true` marks the task as undated on
+/// purpose now (a renewed mark restarts its age), `false`/`null` removes the
+/// mark. `None` when the parameter is absent.
+fn undated_ack_value(args: &Args) -> AppResult<Option<Value>> {
+    match args.raw(ft::UNDATED_ACK) {
+        None => Ok(None),
+        Some(Value::Null | Value::Bool(false)) => Ok(Some(Value::Null)),
+        Some(Value::Bool(true)) => Ok(Some(Value::String(format_ms(system_time_ms() as i64)))),
+        Some(_) => Err(invalid(format!(
+            "„{}“ muss true, false oder null sein.",
+            ft::UNDATED_ACK
+        ))),
+    }
+}
+
 fn take(fields: &mut Vec<(&'static str, Value)>, key: &str) -> Option<Value> {
     let pos = fields.iter().position(|(k, _)| *k == key)?;
     Some(fields.remove(pos).1)
@@ -667,6 +727,9 @@ async fn update_task(app: &App, source: Source, args: &Args) -> AppResult<Value>
     let target = args.task_ref()?;
     let mut fields = present(args, &[ft::TITLE], true);
     fields.extend(present(args, TASK_FIELDS, true));
+    if let Some(ack) = undated_ack_value(args)? {
+        fields.push((ft::UNDATED_ACK, ack));
+    }
     if fields.is_empty() {
         return Err(invalid("Keine Änderung angegeben."));
     }

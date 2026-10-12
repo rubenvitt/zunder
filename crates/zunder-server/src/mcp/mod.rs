@@ -70,6 +70,9 @@ Ergebnisse fest; Zwischenstände gehören als Kommentar an die Aufgabe (add_comm
 Beschreibung. Phönix: phoenix markiert Feuer-Schritte und Flammen einer ISO-Woche; \
 start_flame/stop_flame messen Deep-Work-Blöcke (mit Timing, falls angebunden). \
 Zeitangaben: due als JJJJ-MM-TT oder RFC 3339 mit Offset, remind_at als RFC 3339. \
+Bewusst ohne Fälligkeit: undated_ack: true markiert eine Aufgabe als „bewusst undatiert“ \
+(Zeitpunkt der Entscheidung); filter_tasks mit has_due: false und undated_ack: false liefert die \
+noch nicht entschiedenen, undated_ack_weeks lässt alte Markierungen ablaufen. \
 Abgelehnte Änderungen kommen mit deutscher Begründung zurück; nichts wird still verworfen.";
 
 /// The `/mcp` route (without state).

@@ -365,3 +365,33 @@ test("Kommentare: Agenten-Stand erscheint, eigener Kommentar wird gespeichert un
   await expect(comments.locator(".comment")).toHaveCount(2);
   await expect.poll(async () => (await entityFields(page, "comment", ownId)).deleted).toBe(true);
 });
+
+test("Bewusst ohne Fälligkeit: Markierung setzen, entfernen und durch ein Datum ersetzen", async ({ page }) => {
+  const s = suffix();
+  const seeder = new Seeder();
+  const id = seeder.task(`Irgendwann ${s}`, { location: { kind: "loose" } });
+  await seeder.push(page);
+  await openLoose(page, `Irgendwann ${s}`);
+
+  const remove = detail(page).getByRole("button", { name: "Markierung „bewusst ohne Fälligkeit“ entfernen" });
+  await detail(page).getByRole("button", { name: "Bewusst ohne", exact: true }).click();
+  await expect(remove).toBeVisible();
+  await expect(detail(page).locator(".undated-ack")).toContainText("Heute");
+  await expect.poll(async () => (await entityFields(page, "task", id)).undated_ack).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+  await remove.click();
+  await expect(remove).toBeHidden();
+  await expect.poll(async () => (await entityFields(page, "task", id)).undated_ack).toBeNull();
+
+  // A due date supersedes the decision.
+  await detail(page).getByRole("button", { name: "Bewusst ohne", exact: true }).click();
+  await expect(remove).toBeVisible();
+  await detail(page).getByRole("button", { name: "Fälligkeit setzen", exact: true }).click();
+  await detail(page).getByLabel("Fälligkeitsdatum").fill("2030-01-15");
+  await expect(remove).toBeHidden();
+  await expect(detail(page).getByRole("button", { name: "Bewusst ohne", exact: true })).toBeHidden();
+  await expect.poll(async () => {
+    const fields = await entityFields(page, "task", id);
+    return [fields.due, fields.undated_ack];
+  }).toEqual(["2030-01-15", null]);
+});
