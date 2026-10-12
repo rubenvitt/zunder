@@ -68,8 +68,8 @@ export const FIELD_LABELS: Record<string, string> = {
 
 /**
  * Readable origin of a history entry. Sources per contract 3: `web`, `api:<token>`,
- * `mcp:<token>` (agents), `mcp:oauth:<client>` (apps connected via OAuth, e.g. claude.ai)
- * and `server` (e.g. the Timing bridge).
+ * `mcp:<token>` (agents), `mcp:oauth:<client>` (apps connected via OAuth, e.g. claude.ai),
+ * `app:<device>` (the Zunder app) and `server` (e.g. the Timing bridge).
  */
 export function sourceLabel(source: string): string {
   if (source === "web") return "Web";
@@ -79,6 +79,7 @@ export function sourceLabel(source: string): string {
     const kind = source.slice(0, colon);
     const name = source.slice(colon + 1);
     if (kind === "api") return name === "import" ? "Import" : `API · ${name}`;
+    if (kind === "app") return `App · ${name}`;
     if (kind === "mcp") return name.startsWith("oauth:") ? `Agent · ${name.slice(6)} (OAuth)` : `Agent · ${name}`;
   }
   return source;

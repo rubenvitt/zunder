@@ -7,8 +7,10 @@
 //! - Discovery: protected resource metadata (RFC 9728) and authorization
 //!   server metadata (RFC 8414), see [`routes`].
 //! - Clients register themselves (RFC 7591) as public clients
-//!   (`token_endpoint_auth_method: none`); redirect URIs must be https or
-//!   http on a loopback host (port-agnostic match, RFC 8252).
+//!   (`token_endpoint_auth_method: none`); redirect URIs must be https,
+//!   http on a loopback host (port-agnostic match) or a private-use scheme
+//!   in reverse-domain form such as `dev.rubeen.zunder:/oauth` (apps,
+//!   RFC 8252).
 //! - The owner authenticates through the existing browser session (OIDC
 //!   login, dev auth locally) and confirms a German consent page.
 //! - Authorization codes are single use, live [`CODE_TTL_MS`] and are bound
@@ -20,6 +22,12 @@
 //!   [`REFRESH_TOKEN_TTL_MS`] and rotate; replaying a rotated refresh token
 //!   revokes the whole family.
 //! - Operations from OAuth clients carry the source `mcp:oauth:<client_name>`.
+//! - **Devices:** a grant for the resource `<public>/api` (the Tauri app)
+//!   yields a device token (`zd_…`) instead of an access/refresh pair. It
+//!   does not expire (the app is offline-first), is only accepted by `/api`,
+//!   is listed under "Geräte" and revoked there, via `/oauth/revoke` or
+//!   when its authorization code is replayed. The device is named after the
+//!   client (`client_name`).
 //!
 //! API tokens (`zt_…`) keep working unchanged for `/mcp` and `/api`.
 
@@ -154,6 +162,11 @@ pub fn mcp_resource(config: &Config) -> String {
     format!("{}/mcp", issuer(config))
 }
 
+/// The resource a device (Tauri app) asks for: the sync API.
+pub fn api_resource(config: &Config) -> String {
+    format!("{}/api", issuer(config))
+}
+
 /// URL of the protected resource metadata (named in `WWW-Authenticate`).
 pub fn resource_metadata_url(config: &Config) -> String {
     format!("{}/.well-known/oauth-protected-resource", issuer(config))
@@ -188,6 +201,11 @@ fn expected_resource(config: &Config) -> String {
     normalize_resource(&mcp_resource(config)).expect("public URL is a valid http(s) URL")
 }
 
+/// The canonical device resource ([`api_resource`]).
+pub fn device_resource(config: &Config) -> String {
+    normalize_resource(&api_resource(config)).expect("public URL is a valid http(s) URL")
+}
+
 fn is_loopback_host(url: &Url) -> bool {
     match url.host() {
         Some(url::Host::Domain(d)) => d.eq_ignore_ascii_case("localhost"),
@@ -197,8 +215,15 @@ fn is_loopback_host(url: &Url) -> bool {
     }
 }
 
-/// Checks a redirect URI at registration: https with a host, or http on a
-/// loopback host (local tools); no fragment, no user info.
+/// A private-use URI scheme of an app (RFC 8252, 7.1): reverse-domain form,
+/// so it contains a dot. That also rules out `javascript:`, `data:` & co.
+fn is_private_use_scheme(url: &Url) -> bool {
+    url.scheme().contains('.')
+}
+
+/// Checks a redirect URI at registration: https with a host, http on a
+/// loopback host (local tools) or a private-use scheme (apps); no fragment,
+/// no user info.
 pub fn validate_redirect_uri(raw: &str) -> Result<(), String> {
     if raw.len() > MAX_REDIRECT_URI_LEN {
         return Err(format!(
@@ -215,8 +240,10 @@ pub fn validate_redirect_uri(raw: &str) -> Result<(), String> {
     match url.scheme() {
         "https" if url.host_str().is_some() => Ok(()),
         "http" if is_loopback_host(&url) => Ok(()),
+        _ if is_private_use_scheme(&url) => Ok(()),
         _ => Err(format!(
-            "Redirect-URI muss https sein (oder http auf localhost/127.0.0.1): {raw}"
+            "Redirect-URI muss https sein (oder http auf localhost/127.0.0.1 oder ein \
+             App-Schema wie com.example.app:/pfad): {raw}"
         )),
     }
 }
@@ -245,6 +272,12 @@ pub fn redirect_uri_matches(registered: &str, requested: &str) -> bool {
 /// Whether a redirect URI points at the local machine.
 pub fn is_loopback_redirect(uri: &str) -> bool {
     Url::parse(uri).is_ok_and(|u| is_loopback_host(&u))
+}
+
+/// Whether a redirect URI goes to an app on the device (private-use
+/// scheme). Any app can claim such a scheme.
+pub fn is_app_redirect(uri: &str) -> bool {
+    Url::parse(uri).is_ok_and(|u| is_private_use_scheme(&u))
 }
 
 /// PKCE code challenge / verifier syntax (RFC 7636): 43–128 characters of
@@ -526,13 +559,16 @@ pub async fn issue_code(app: &App, grant: CodeGrant) -> AppResult<String> {
 
 // ----- tokens ---------------------------------------------------------------------
 
-/// Successful token response (RFC 6749, section 5.1).
+/// Successful token response (RFC 6749, section 5.1). A device token has
+/// neither expiry nor refresh token.
 #[derive(Debug, Clone, Serialize)]
 pub struct TokenResponse {
     pub access_token: String,
     pub token_type: &'static str,
-    pub expires_in: i64,
-    pub refresh_token: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_in: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scope: Option<String>,
 }
@@ -578,8 +614,37 @@ fn issue_pair(
     Ok(TokenResponse {
         access_token: access,
         token_type: "Bearer",
-        expires_in: ACCESS_TOKEN_TTL_MS / 1000,
-        refresh_token: refresh,
+        expires_in: Some(ACCESS_TOKEN_TTL_MS / 1000),
+        refresh_token: Some(refresh),
+        scope: family.scope.map(str::to_owned),
+    })
+}
+
+/// Stores a device (named after the client) and returns its token.
+fn issue_device(
+    conn: &rusqlite::Connection,
+    family: &Family<'_>,
+    name: &str,
+    now: i64,
+) -> AppResult<TokenResponse> {
+    let token = new_secret(auth::DEVICE_TOKEN_PREFIX);
+    db::insert_device(
+        conn,
+        &db::DeviceRow {
+            id: zunder_core::ids::new_id(),
+            user_id: family.user_id,
+            name: name.to_owned(),
+            family_id: family.id.to_owned(),
+            created_at: now,
+            last_used_at: None,
+        },
+        &auth::sha256_hex(&token),
+    )?;
+    Ok(TokenResponse {
+        access_token: token,
+        token_type: "Bearer",
+        expires_in: None,
+        refresh_token: None,
         scope: family.scope.map(str::to_owned),
     })
 }
@@ -616,6 +681,7 @@ pub async fn exchange_code(app: &App, req: CodeExchange) -> Result<TokenResponse
     }
     let hash = auth::sha256_hex(&req.code);
     let now = now_ms();
+    let devices = device_resource(app.config());
     app.with_writer(move |conn| {
         let tx = conn.transaction()?;
         let Some(code) = db::oauth_code(&tx, &hash)? else {
@@ -648,9 +714,9 @@ pub async fn exchange_code(app: &App, req: CodeExchange) -> Result<TokenResponse
                 ));
             }
             let client = db::oauth_client(&tx, &code.client_id).map_err(AppError::Internal)?;
-            if client.is_none_or(|c| c.revoked_at.is_some()) {
+            let Some(client) = client.filter(|c| c.revoked_at.is_none()) else {
                 return Err(OAuthError::invalid_client("Der Client ist widerrufen"));
-            }
+            };
             if req.redirect_uri.as_deref() != Some(code.redirect_uri.as_str()) {
                 return Err(OAuthError::invalid_grant(
                     "redirect_uri passt nicht zur Autorisierung",
@@ -661,17 +727,17 @@ pub async fn exchange_code(app: &App, req: CodeExchange) -> Result<TokenResponse
                 return Err(OAuthError::invalid_grant("PKCE-Prüfung fehlgeschlagen"));
             }
             check_resource(req.resource.as_deref(), &code.resource)?;
-            Ok(issue_pair(
-                &tx,
-                &Family {
-                    id: &code.family_id,
-                    client_id: &code.client_id,
-                    user_id: code.user_id,
-                    resource: &code.resource,
-                    scope: code.scope.as_deref(),
-                },
-                now,
-            )?)
+            let family = Family {
+                id: &code.family_id,
+                client_id: &code.client_id,
+                user_id: code.user_id,
+                resource: &code.resource,
+                scope: code.scope.as_deref(),
+            };
+            if code.resource == devices {
+                return Ok(issue_device(&tx, &family, &client.name, now)?);
+            }
+            Ok(issue_pair(&tx, &family, now)?)
         })();
         tx.commit()?;
         Ok(outcome)
@@ -756,13 +822,19 @@ pub async fn refresh(app: &App, req: RefreshRequest) -> Result<TokenResponse, OA
 }
 
 /// Token revocation (RFC 7009): a refresh token revokes its family, an
-/// access token only itself. Unknown tokens and tokens of other clients are
-/// silently ignored (the endpoint always answers 200).
+/// access token only itself, a device token its device. Unknown tokens and
+/// tokens of other clients are silently ignored (the endpoint always
+/// answers 200).
 pub async fn revoke(app: &App, token: &str, client_id: Option<&str>) -> AppResult<()> {
     let hash = auth::sha256_hex(token);
     let client_id = client_id.map(str::to_owned);
     let now = now_ms();
+    let device = token.starts_with(auth::DEVICE_TOKEN_PREFIX);
     app.with_writer(move |conn| {
+        if device {
+            db::revoke_device_by_hash(conn, &hash, now)?;
+            return Ok(());
+        }
         let Some((row, _)) = db::oauth_token(conn, &hash)? else {
             return Ok(());
         };
@@ -866,6 +938,43 @@ pub async fn revoke_client(app: &App, user_id: Uuid, id: &str) -> AppResult<()> 
     }
 }
 
+/// A device (logged-in app) as listed on the token page.
+#[derive(Debug, Clone, Serialize)]
+pub struct DeviceInfo {
+    pub id: Uuid,
+    pub name: String,
+    pub created_at: String,
+    pub last_used_at: Option<String>,
+}
+
+/// Active devices of the user.
+pub async fn devices(app: &App, user_id: Uuid) -> AppResult<Vec<DeviceInfo>> {
+    let rows = app
+        .with_reader(move |conn| Ok(db::list_devices(conn, user_id)?))
+        .await?;
+    Ok(rows
+        .into_iter()
+        .map(|d| DeviceInfo {
+            id: d.id,
+            name: d.name,
+            created_at: format_ms(d.created_at),
+            last_used_at: d.last_used_at.map(format_ms),
+        })
+        .collect())
+}
+
+/// Revokes a device; `NotFound` if the user has no such active device.
+pub async fn revoke_device(app: &App, user_id: Uuid, id: Uuid) -> AppResult<()> {
+    let revoked = app
+        .with_writer(move |conn| Ok(db::revoke_device(conn, user_id, id, now_ms())?))
+        .await?;
+    if revoked {
+        Ok(())
+    } else {
+        Err(AppError::NotFound("Gerät nicht gefunden".into()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -912,6 +1021,13 @@ mod tests {
         assert!(validate_redirect_uri("https://a.example/cb#x").is_err());
         assert!(validate_redirect_uri("https://u:p@a.example/cb").is_err());
         assert!(validate_redirect_uri("myapp://callback").is_err());
+        assert!(validate_redirect_uri("dev.rubeen.zunder:/oauth").is_ok());
+        assert!(validate_redirect_uri("com.example.app://cb").is_ok());
+        assert!(validate_redirect_uri("dev.rubeen.zunder:/oauth#x").is_err());
+        assert!(validate_redirect_uri("data:text/html,x").is_err());
+        assert!(validate_redirect_uri("file:///etc/passwd").is_err());
+        assert!(is_app_redirect("dev.rubeen.zunder:/oauth"));
+        assert!(!is_app_redirect("https://claude.ai/api/mcp/auth_callback"));
         assert!(validate_redirect_uri("javascript:alert(1)").is_err());
         assert!(validate_redirect_uri("nonsense").is_err());
 
@@ -941,6 +1057,14 @@ mod tests {
         assert!(!redirect_uri_matches(
             "http://localhost/callback",
             "http://localhost:3118/other"
+        ));
+        assert!(redirect_uri_matches(
+            "dev.rubeen.zunder:/oauth",
+            "dev.rubeen.zunder:/oauth"
+        ));
+        assert!(!redirect_uri_matches(
+            "dev.rubeen.zunder:/oauth",
+            "dev.rubeen.zunder:/other"
         ));
         assert!(is_loopback_redirect("http://localhost:1/cb"));
         assert!(!is_loopback_redirect(claude));

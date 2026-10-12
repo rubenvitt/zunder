@@ -43,14 +43,7 @@ impl HttpClient {
         // A trailing slash makes `Url::join` keep a path prefix.
         let base = Url::parse(&format!("{normalized}/"))
             .map_err(|e| Error::InvalidConfig(e.to_string()))?;
-        let http = reqwest::Client::builder()
-            .connect_timeout(Duration::from_secs(10))
-            .timeout(Duration::from_secs(60))
-            .user_agent(concat!("zunder-app/", env!("CARGO_PKG_VERSION")))
-            // No redirect from https down to plain http.
-            .https_only(base.scheme() == "https")
-            .build()
-            .map_err(|e| Error::Network(e.to_string()))?;
+        let http = build_http(&base)?;
         Ok(Self {
             http,
             base,
@@ -133,6 +126,18 @@ impl HttpClient {
         let path = format!("api/tasks/{task_id}/flame/{}", action.as_str());
         self.send(self.http.post(self.url(&path)?)).await
     }
+}
+
+/// The reqwest client for a server (also used by the login).
+pub(crate) fn build_http(base: &Url) -> Result<reqwest::Client> {
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(60))
+        .user_agent(concat!("zunder-app/", env!("CARGO_PKG_VERSION")))
+        // No redirect from https down to plain http.
+        .https_only(base.scheme() == "https")
+        .build()
+        .map_err(|e| Error::Network(e.to_string()))
 }
 
 fn network(e: reqwest::Error) -> Error {

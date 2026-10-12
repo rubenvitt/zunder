@@ -3,6 +3,9 @@
 //! - **API tokens**: `Authorization: Bearer zt_<32 bytes base64url>`, stored
 //!   as SHA-256 hex. `ZUNDER_BOOTSTRAP_TOKEN` is accepted as an additional
 //!   fixed token.
+//! - **Device tokens**: `zd_…`, issued to the Tauri app by the built-in
+//!   authorization server (resource `<public>/api`), stored as SHA-256 hex,
+//!   only accepted by `/api`.
 //! - **Sessions**: cookie [`SESSION_COOKIE`] with a random 32-byte ID, stored
 //!   as HMAC-SHA256 (key `ZUNDER_SESSION_SECRET`), 30 days sliding expiry.
 //! - **CSRF**: cookie-authenticated requests that change state must carry the
@@ -27,6 +30,8 @@ pub const SESSION_COOKIE: &str = "zunder_session";
 pub const CLIENT_HEADER: &str = "x-zunder-client";
 /// Prefix of API tokens.
 pub const TOKEN_PREFIX: &str = "zt_";
+/// Prefix of device tokens (Tauri app, see [`crate::oauth`]).
+pub const DEVICE_TOKEN_PREFIX: &str = "zd_";
 /// Session lifetime (sliding).
 pub const SESSION_TTL_MS: i64 = 30 * 24 * 60 * 60 * 1000;
 /// A session is extended at most this often.
@@ -57,6 +62,8 @@ pub enum PrincipalKind {
         client_id: String,
         source_name: String,
     },
+    /// Device token of the Tauri app (bearer, only accepted by `/api`).
+    Device { id: Uuid, name: String },
 }
 
 /// Name used for the bootstrap token in sources and logs.
@@ -76,13 +83,17 @@ impl Principal {
             PrincipalKind::Token { name, .. } => Some(name),
             PrincipalKind::Bootstrap => Some(BOOTSTRAP_TOKEN_NAME),
             PrincipalKind::OAuth { source_name, .. } => Some(source_name),
-            PrincipalKind::Session | PrincipalKind::DevAuto => None,
+            PrincipalKind::Session | PrincipalKind::DevAuto | PrincipalKind::Device { .. } => None,
         }
     }
 
     /// The source recorded for operations pushed via the sync API:
-    /// `web` for browsers, `api:<token-name>` for tokens.
+    /// `web` for browsers, `app:<device-name>` for devices,
+    /// `api:<token-name>` for tokens.
     pub fn sync_source(&self) -> Source {
+        if let PrincipalKind::Device { name, .. } = &self.kind {
+            return Source::App(name.clone());
+        }
         match self.token_name() {
             Some(name) => Source::Api(name.to_owned()),
             None => Source::Web,
@@ -220,5 +231,14 @@ mod tests {
         };
         assert_eq!(oauth.mcp_source().label(), "mcp:oauth:Claude");
         assert!(!oauth.is_browser());
+        let device = Principal {
+            user_id,
+            kind: PrincipalKind::Device {
+                id: Uuid::nil(),
+                name: "RPhone".into(),
+            },
+        };
+        assert_eq!(device.sync_source().label(), "app:RPhone");
+        assert!(!device.is_browser());
     }
 }

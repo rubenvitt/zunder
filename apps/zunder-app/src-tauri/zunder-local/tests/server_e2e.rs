@@ -18,7 +18,7 @@ use zunder_core::hlc::system_time_ms;
 use zunder_core::model::fields::task as f;
 use zunder_core::{Clock, EntityKind, Location, NewArea, NewTask, NodeId, Op, OpBatch, RejectCode};
 use zunder_local::sync::lock;
-use zunder_local::{ConfigUpdate, FlameAction, LocalStore, Syncer};
+use zunder_local::{login, ConfigUpdate, Error, FlameAction, LocalStore, Syncer};
 
 const TOKEN: &str = "zt_app-e2e-bootstrap-token-0123456789abcdef";
 
@@ -44,11 +44,19 @@ fn free_port() -> u16 {
 }
 
 async fn start_server() -> Server {
+    start_server_with(&[]).await
+}
+
+/// Starts the server with additional environment variables; its public URL
+/// is its own address.
+async fn start_server_with(env: &[(&str, &str)]) -> Server {
     let bin = std::env::var("ZUNDER_SERVER_BIN")
         .expect("ZUNDER_SERVER_BIN must point to a built zunder-server binary");
     let dir = tempfile::tempdir().unwrap();
     let port = free_port();
     let child = Command::new(bin)
+        .envs(env.iter().copied())
+        .env("ZUNDER_PUBLIC_URL", format!("http://127.0.0.1:{port}"))
         .env("ZUNDER_BIND", format!("127.0.0.1:{port}"))
         .env("ZUNDER_DATA_DIR", dir.path().join("data"))
         .env("ZUNDER_WEB_DIR", dir.path().join("web"))
@@ -244,4 +252,96 @@ async fn history_and_flames_with_the_api_token() {
 
     let err = client.task_history(Uuid::now_v7()).await.unwrap_err();
     assert!(err.to_string().contains("404"), "{err}");
+}
+
+#[tokio::test]
+#[ignore = "braucht ZUNDER_SERVER_BIN (gebautes zunder-server-Binary)"]
+async fn login_yields_a_device_token_that_syncs() {
+    // Dev auth stands in for the browser session on the consent page.
+    let server = start_server_with(&[("ZUNDER_DEV_AUTH", "true")]).await;
+    let (pending, authorize) = login::start(&server.url, "E2E-Gerät", false, now())
+        .await
+        .unwrap();
+    assert!(authorize.starts_with(&format!("{}/oauth/authorize?", server.url)));
+
+    // The browser: consent page, "Erlauben", redirect to the app.
+    let browser = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let page = browser
+        .get(&authorize)
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert!(page.contains("als Gerät"), "{page}");
+    let marker = "name=\"request_id\" value=\"";
+    let start = page.find(marker).unwrap() + marker.len();
+    let request_id = &page[start..start + page[start..].find('"').unwrap()];
+    let r = browser
+        .post(format!("{}/oauth/authorize", server.url))
+        .form(&[("request_id", request_id), ("decision", "allow")])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 303);
+    let callback = url::Url::parse(r.headers()["location"].to_str().unwrap()).unwrap();
+    assert!(login::is_callback(&callback), "{callback}");
+
+    let code = login::code_from_callback(&pending, &callback).unwrap();
+    let token = login::exchange(&pending, &code).await.unwrap();
+    assert!(token.starts_with("zd_"), "{token}");
+    // A code works once.
+    assert_eq!(
+        login::exchange(&pending, &code).await.unwrap_err().code(),
+        "login"
+    );
+
+    // The replay revoked the device; a fresh login works again.
+    let dir = tempfile::tempdir().unwrap();
+    let phone = device(&dir, "phone", &server, &token);
+    let syncer = Syncer::new();
+    let failure = syncer.sync(&phone, now()).await.unwrap_err();
+    assert!(
+        matches!(failure.error, Error::Unauthorized),
+        "{:?}",
+        failure.error
+    );
+
+    let (pending, authorize) = login::start(&server.url, "E2E-Gerät", false, now())
+        .await
+        .unwrap();
+    let page = browser
+        .get(&authorize)
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    let start = page.find(marker).unwrap() + marker.len();
+    let request_id = &page[start..start + page[start..].find('"').unwrap()];
+    let r = browser
+        .post(format!("{}/oauth/authorize", server.url))
+        .form(&[("request_id", request_id), ("decision", "allow")])
+        .send()
+        .await
+        .unwrap();
+    let callback = url::Url::parse(r.headers()["location"].to_str().unwrap()).unwrap();
+    let code = login::code_from_callback(&pending, &callback).unwrap();
+    let token = login::exchange(&pending, &code).await.unwrap();
+    let phone = device(&dir, "phone2", &server, &token);
+    syncer.sync(&phone, now()).await.unwrap();
+
+    // Revoking (new login, logout) cuts the device off.
+    login::revoke(&server.url, &token).await.unwrap();
+    let failure = syncer.sync(&phone, now()).await.unwrap_err();
+    assert!(
+        matches!(failure.error, Error::Unauthorized),
+        "{:?}",
+        failure.error
+    );
 }

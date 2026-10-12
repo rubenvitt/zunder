@@ -4,6 +4,7 @@
 import type {
   ApiToken,
   CreatedToken,
+  Device,
   FlameResult,
   HistoryEntry,
   Me,
@@ -83,6 +84,8 @@ export interface ApiClient {
   /** Removes the stored settings; the environment variables apply again. */
   resetTimingSettings(): Promise<TimingSettings>;
   checkTiming(): Promise<TimingCheck>;
+  listDevices(): Promise<Device[]>;
+  revokeDevice(id: string): Promise<void>;
   logout(): Promise<void>;
 }
 
@@ -214,6 +217,14 @@ export class HttpTransport implements SyncTransport, ApiClient {
 
   checkTiming(): Promise<TimingCheck> {
     return this.request("POST", "/api/settings/timing/check");
+  }
+
+  listDevices(): Promise<Device[]> {
+    return this.request<Device[]>("GET", "/api/devices").then((data) => (Array.isArray(data) ? data : []));
+  }
+
+  async revokeDevice(id: string): Promise<void> {
+    await this.request("DELETE", `/api/devices/${encodeURIComponent(id)}`);
   }
 
   async logout(): Promise<void> {

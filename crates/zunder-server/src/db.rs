@@ -19,6 +19,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0001_init.sql"),
     include_str!("../migrations/0002_oauth.sql"),
     include_str!("../migrations/0003_settings.sql"),
+    include_str!("../migrations/0004_devices.sql"),
 ];
 
 /// The schema version this binary expects.
@@ -892,12 +893,18 @@ pub fn revoke_oauth_token(conn: &Connection, id: &str, now: i64) -> anyhow::Resu
     Ok(())
 }
 
-/// Revokes every token of a family; returns how many were still active.
+/// Revokes every token of a family, including a device logged in with it;
+/// returns how many were still active.
 pub fn revoke_oauth_family(conn: &Connection, family_id: &str, now: i64) -> anyhow::Result<usize> {
-    Ok(conn.execute(
+    let tokens = conn.execute(
         "UPDATE oauth_tokens SET revoked_at = ?2 WHERE family_id = ?1 AND revoked_at IS NULL",
         params![family_id, now],
-    )?)
+    )?;
+    let devices = conn.execute(
+        "UPDATE devices SET revoked_at = ?2 WHERE family_id = ?1 AND revoked_at IS NULL",
+        params![family_id, now],
+    )?;
+    Ok(tokens + devices)
 }
 
 /// Removes expired codes and tokens and clients that can no longer be used:
@@ -927,6 +934,96 @@ pub fn purge_oauth(
         [unused_before],
     )?;
     Ok(stale + unused)
+}
+
+// ----- devices (Tauri app logged in via OAuth) ------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceRow {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub name: String,
+    pub family_id: String,
+    pub created_at: i64,
+    pub last_used_at: Option<i64>,
+}
+
+const DEVICE_COLUMNS: &str = "id, user_id, name, family_id, created_at, last_used_at";
+
+fn row_to_device(row: &Row<'_>) -> rusqlite::Result<DeviceRow> {
+    Ok(DeviceRow {
+        id: parse_uuid_col(row, 0)?,
+        user_id: parse_uuid_col(row, 1)?,
+        name: row.get(2)?,
+        family_id: row.get(3)?,
+        created_at: row.get(4)?,
+        last_used_at: row.get(5)?,
+    })
+}
+
+pub fn insert_device(conn: &Connection, device: &DeviceRow, hash: &str) -> anyhow::Result<()> {
+    conn.execute(
+        "INSERT INTO devices (id, user_id, name, token_hash, family_id, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            device.id.to_string(),
+            device.user_id.to_string(),
+            device.name,
+            hash,
+            device.family_id,
+            device.created_at
+        ],
+    )?;
+    Ok(())
+}
+
+/// Active (not revoked) devices of a user, oldest first.
+pub fn list_devices(conn: &Connection, user_id: Uuid) -> anyhow::Result<Vec<DeviceRow>> {
+    let mut stmt = conn.prepare_cached(&format!(
+        "SELECT {DEVICE_COLUMNS} FROM devices
+         WHERE user_id = ?1 AND revoked_at IS NULL ORDER BY created_at, rowid"
+    ))?;
+    let rows = stmt.query_map([user_id.to_string()], row_to_device)?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
+/// The active device with this token hash.
+pub fn find_device_by_hash(conn: &Connection, hash: &str) -> anyhow::Result<Option<DeviceRow>> {
+    Ok(conn
+        .query_row(
+            &format!(
+                "SELECT {DEVICE_COLUMNS} FROM devices WHERE token_hash = ?1 AND revoked_at IS NULL"
+            ),
+            [hash],
+            row_to_device,
+        )
+        .optional()?)
+}
+
+/// Revokes an active device of the user. Returns whether one was revoked.
+pub fn revoke_device(conn: &Connection, user_id: Uuid, id: Uuid, now: i64) -> anyhow::Result<bool> {
+    let n = conn.execute(
+        "UPDATE devices SET revoked_at = ?3 WHERE id = ?1 AND user_id = ?2 AND revoked_at IS NULL",
+        params![id.to_string(), user_id.to_string(), now],
+    )?;
+    Ok(n > 0)
+}
+
+/// Revokes the device with this token hash (token revocation, RFC 7009).
+pub fn revoke_device_by_hash(conn: &Connection, hash: &str, now: i64) -> anyhow::Result<bool> {
+    let n = conn.execute(
+        "UPDATE devices SET revoked_at = ?2 WHERE token_hash = ?1 AND revoked_at IS NULL",
+        params![hash, now],
+    )?;
+    Ok(n > 0)
+}
+
+pub fn touch_device(conn: &Connection, id: Uuid, now: i64) -> anyhow::Result<()> {
+    conn.execute(
+        "UPDATE devices SET last_used_at = ?2 WHERE id = ?1",
+        params![id.to_string(), now],
+    )?;
+    Ok(())
 }
 
 // ----- backup ---------------------------------------------------------------------
