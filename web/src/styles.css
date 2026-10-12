@@ -927,10 +927,95 @@ html.resizing * {
   color: var(--muted);
   padding: 0.75rem 0;
 }
-.empty.big {
-  padding: 4rem 1rem;
+
+/* Empty states: centred with an icon disc for whole views, a quiet row for sections. */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+  padding: clamp(2.5rem, 10vh, 5rem) 1rem;
   text-align: center;
-  font-size: 0.95rem;
+  animation: empty-in 0.32s var(--ease) both;
+}
+@keyframes empty-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.empty-icon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  color: var(--accent-fg);
+  background: radial-gradient(circle at 50% 35%, var(--accent-softer), var(--accent-soft));
+  box-shadow:
+    0 0 0 6px var(--accent-softer),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.empty-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 34ch;
+}
+.empty-title {
+  margin: 0;
+  font-weight: 600;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.empty-hint {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+.empty-actions kbd {
+  margin-left: 0.15rem;
+}
+.empty-state.compact {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7rem 0.75rem;
+  text-align: left;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-small);
+  animation: none;
+}
+.empty-state.compact .empty-icon {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  color: var(--muted);
+  background: var(--surface-2);
+  box-shadow: none;
+}
+.empty-state.compact .empty-text {
+  align-items: flex-start;
+  gap: 0.1rem;
+  max-width: none;
+}
+.empty-state.compact .empty-title {
+  font-weight: 500;
+  font-size: 0.9rem;
+  color: var(--text-2);
+}
+.empty-state.compact .empty-hint {
+  font-size: 0.82rem;
 }
 
 .notice {

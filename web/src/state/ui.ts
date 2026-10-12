@@ -1,7 +1,7 @@
 // UI state shared across views: selection, overlays, toasts, picker requests.
 
 import { createSignal, getOwner, onCleanup, type Accessor } from "solid-js";
-import type { Location, Task } from "../sync/types";
+import type { Location, ProjectKind, Task } from "../sync/types";
 
 export type ToastKind = "info" | "warning" | "error";
 
@@ -106,7 +106,7 @@ export function pickTask(title: string, excludeIds: ReadonlySet<string>, onPick:
 
 export type StructureEdit =
   | { kind: "area"; id?: string }
-  | { kind: "project"; id?: string; areaId?: string };
+  | { kind: "project"; id?: string; areaId?: string; projectKind?: ProjectKind };
 
 export const [structureEdit, setStructureEdit] = createSignal<StructureEdit | null>(null);
 

@@ -22,7 +22,8 @@ test("Tastenkürzel wirken nicht auf unsichtbare Aufgaben der vorigen Sicht", as
   // Bereiche without a selection shows no list.
   await page.keyboard.press("g");
   await page.keyboard.press("b");
-  await expect(page.locator(".split-main")).toContainText("Bereich oder Projekt links auswählen.");
+  // Depending on earlier tests: "Noch keine Bereiche." or "Bereich oder Projekt links auswählen."
+  await expect(page.locator(".split-main .empty-state")).toBeVisible();
   for (const key of ["j", "Enter", "x", "k", "x"]) await page.keyboard.press(key);
 
   // The token page has no list either.

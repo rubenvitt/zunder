@@ -93,7 +93,7 @@ function ProjectForm(props: { edit: Extract<StructureEdit, { kind: "project" }>;
   const [name, setName] = createSignal(project?.name ?? "");
   const [areaId, setAreaId] = createSignal(project?.area_id ?? props.edit.areaId ?? activeAreas()[0]?.id ?? "");
   const [status, setStatus] = createSignal(project?.status ?? "active");
-  const [kind, setKind] = createSignal<ProjectKind>(project?.kind ?? "standard");
+  const [kind, setKind] = createSignal<ProjectKind>(project?.kind ?? props.edit.projectKind ?? "standard");
   const [repo, setRepo] = createSignal(project?.repo ?? "");
   const [view, setView] = createSignal(project?.view ?? "list");
   const [description, setDescription] = createSignal(project?.description ?? "");
