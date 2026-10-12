@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Rechte des Hauptfensters: nur Kern-Events (Benachrichtigungen plant ausschließlich die Rust-Seite)",
+  "description": "Rechte des Hauptfensters: Kern-Events und externe Links (http, https, mailto, tel) im Standardbrowser öffnen (Benachrichtigungen plant ausschließlich die Rust-Seite)",
   "windows": ["main"],
   "platforms": ["linux", "macOS", "windows", "iOS", "android"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "opener:allow-open-url", "opener:allow-default-urls"]
 }

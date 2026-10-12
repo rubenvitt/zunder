@@ -72,6 +72,37 @@ test("Beschreibung: Markdown wird formatiert angezeigt und als Markdown gespeich
   await expect(detail(page)).toBeVisible();
 });
 
+test("Beschreibung: Links öffnen sich per Klick, beim Schreiben per Cmd/Ctrl+Klick", async ({ page, context }) => {
+  await context.route("https://example.org/**", (route) => route.fulfill({ body: "Beispiel" }));
+  const s = suffix();
+  const seeder = new Seeder();
+  const id = seeder.task(`Linkziel ${s}`, { location: { kind: "loose" }, description: "Siehe [Beispiel](https://example.org/doku) hier" });
+  await seeder.push(page);
+  await openLoose(page, `Linkziel ${s}`);
+
+  const description = detail(page).getByRole("textbox", { name: "Beschreibung (Markdown)" });
+  const link = description.getByRole("link", { name: "Beispiel" });
+
+  // Reading: a plain click opens the link and does not start editing.
+  const [reading] = await Promise.all([page.waitForEvent("popup"), link.click()]);
+  await expect(reading).toHaveURL("https://example.org/doku");
+  await reading.close();
+  await expect(description).not.toBeFocused();
+
+  // Writing: a plain click places the cursor, Cmd/Ctrl+click opens.
+  await description.locator("p").click({ position: { x: 2, y: 2 } });
+  await expect(description).toBeFocused();
+  let opened = false;
+  page.once("popup", () => (opened = true));
+  await link.click();
+  await page.waitForTimeout(300);
+  expect(opened).toBe(false);
+  const [writing] = await Promise.all([page.waitForEvent("popup"), link.click({ modifiers: ["ControlOrMeta"] })]);
+  await expect(writing).toHaveURL("https://example.org/doku");
+  await writing.close();
+  expect((await entityFields(page, "task", id)).description).toBe("Siehe [Beispiel](https://example.org/doku) hier");
+});
+
 test("Ein abgelehnter Wert verschwindet aus dem Feld", async ({ page }) => {
   const s = suffix();
   const seeder = new Seeder();

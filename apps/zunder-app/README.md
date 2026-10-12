@@ -14,7 +14,7 @@ apps/zunder-app/
   src-tauri/              eigener Cargo-Workspace, nicht im Root-Workspace
     Cargo.toml            Workspace [".", "zunder-local"] + Paket zunder-app
     tauri.conf.json       Identifier dev.rubeen.zunder, Frontend = web/dist
-    capabilities/         Rechte des Webviews: nur core:default
+    capabilities/         Rechte des Webviews: core:default, externe Links öffnen (opener)
     icons/                generierte Icons (Desktop, iOS, Android)
     src/lib.rs            Einstieg (auch mobil: tauri::mobile_entry_point)
     src/commands.rs       Befehle für die Web-UI

@@ -170,6 +170,8 @@ function installFakeApp(seed: { serverOps: WireOp[]; validToken: string }) {
         fake.emit("zunder://changed", { cursor: config.cursor, pending: fake.pending });
         return { running: cmd === "flame_start" };
       }
+      case "plugin:opener|open_url":
+        return null;
       default:
         throw `command ${cmd} not found`;
     }
@@ -334,9 +336,21 @@ test("App: Änderungen gehen an den lokalen Speicher, Sync-Ereignisse aktualisie
   expect(flameCall).toEqual({ task_id: seed.flameTask });
 
   // History via task_history.
+  await page.evaluate(() => {
+    const fake = window.__ZUNDER_FAKE_APP__;
+    const task = fake.ops.find((o) => o.value === "Auf einem anderen Gerät umbenannt")!;
+    fake.serverOp("task", task.entity_id, "description", "Siehe [Doku](https://example.org/doku)");
+    fake.emit("zunder://changed", { cursor: 100, pending: 0 });
+  });
   await go(page, "#/inbox");
   await row(page, "Auf einem anderen Gerät umbenannt").click();
   await expect(page.locator(".history-list li").first()).toContainText("API · app");
+
+  // Links in the description open in the system browser (tauri-plugin-opener).
+  await page.getByRole("textbox", { name: "Beschreibung (Markdown)" }).getByRole("link", { name: "Doku" }).click();
+  await expect
+    .poll(() => page.evaluate(() => window.__ZUNDER_FAKE_APP__.calls.find((c) => c.cmd === "plugin:opener|open_url")?.args))
+    .toEqual({ url: "https://example.org/doku" });
 
   // Connection view instead of token management.
   await go(page, "#/verbindung");
