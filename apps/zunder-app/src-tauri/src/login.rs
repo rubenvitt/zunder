@@ -39,17 +39,16 @@ pub fn handle_url(app: &AppHandle, url: Url) {
 
 async fn finish(app: &AppHandle, url: &Url) -> Result<(), Error> {
     let state = app.state::<AppState>();
-    // Single use: whatever happens next, this login is over.
-    let pending = {
-        let store = lock(&state.store);
-        let pending = store.pending_login()?;
-        store.set_pending_login(None)?;
-        pending
-    };
-    let pending = pending.filter(|p| !p.expired(now())).ok_or_else(|| {
-        Error::Login("Die Anmeldung ist abgelaufen; bitte erneut anmelden".into())
-    })?;
+    let pending = lock(&state.store)
+        .pending_login()?
+        .filter(|p| !p.expired(now()))
+        .ok_or_else(|| {
+            Error::Login("Die Anmeldung ist abgelaufen; bitte erneut anmelden".into())
+        })?;
+    // A stray link (other state) leaves the running login alone; the
+    // matching answer is used once, whatever happens next.
     let code = login::code_from_callback(&pending, url)?;
+    lock(&state.store).set_pending_login(None)?;
     let token = login::exchange(&pending, &code).await?;
     let previous = lock(&state.store).remote()?;
     let update = ConfigUpdate {
