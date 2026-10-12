@@ -380,16 +380,58 @@ async fn registration_validates_metadata() {
     assert_eq!(s.send(req).await.status, StatusCode::PAYLOAD_TOO_LARGE);
 }
 
+/// Registers from the TCP peer `peer`, optionally behind a proxy that sets
+/// `X-Forwarded-For`.
+async fn register_from(s: &TestServer, peer: &str, forwarded_for: Option<&str>) -> TestResponse {
+    let mut req = Request::post("/oauth/register").header(header::CONTENT_TYPE, "application/json");
+    if let Some(ip) = forwarded_for {
+        req = req.header("x-forwarded-for", format!("10.9.9.9, {ip}"));
+    }
+    let mut req = req
+        .body(Body::from(
+            json!({"redirect_uris": [CLAUDE_CALLBACK]}).to_string(),
+        ))
+        .unwrap();
+    let addr: std::net::SocketAddr = format!("{peer}:40000").parse().unwrap();
+    req.extensions_mut()
+        .insert(axum::extract::ConnectInfo(addr));
+    s.send(req).await
+}
+
 #[tokio::test]
-async fn registration_is_rate_limited() {
+async fn registration_is_rate_limited_per_source() {
     let s = TestServer::new().await;
-    for i in 0..30 {
-        let r = register(&s, json!({"redirect_uris": [CLAUDE_CALLBACK]})).await;
+    let limit = zunder_server::oauth::MAX_REGISTRATIONS_PER_SOURCE;
+    for i in 0..limit {
+        let r = register_from(&s, "203.0.113.1", None).await;
         assert_eq!(r.status, StatusCode::CREATED, "registration {i}");
     }
-    let r = register(&s, json!({"redirect_uris": [CLAUDE_CALLBACK]})).await;
+    let r = register_from(&s, "203.0.113.1", None).await;
     assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(oauth_error(&r), "temporarily_unavailable");
+    // A spoofed X-Forwarded-For from a public peer changes nothing …
+    let r = register_from(&s, "203.0.113.1", Some("198.51.100.1")).await;
+    assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS);
+    // … while another source (claude.ai) can still register.
+    let r = register_from(&s, "203.0.113.2", None).await;
+    assert_eq!(r.status, StatusCode::CREATED);
+
+    // Behind the reverse proxy the right-most forwarded address counts.
+    for _ in 0..limit {
+        let r = register_from(&s, "172.18.0.5", Some("198.51.100.7")).await;
+        assert_eq!(r.status, StatusCode::CREATED);
+    }
+    let r = register_from(&s, "172.18.0.5", Some("198.51.100.7")).await;
+    assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS);
+    let r = register_from(&s, "172.18.0.5", Some("198.51.100.8")).await;
+    assert_eq!(r.status, StatusCode::CREATED);
+    // One IPv6 /64 is one source.
+    for i in 0..limit {
+        let r = register_from(&s, &format!("[2001:db8:1:2::{i:x}]"), None).await;
+        assert_eq!(r.status, StatusCode::CREATED);
+    }
+    let r = register_from(&s, "[2001:db8:1:2::ffff]", None).await;
+    assert_eq!(r.status, StatusCode::TOO_MANY_REQUESTS);
 }
 
 // ----- full flow ------------------------------------------------------------------------

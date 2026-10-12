@@ -126,7 +126,8 @@ pub async fn serve(
 ) -> anyhow::Result<()> {
     let backup = tokio::spawn(backup::run_nightly(app.clone()));
     let shutdown = app.shutdown_token();
-    let server = axum::serve(listener, router).with_graceful_shutdown({
+    let service = router.into_make_service_with_connect_info::<std::net::SocketAddr>();
+    let server = axum::serve(listener, service).with_graceful_shutdown({
         let shutdown = shutdown.clone();
         async move {
             signal.await;

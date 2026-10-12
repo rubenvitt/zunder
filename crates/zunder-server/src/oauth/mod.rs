@@ -57,10 +57,77 @@ pub const ACCESS_TOKEN_TTL_MS: i64 = HOUR_MS;
 pub const REFRESH_TOKEN_TTL_MS: i64 = 30 * DAY_MS;
 /// Registered clients without a live grant are removed after this time.
 pub const STALE_CLIENT_MS: i64 = DAY_MS;
-/// At most this many client registrations per hour.
-pub const MAX_REGISTRATIONS_PER_HOUR: i64 = 30;
+/// Registered clients that were never used (no code, no token) are removed
+/// after this time, so throwaway registrations do not pile up.
+pub const UNUSED_CLIENT_MS: i64 = 30 * MINUTE_MS;
+/// At most this many client registrations per hour from one source
+/// address (an IPv6 source is its /64).
+pub const MAX_REGISTRATIONS_PER_SOURCE: usize = 10;
+/// At most this many source addresses are tracked per hour.
+const MAX_TRACKED_SOURCES: usize = 10_000;
 /// At most this many registered clients in total.
 pub const MAX_CLIENTS: i64 = 500;
+
+/// Per-source limit of dynamic client registrations (sliding hour, in
+/// memory). One client spamming `/oauth/register` exhausts only its own
+/// allowance, not the owner's next connector setup.
+#[derive(Debug, Default)]
+pub struct RegistrationLimiter {
+    recent: std::sync::Mutex<std::collections::HashMap<Option<std::net::IpAddr>, Vec<i64>>>,
+}
+
+impl RegistrationLimiter {
+    fn key(source: Option<std::net::IpAddr>) -> Option<std::net::IpAddr> {
+        source.map(|ip| match ip {
+            std::net::IpAddr::V6(v6) => {
+                let bits = u128::from(v6) & !((1u128 << 64) - 1);
+                std::net::IpAddr::V6(bits.into())
+            }
+            v4 => v4,
+        })
+    }
+
+    fn recent(
+        &self,
+        now: i64,
+    ) -> std::sync::MutexGuard<'_, std::collections::HashMap<Option<std::net::IpAddr>, Vec<i64>>>
+    {
+        let mut recent = self
+            .recent
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        recent.retain(|_, times| {
+            times.retain(|t| *t > now - HOUR_MS);
+            !times.is_empty()
+        });
+        recent
+    }
+
+    /// Whether `source` (`None` = unknown) may register another client.
+    pub fn allows(&self, source: Option<std::net::IpAddr>, now: i64) -> bool {
+        let source = Self::key(source);
+        let recent = self.recent(now);
+        match recent.get(&source) {
+            Some(times) => times.len() < MAX_REGISTRATIONS_PER_SOURCE,
+            None => recent.len() < MAX_TRACKED_SOURCES,
+        }
+    }
+
+    /// Counts a successful registration from `source`.
+    pub fn record(&self, source: Option<std::net::IpAddr>, now: i64) {
+        let source = Self::key(source);
+        self.recent(now).entry(source).or_default().push(now);
+    }
+}
+
+/// The error for a refused registration.
+pub fn too_many_registrations() -> OAuthError {
+    OAuthError::new(
+        StatusCode::TOO_MANY_REQUESTS,
+        "temporarily_unavailable",
+        "Zu viele Client-Registrierungen, bitte später erneut versuchen",
+    )
+}
 /// At most this many redirect URIs per client.
 pub const MAX_REDIRECT_URIS: usize = 10;
 /// Maximum length of a redirect URI.
@@ -380,12 +447,10 @@ pub async fn register(app: &App, metadata: Value) -> Result<RegisteredClient, OA
     };
     let stored = row.clone();
     app.with_writer(move |conn| {
-        // Unused registrations do not pile up: clients without a live grant
-        // disappear after a day.
-        db::purge_oauth(conn, now, now - STALE_CLIENT_MS)?;
-        let recent = db::count_oauth_clients_since(conn, now - HOUR_MS)?;
-        let total = db::count_oauth_clients_since(conn, 0)?;
-        if recent >= MAX_REGISTRATIONS_PER_HOUR || total >= MAX_CLIENTS {
+        // Unused registrations do not pile up: never used clients disappear
+        // after half an hour, clients without a live grant after a day.
+        db::purge_oauth(conn, now, now - STALE_CLIENT_MS, now - UNUSED_CLIENT_MS)?;
+        if db::count_oauth_clients_since(conn, 0)? >= MAX_CLIENTS {
             return Ok(false);
         }
         db::insert_oauth_client(conn, &stored)?;
@@ -397,11 +462,7 @@ pub async fn register(app: &App, metadata: Value) -> Result<RegisteredClient, OA
         if ok {
             Ok(())
         } else {
-            Err(OAuthError::new(
-                StatusCode::TOO_MANY_REQUESTS,
-                "temporarily_unavailable",
-                "Zu viele Client-Registrierungen, bitte später erneut versuchen",
-            ))
+            Err(too_many_registrations())
         }
     })?;
     tracing::info!(client_id = %row.id, client_name = %row.name, "OAuth client registered");

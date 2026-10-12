@@ -870,19 +870,33 @@ pub fn revoke_oauth_family(conn: &Connection, family_id: &str, now: i64) -> anyh
     )?)
 }
 
-/// Removes expired codes and tokens and clients that can no longer be used
-/// (no live token, registered before `stale_before`). Returns the number of
-/// removed clients.
-pub fn purge_oauth(conn: &Connection, now: i64, stale_before: i64) -> anyhow::Result<usize> {
+/// Removes expired codes and tokens and clients that can no longer be used:
+/// registered before `stale_before` without a live token, or registered
+/// before `unused_before` and never used (no code, no token). Returns the
+/// number of removed clients.
+pub fn purge_oauth(
+    conn: &Connection,
+    now: i64,
+    stale_before: i64,
+    unused_before: i64,
+) -> anyhow::Result<usize> {
     conn.execute("DELETE FROM oauth_codes WHERE expires_at <= ?1", [now])?;
     conn.execute("DELETE FROM oauth_tokens WHERE expires_at <= ?1", [now])?;
-    Ok(conn.execute(
+    let stale = conn.execute(
         "DELETE FROM oauth_clients
          WHERE created_at < ?2 AND NOT EXISTS (
              SELECT 1 FROM oauth_tokens t
              WHERE t.client_id = oauth_clients.id AND t.revoked_at IS NULL AND t.expires_at > ?1)",
         params![now, stale_before],
-    )?)
+    )?;
+    let unused = conn.execute(
+        "DELETE FROM oauth_clients
+         WHERE created_at < ?1 AND last_used_at IS NULL
+           AND NOT EXISTS (SELECT 1 FROM oauth_codes c WHERE c.client_id = oauth_clients.id)
+           AND NOT EXISTS (SELECT 1 FROM oauth_tokens t WHERE t.client_id = oauth_clients.id)",
+        [unused_before],
+    )?;
+    Ok(stale + unused)
 }
 
 // ----- backup ---------------------------------------------------------------------
@@ -1001,5 +1015,28 @@ mod tests {
         let a = ensure_owner(&conn, 1).unwrap();
         let b = ensure_owner(&conn, 2).unwrap();
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn unused_oauth_clients_are_purged_early() {
+        let (_dir, conn) = temp_db();
+        let client = |id: &str, created_at: i64| OAuthClientRow {
+            id: id.into(),
+            name: id.into(),
+            redirect_uris: vec!["https://claude.ai/api/mcp/auth_callback".into()],
+            created_at,
+            last_used_at: None,
+            revoked_at: None,
+        };
+        insert_oauth_client(&conn, &client("old-unused", 1_000)).unwrap();
+        insert_oauth_client(&conn, &client("old-used", 1_000)).unwrap();
+        insert_oauth_client(&conn, &client("new-unused", 5_000)).unwrap();
+        touch_oauth_client(&conn, "old-used", 2_000).unwrap();
+
+        // stale_before far in the past: only the early rule applies
+        assert_eq!(purge_oauth(&conn, 6_000, 0, 4_000).unwrap(), 1);
+        assert!(oauth_client(&conn, "old-unused").unwrap().is_none());
+        assert!(oauth_client(&conn, "old-used").unwrap().is_some());
+        assert!(oauth_client(&conn, "new-unused").unwrap().is_some());
     }
 }

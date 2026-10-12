@@ -713,7 +713,12 @@ impl App {
                 let now = now_ms();
                 Ok((
                     db::purge_expired_sessions(&writer.conn, now)?,
-                    db::purge_oauth(&writer.conn, now, now - crate::oauth::STALE_CLIENT_MS)?,
+                    db::purge_oauth(
+                        &writer.conn,
+                        now,
+                        now - crate::oauth::STALE_CLIENT_MS,
+                        now - crate::oauth::UNUSED_CLIENT_MS,
+                    )?,
                 ))
             })();
             match &purged {
