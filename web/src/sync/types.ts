@@ -255,6 +255,16 @@ export interface TimingSettingsUpdate {
   project?: string;
 }
 
+/** A Timing project, see `GET /api/settings/timing/projects`. */
+export interface TimingProject {
+  /** Self link, e.g. "/projects/1"; what the settings store. */
+  self: string;
+  title: string;
+  /** Titles from the root project down to this one. */
+  title_chain: string[];
+  color: string | null;
+}
+
 /** `POST /api/settings/timing/check`. */
 export interface TimingCheck {
   ok: boolean;

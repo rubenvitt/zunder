@@ -14,6 +14,8 @@
 //!   404) and only stops it when it is the entry Zunder started.
 //! - **check**: the same `GET /time-entries/running` tells whether Timing
 //!   accepts the token (settings view, "Verbindung prüfen").
+//! - **projects**: `GET /projects?hide_archived=true` lists the projects the
+//!   settings view offers for new time entries.
 //!
 //! The bridge sits behind [`TimingApi`] so the flame service does not depend
 //! on HTTP details; tests run [`TimingClient`] against a mock server.
@@ -47,6 +49,20 @@ pub struct TimingEntry {
     pub is_running: bool,
 }
 
+/// A Timing project for the settings view's project picker.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TimingProject {
+    /// Self link, e.g. `/projects/1`; what the settings store.
+    #[serde(rename = "self")]
+    pub self_ref: String,
+    pub title: String,
+    /// Titles from the root project down to this one.
+    #[serde(default)]
+    pub title_chain: Vec<String>,
+    #[serde(default)]
+    pub color: Option<String>,
+}
+
 /// Errors of the Timing API (messages are German, shown to users).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum TimingError {
@@ -71,6 +87,9 @@ pub trait TimingApi: Send + Sync {
 
     /// Checks that Timing is reachable and accepts the token.
     fn check(&self) -> BoxFuture<'_, Result<(), TimingError>>;
+
+    /// The projects that are not archived.
+    fn projects(&self) -> BoxFuture<'_, Result<Vec<TimingProject>, TimingError>>;
 }
 
 /// HTTP implementation of [`TimingApi`].
@@ -84,6 +103,11 @@ pub struct TimingClient {
 #[derive(Deserialize)]
 struct EntryEnvelope {
     data: EntryData,
+}
+
+#[derive(Deserialize)]
+struct ProjectsEnvelope {
+    data: Vec<TimingProject>,
 }
 
 #[derive(Deserialize)]
@@ -177,6 +201,28 @@ impl TimingClient {
         Self::entry(json)
     }
 
+    /// Projects that are not archived, with the title chain filled in.
+    pub async fn list_projects(&self) -> Result<Vec<TimingProject>, TimingError> {
+        let (status, json) = self
+            .send(Method::GET, "/projects?hide_archived=true", None)
+            .await?;
+        if !status.is_success() {
+            return Err(Self::status_error(status, &json));
+        }
+        let envelope: ProjectsEnvelope = serde_json::from_value(json)
+            .map_err(|e| TimingError::InvalidResponse(format!("Projektliste ({e})")))?;
+        Ok(envelope
+            .data
+            .into_iter()
+            .map(|mut p| {
+                if p.title_chain.is_empty() {
+                    p.title_chain = vec![p.title.clone()];
+                }
+                p
+            })
+            .collect())
+    }
+
     pub async fn stop_timer(&self) -> Result<TimingEntry, TimingError> {
         let (status, json) = self.send(Method::PUT, "/time-entries/stop", None).await?;
         if !status.is_success() {
@@ -208,6 +254,10 @@ impl TimingApi for TimingClient {
 
     fn check(&self) -> BoxFuture<'_, Result<(), TimingError>> {
         Box::pin(async move { self.running().await.map(|_| ()) })
+    }
+
+    fn projects(&self) -> BoxFuture<'_, Result<Vec<TimingProject>, TimingError>> {
+        Box::pin(async move { self.list_projects().await })
     }
 }
 

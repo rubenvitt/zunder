@@ -49,6 +49,7 @@ impl TimingMock {
             .route("/api/v1/time-entries/stop", put(stop_timer))
             .route("/api/v1/time-entries/running", get(running_timer))
             .route("/api/v1/time-entries/{id}", get(show_entry))
+            .route("/api/v1/projects", get(list_projects))
             .with_state(mock.clone());
         tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
         (mock, base)
@@ -125,6 +126,35 @@ async fn stop_timer(State(mock): State<TimingMock>, headers: HeaderMap) -> Respo
         )
             .into_response(),
     }
+}
+
+async fn list_projects(
+    State(mock): State<TimingMock>,
+    headers: HeaderMap,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
+) -> Response {
+    let path = match query {
+        Some(q) => format!("/projects?{q}"),
+        None => "/projects".to_owned(),
+    };
+    mock.record("GET", &path, &headers, Value::Null);
+    Json(json!({
+        "data": [
+            {
+                "self": "/projects/1", "team_id": null, "title": "Arbeit",
+                "title_chain": ["Arbeit"], "color": "#FF0000", "productivity_score": 1,
+                "is_archived": false, "notes": null, "children": [{"self": "/projects/7"}],
+                "parent": null,
+            },
+            {
+                "self": "/projects/7", "title": "Zunder",
+                "title_chain": ["Arbeit", "Zunder"], "color": "#00FF00",
+                "is_archived": false, "parent": {"self": "/projects/1"},
+            },
+            {"self": "/projects/9", "title": "Ohne Kette"},
+        ]
+    }))
+    .into_response()
 }
 
 async fn running_timer(State(mock): State<TimingMock>, headers: HeaderMap) -> Response {
@@ -467,6 +497,10 @@ async fn timing_settings_from_the_web_ui() {
         )
         .await;
     assert_eq!(r.status, StatusCode::CONFLICT);
+    let r = s
+        .get("/api/settings/timing/projects", Auth::Web(&session))
+        .await;
+    assert_eq!(r.status, StatusCode::CONFLICT);
 
     // Browser sessions only, with the CSRF header.
     let r = s.get("/api/settings/timing", Auth::Bearer(&t)).await;
@@ -537,6 +571,30 @@ async fn timing_settings_from_the_web_ui() {
     assert_eq!(r.status, StatusCode::OK, "{}", r.text());
     assert_eq!(r.json(), json!({"ok": true, "error": null}));
     assert_eq!(mock.calls()[0], "GET /time-entries/running");
+
+    // The project picker lists Timing's projects (without archived ones).
+    let r = s
+        .get("/api/settings/timing/projects", Auth::Web(&session))
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    assert_eq!(
+        r.json(),
+        json!([
+            {"self": "/projects/1", "title": "Arbeit", "title_chain": ["Arbeit"], "color": "#FF0000"},
+            {"self": "/projects/7", "title": "Zunder", "title_chain": ["Arbeit", "Zunder"], "color": "#00FF00"},
+            {"self": "/projects/9", "title": "Ohne Kette", "title_chain": ["Ohne Kette"], "color": null},
+        ])
+    );
+    let requests = mock.requests();
+    assert_eq!(requests[0].path, "/projects?hide_archived=true");
+    assert_eq!(
+        requests[0].auth.as_deref(),
+        Some("Bearer ui-token-0123456789")
+    );
+    let r = s
+        .get("/api/settings/timing/projects", Auth::Bearer(&t))
+        .await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
 
     // An empty token keeps the stored one; an empty project removes it.
     let r = put_settings(&s, &session, json!({"token": "", "project": ""})).await;

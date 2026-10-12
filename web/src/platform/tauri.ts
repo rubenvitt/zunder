@@ -30,6 +30,7 @@ import type {
   Rejection,
   Snapshot,
   TimingCheck,
+  TimingProject,
   TimingSettings,
   TimingSettingsUpdate,
   Warning,
@@ -350,6 +351,10 @@ export class TauriTransport implements SyncTransport, ApiClient {
   }
 
   checkTiming(): Promise<TimingCheck> {
+    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+  }
+
+  timingProjects(): Promise<TimingProject[]> {
     return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
   }
 
