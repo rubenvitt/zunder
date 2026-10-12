@@ -304,8 +304,9 @@ pub fn definitions() -> Vec<ToolDef> {
         ToolDef {
             name: "get_task",
             title: "Aufgabe lesen",
-            description: "Liefert eine Aufgabe mit allen Feldern, Fortschritt und dem Baum ihrer \
-                Unteraufgaben (subtasks). Adressierung über task_id oder clickup_id.",
+            description: "Liefert eine Aufgabe mit allen Feldern, Fortschritt, dem Baum ihrer \
+                Unteraufgaben (subtasks) und ihren Kommentaren (comments, älteste zuerst). \
+                Adressierung über task_id oder clickup_id.",
             input_schema: object(task_ref(), &[]),
             read_only: true,
             destructive: false,
@@ -339,7 +340,8 @@ pub fn definitions() -> Vec<ToolDef> {
             title: "Aufgabe ändern",
             description: "Ändert Felder einer Aufgabe (task_id oder clickup_id). Nur angegebene \
                 Felder ändern sich; null entfernt optionale Werte. Stelle und Elternaufgabe ändert \
-                move_task, Reservierungen claim_task/release_task.",
+                move_task, Reservierungen claim_task/release_task. Für Zwischenstände und Notizen \
+                add_comment nutzen statt die Beschreibung zu überschreiben.",
             input_schema: object(
                 with(
                     with(task_ref(), vec![("title", string("Neuer Titel."))]),
@@ -625,6 +627,32 @@ pub fn definitions() -> Vec<ToolDef> {
             read_only: true,
             destructive: false,
             idempotent: true,
+        },
+        ToolDef {
+            name: "add_comment",
+            title: "Aufgabe kommentieren",
+            description: "Schreibt einen Kommentar an eine Aufgabe, z. B. einen Zwischenstand, \
+                ein Ergebnis oder eine offene Frage; die Beschreibung bleibt unverändert. Kommentare \
+                liefert get_task (comments).",
+            input_schema: object(
+                with(
+                    task_ref(),
+                    vec![
+                        ("body", string("Text des Kommentars (Markdown, nicht leer).")),
+                        (
+                            "author",
+                            string(
+                                "Wer schreibt, z. B. „claude-code@laptop“. Standard: Name des \
+                                Tokens bzw. der verbundenen App.",
+                            ),
+                        ),
+                    ],
+                ),
+                &["body"],
+            ),
+            read_only: false,
+            destructive: false,
+            idempotent: false,
         },
     ]
 }

@@ -1010,3 +1010,92 @@ mod properties {
         }
     }
 }
+
+#[test]
+fn comments_need_a_live_task_but_do_not_block_deleting_it() {
+    let (state, ids) = fixture();
+    let mut comment = None;
+    let ops = batch(|b| {
+        comment = Some(b.add_comment(ids.inbox_task, "Stand: angefangen.", Some("claude".into())));
+    });
+    let outcome = push(&state, &ops);
+    assert_accepted(&outcome);
+    let comment = comment.unwrap();
+    let mut state = state;
+    for op in &outcome.new_ops {
+        state.apply(op);
+    }
+    assert_eq!(state.comments_of(ids.inbox_task).len(), 1);
+    assert_eq!(
+        state.comment(comment).unwrap().author.as_deref(),
+        Some("claude")
+    );
+
+    // Deleting the task leaves the comment alone; it is hidden with the task.
+    let ops = batch(|b| {
+        b.delete_cascade(&state, T, ids.inbox_task);
+    });
+    assert_eq!(ops.len(), 1);
+    let outcome = push(&state, &ops);
+    assert_accepted(&outcome);
+    for op in &outcome.new_ops {
+        state.apply(op);
+    }
+
+    // Editing a comment of a deleted task is harmless; moving or restoring
+    // one onto a deleted task is not.
+    let ops = batch(|b| {
+        b.set_comment(comment, "body", "nachgetragen");
+    });
+    assert_accepted(&push(&state, &ops));
+    let ops = batch(|b| {
+        b.add_comment(ids.inbox_task, "zu spät", None);
+    });
+    assert_all_rejected(&push(&state, &ops), &ops, RejectCode::InvalidReference);
+    let ops = batch(|b| {
+        b.set_comment(comment, "task_id", ids.bug.to_string());
+    });
+    assert_accepted(&push(&state, &ops));
+}
+
+#[test]
+fn comments_on_a_rejected_new_task_are_rejected_with_it() {
+    let (state, ids) = fixture();
+    let ops = batch(|b| {
+        let task = b.create_task(NewTask::new("Bug").with_type(TaskType::Bug));
+        b.add_comment(task, "Notiz", None);
+        b.set_task(ids.inbox_task, "title", "unabhängig");
+    });
+    let outcome = push(&state, &ops);
+    let comment_ops: Vec<&Rejection> = outcome
+        .rejected
+        .iter()
+        .filter(|r| {
+            ops.iter()
+                .any(|o| o.op_id == r.op_id && o.entity == EntityKind::Comment)
+        })
+        .collect();
+    assert_eq!(comment_ops.len(), 2);
+    for r in comment_ops {
+        assert_eq!(r.code, RejectCode::InvalidReference);
+        assert!(r.message.contains("die Aufgabe"), "{}", r.message);
+    }
+    assert_eq!(outcome.accepted, vec![ops.last().unwrap().op_id]);
+}
+
+#[test]
+fn comment_values_are_checked() {
+    let (state, ids) = fixture();
+    let ops = batch(|b| {
+        b.add_comment(ids.inbox_task, " \n ", None);
+    });
+    assert!(codes(&push(&state, &ops)).contains(&RejectCode::InvalidValue));
+    let ops = batch(|b| {
+        b.add_comment(ids.inbox_task, "ok", Some(String::new()));
+    });
+    assert!(codes(&push(&state, &ops)).contains(&RejectCode::InvalidValue));
+    let ops = batch(|b| {
+        b.set_comment(uid(901), "task_id", ids.inbox_task.to_string());
+    });
+    assert_all_rejected(&push(&state, &ops), &ops, RejectCode::MissingRequired);
+}

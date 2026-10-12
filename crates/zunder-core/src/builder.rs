@@ -290,6 +290,26 @@ impl<'c> OpBatch<'c> {
         self.set_task(task_id, fields::task::PARENT_ID, value)
     }
 
+    pub fn set_comment(&mut self, id: Id, field: &str, value: impl Into<Value>) -> &mut Self {
+        self.set(EntityKind::Comment, id, field, value)
+    }
+
+    /// Adds a comment to a task; `author` unset means the owner.
+    pub fn add_comment(
+        &mut self,
+        task_id: Id,
+        body: impl Into<String>,
+        author: Option<String>,
+    ) -> Id {
+        let id = ids::new_id();
+        self.set_comment(id, fields::comment::TASK_ID, task_id.to_string());
+        self.set_comment(id, fields::comment::BODY, body.into());
+        if let Some(author) = author {
+            self.set_comment(id, fields::comment::AUTHOR, author);
+        }
+        id
+    }
+
     /// Tombstones a single entity.
     pub fn delete(&mut self, entity: EntityKind, id: Id) -> &mut Self {
         self.set(entity, id, fields::DELETED, true)
@@ -298,7 +318,8 @@ impl<'c> OpBatch<'c> {
     /// Tombstones an entity together with every live entity that depends on
     /// it, so the push passes validation: a task with all descendants; a
     /// project with all tasks located in it; an area with its projects (and
-    /// their tasks) and the tasks located directly in it.
+    /// their tasks) and the tasks located directly in it. Comments stay: they
+    /// are hidden with their task and come back when it is restored.
     pub fn delete_cascade(&mut self, state: &State, entity: EntityKind, id: Id) -> &mut Self {
         for (kind, dep) in cascade(state, entity, id) {
             self.delete(kind, dep);
@@ -355,6 +376,7 @@ fn cascade(state: &State, entity: EntityKind, id: Id) -> Vec<(EntityKind, Id)> {
                 }
             }
         }
+        EntityKind::Comment => {}
     }
     out
 }

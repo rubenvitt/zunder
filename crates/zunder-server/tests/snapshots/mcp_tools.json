@@ -139,7 +139,7 @@
       "readOnlyHint": true,
       "title": "Aufgabe lesen"
     },
-    "description": "Liefert eine Aufgabe mit allen Feldern, Fortschritt und dem Baum ihrer Unteraufgaben (subtasks). Adressierung über task_id oder clickup_id.",
+    "description": "Liefert eine Aufgabe mit allen Feldern, Fortschritt, dem Baum ihrer Unteraufgaben (subtasks) und ihren Kommentaren (comments, älteste zuerst). Adressierung über task_id oder clickup_id.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -317,7 +317,7 @@
       "readOnlyHint": false,
       "title": "Aufgabe ändern"
     },
-    "description": "Ändert Felder einer Aufgabe (task_id oder clickup_id). Nur angegebene Felder ändern sich; null entfernt optionale Werte. Stelle und Elternaufgabe ändert move_task, Reservierungen claim_task/release_task.",
+    "description": "Ändert Felder einer Aufgabe (task_id oder clickup_id). Nur angegebene Felder ändern sich; null entfernt optionale Werte. Stelle und Elternaufgabe ändert move_task, Reservierungen claim_task/release_task. Für Zwischenstände und Notizen add_comment nutzen statt die Beschreibung zu überschreiben.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1076,5 +1076,42 @@
     },
     "name": "get_task_history",
     "title": "Änderungsprotokoll"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Aufgabe kommentieren"
+    },
+    "description": "Schreibt einen Kommentar an eine Aufgabe, z. B. einen Zwischenstand, ein Ergebnis oder eine offene Frage; die Beschreibung bleibt unverändert. Kommentare liefert get_task (comments).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "author": {
+          "description": "Wer schreibt, z. B. „claude-code@laptop“. Standard: Name des Tokens bzw. der verbundenen App.",
+          "type": "string"
+        },
+        "body": {
+          "description": "Text des Kommentars (Markdown, nicht leer).",
+          "type": "string"
+        },
+        "clickup_id": {
+          "description": "ClickUp-ID einer importierten Aufgabe (statt task_id).",
+          "type": "string"
+        },
+        "task_id": {
+          "description": "ID der Aufgabe oder ihre Kennung wie „ZUN-42“. Alternativ clickup_id angeben.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "body"
+      ],
+      "type": "object"
+    },
+    "name": "add_comment",
+    "title": "Aufgabe kommentieren"
   }
 ]

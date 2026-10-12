@@ -89,7 +89,7 @@ Das persönliche Produktivitätssystem (Wochenzyklen „Feuer“, Deep-Work-Blö
 
 ### Bewusst nicht im Modell
 
-- **Kommentare.** Stattdessen ein automatisches Änderungsprotokoll je Aufgabe.
+- ~~**Kommentare.** Stattdessen ein automatisches Änderungsprotokoll je Aufgabe.~~ Nachträglich (2026-10-12) doch aufgenommen: Agenten posten Zwischenstände als Kommentar, statt die Beschreibung zu überschreiben (Vertrag 2.4, Entität `comment`). Das Änderungsprotokoll bleibt.
 - Custom Fields, Prioritäten, Tags.
 - Wiederkehrende Aufgaben (nicht im MVP; das Modell verbaut sie nicht).
 - Eigenes Zeittracking (übernimmt Timing, Abschnitt 6).

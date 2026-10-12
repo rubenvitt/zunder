@@ -7,14 +7,15 @@ import { TaskIndex } from "../sync/derived";
 import { SyncEngine, type SyncStatus } from "../sync/engine";
 import { BrowserLocalStore, type LocalStore } from "../sync/local-store";
 import type { EntityState } from "../sync/merge";
-import { toArea, toProject, toTask } from "../sync/model";
+import { toArea, toComment, toProject, toTask } from "../sync/model";
 import { HttpTransport, type ApiClient, type SyncTransport } from "../sync/transport";
-import type { Area, Project, Rejection, Task, Warning } from "../sync/types";
+import type { Area, Comment, Project, Rejection, Task, Warning } from "../sync/types";
 
 interface DataState {
   areas: Record<string, Area>;
   projects: Record<string, Project>;
   tasks: Record<string, Task>;
+  comments: Record<string, Comment>;
 }
 
 export interface Services {
@@ -31,7 +32,7 @@ export interface Notifier {
 const httpTransport = new HttpTransport();
 const defaultServices: Services = { transport: httpTransport, api: httpTransport, localStore: new BrowserLocalStore() };
 
-const [data, setData] = createStore<DataState>({ areas: {}, projects: {}, tasks: {} });
+const [data, setData] = createStore<DataState>({ areas: {}, projects: {}, tasks: {}, comments: {} });
 const [syncStatus, setSyncStatus] = createSignal<SyncStatus>("loading");
 const [enginePending, setEnginePending] = createSignal(0);
 // Tauri app: operations stored locally but not yet pushed by the app.
@@ -58,15 +59,17 @@ export function getEngine(): SyncEngine {
 function writeEntity(e: EntityState): void {
   if (e.entity === "task") setData("tasks", e.id, reconcile(toTask(e)));
   else if (e.entity === "project") setData("projects", e.id, reconcile(toProject(e)));
-  else setData("areas", e.id, reconcile(toArea(e)));
+  else if (e.entity === "area") setData("areas", e.id, reconcile(toArea(e)));
+  else if (e.entity === "comment") setData("comments", e.id, reconcile(toComment(e)));
 }
 
 function writeAll(eng: SyncEngine): void {
-  const next: DataState = { areas: {}, projects: {}, tasks: {} };
+  const next: DataState = { areas: {}, projects: {}, tasks: {}, comments: {} };
   for (const e of eng.view.values()) {
     if (e.entity === "task") next.tasks[e.id] = toTask(e);
     else if (e.entity === "project") next.projects[e.id] = toProject(e);
-    else next.areas[e.id] = toArea(e);
+    else if (e.entity === "area") next.areas[e.id] = toArea(e);
+    else if (e.entity === "comment") next.comments[e.id] = toComment(e);
   }
   setData(reconcile(next, { merge: true }));
 }
@@ -142,9 +145,28 @@ const derived = createRoot(() => {
       .filter((p) => !p.deleted && data.areas[p.area_id] && !data.areas[p.area_id]!.deleted)
       .sort((a, b) => a.name.localeCompare(b.name, "de")),
   );
-  return { index, areaList, projectList };
+  // Live comments per task, oldest first (creation HLC, then ID).
+  const commentsByTask = createMemo(() => {
+    const out = new Map<string, Comment[]>();
+    for (const c of Object.values(data.comments)) {
+      if (c.deleted || !c.task_id) continue;
+      let list = out.get(c.task_id);
+      if (!list) out.set(c.task_id, (list = []));
+      list.push(c);
+    }
+    for (const list of out.values()) {
+      list.sort((a, b) => (a.created_hlc < b.created_hlc ? -1 : a.created_hlc > b.created_hlc ? 1 : a.id < b.id ? -1 : 1));
+    }
+    return out;
+  });
+  return { index, areaList, projectList, commentsByTask };
 });
 
 export const taskIndex = derived.index;
 export const areaList = derived.areaList;
 export const projectList = derived.projectList;
+
+/** Live comments of a task, oldest first. */
+export function commentsOf(taskId: string): Comment[] {
+  return derived.commentsByTask().get(taskId) ?? [];
+}

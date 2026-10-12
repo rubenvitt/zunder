@@ -267,6 +267,10 @@ Vorher bzw. danach:
 - **Vault:** Die `zunder_id`s in den Notizen sind noch die alten. Mit der Zuordnungsliste lassen sie sich ersetzen; bis dahin findet das MCP die Bereiche und Projekte auch über die alte ID.
 - **Zurückrollen:** Eine ältere Version startet nicht mit Schema 5. Dann `vor-cuid2-….db` wie unter [Wiederherstellen](#wiederherstellen) einspielen; alles, was seit der Umstellung geändert wurde, ist danach weg.
 
+### Kommentare (Schema 6)
+
+Die erste Version mit Schema 6 baut beim Start die Tabellen `ops` und `entities` neu auf, damit sie Kommentare aufnehmen (eine Transaktion; Cursor und Daten bleiben). Vorher ein manuelles Backup ziehen. Die Zunder-App muss danach mindestens diese Version haben, sonst scheitert ihr Abgleich, sobald es den ersten Kommentar gibt. **Zurückrollen:** Eine ältere Version startet nicht mit Schema 6; dann das Backup von vor dem Update einspielen.
+
 ## Fehlersuche
 
 | Symptom | Prüfen |

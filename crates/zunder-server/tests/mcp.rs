@@ -343,6 +343,7 @@ async fn tool_schemas_match_snapshot() {
             "start_flame",
             "stop_flame",
             "get_task_history",
+            "add_comment",
         ]
     );
     for tool in tools.as_array().unwrap() {
@@ -1086,6 +1087,76 @@ async fn filter_tasks_filters() {
         let (code, _) = mcp_err(&s, &t, "filter_tasks", bad.clone()).await;
         assert_eq!(code, "invalid_arguments", "{bad}");
     }
+}
+
+#[tokio::test]
+async fn agents_comment_on_tasks() {
+    let (s, t) = setup().await;
+    let id = create(
+        &s,
+        &t,
+        json!({"title": "Server umziehen", "description": "Plan"}),
+    )
+    .await;
+
+    let first = mcp_ok(
+        &s,
+        &t,
+        "add_comment",
+        json!({"task_id": id, "body": "Stand: Backup läuft."}),
+    )
+    .await;
+    // Without `author`, the token name signs the comment.
+    assert_eq!(first["comment"]["author"], "claude");
+    assert_eq!(first["comment"]["task_id"], id.as_str());
+    assert_eq!(first["comment"]["body"], "Stand: Backup läuft.");
+    assert!(first["comment"]["created_at"]
+        .as_str()
+        .unwrap()
+        .ends_with('Z'));
+    let second = mcp_ok(
+        &s,
+        &t,
+        "add_comment",
+        json!({"task_id": id, "body": "Fertig, DNS umgestellt.", "author": " claude-code@laptop "}),
+    )
+    .await;
+    assert_eq!(second["comment"]["author"], "claude-code@laptop");
+
+    // get_task lists them oldest first; the description is untouched.
+    let got = mcp_ok(&s, &t, "get_task", json!({"task_id": id})).await;
+    assert_eq!(got["task"]["description"], "Plan");
+    let comments = got["task"]["comments"].as_array().unwrap();
+    assert_eq!(comments.len(), 2);
+    assert_eq!(comments[0]["id"], first["comment"]["id"]);
+    assert_eq!(comments[1]["id"], second["comment"]["id"]);
+    // Other views of the task carry no comments.
+    let listed = mcp_ok(&s, &t, "filter_tasks", json!({})).await;
+    assert!(listed["tasks"][0].get("comments").is_none());
+
+    let (code, _) = mcp_err(&s, &t, "add_comment", json!({"task_id": id, "body": "  "})).await;
+    assert_eq!(code, "invalid_value");
+    let (code, _) = mcp_err(&s, &t, "add_comment", json!({"task_id": id})).await;
+    assert_eq!(code, "invalid_arguments");
+    let (code, _) = mcp_err(
+        &s,
+        &t,
+        "add_comment",
+        json!({"task_id": id, "body": "x", "author": "a".repeat(201)}),
+    )
+    .await;
+    assert_eq!(code, "invalid_arguments");
+
+    // Deleting the task hides its comments; new ones are refused.
+    mcp_ok(&s, &t, "delete_task", json!({"task_id": id})).await;
+    let (code, _) = mcp_err(
+        &s,
+        &t,
+        "add_comment",
+        json!({"task_id": id, "body": "zu spät"}),
+    )
+    .await;
+    assert_eq!(code, "not_found");
 }
 
 #[tokio::test]

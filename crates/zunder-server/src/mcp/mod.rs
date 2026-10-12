@@ -66,7 +66,8 @@ Kennung wie ZUN-42) oder clickup_id adressiert. Projekte können einen Schlüsse
 haben; ihre Aufgaben bekommen dann vom Server eine feste Kennung (ref, ZUN-1, ZUN-2 …), die beim \
 Verschieben bleibt. IDs von Bereichen und Projekten liefert list_structure (die ID ist die zunder_id im Vault). \
 Dev-Modus: claim_task reserviert eine Aufgabe mit Ablaufzeit, plan, branch und pr_url halten \
-Ergebnisse fest. Phönix: phoenix markiert Feuer-Schritte und Flammen einer ISO-Woche; \
+Ergebnisse fest; Zwischenstände gehören als Kommentar an die Aufgabe (add_comment), nicht in die \
+Beschreibung. Phönix: phoenix markiert Feuer-Schritte und Flammen einer ISO-Woche; \
 start_flame/stop_flame messen Deep-Work-Blöcke (mit Timing, falls angebunden). \
 Zeitangaben: due als JJJJ-MM-TT oder RFC 3339 mit Offset, remind_at als RFC 3339. \
 Abgelehnte Änderungen kommen mit deutscher Begründung zurück; nichts wird still verworfen.";

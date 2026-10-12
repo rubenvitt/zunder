@@ -9,7 +9,7 @@ use serde_json::{json, Map, Value};
 use time::Date;
 use zunder_core::hlc::system_time_ms;
 use zunder_core::ids::Id;
-use zunder_core::model::fields::{area as fa, project as fp, task as ft};
+use zunder_core::model::fields::{area as fa, comment as fc, project as fp, task as ft};
 use zunder_core::search::search;
 use zunder_core::{
     AreaState, Due, EntityKind, IsoWeek, Location, PhoenixRole, ProjectStatus, State, TaskStatus,
@@ -22,7 +22,8 @@ use crate::app::{format_ms, App, Source};
 use crate::error::{AppError, AppResult};
 use crate::flame;
 use crate::views::{
-    claim_active, flame_running, location_kind, AreaView, ProjectView, TaskRef, TaskView,
+    claim_active, flame_running, location_kind, AreaView, CommentView, ProjectView, TaskRef,
+    TaskView,
 };
 
 /// Task fields that `create_task` and `update_task` pass through to the
@@ -123,6 +124,7 @@ async fn dispatch(app: &App, source: Source, name: &str, args: &Args) -> AppResu
         "start_flame" => start_flame(app, args).await,
         "stop_flame" => stop_flame(app, args).await,
         "get_task_history" => task_history(app, args).await,
+        "add_comment" => add_comment(app, source, args).await,
         other => Err(AppError::Internal(anyhow::anyhow!(
             "tool {other} has no handler"
         ))),
@@ -481,8 +483,9 @@ fn get_task(app: &App, args: &Args) -> AppResult<Value> {
     let now = system_time_ms();
     app.read(|state| {
         let id = target.resolve(state, false)?;
-        let view = TaskView::build(state, id, now, true)
+        let mut view = TaskView::build(state, id, now, true)
             .ok_or_else(|| AppError::NotFound(format!("Aufgabe {id} nicht gefunden.")))?;
+        view.comments = Some(CommentView::of_task(state, id));
         Ok(json!({"task": view}))
     })
 }
@@ -531,6 +534,8 @@ async fn search_all(app: &App, args: &Args) -> AppResult<Value> {
                                 v["state"] = json!(a.state);
                             }
                         }
+                        // Not searched (zunder_core::search).
+                        EntityKind::Comment => {}
                     }
                     v
                 })
@@ -767,10 +772,15 @@ async fn claim_task(app: &App, source: Source, args: &Args) -> AppResult<Value> 
 }
 
 fn agent_name(args: &Args) -> AppResult<Option<String>> {
-    match args.non_empty_str("agent")? {
+    agent_like(args, "agent")
+}
+
+/// A trimmed agent name of at most [`MAX_AGENT_CHARS`] characters.
+fn agent_like(args: &Args, key: &str) -> AppResult<Option<String>> {
+    match args.non_empty_str(key)? {
         None => Ok(None),
         Some(a) if a.chars().count() > MAX_AGENT_CHARS => Err(invalid(format!(
-            "„agent“ darf höchstens {MAX_AGENT_CHARS} Zeichen lang sein."
+            "„{key}“ darf höchstens {MAX_AGENT_CHARS} Zeichen lang sein."
         ))),
         Some(a) => Ok(Some(a.trim().to_owned())),
     }
@@ -853,6 +863,44 @@ async fn decompose_task(app: &App, source: Source, args: &Args) -> AppResult<Val
         .read(|s| TaskView::build(s, parent, system_time_ms(), true))
         .ok_or_else(|| AppError::NotFound(format!("Aufgabe {parent} nicht gefunden.")))?;
     Ok(json!({"task": view, "created": created, "warnings": warnings}))
+}
+
+// ----- comments -------------------------------------------------------------------
+
+async fn add_comment(app: &App, source: Source, args: &Args) -> AppResult<Value> {
+    let target = args.task_ref()?;
+    let body = args.raw("body").cloned().unwrap_or(Value::Null);
+    let author = match agent_like(args, "author")? {
+        Some(author) => Some(author),
+        None => default_author(&source),
+    };
+    let (id, _) = app
+        .mutate_atomic(source, move |state, batch| {
+            let task = target.resolve(state, false)?;
+            let id = zunder_core::ids::new_id();
+            batch.set_comment(id, fc::TASK_ID, task.to_string());
+            batch.set_comment(id, fc::BODY, body);
+            if let Some(author) = author {
+                batch.set_comment(id, fc::AUTHOR, author);
+            }
+            Ok(id)
+        })
+        .await?;
+    let comment = app
+        .read(|s| CommentView::build(s, id))
+        .ok_or_else(|| AppError::NotFound(format!("Kommentar {id} nicht gefunden.")))?;
+    Ok(json!({"comment": comment}))
+}
+
+/// Author of a comment without `author`: the name of the token or the
+/// OAuth client (`mcp:oauth:Claude` → `Claude`).
+fn default_author(source: &Source) -> Option<String> {
+    match source {
+        Source::Mcp(name) | Source::Api(name) | Source::App(name) => {
+            Some(name.strip_prefix("oauth:").unwrap_or(name).to_owned())
+        }
+        Source::Web | Source::Server => None,
+    }
 }
 
 // ----- structure ----------------------------------------------------------------------

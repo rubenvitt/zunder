@@ -12,6 +12,7 @@ import {
   TASK_STATUSES,
   TASK_TYPES,
   type Area,
+  type Comment,
   type Hlc,
   type JsonValue,
   type Link,
@@ -133,5 +134,18 @@ export function toTask(e: EntityState): Task {
     rank: str(value(e, "rank")),
     ref: str(value(e, "ref")),
     status_hlc: e.fields.status?.hlc ?? min,
+  };
+}
+
+export function toComment(e: EntityState): Comment {
+  const { min, max } = hlcRange(e);
+  return {
+    id: e.id,
+    deleted: value(e, "deleted") === true,
+    created_hlc: min,
+    updated_hlc: max,
+    task_id: str(value(e, "task_id")) ?? "",
+    body: str(value(e, "body")) ?? "",
+    author: str(value(e, "author")),
   };
 }

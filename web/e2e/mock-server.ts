@@ -28,7 +28,7 @@ const DIST = resolve(process.env.MOCK_DIST ?? join(here, "..", "dist"));
 const PORT = Number(process.env.MOCK_PORT ?? 4173);
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
-type EntityKind = "area" | "project" | "task";
+type EntityKind = "area" | "project" | "task" | "comment";
 
 interface Op {
   op_id: string;
@@ -88,6 +88,7 @@ const FIELDS: Record<string, string[]> = {
     "phoenix", "claimed_by", "claim_expires_at", "plan", "branch", "pr_url", "timing_ref", "flame_started_at",
     "flame_ended_at", "clickup_id", "rank", "ref", "deleted",
   ],
+  comment: ["task_id", "body", "author", "deleted"],
 };
 const ENUMS: Record<string, string[]> = {
   "task.status": ["open", "in_progress", "review", "blocked", "done", "dropped"],
@@ -172,14 +173,14 @@ function alive(entity: string, id: string): boolean {
 
 const ID_RE = /^[a-z][a-z0-9]{23}$/;
 const HLC_RE = /^\d{13}:\d{5}:[a-z0-9-]{1,36}$/;
-const REQUIRED: Record<string, string[]> = { area: ["name"], project: ["name", "area_id"], task: ["title"] };
+const REQUIRED: Record<string, string[]> = { area: ["name"], project: ["name", "area_id"], task: ["title"], comment: ["task_id", "body"] };
 
 /** Wire-format check; a malformed op fails the whole push with 400 (like the server). */
 function wireError(op: unknown): string | null {
   if (!op || typeof op !== "object") return "Operation ist kein Objekt.";
   const o = op as Record<string, unknown>;
   if (!ID_RE.test(String(o.op_id)) || !ID_RE.test(String(o.entity_id))) return "Keine kanonische ID.";
-  if (!["area", "project", "task"].includes(String(o.entity))) return "Unbekannte Entitätsart.";
+  if (!["area", "project", "task", "comment"].includes(String(o.entity))) return "Unbekannte Entitätsart.";
   if (typeof o.field !== "string") return "Feld fehlt.";
   if (!("value" in o)) return "value fehlt.";
   if (typeof o.hlc !== "string" || !HLC_RE.test(o.hlc)) return "Ungültiger HLC.";
@@ -200,14 +201,14 @@ function checkOp(op: Op): [string, string] | null {
   }
   const allowed = ENUMS[`${op.entity}.${op.field}`];
   if (allowed && !allowed.includes(String(op.value))) return ["invalid_value", `Ungültiger Wert für „${op.field}“.`];
-  if ((op.field === "title" || op.field === "name") && (typeof op.value !== "string" || !op.value.trim())) {
+  if (["title", "name", "body", "author"].includes(op.field) && (typeof op.value !== "string" || !op.value.trim())) {
     return ["invalid_value", `„${op.field}“ darf nicht leer sein.`];
   }
   if (op.entity === "project" && op.field === "key" && !/^[A-Z][A-Z0-9]{0,9}$/.test(String(op.value))) {
     return ["invalid_value", "Ungültiger Schlüssel."];
   }
   if (op.field === "deleted" && typeof op.value !== "boolean") return ["invalid_value", "„deleted“ muss true oder false sein."];
-  if ((op.field === "parent_id" || op.field === "area_id") && !ID_RE.test(String(op.value))) {
+  if (["parent_id", "area_id", "task_id"].includes(op.field) && !ID_RE.test(String(op.value))) {
     return ["invalid_value", `„${op.field}“ muss eine ID sein.`];
   }
   return null;
@@ -259,7 +260,11 @@ function checkEntity(entity: EntityKind, id: string, pending: Map<string, Op[]>)
       : null;
   }
   for (const f of REQUIRED[entity]!) if (fields[f] === undefined || fields[f] === null) return ["missing_required", `Pflichtfeld „${f}“ fehlt.`];
-  if (entity === "task") {
+  if (entity === "comment") {
+    // Comments never block deleting their task; writing one needs a live task.
+    const writes = (pending.get(key(entity, id)) ?? []).some((op) => op.field === "task_id" || op.field === "deleted");
+    if (writes && !aliveAfter("task", String(fields.task_id), pending)) return ["invalid_reference", "Die Aufgabe existiert nicht."];
+  } else if (entity === "task") {
     const loc = fields.location as { kind?: string; id?: string } | null | undefined;
     const parent = typeof fields.parent_id === "string" ? fields.parent_id : null;
     if (parent && !aliveAfter("task", parent, pending)) return ["invalid_reference", "Die Aufgabe existiert nicht."];
