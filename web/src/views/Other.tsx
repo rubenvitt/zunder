@@ -3,6 +3,7 @@
 import { createMemo, createResource, createSignal, For, onMount, Show } from "solid-js";
 import { Board } from "../components/Board";
 import { Icon } from "../components/Icon";
+import { Logo } from "../components/Logo";
 import { TaskList } from "../components/TaskList";
 import { isTauri } from "../platform/runtime";
 import { fireOf, formatInstant, isValidFire, shiftFire } from "../sync/dates";
@@ -348,9 +349,7 @@ export function LoginView() {
   return (
     <main class="login">
       <div class="login-card">
-        <div class="logo" aria-hidden="true">
-          <Icon name="flame" size={40} />
-        </div>
+        <Logo size={64} />
         <h1>Zunder</h1>
         <p class="muted">Bitte anmelden, um fortzufahren.</p>
         <a class="btn btn-primary btn-large" href="/auth/login">

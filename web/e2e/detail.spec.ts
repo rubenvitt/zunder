@@ -24,12 +24,12 @@ test("Fokus ohne Tippen überschreibt keine Änderung von außen", async ({ page
   await seeder.push(page);
   await openLoose(page, `Agentenziel ${s}`);
 
-  const description = detail(page).getByLabel("Beschreibung (Markdown)");
+  const description = detail(page).getByRole("textbox", { name: "Beschreibung (Markdown)" });
   await description.click();
   // An agent writes the description while the field has the focus.
   seeder.raw("task", id, { description: "Plan vom Agenten" });
   await seeder.push(page);
-  await expect(description).toHaveValue("Plan vom Agenten");
+  await expect(description).toHaveText("Plan vom Agenten");
   await detail(page).locator("h3", { hasText: "Links" }).click();
   await page.waitForTimeout(300);
   expect((await entityFields(page, "task", id)).description).toBe("Plan vom Agenten");
@@ -38,6 +38,38 @@ test("Fokus ohne Tippen überschreibt keine Änderung von außen", async ({ page
   await description.fill("Eigener Text");
   await detail(page).locator("h3", { hasText: "Links" }).click();
   await expect.poll(async () => (await entityFields(page, "task", id)).description).toBe("Eigener Text");
+});
+
+test("Beschreibung: Markdown wird formatiert angezeigt und als Markdown gespeichert", async ({ page }) => {
+  const s = suffix();
+  const seeder = new Seeder();
+  const id = seeder.task(`Markdown ${s}`, { location: { kind: "loose" }, description: "## Ziel\n\n- **fett** und `code`\n- [Beispiel](https://example.org/)" });
+  await seeder.push(page);
+  await openLoose(page, `Markdown ${s}`);
+
+  const description = detail(page).getByRole("textbox", { name: "Beschreibung (Markdown)" });
+  await expect(description.locator("h2")).toHaveText("Ziel");
+  await expect(description.locator("strong")).toHaveText("fett");
+  await expect(description.locator("code")).toHaveText("code");
+  await expect(description.getByRole("link", { name: "Beispiel" })).toHaveAttribute("href", "https://example.org/");
+
+  // Typing Markdown syntax formats in place; the stored value stays Markdown.
+  await description.locator("li").last().click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Neuer Absatz mit **Nachdruck** ");
+  await expect(description.locator("strong", { hasText: "Nachdruck" })).toBeVisible();
+  await page.keyboard.press("Control+Enter");
+  await expect.poll(async () => String((await entityFields(page, "task", id)).description)).toContain("Neuer Absatz mit **Nachdruck**");
+  expect(String((await entityFields(page, "task", id)).description)).toContain("## Ziel");
+
+  // Escape discards an unsaved edit.
+  await description.click();
+  await page.keyboard.type("Verworfen");
+  await page.keyboard.press("Escape");
+  await expect(description).not.toContainText("Verworfen");
+  await expect(detail(page)).toBeVisible();
 });
 
 test("Ein abgelehnter Wert verschwindet aus dem Feld", async ({ page }) => {
@@ -239,4 +271,31 @@ test("Alte Links mit UUID (vor CUID2) öffnen dieselbe Aufgabe", async ({ page }
   await seeder.push(page);
   await openApp(page, `#/aufgabe/${legacy}`);
   await expect(detail(page).getByLabel("Titel", { exact: true })).toHaveValue(`Alter Link ${s}`);
+});
+
+test("Dev-Board: Unteraufgaben aufklappen und ihre ID mit einem Klick kopieren", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
+  const s = suffix();
+  const seeder = new Seeder();
+  const area = seeder.area(`Arbeit ${s}`);
+  const project = seeder.project(`App ${s}`, area, { kind: "dev" });
+  const parent = seeder.task(`Epic ${s}`, { location: { kind: "project", id: project } });
+  const child = seeder.task(`Teilschritt ${s}`, { parent_id: parent });
+  await seeder.push(page);
+  await openApp(page, "#/dev");
+
+  const epic = page.locator(".card", { hasText: `Epic ${s}` });
+  await epic.locator(".subtask-chip").click();
+  const sub = epic.locator(".subtask", { hasText: `Teilschritt ${s}` });
+  await expect(sub).toBeVisible();
+  await sub.getByRole("button", { name: "ID kopieren" }).click();
+  await expect.poll(clipboard).toBe(child);
+  await expect(detail(page)).toBeHidden();
+
+  // The card's own ID is one click away as well; a click on the subtask opens it.
+  await epic.locator(".card-top").getByRole("button", { name: "ID kopieren" }).click();
+  await expect.poll(clipboard).toBe(parent);
+  await sub.locator(".subtask-title").click();
+  await expect(detail(page).getByLabel("Titel", { exact: true })).toHaveValue(`Teilschritt ${s}`);
 });

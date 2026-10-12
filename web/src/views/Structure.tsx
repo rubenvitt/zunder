@@ -1,6 +1,6 @@
 // Bereiche → Projekte: tree on the left, tasks (list or board) on the right.
 
-import { createMemo, createSignal, For, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, onMount, Show } from "solid-js";
 import { Board } from "../components/Board";
 import { Icon } from "../components/Icon";
 import { TaskList } from "../components/TaskList";
@@ -14,6 +14,8 @@ import { registerList, setStructureEdit } from "../state/ui";
 
 export function StructureView() {
   const [showArchived, setShowArchived] = createSignal(false);
+  // Phones: with a selection the tree folds into a picker line above the tasks.
+  const [treeOpen, setTreeOpen] = createSignal(false);
   const current = () => {
     const r = route();
     return r.view === "bereiche" ? r : null;
@@ -21,9 +23,24 @@ export function StructureView() {
   const areas = () => areaList().filter((a) => showArchived() || a.state === "active");
   const projectsOf = (area: Area) => projectList().filter((p) => p.area_id === area.id && (showArchived() || p.status !== "completed"));
   const isActive = (kind: "area" | "project", id: string) => current()?.kind === kind && current()?.id === id;
+  const selectionLabel = () => {
+    const c = current();
+    if (!c?.id) return "";
+    if (c.kind === "project") {
+      const p = data.projects[c.id];
+      return p ? `${data.areas[p.area_id]?.name ?? ""} › ${p.name}` : "";
+    }
+    return data.areas[c.id]?.name ?? "";
+  };
+  createEffect(on(current, () => setTreeOpen(false), { defer: true }));
 
   return (
-    <div class="view view-split">
+    <div class="view view-split" classList={{ "has-selection": !!current()?.id, "tree-open": treeOpen() }}>
+      <button class="tree-picker" aria-expanded={treeOpen()} onClick={() => setTreeOpen((o) => !o)}>
+        <Icon name="folder" size={16} />
+        <span>{selectionLabel()}</span>
+        <Icon name={treeOpen() ? "up" : "down"} size={14} />
+      </button>
       <nav class="tree" aria-label="Bereiche und Projekte">
         <header class="tree-head">
           <h1>Bereiche</h1>
@@ -94,7 +111,7 @@ function AddTaskInline(props: { onAdd: (title: string) => void; label: string })
   const [title, setTitle] = createSignal("");
   return (
     <form
-      class="inline-form add-task"
+      class="add-row add-task"
       onSubmit={(e) => {
         e.preventDefault();
         if (!title().trim()) return;
@@ -102,10 +119,13 @@ function AddTaskInline(props: { onAdd: (title: string) => void; label: string })
         setTitle("");
       }}
     >
-      <input class="field" placeholder={props.label} aria-label={props.label} value={title()} onInput={(e) => setTitle(e.currentTarget.value)} />
-      <button class="btn btn-small" type="submit" disabled={!title().trim()} aria-label="Aufgabe anlegen">
-        <Icon name="plus" size={14} />
-      </button>
+      <Icon name="plus" size={16} />
+      <input class="add-input" placeholder={props.label} aria-label={props.label} value={title()} onInput={(e) => setTitle(e.currentTarget.value)} />
+      <Show when={title().trim()}>
+        <button class="btn btn-primary btn-small" type="submit" aria-label="Aufgabe anlegen">
+          Anlegen
+        </button>
+      </Show>
     </form>
   );
 }
@@ -161,7 +181,10 @@ function ProjectPanel(props: { project: Project }) {
         <h1>{props.project.name}</h1>
         <span class="muted">{data.areas[props.project.area_id]?.name}</span>
         <Show when={dev()}>
-          <span class="chip chip-type-feature">Dev{props.project.repo ? ` · ${props.project.repo}` : ""}</span>
+          <span class="chip chip-type-feature">
+            <Icon name="code" size={12} />
+            Dev{props.project.repo ? ` · ${props.project.repo}` : ""}
+          </span>
         </Show>
         <Show when={props.project.status !== "active"}>
           <span class="chip">{PROJECT_STATUS_LABELS[props.project.status]}</span>

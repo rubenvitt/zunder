@@ -5,6 +5,7 @@
 
 import { createEffect, createSignal, Match, on, onCleanup, onMount, Show, Switch, type Component } from "solid-js";
 import { Icon } from "../components/Icon";
+import { Logo } from "../components/Logo";
 import {
   appConfig,
   appSyncing,
@@ -299,9 +300,7 @@ export function ConnectionView(props: { setup?: boolean; onConnected?: () => voi
       fallback={
         <main class="login">
           <div class="login-card setup-card">
-            <div class="logo" aria-hidden="true">
-              <Icon name="flame" size={40} />
-            </div>
+            <Logo size={64} />
             <h1>Zunder einrichten</h1>
             <p class="muted">
               Die App speichert deine Aufgaben auf diesem Gerät und gleicht sie im Hintergrund mit deinem Zunder-Server ab. Gib die Adresse deines Servers an und melde dich im Browser an.

@@ -10,6 +10,7 @@ Verbindlich ist der [Implementierungsvertrag](../../docs/superpowers/plans/2026-
 apps/zunder-app/
   package.json            @tauri-apps/cli (npm run dev / build / icons)
   icon.svg                Quelle der App-Icons (npm run icons)
+  icon-ios.svg            Quelle der iOS-Icons (randlos, ohne Transparenz)
   src-tauri/              eigener Cargo-Workspace, nicht im Root-Workspace
     Cargo.toml            Workspace [".", "zunder-local"] + Paket zunder-app
     tauri.conf.json       Identifier dev.rubeen.zunder, Frontend = web/dist
