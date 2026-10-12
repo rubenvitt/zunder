@@ -42,6 +42,12 @@ pub enum Error {
     Reconfigured,
     #[error("Anmeldung: {0}")]
     Login(String),
+    #[error("Aktualisierung: {0}")]
+    Update(String),
+    #[error("Autostart: {0}")]
+    Autostart(String),
+    #[error("{0}")]
+    Unsupported(String),
 }
 
 impl Error {
@@ -61,6 +67,9 @@ impl Error {
             Error::Notification(_) => "notification",
             Error::Reconfigured => "reconfigured",
             Error::Login(_) => "login",
+            Error::Update(_) => "update",
+            Error::Autostart(_) => "autostart",
+            Error::Unsupported(_) => "unsupported",
         }
     }
 

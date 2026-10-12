@@ -42,10 +42,11 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 zunder-core.workspace = true
 zunder-local.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 tokio.workspace = true
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-notification = "2"
 # Login: open the system browser, receive the redirect to dev.rubeen.zunder:/oauth.
 tauri-plugin-opener = "2"
@@ -53,9 +54,11 @@ tauri-plugin-deep-link = "2"
 url = "2"
 log = "0.4"
 
-# Self-update from GitHub Releases (desktop only, see src/update.rs).
+# Self-update from GitHub Releases (src/update.rs), start at login and
+# menu-bar icon (src/desktop.rs): desktop only.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
+tauri-plugin-autostart = "2"
 
 # The device's UTC offset for reminders on iOS (see src/notify.rs).
 [target.'cfg(target_os = "ios")'.dependencies]

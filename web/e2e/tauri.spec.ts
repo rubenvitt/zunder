@@ -125,6 +125,8 @@ function installFakeApp(seed: { serverOps: WireOp[]; validToken: string }) {
     return report;
   }
 
+  const appInfo = { version: "1.4.0", desktop: true, autostart: false, update: { installed: null as string | null, last_check: null as unknown } };
+
   function handle(cmd: string, args: Record<string, unknown>): unknown {
     switch (cmd) {
       case "plugin:event|listen": {
@@ -171,6 +173,17 @@ function installFakeApp(seed: { serverOps: WireOp[]; validToken: string }) {
         return { running: cmd === "flame_start" };
       }
       case "plugin:opener|open_url":
+        return null;
+      case "app_info":
+        return { ...appInfo, update: { ...appInfo.update } };
+      case "set_autostart":
+        appInfo.autostart = args.enabled as boolean;
+        return appInfo.autostart;
+      case "check_update":
+        appInfo.update = { installed: "1.5.0", last_check: { at_ms: Date.now(), ok: true } };
+        return appInfo.update;
+      case "restart_app":
+      case "test_notification":
         return null;
       default:
         throw `command ${cmd} not found`;
@@ -352,12 +365,26 @@ test("App: Änderungen gehen an den lokalen Speicher, Sync-Ereignisse aktualisie
     .poll(() => page.evaluate(() => window.__ZUNDER_FAKE_APP__.calls.find((c) => c.cmd === "plugin:opener|open_url")?.args))
     .toEqual({ url: "https://example.org/doku" });
 
-  // Connection view instead of token management.
-  await go(page, "#/verbindung");
+  // Settings of the app (connection, start at login, updates) instead of token management.
+  await page.locator(".sidebar").getByRole("link", { name: "Einstellungen" }).click();
+  await expect(page.getByRole("heading", { name: "Einstellungen", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Verbindung" })).toBeVisible();
   await expect(page.getByTestId("last-sync")).toContainText("Zuletzt abgeglichen");
   await page.getByRole("button", { name: "Jetzt abgleichen" }).click();
   await expect(page.locator(".toast", { hasText: "Abgeglichen." })).toBeVisible();
+
+  await expect(page.getByTestId("app-version")).toHaveText("Zunder 1.4.0");
+  const autostart = page.getByRole("checkbox", { name: "Beim Anmelden am Rechner starten" });
+  await expect(autostart).not.toBeChecked();
+  await autostart.check();
+  await expect(autostart).toBeChecked();
+  expect(await page.evaluate(() => window.__ZUNDER_FAKE_APP__.calls.find((c) => c.cmd === "set_autostart")?.args)).toEqual({ enabled: true });
+  await page.getByRole("button", { name: "Nach Updates suchen" }).click();
+  await expect(page.getByTestId("update-status")).toContainText("Version 1.5.0 ist installiert");
+  await page.getByRole("button", { name: "Jetzt neu starten" }).click();
+  await expect.poll(() => page.evaluate(() => window.__ZUNDER_FAKE_APP__.calls.some((c) => c.cmd === "restart_app"))).toBe(true);
+  await page.getByRole("button", { name: "Testbenachrichtigung senden" }).click();
+  await expect(page.locator(".toast", { hasText: "Testbenachrichtigung gesendet." })).toBeVisible();
 
   expect(apiRequests).toEqual([]);
 });

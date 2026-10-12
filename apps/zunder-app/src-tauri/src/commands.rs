@@ -2,6 +2,7 @@
 //! implementation contract, section 5). Errors arrive in JavaScript as
 //! `{"code", "message"}`.
 
+use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 use zunder_core::hlc::system_time_ms;
@@ -143,4 +144,100 @@ async fn flame(
     // and retried by the background loop, the flame itself succeeded.
     let _ = background::sync(app).await;
     Ok(outcome)
+}
+
+// ----- app settings ----------------------------------------------------------
+
+#[cfg(mobile)]
+fn desktop_only() -> Error {
+    Error::Unsupported("Nur in der Desktop-App verfügbar.".into())
+}
+
+/// What the settings show about the app itself.
+#[derive(Debug, Serialize)]
+pub struct AppInfo {
+    /// Version of the running app.
+    version: String,
+    /// Desktop (menu bar, autostart, self-update) or mobile.
+    desktop: bool,
+    /// Whether the app starts at login; `null` on mobile or when unknown.
+    autostart: Option<bool>,
+    /// Self-update state; `null` on mobile.
+    update: Option<UpdateStatus>,
+}
+
+#[cfg(mobile)]
+#[derive(Debug, Serialize)]
+pub struct UpdateStatus {}
+
+#[cfg(desktop)]
+use crate::update::UpdateStatus;
+
+#[tauri::command]
+pub fn app_info(app: AppHandle) -> AppInfo {
+    let version = app.package_info().version.to_string();
+    #[cfg(desktop)]
+    {
+        let autostart = crate::desktop::autostart_enabled(&app)
+            .inspect_err(|e| log::warn!("reading autostart failed: {e}"))
+            .ok();
+        AppInfo {
+            version,
+            desktop: true,
+            autostart,
+            update: Some(app.state::<crate::update::Updates>().status()),
+        }
+    }
+    #[cfg(mobile)]
+    AppInfo {
+        version,
+        desktop: false,
+        autostart: None,
+        update: None,
+    }
+}
+
+/// Starts the app at login (hidden in the menu bar) or not. Returns the new
+/// state.
+#[tauri::command]
+pub fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, Error> {
+    #[cfg(desktop)]
+    return crate::desktop::set_autostart(&app, enabled);
+    #[cfg(mobile)]
+    {
+        let _ = (app, enabled);
+        Err(desktop_only())
+    }
+}
+
+/// Looks for a newer version now and installs it (active after
+/// `restart_app`).
+#[tauri::command]
+pub async fn check_update(app: AppHandle) -> Result<UpdateStatus, Error> {
+    #[cfg(desktop)]
+    return crate::update::check(&app).await;
+    #[cfg(mobile)]
+    {
+        let _ = app;
+        Err(desktop_only())
+    }
+}
+
+/// Restarts the app, e.g. to activate an installed update.
+#[tauri::command]
+pub fn restart_app(app: AppHandle) {
+    app.request_restart();
+}
+
+/// Shows a notification right away, to check that the system lets them
+/// through.
+#[tauri::command]
+pub fn test_notification(app: AppHandle) -> Result<(), Error> {
+    use tauri_plugin_notification::NotificationExt;
+    app.notification()
+        .builder()
+        .title("Zunder")
+        .body("Benachrichtigungen kommen an.")
+        .show()
+        .map_err(|e| Error::Notification(e.to_string()))
 }

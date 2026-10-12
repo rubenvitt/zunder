@@ -1,14 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { EVENTS, type AppConfig, type TauriBackend } from "../src/platform/tauri";
+import { EVENTS, type AppConfig, type AppInfo, type TauriBackend } from "../src/platform/tauri";
 import {
   appConfig,
+  appInfo,
+  checkUpdate,
   defaultDeviceName,
   desktopSync,
   initDesktop,
   isConfigured,
+  loadAppInfo,
   loginState,
   resetDesktopForTests,
   saveConnection,
+  setAutostart,
   startLogin,
   syncNow,
 } from "../src/state/desktop";
@@ -28,6 +32,7 @@ function fakeApp(initial: Partial<AppConfig> = {}) {
     last_sync: null,
     ...initial,
   };
+  const info: AppInfo = { version: "1.4.0", desktop: true, autostart: false, update: { installed: null, last_check: null } };
   const failures = new Map<string, unknown>();
   const emit = (event: string, payload: unknown) => {
     for (const h of listeners.get(event) ?? []) h({ payload });
@@ -59,6 +64,14 @@ function fakeApp(initial: Partial<AppConfig> = {}) {
           return [] as T;
         case "login_start":
           return undefined as T;
+        case "app_info":
+          return structuredClone(info) as T;
+        case "set_autostart":
+          info.autostart = args!.enabled as boolean;
+          return info.autostart as T;
+        case "check_update":
+          info.update = { installed: "1.5.0", last_check: { at_ms: 1_760_000_000_000, ok: true } };
+          return structuredClone(info.update) as T;
         default:
           throw `command ${cmd} not found`;
       }
@@ -70,7 +83,7 @@ function fakeApp(initial: Partial<AppConfig> = {}) {
       return () => set.delete(handler as (e: { payload: unknown }) => void);
     },
   };
-  return { backend, calls, config, failures, emit };
+  return { backend, calls, config, info, failures, emit };
 }
 
 afterEach(() => resetDesktopForTests());
@@ -216,5 +229,39 @@ describe("desktop state", () => {
     expect(defaultDeviceName("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")).toBe("Mac");
     expect(defaultDeviceName("Mozilla/5.0 (Linux; Android 15)")).toBe("Android");
     expect(defaultDeviceName("curl")).toBe("Zunder-App");
+  });
+
+  it("reads and changes the app's own settings", async () => {
+    const fake = fakeApp({ server_url: "https://zunder.example.org", has_api_token: true });
+    await initDesktop(fake.backend);
+    await loadAppInfo();
+    expect(appInfo()).toMatchObject({ version: "1.4.0", desktop: true, autostart: false });
+
+    expect(await setAutostart(true)).toEqual({ ok: true });
+    expect(fake.calls.at(-1)).toEqual({ cmd: "set_autostart", args: { enabled: true } });
+    expect(appInfo()?.autostart).toBe(true);
+
+    fake.failures.set("set_autostart", { code: "autostart", message: "Autostart: verweigert" });
+    expect(await setAutostart(false)).toMatchObject({ ok: false, code: "autostart" });
+    expect(appInfo()?.autostart).toBe(true);
+  });
+
+  it("follows update checks and the update event", async () => {
+    const fake = fakeApp({ server_url: "https://zunder.example.org", has_api_token: true });
+    await initDesktop(fake.backend);
+    await loadAppInfo();
+
+    fake.emit(EVENTS.update, { installed: "1.4.1", last_check: { at_ms: 1, ok: true } });
+    expect(appInfo()?.update?.installed).toBe("1.4.1");
+
+    const checked = await checkUpdate();
+    expect(checked).toMatchObject({ ok: true, update: { installed: "1.5.0" } });
+    expect(appInfo()?.update?.installed).toBe("1.5.0");
+
+    fake.info.update = { installed: null, last_check: { at_ms: 2, ok: false, error: "Aktualisierung: offline" } };
+    fake.failures.set("check_update", { code: "update", message: "Aktualisierung: offline" });
+    expect(await checkUpdate()).toMatchObject({ ok: false, code: "update" });
+    // The failed check is shown from the re-read status.
+    expect(appInfo()?.update?.last_check).toMatchObject({ ok: false });
   });
 });

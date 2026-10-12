@@ -1,23 +1,29 @@
 // UI of the Tauri app, loaded on demand (App.tsx): start-up without OIDC
-// login, the connection settings (login in the system browser or server URL +
-// API token; setup screen on first start and "Verbindung" view) and the status
-// of the app's own sync.
+// login, the settings (connection: login in the system browser or server URL +
+// API token, setup screen on first start; the app itself: version, start at
+// login, updates, test notification) and the status of the app's own sync.
 
 import { createEffect, createSignal, Match, on, onCleanup, onMount, Show, Switch, type Component } from "solid-js";
 import { Icon } from "../components/Icon";
 import { Logo } from "../components/Logo";
 import {
   appConfig,
+  appInfo,
   appSyncing,
+  checkUpdate,
   defaultDeviceName,
   desktopSync,
   initDesktop,
   isConfigured,
+  loadAppInfo,
   loginState,
   reloadConfig,
+  restartApp,
   saveConnection,
+  setAutostart,
   startLogin,
   syncNow,
+  testNotification,
   type ActionResult,
 } from "../state/desktop";
 import { now, pendingCount, ready, startSync } from "../state/store";
@@ -312,10 +318,13 @@ export function ConnectionView(props: { setup?: boolean; onConnected?: () => voi
     >
       <div class="view">
         <header class="view-head">
-          <h1>Verbindung</h1>
+          <h1>Einstellungen</h1>
         </header>
-        <p class="muted">Server und Anmeldung dieser App. Änderungen werden lokal gespeichert und im Hintergrund abgeglichen.</p>
-        {form}
+        <section class="detail-section" aria-label="Verbindung">
+          <h3>Verbindung</h3>
+          <p class="muted">Server und Anmeldung dieser App. Änderungen werden lokal gespeichert und im Hintergrund abgeglichen.</p>
+          {form}
+        </section>
         <section class="detail-section connection-status" aria-label="Abgleich">
           <h3>Abgleich</h3>
           <p data-testid="last-sync">{lastSyncText()}</p>
@@ -331,8 +340,94 @@ export function ConnectionView(props: { setup?: boolean; onConnected?: () => voi
             </button>
           </Show>
         </section>
+        <AppSettings />
       </div>
     </Show>
+  );
+}
+
+/** The app itself: version, start at login, updates, notifications. */
+function AppSettings() {
+  const [busy, setBusy] = createSignal<"" | "autostart" | "update" | "restart" | "notification">("");
+  onMount(() => void loadAppInfo());
+
+  async function run(what: "autostart" | "update" | "notification", action: () => Promise<ActionResult>, done?: string) {
+    setBusy(what);
+    try {
+      const outcome = await action();
+      if (!outcome.ok) toast(outcome.message ?? "Unbekannter Fehler.", "error");
+      else if (done) toast(done);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function restart() {
+    setBusy("restart");
+    try {
+      await restartApp();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : String(err), "error");
+      setBusy("");
+    }
+  }
+
+  const update = () => appInfo()?.update ?? null;
+  const updateText = () => {
+    const u = update();
+    if (!u) return "";
+    if (u.installed) return `Version ${u.installed} ist installiert und wird nach einem Neustart aktiv.`;
+    const last = u.last_check;
+    if (!last) return "Zunder sucht beim Start und danach alle 6 Stunden selbst nach Updates.";
+    const when = formatInstant(new Date(last.at_ms).toISOString(), new Date(now()));
+    return last.ok ? `Zunder ist aktuell (geprüft: ${when}).` : `Letzte Prüfung ${when} fehlgeschlagen: ${last.error ?? "unbekannter Fehler"}`;
+  };
+
+  return (
+    <section class="detail-section app-settings" aria-label="App">
+      <h3>App</h3>
+      <p class="muted" data-testid="app-version">
+        Zunder {appInfo()?.version ?? "…"}
+      </p>
+      <Show when={appInfo()?.desktop}>
+        <label class="toggle">
+          <input
+            type="checkbox"
+            checked={!!appInfo()?.autostart}
+            disabled={busy() === "autostart" || appInfo()?.autostart == null}
+            onChange={(e) => {
+              const enabled = e.currentTarget.checked;
+              void run("autostart", () => setAutostart(enabled), enabled ? "Zunder startet ab jetzt beim Anmelden." : "Autostart ist aus.");
+            }}
+          />
+          Beim Anmelden am Rechner starten
+        </label>
+        <p class="muted">
+          Zunder startet dann unsichtbar in der Menüleiste. Das Fenster zu schließen beendet Zunder nicht; Erinnerungen kommen weiter. Beenden geht über das Zunder-Symbol in der Menüleiste.
+        </p>
+        <p data-testid="update-status">{updateText()}</p>
+        <div class="app-actions">
+          <Show
+            when={update()?.installed}
+            fallback={
+              <button class="btn" disabled={busy() === "update"} onClick={() => void run("update", checkUpdate)}>
+                <Icon name="sync" size={14} /> {busy() === "update" ? "Sucht …" : "Nach Updates suchen"}
+              </button>
+            }
+          >
+            <button class="btn btn-primary" disabled={busy() === "restart"} onClick={() => void restart()}>
+              Jetzt neu starten
+            </button>
+          </Show>
+        </div>
+      </Show>
+      <div class="app-actions">
+        <button class="btn" disabled={busy() === "notification"} onClick={() => void run("notification", testNotification, "Testbenachrichtigung gesendet.")}>
+          Testbenachrichtigung senden
+        </button>
+      </div>
+      <p class="muted">Kommt keine an: in den Systemeinstellungen unter „Mitteilungen“ Zunder erlauben.</p>
+    </section>
   );
 }
 

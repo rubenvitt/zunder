@@ -67,7 +67,7 @@ export function CommandPalette(props: { request: PaletteRequest }) {
     // In the Tauri app there is no session: tokens and logout give way to the connection settings.
     const account = isTauri()
       ? [
-          go("Verbindung zum Server", () => navigate({ view: "verbindung" })),
+          go("Einstellungen", () => navigate({ view: "verbindung" }), "Verbindung, Autostart, Updates"),
           go("Jetzt abgleichen", () => {
             void import("../state/desktop")
               .then((m) => m.syncNow())

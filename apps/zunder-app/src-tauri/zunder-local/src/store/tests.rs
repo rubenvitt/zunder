@@ -758,3 +758,15 @@ fn legacy_uuids_are_rewritten_on_open() {
         .unwrap();
     assert_eq!(task_id, new(child).to_string());
 }
+
+#[test]
+fn reminders_checked_at_is_stored() {
+    let store = LocalStore::open_in_memory().unwrap();
+    assert_eq!(store.reminders_checked_at().unwrap(), None);
+    store.set_reminders_checked_at(1_790_000_000_000).unwrap();
+    store.set_reminders_checked_at(1_790_000_030_000).unwrap();
+    assert_eq!(
+        store.reminders_checked_at().unwrap(),
+        Some(1_790_000_030_000)
+    );
+}

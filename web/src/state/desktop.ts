@@ -4,12 +4,13 @@
 // demand in initDesktop(), so the browser bundle stays free of it.
 
 import { createSignal } from "solid-js";
-import type { AppConfig, ConfigUpdate, SyncEvent, TauriApp, TauriBackend } from "../platform/tauri";
+import type { AppConfig, AppInfo, ConfigUpdate, SyncEvent, TauriApp, TauriBackend, UpdateStatus } from "../platform/tauri";
 import { configureServices, reloadData, reportRejected, setAppPending } from "./store";
 
 const [config, setConfig] = createSignal<AppConfig | null>(null);
 const [lastEvent, setLastEvent] = createSignal<SyncEvent | null>(null);
 const [syncing, setSyncing] = createSignal(false);
+const [info, setInfo] = createSignal<AppInfo | null>(null);
 
 /** Login in the system browser: waiting for the browser, done, or failed. */
 export type LoginState = { state: "idle" } | { state: "waiting" } | { state: "done" } | { state: "error"; code: string; message: string };
@@ -19,7 +20,7 @@ export { login as loginState };
 let app: TauriApp | null = null;
 let errorCode: (err: unknown) => string = () => "app";
 
-export { config as appConfig, syncing as appSyncing };
+export { config as appConfig, syncing as appSyncing, info as appInfo };
 
 export function isConfigured(c: AppConfig | null = config()): boolean {
   return !!c?.server_url && !!c.has_api_token;
@@ -59,6 +60,7 @@ export async function initDesktop(backend?: TauriBackend): Promise<AppConfig> {
     }
     void refreshConfig();
   });
+  app.on("update", setUpdate);
   app.on("login", (event) => {
     if (!event.ok) {
       setLogin({ state: "error", code: event.error.code, message: event.error.message });
@@ -181,6 +183,58 @@ export async function reloadConfig(): Promise<AppConfig | null> {
   return config();
 }
 
+// ---- The app itself: version, start at login, updates, notifications ------
+
+function setUpdate(update: UpdateStatus): void {
+  setInfo((current) => (current ? { ...current, update } : current));
+}
+
+/** Reads version, autostart and update state of the app. */
+export async function loadAppInfo(): Promise<AppInfo | null> {
+  try {
+    setInfo(await connected().appInfo());
+  } catch (err) {
+    console.error("App-Informationen nicht lesbar", err);
+  }
+  return info();
+}
+
+export async function setAutostart(enabled: boolean): Promise<ActionResult> {
+  try {
+    const autostart = await connected().setAutostart(enabled);
+    setInfo((current) => (current ? { ...current, autostart } : current));
+    return { ok: true };
+  } catch (err) {
+    return failure(err, false);
+  }
+}
+
+/** Looks for a newer version now; an installed one waits for restartApp(). */
+export async function checkUpdate(): Promise<ActionResult & { update?: UpdateStatus }> {
+  try {
+    const update = await connected().checkUpdate();
+    setUpdate(update);
+    return { ok: true, update };
+  } catch (err) {
+    // The failed check is part of the status now.
+    await loadAppInfo();
+    return failure(err, false);
+  }
+}
+
+export async function restartApp(): Promise<void> {
+  await connected().restartApp();
+}
+
+export async function testNotification(): Promise<ActionResult> {
+  try {
+    await connected().testNotification();
+    return { ok: true };
+  } catch (err) {
+    return failure(err, false);
+  }
+}
+
 /** Test hook: forget the connection. */
 export function resetDesktopForTests(): void {
   app?.close();
@@ -189,4 +243,5 @@ export function resetDesktopForTests(): void {
   setLastEvent(null);
   setSyncing(false);
   setLogin({ state: "idle" });
+  setInfo(null);
 }

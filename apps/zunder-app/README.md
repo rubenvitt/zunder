@@ -22,6 +22,7 @@ apps/zunder-app/
     src/login.rs          Anmeldung im Browser: Deep-Link zurück, Geräte-Token speichern
     src/notify.rs         Erinnerungen (mobil: OS-Planer, Desktop: Timer)
     src/update.rs         Selbstaktualisierung aus GitHub-Releases (nur Desktop)
+    src/desktop.rs        Menüleisten-Symbol, Weiterlaufen bei geschlossenem Fenster, Autostart (nur Desktop)
     zunder-local/         Speicher, Sync, Anmeldung (OAuth), Erinnerungsplanung – ohne Webview testbar
 ```
 
@@ -61,7 +62,15 @@ ZUNDER_SERVER_BIN=$PWD/target/debug/zunder-server \
 
 ## Updates und Releases
 
-Die Desktop-App aktualisiert sich selbst aus den GitHub-Releases (`tauri-plugin-updater`, nur Desktop, nur Release-Builds; `src/update.rs`). Sie prüft beim Start und dann alle 6 Stunden `https://github.com/rubenvitt/zunder/releases/latest/download/latest.json`, lädt eine neuere Version im Hintergrund herunter, installiert sie und meldet das per Benachrichtigung. Aktiv wird sie beim nächsten Start; die App startet nicht von selbst neu. Updates müssen mit dem Schlüssel signiert sein, dessen öffentlicher Teil in `tauri.conf.json` (`plugins.updater.pubkey`) steht.
+Die Desktop-App aktualisiert sich selbst aus den GitHub-Releases (`tauri-plugin-updater`, nur Desktop, nur Release-Builds; `src/update.rs`). Sie prüft beim Start, dann alle 6 Stunden und auf Knopfdruck in den Einstellungen (`check_update`) `https://github.com/rubenvitt/zunder/releases/latest/download/latest.json`, lädt eine neuere Version im Hintergrund herunter, installiert sie und meldet das per Benachrichtigung und Ereignis `zunder://update`. Aktiv wird sie beim nächsten Start; die App startet nicht von selbst neu, die Einstellungen bieten dafür „Jetzt neu starten“ (`restart_app`). Updates müssen mit dem Schlüssel signiert sein, dessen öffentlicher Teil in `tauri.conf.json` (`plugins.updater.pubkey`) steht.
+
+## Desktop: Menüleiste und Autostart
+
+`src/desktop.rs`, nur Desktop:
+
+- **Weiterlaufen:** Das Fenster zu schließen versteckt es nur; Zunder läuft mit einem Symbol in der Menüleiste (Tray) weiter, damit Sync und Erinnerungen weitergehen. Das Menü des Symbols bietet „Zunder öffnen“ und „Beenden“; auf macOS holt auch ein Klick aufs Dock-Symbol das Fenster zurück, Cmd+Q beendet.
+- **Autostart:** In den Einstellungen schaltbar (`set_autostart`, `tauri-plugin-autostart`; auf macOS ein Launch-Agent unter `~/Library/LaunchAgents`). Der Eintrag startet die App mit `--hidden`: Sie legt das Fenster dann unsichtbar an (`tauri.conf.json` hat dafür `create: false`, das Fenster entsteht in `setup`) und ist nur in der Menüleiste zu sehen.
+- Nur eine laufende Instanz ist vorgesehen; auf Linux und Windows fehlt dafür noch `tauri-plugin-single-instance` (siehe [Anmeldung](#anmeldung)).
 
 Releases entstehen automatisch aus [Conventional Commits](https://www.conventionalcommits.org/de/v1.0.0/): Nach jedem grünen CI-Lauf eines Pushs auf `main` bestimmt semantic-release (`.github/workflows/release.yml`, Konfiguration in `.github/release/release.mjs`) die nächste Version aus den Commits seit dem letzten Tag `v*`, setzt den Tag und ruft `.github/workflows/app.yml` auf.
 
@@ -142,7 +151,7 @@ SQLite-Datei `zunder.db` im App-Datenverzeichnis (Linux: `~/.local/share/dev.rub
 |---|---|
 | `ops` | Operations-Log: `pending` (lokal angewendet, noch nicht gepusht, in lokaler Reihenfolge) und `confirmed` (vom Server angenommen; `server_seq`, sobald gepullt) |
 | `entities` | materialisierter **bestätigter** Zustand, je Entität ein `SnapshotEntity` als JSON |
-| `meta` | `cursor`, `node_id`, `server_url`, `data_server_url` (Server, zu dem die lokalen Daten gehören; bleibt beim Löschen der Adresse), `api_token` (API- oder Geräte-Token), `last_sync`, `pending_login` (laufende Anmeldung im Browser) |
+| `meta` | `cursor`, `node_id`, `server_url`, `data_server_url` (Server, zu dem die lokalen Daten gehören; bleibt beim Löschen der Adresse), `api_token` (API- oder Geräte-Token), `last_sync`, `pending_login` (laufende Anmeldung im Browser), `reminders_checked_at` (letzte Prüfung des Erinnerungs-Timers, nur Desktop) |
 | `reminders` | an das Betriebssystem übergebene Benachrichtigungen (nur mobil genutzt) |
 
 Im Speicher hält die App zwei Zustände: den bestätigten und die **Sicht** = bestätigt + ausstehende Operationen. Die UI sieht immer die Sicht. Lehnt der Server eine Operation ab, wird die Sicht aus dem bestätigten Zustand und den übrigen ausstehenden Operationen neu aufgebaut (Rücknahme) und die Ablehnung gemeldet.
@@ -180,6 +189,11 @@ Die Web-UI ruft sie mit `invoke` aus `@tauri-apps/api/core` auf (`TauriTransport
 | `set_config` | `{"update": {"server_url"?: String\|null, "api_token"?: String\|null, "discard_pending"?: bool}}` | wie `get_config`. Fehlender Schlüssel = unverändert, `null` = löschen |
 | `login_start` | `{"server_url": String, "device_name": String, "discard_pending": bool}` | `null`; öffnet die Anmeldung im System-Browser (siehe [Anmeldung](#anmeldung)), das Ergebnis kommt als `zunder://login`. Würde der Serverwechsel ausstehende Änderungen verwerfen: sofort `pending_ops` |
 | `task_history` | `{"task_id": UUID}` | `[{"seq","op","source","received_at"}]` – `GET /api/tasks/{id}/history` mit dem gespeicherten Token; kennt nur, was der Server schon erhalten hat |
+| `app_info` | – | `{"version": String, "desktop": bool, "autostart": bool\|null, "update": UpdateStatus\|null}` – die App selbst; `autostart` und `update` sind mobil `null` |
+| `set_autostart` | `{"enabled": bool}` | neuer Zustand (`bool`); nur Desktop, sonst `unsupported` |
+| `check_update` | – | `UpdateStatus`: `{"installed": String\|null, "last_check": {"at_ms","ok","error"?}\|null}` – sucht sofort nach einer neueren Version und installiert sie (`installed`, aktiv nach `restart_app`). Fehler `update`; in Entwicklungsversionen und mobil `unsupported` |
+| `restart_app` | – | startet die App neu (etwa für ein installiertes Update) |
+| `test_notification` | – | `null`; zeigt sofort eine Benachrichtigung. Fehler `notification` |
 | `flame_start`, `flame_stop` | `{"task_id": UUID}` | Antwort des Servers unverändert (`{task, running, stopped_task_ids, unchanged, timing, warnings}`). Vorher wird gepusht, falls Operationen ausstehen (der Server kennt sonst die Aufgabe nicht), danach synchronisiert, damit `flame_started_at`/`flame_ended_at` sofort per `zunder://changed` ankommen. Stopp ohne laufende Flamme: Fehler `server` („Server-Fehler (409): …“) |
 
 Regeln:
@@ -187,7 +201,7 @@ Regeln:
 - Operationen erzeugt die Web-UI selbst (wie im Browser). Als Knoten-ID ihrer HLC nimmt sie `node_id` aus `get_config` (Form `app-<12 hex>`), damit HLCs verschiedener Geräte nie kollidieren.
 - `server_url`: `http(s)://host[:port][/pfad]`, ohne Query, Fragment und Zugangsdaten; ein abschließender `/` wird entfernt; `http://` nur für lokale Adressen (siehe [Sync](#sync)). `api_token`: nicht leer, ohne Leerzeichen.
 - Ein **Wechsel auf einen anderen Server** löscht die lokalen Daten (Log, Zustand, Cursor). Gibt es ausstehende Operationen, schlägt er mit `pending_ops` fehl, außer `discard_pending` ist `true`. Maßgeblich ist der Server, von dem die lokalen Daten stammen: Wer die Adresse mit `null` löscht und dann eine andere setzt, wechselt ebenfalls.
-- Fehlercodes: `not_configured`, `invalid_config`, `pending_ops`, `network`, `unauthorized`, `server`, `protocol`, `db`, `corrupt`, `schema_too_new`, `notification`, `reconfigured` (Server während des Durchgangs gewechselt).
+- Fehlercodes: `not_configured`, `invalid_config`, `pending_ops`, `network`, `unauthorized`, `server`, `protocol`, `db`, `corrupt`, `schema_too_new`, `notification`, `reconfigured` (Server während des Durchgangs gewechselt), `login`, `update`, `autostart`, `unsupported` (nicht auf dieser Plattform).
 
 Ereignisse (`listen` aus `@tauri-apps/api/event`):
 
@@ -195,6 +209,7 @@ Ereignisse (`listen` aus `@tauri-apps/api/event`):
 |---|---|---|
 | `zunder://changed` | `{"cursor": N, "pending": N}` | Die Sicht hat sich durch einen Sync geändert (neue Daten oder Rücknahme, auch in einem später gescheiterten Durchgang) – `local_snapshot` neu laden |
 | `zunder://login` | `{"ok": true}` oder `{"ok": false, "error": {"code","message"}}` | Die Anmeldung im Browser ist abgeschlossen: Server-Adresse und Geräte-Token sind gespeichert, ein Sync läuft. Fehlercode `login` für abgelehnte, abgelaufene oder fremde Antworten |
+| `zunder://update` | `UpdateStatus` (wie `check_update`) | Eine neuere Version ist installiert und wartet auf den Neustart (nur Desktop) |
 | `zunder://sync` | `{"ok": true, "report": SyncReport}` oder `{"ok": false, "error": {"code","message"}, "report": SyncReport}` | Ein Sync-Versuch ist fertig; Ablehnungen stehen in `report.rejected` (auch bei `ok: false`: was der Durchgang vor dem Fehler getan hat) und sollten angezeigt werden. Nicht für `reconfigured` |
 
 `local_apply` sendet kein Ereignis; die aufrufende UI kennt das Ergebnis.
@@ -207,7 +222,7 @@ Die Web-UI erkennt die App an `window.__TAURI_INTERNALS__` und lädt erst dann p
 
 - **Start:** `get_config`. Fehlen Server-Adresse oder Token, erscheint statt der OIDC-Anmeldung die Einrichtung: Server-Adresse und Gerätename (Vorschlag aus dem User-Agent), „Im Browser anmelden“ (`login_start`, dann Hinweis, bis `zunder://login` kommt; kehrt das Fenster zurück, liest die UI `get_config` neu, falls das Ereignis verloren ging). Daneben weiterhin Server-Adresse + API-Token → `set_config`, danach `sync_now` als Probe. Ein abgelehnter Token oder ein nicht erreichbarer Server wird angezeigt; die Einstellungen bleiben gespeichert („Trotzdem öffnen“). Ist alles eingerichtet, startet die UI sofort mit den lokalen Daten, auch offline.
 - **Sync-Engine der Web-UI:** Snapshot = `local_snapshot`, Push = `local_apply`, Pull gibt es nicht. Nach `zunder://changed` lädt die Engine den Snapshot neu (Ausstehendes bleibt obenauf). Die HLC-Knoten-ID ist `node_id`. Eine Ausstehend-Warteschlange führt die Web-UI nur für einen laufenden `local_apply`, gespeichert wird in SQLite.
-- **Status:** Die Sync-Anzeige folgt `zunder://sync` (Synchron, Synchronisiert …, Offline, Token abgelehnt, Sync-Fehler) und der Zahl ausstehender Operationen der App; Ablehnungen aus `report.rejected` erscheinen als Meldung, auch aus einem gescheiterten Durchgang. Ein Klick führt zur Ansicht **Verbindung** (`#/verbindung`: Adresse, Token ersetzen, letzter Abgleich, „Jetzt abgleichen“). Sie ersetzt in der App die Token-Seite und „Abmelden“.
+- **Status:** Die Sync-Anzeige folgt `zunder://sync` (Synchron, Synchronisiert …, Offline, Token abgelehnt, Sync-Fehler) und der Zahl ausstehender Operationen der App; Ablehnungen aus `report.rejected` erscheinen als Meldung, auch aus einem gescheiterten Durchgang. Ein Klick führt zu den **Einstellungen** der App (`#/verbindung`, in der Seitenleiste „Einstellungen“): Verbindung (Adresse, Token ersetzen), Abgleich (letzter Abgleich, „Jetzt abgleichen“) und App (Version, „Beim Anmelden am Rechner starten“, Update-Stand mit „Nach Updates suchen“ bzw. „Jetzt neu starten“, „Testbenachrichtigung senden“; mobil nur Version und Testbenachrichtigung). Sie ersetzen in der App die Token-Seite, die Server-Einstellungen und „Abmelden“.
 - **Serverwechsel** mit ausstehenden Änderungen: Die UI meldet `pending_ops` und bietet „Änderungen verwerfen und wechseln“ an (`discard_pending: true`).
 - Verlauf und Flammen laufen über `task_history`, `flame_start` und `flame_stop`.
 
@@ -223,7 +238,8 @@ Nach jeder Zustandsänderung (lokal, Sync, Start, Rückkehr in den Vordergrund) 
 Titel ist der Aufgabentitel, der Text „Erinnerung“ bzw. „Jetzt fällig“, ergänzt um Bereich oder Projekt der Wurzel-Aufgabe.
 
 - **Mobil** plant das Betriebssystem (64 nächste, siehe oben). Unveränderte Erinnerungen bleiben, geänderte werden abgesagt und unter derselben ID neu geplant, entfallene abgesagt. Bereits zugestellte bleiben sichtbar. Jede Erinnerung wird für sich geplant: Lehnt das System eine ab (iOS etwa einen gerade verstrichenen Zeitpunkt), gehen die übrigen trotzdem hinaus; die abgelehnte wird nicht gespeichert und beim nächsten Mal erneut geplant. Schlägt schon das Absagen fehl, wird nichts gespeichert.
-- **Desktop:** Das Plugin kann dort nicht planen. Ein Timer in der App zeigt fällige Erinnerungen an, solange die App läuft. Was fällig wird, während die App geschlossen ist, wird nicht nachgeholt.
+- **Desktop:** Das Plugin kann dort nicht planen. Ein Timer in der App zeigt fällige Erinnerungen an, solange die App läuft; das tut sie auch bei geschlossenem Fenster (Menüleiste, siehe oben). Den Zeitpunkt seiner letzten Prüfung speichert der Timer (`meta.reminders_checked_at`). Was fällig wurde, während die App nicht lief, holt er beim nächsten Start nach (höchstens eine Woche zurück): bis zu drei Erinnerungen einzeln („Verpasst – …“), mehr als eine Sammelmeldung („5 verpasste Erinnerungen“). Beim allerersten Start gibt es nichts nachzuholen.
+- **Testen:** „Testbenachrichtigung senden“ in den Einstellungen (`test_notification`). Auf dem Desktop fragt die App nicht nach der Berechtigung; kommt nichts an, Zunder in den Mitteilungen des Systems erlauben.
 
 ## Offen
 

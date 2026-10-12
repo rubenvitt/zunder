@@ -87,6 +87,9 @@ const META_API_TOKEN: &str = "api_token";
 const META_LAST_SYNC: &str = "last_sync";
 /// A started login waiting for the browser ([`crate::login::PendingLogin`]).
 const META_PENDING_LOGIN: &str = "pending_login";
+/// Unix ms of the desktop reminder timer's last check (catch-up after a
+/// restart).
+const META_REMINDERS_CHECKED_AT: &str = "reminders_checked_at";
 
 const API_TOKEN_MAX_LEN: usize = 512;
 
@@ -501,6 +504,20 @@ impl LocalStore {
     pub fn record_sync(&self, last: &LastSync) -> Result<()> {
         let json = serde_json::to_string(last).expect("LastSync serializes");
         set_meta(&self.conn, META_LAST_SYNC, &json)
+    }
+
+    /// When the desktop reminder timer last checked (Unix ms), if ever.
+    pub fn reminders_checked_at(&self) -> Result<Option<i64>> {
+        get_meta(&self.conn, META_REMINDERS_CHECKED_AT)?
+            .map(|v| {
+                v.parse()
+                    .map_err(|e| Error::Corrupt(format!("reminders_checked_at: {e}")))
+            })
+            .transpose()
+    }
+
+    pub fn set_reminders_checked_at(&self, at_ms: i64) -> Result<()> {
+        set_meta(&self.conn, META_REMINDERS_CHECKED_AT, &at_ms.to_string())
     }
 
     // ----- configuration ------------------------------------------------------

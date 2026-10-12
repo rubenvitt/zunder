@@ -7,8 +7,10 @@
 //!   scheduled again.
 //! - **Desktop:** the plugin cannot schedule (it shows notifications
 //!   immediately), so a timer inside the app fires due reminders while the
-//!   app runs. Reminders that fall due while the app is closed are not
-//!   shown afterwards.
+//!   app runs (it keeps running in the menu bar when the window is closed).
+//!   Reminders that fell due while the app was not running are caught up at
+//!   the next start (last check stored in the local store, at most a week
+//!   back; more than a few become one summary).
 
 use std::sync::Mutex;
 
@@ -61,8 +63,9 @@ mod desktop {
 
     use tauri::{AppHandle, Manager};
     use tauri_plugin_notification::NotificationExt;
-    use zunder_local::reminders::{due_in_window, next_reminder_at, Reminder};
+    use zunder_local::reminders::{due_in_window, next_reminder_at};
     use zunder_local::sync::lock;
+    use zunder_local::{catch_up_notices, missed_reminders, Notice, Reminder};
 
     use super::now_ms;
     use crate::AppState;
@@ -73,7 +76,7 @@ mod desktop {
 
     pub fn start(app: AppHandle) {
         tauri::async_runtime::spawn(async move {
-            let mut last_check = now_ms();
+            let mut last_check = catch_up(&app);
             loop {
                 let state = app.state::<AppState>();
                 let next = next_reminder_at(lock(&state.store).state(), last_check);
@@ -89,20 +92,56 @@ mod desktop {
                 if now > last_check {
                     let due = due_in_window(lock(&state.store).state(), last_check, now);
                     for reminder in &due {
-                        show(&app, reminder);
+                        show(&app, &notice(reminder));
                     }
                 }
                 last_check = now;
+                save_checked_at(&app, now);
             }
         });
     }
 
-    fn show(app: &AppHandle, reminder: &Reminder) {
+    /// Shows what fell due since the previous run's last check; returns the
+    /// start of the timer's first window.
+    fn catch_up(app: &AppHandle) -> i64 {
+        let state = app.state::<AppState>();
+        let now = now_ms();
+        let store = lock(&state.store);
+        let checked_at = store
+            .reminders_checked_at()
+            .inspect_err(|e| log::warn!("reading the last reminder check failed: {e}"))
+            .ok()
+            .flatten();
+        let missed = missed_reminders(store.state(), checked_at, now);
+        drop(store);
+        for notice in catch_up_notices(&missed) {
+            show(app, &notice);
+        }
+        save_checked_at(app, now);
+        now
+    }
+
+    fn save_checked_at(app: &AppHandle, at_ms: i64) {
+        let state = app.state::<AppState>();
+        let saved = lock(&state.store).set_reminders_checked_at(at_ms);
+        if let Err(e) = saved {
+            log::warn!("storing the last reminder check failed: {e}");
+        }
+    }
+
+    fn notice(reminder: &Reminder) -> Notice {
+        Notice {
+            title: reminder.title.clone(),
+            body: reminder.body.clone(),
+        }
+    }
+
+    fn show(app: &AppHandle, notice: &Notice) {
         let result = app
             .notification()
             .builder()
-            .title(&reminder.title)
-            .body(&reminder.body)
+            .title(&notice.title)
+            .body(&notice.body)
             .show();
         if let Err(e) = result {
             log::warn!("showing reminder failed: {e}");

@@ -169,8 +169,8 @@ function Shell() {
             }
           >
             <a href="#/verbindung" class="nav-item small" classList={{ active: active("verbindung") }}>
-              <Icon name="sync" size={16} />
-              <span>Verbindung</span>
+              <Icon name="settings" size={16} />
+              <span>Einstellungen</span>
             </a>
           </Show>
           <button class="nav-item small" onClick={() => setHelpOpen(true)}>
@@ -202,8 +202,8 @@ function Shell() {
             </>
           }
         >
-          <a class="btn btn-ghost btn-icon" aria-label="Verbindung" href="#/verbindung">
-            <Icon name="sync" />
+          <a class="btn btn-ghost btn-icon" aria-label="Einstellungen" href="#/verbindung">
+            <Icon name="settings" />
           </a>
         </Show>
       </header>
