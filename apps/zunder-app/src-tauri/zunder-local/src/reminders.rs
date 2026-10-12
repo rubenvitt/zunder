@@ -18,7 +18,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-use uuid::Uuid;
+use zunder_core::ids::Id;
 use zunder_core::{Due, Location, State};
 
 /// iOS limit for pending local notifications per app; used on all platforms.
@@ -62,7 +62,7 @@ impl ReminderKind {
 /// A notification that should fire.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Reminder {
-    pub task_id: Uuid,
+    pub task_id: Id,
     pub kind: ReminderKind,
     /// Unix milliseconds.
     pub at_ms: i64,
@@ -71,7 +71,7 @@ pub struct Reminder {
 }
 
 impl Reminder {
-    pub fn key(&self) -> (Uuid, ReminderKind) {
+    pub fn key(&self) -> (Id, ReminderKind) {
         (self.task_id, self.kind)
     }
 }
@@ -160,7 +160,7 @@ pub fn plan_schedule(
     now_ms: i64,
 ) -> SchedulePlan {
     let desired_keys: HashSet<_> = desired.iter().map(Reminder::key).collect();
-    let mut live: HashMap<(Uuid, ReminderKind), &ScheduledReminder> = HashMap::new();
+    let mut live: HashMap<(Id, ReminderKind), &ScheduledReminder> = HashMap::new();
     let mut used_ids: HashSet<i32> = HashSet::new();
     let mut plan = SchedulePlan::default();
 
@@ -235,13 +235,14 @@ fn free_id(reminder: &Reminder, used: &HashSet<i32>) -> i32 {
 }
 
 /// FNV-1a over task ID, kind and attempt, folded into `1..=i32::MAX`.
-pub fn notification_id(task_id: Uuid, kind: ReminderKind, attempt: u32) -> i32 {
+pub fn notification_id(task_id: Id, kind: ReminderKind, attempt: u32) -> i32 {
     let mut hash: u32 = 0x811c_9dc5;
     let kind_byte = match kind {
         ReminderKind::Remind => 1u8,
         ReminderKind::Due => 2u8,
     };
     for byte in task_id
+        .as_str()
         .as_bytes()
         .iter()
         .copied()
@@ -260,7 +261,7 @@ fn unix_ms(dt: OffsetDateTime) -> i64 {
 }
 
 /// Name of the area or project the task effectively lives in.
-fn container_name(state: &State, task_id: Uuid) -> Option<String> {
+fn container_name(state: &State, task_id: Id) -> Option<String> {
     match state.effective_location(task_id)? {
         Location::Project { id } => state.project(id).map(|p| p.name),
         Location::Area { id } => state.area(id).map(|a| a.name),
@@ -305,7 +306,7 @@ mod tests {
             }
         }
 
-        fn batch(&mut self, build: impl FnOnce(&mut OpBatch<'_>) -> Uuid) -> Uuid {
+        fn batch(&mut self, build: impl FnOnce(&mut OpBatch<'_>) -> Id) -> Id {
             let mut batch = OpBatch::new(&mut self.clock, NOW as u64);
             let id = build(&mut batch);
             let ops: Vec<Op> = batch.into_ops();
@@ -315,11 +316,11 @@ mod tests {
             id
         }
 
-        fn task(&mut self, title: &str) -> Uuid {
+        fn task(&mut self, title: &str) -> Id {
             self.batch(|b| b.create_task(NewTask::new(title)))
         }
 
-        fn set(&mut self, id: Uuid, field: &str, value: serde_json::Value) {
+        fn set(&mut self, id: Id, field: &str, value: serde_json::Value) {
             self.batch(|b| {
                 b.set_task(id, field, value);
                 id
@@ -422,7 +423,7 @@ mod tests {
 
     fn reminder(task: u128, kind: ReminderKind, at_ms: i64, title: &str) -> Reminder {
         Reminder {
-            task_id: Uuid::from_u128(task),
+            task_id: Id::parse(&format!("t{:023}", task)).unwrap(),
             kind,
             at_ms,
             title: title.into(),
@@ -520,12 +521,18 @@ mod tests {
 
     #[test]
     fn notification_ids_are_stable_and_positive() {
-        let id = Uuid::parse_str("01929c3e-0000-7000-8000-0000000000aa").unwrap();
+        let id = Id::parse("tz4a98xxat96iws9zmbrgj3a").unwrap();
         let a = notification_id(id, ReminderKind::Remind, 0);
         assert_eq!(a, notification_id(id, ReminderKind::Remind, 0));
         assert_ne!(a, notification_id(id, ReminderKind::Due, 0));
         for task in 0..10_000u128 {
-            assert!(notification_id(Uuid::from_u128(task), ReminderKind::Due, 0) > 0);
+            assert!(
+                notification_id(
+                    Id::parse(&format!("t{:023}", task)).unwrap(),
+                    ReminderKind::Due,
+                    0
+                ) > 0
+            );
         }
     }
 

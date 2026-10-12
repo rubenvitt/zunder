@@ -2,8 +2,8 @@
 //! state, HLC assignment and push batches.
 
 use serde_json::Value;
-use uuid::Uuid;
 use zunder_core::hlc::{Clock, NodeId};
+use zunder_core::ids::Id;
 use zunder_core::model::fields;
 use zunder_core::{EntityKind, Op, OpBatch, State, TaskStatus, TaskType};
 
@@ -21,7 +21,7 @@ pub const MAX_PUSH_BYTES: usize = 7 * 1024 * 1024;
 #[derive(Debug, Clone, PartialEq)]
 pub struct EntityOps {
     pub kind: EntityKind,
-    pub id: Uuid,
+    pub id: Id,
     pub label: String,
     pub ops: Vec<Op>,
 }
@@ -234,10 +234,15 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// Test IDs ordered like `n` (`t000…0n`).
+    fn test_id(n: u128) -> Id {
+        Id::parse(&format!("t{n:023}")).unwrap()
+    }
+
     fn desired(id: u128, fields: &[(&str, Value)]) -> Desired {
         Desired {
             kind: EntityKind::Task,
-            id: Uuid::from_u128(id),
+            id: test_id(id),
             label: format!("t{id}"),
             fields: fields
                 .iter()
@@ -420,7 +425,7 @@ mod tests {
             .iter()
             .map(|g| {
                 (
-                    g.id.as_u128(),
+                    g.id.as_str()[1..].parse::<u128>().unwrap(),
                     g.ops.iter().map(|o| o.field.as_str()).collect(),
                 )
             })

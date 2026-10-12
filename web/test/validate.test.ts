@@ -3,7 +3,7 @@ import { mergeOps } from "../src/sync/merge";
 import { checkField, deleteCascade, validateOps } from "../src/sync/validate";
 import { op } from "./helpers";
 
-const id = (n: number) => `0192a000-0000-7000-8000-${String(n).padStart(12, "0")}`;
+const id = (n: number) => `v${String(n).padStart(23, "0")}`;
 const A1 = id(1);
 const DEV = id(2);
 const STD = id(3);

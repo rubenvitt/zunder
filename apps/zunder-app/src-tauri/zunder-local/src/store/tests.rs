@@ -11,7 +11,7 @@ fn now() -> u64 {
     system_time_ms()
 }
 
-fn title(store: &LocalStore, id: Uuid) -> Option<String> {
+fn title(store: &LocalStore, id: Id) -> Option<String> {
     store.state().task(id).map(|t| t.title)
 }
 
@@ -432,7 +432,7 @@ fn scheduled_reminders_round_trip() {
         ScheduledReminder {
             id: 7,
             reminder: Reminder {
-                task_id: Uuid::from_u128(1),
+                task_id: Id::parse(&format!("t{:023}", 1)).unwrap(),
                 kind: ReminderKind::Remind,
                 at_ms: 2_000,
                 title: "A".into(),
@@ -442,7 +442,7 @@ fn scheduled_reminders_round_trip() {
         ScheduledReminder {
             id: 3,
             reminder: Reminder {
-                task_id: Uuid::from_u128(1),
+                task_id: Id::parse(&format!("t{:023}", 1)).unwrap(),
                 kind: ReminderKind::Due,
                 at_ms: 1_000,
                 title: "A".into(),
@@ -667,4 +667,94 @@ fn plain_http_only_for_local_hosts() {
         assert_eq!(err.code(), "invalid_config", "{url}");
         assert!(err.to_string().contains("https"), "{err}");
     }
+}
+
+#[test]
+fn legacy_uuids_are_rewritten_on_open() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("zunder.db");
+    drop(LocalStore::open(&path).unwrap());
+    let parent = "0192a000-0000-7000-8000-0c0000000001";
+    let child = "0192a000-0000-7000-8000-0c0000000002";
+    let new = |s: &str| Id::parse_any(s).unwrap();
+    {
+        // A store from before CUID2: confirmed parent, pending subtask.
+        let conn = Connection::open(&path).unwrap();
+        let insert = |op_id: &str,
+                      entity_id: &str,
+                      field: &str,
+                      value: &str,
+                      status: &str,
+                      seq: Option<i64>| {
+            conn.execute(
+                "INSERT INTO ops (op_id, entity, entity_id, field, value_json, hlc, status, server_seq)
+                 VALUES (?1, 'task', ?2, ?3, ?4, '1760000000000:00000:web-a', ?5, ?6)",
+                params![op_id, entity_id, field, value, status, seq],
+            )
+            .unwrap();
+        };
+        insert(
+            "0192a000-0000-7000-8000-0f0000000001",
+            parent,
+            "title",
+            "\"Eltern\"",
+            "confirmed",
+            Some(1),
+        );
+        insert(
+            "0192a000-0000-7000-8000-0f0000000002",
+            child,
+            "title",
+            "\"Kind\"",
+            "pending",
+            None,
+        );
+        insert(
+            "0192a000-0000-7000-8000-0f0000000003",
+            child,
+            "parent_id",
+            &format!("\"{parent}\""),
+            "pending",
+            None,
+        );
+        let entity = json!({
+            "entity": "task", "entity_id": parent, "created_hlc": "1760000000000:00000:web-a",
+            "fields": {"title": {"value": "Eltern", "hlc": "1760000000000:00000:web-a",
+                                 "op_id": "0192a000-0000-7000-8000-0f0000000001"}}
+        });
+        conn.execute(
+            "INSERT INTO entities (entity, entity_id, data_json) VALUES ('task', ?1, ?2)",
+            params![parent, entity.to_string()],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO reminders (notification_id, task_id, kind, at_ms, title, body)
+             VALUES (7, ?1, 'due', 0, 'Kind', '')",
+            [child],
+        )
+        .unwrap();
+        set_meta(&conn, META_CURSOR, "1").unwrap();
+        conn.pragma_update(None, "user_version", 2).unwrap();
+    }
+
+    let store = LocalStore::open(&path).unwrap();
+    assert_eq!(store.cursor(), 1, "the server keeps its seqs");
+    assert_eq!(title(&store, new(parent)).as_deref(), Some("Eltern"));
+    assert_eq!(title(&store, new(child)).as_deref(), Some("Kind"));
+    assert_eq!(
+        store.view.task(new(child)).unwrap().parent_id,
+        Some(new(parent))
+    );
+    let pending = store.pending_batch(usize::MAX);
+    assert_eq!(pending.len(), 2);
+    assert!(pending.iter().all(|op| op.entity_id == new(child)));
+    assert_eq!(
+        store.cursor_anchor().unwrap(),
+        Some(new("0192a000-0000-7000-8000-0f0000000001"))
+    );
+    let task_id: String = store
+        .conn
+        .query_row("SELECT task_id FROM reminders", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(task_id, new(child).to_string());
 }

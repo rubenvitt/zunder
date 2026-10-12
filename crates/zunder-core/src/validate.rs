@@ -27,8 +27,8 @@
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
+use crate::ids::Id;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::model::{fields, validate_field_value, Location};
 use crate::op::{EntityKind, Op};
@@ -106,8 +106,7 @@ impl WarningCode {
 /// A rejected operation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rejection {
-    #[serde(with = "crate::ids::canonical")]
-    pub op_id: Uuid,
+    pub op_id: Id,
     pub code: RejectCode,
     /// German, user-facing.
     pub message: String,
@@ -116,8 +115,7 @@ pub struct Rejection {
 /// A non-blocking hint about an entity.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Warning {
-    #[serde(with = "crate::ids::canonical")]
-    pub entity_id: Uuid,
+    pub entity_id: Id,
     pub code: WarningCode,
     /// German, user-facing.
     pub message: String,
@@ -128,7 +126,7 @@ pub struct Warning {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PushOutcome {
     /// All accepted op IDs in push order, including already-known ones.
-    pub accepted: Vec<Uuid>,
+    pub accepted: Vec<Id>,
     /// Rejected operations in push order.
     pub rejected: Vec<Rejection>,
     pub warnings: Vec<Warning>,
@@ -144,7 +142,7 @@ impl PushOutcome {
     }
 }
 
-type Key = (EntityKind, Uuid);
+type Key = (EntityKind, Id);
 
 #[derive(Debug, Clone)]
 struct Violation {
@@ -183,7 +181,7 @@ pub fn validate_push_as(state: &State, ops: &[Op], now_ms: u64, author: Author) 
     // 1. Already known op IDs and repeats within the push. Neither is
     //    validated again; a repeat shares the outcome of its first copy.
     let known: Vec<bool> = ops.iter().map(|op| state.knows_op(&op.op_id)).collect();
-    let mut first_copy: HashMap<Uuid, usize> = HashMap::new();
+    let mut first_copy: HashMap<Id, usize> = HashMap::new();
     let repeat_of: Vec<Option<usize>> = ops
         .iter()
         .enumerate()
@@ -198,7 +196,7 @@ pub fn validate_push_as(state: &State, ops: &[Op], now_ms: u64, author: Author) 
 
     // Group the new operations by entity, keeping first-seen order.
     let mut groups: BTreeMap<Key, Vec<usize>> = BTreeMap::new();
-    let mut kinds_in_push: HashMap<Uuid, BTreeSet<EntityKind>> = HashMap::new();
+    let mut kinds_in_push: HashMap<Id, BTreeSet<EntityKind>> = HashMap::new();
     for (i, op) in ops.iter().enumerate() {
         if known[i] || repeat_of[i].is_some() {
             continue;
@@ -405,7 +403,7 @@ fn check_op(
     state: &State,
     op: &Op,
     now_ms: u64,
-    kinds_in_push: &HashMap<Uuid, BTreeSet<EntityKind>>,
+    kinds_in_push: &HashMap<Id, BTreeSet<EntityKind>>,
     author: Author,
 ) -> Option<Violation> {
     if op.hlc.wall_ms() > now_ms.saturating_add(MAX_FUTURE_MS) {
@@ -473,8 +471,8 @@ fn check_entities(
 /// `seeds` plus every live entity whose validity may depend on them.
 fn neighbourhood(scratch: &Overlay<'_>, seeds: &BTreeSet<Key>) -> BTreeSet<Key> {
     let mut keys: BTreeSet<Key> = seeds.clone();
-    let touched_areas: HashSet<Uuid> = seeds_of(seeds, EntityKind::Area);
-    let touched_projects: HashSet<Uuid> = seeds_of(seeds, EntityKind::Project);
+    let touched_areas: HashSet<Id> = seeds_of(seeds, EntityKind::Area);
+    let touched_projects: HashSet<Id> = seeds_of(seeds, EntityKind::Project);
 
     if !touched_areas.is_empty() {
         for p in scratch.entities_of(EntityKind::Project) {
@@ -501,8 +499,8 @@ fn neighbourhood(scratch: &Overlay<'_>, seeds: &BTreeSet<Key>) -> BTreeSet<Key> 
         }
     }
     // Live descendants of every seed task, in one traversal.
-    let mut stack: Vec<Uuid> = seeds_of(seeds, EntityKind::Task).into_iter().collect();
-    let mut seen: HashSet<Uuid> = stack.iter().copied().collect();
+    let mut stack: Vec<Id> = seeds_of(seeds, EntityKind::Task).into_iter().collect();
+    let mut seen: HashSet<Id> = stack.iter().copied().collect();
     while let Some(id) = stack.pop() {
         for child in scratch.children(id) {
             if seen.insert(child) {
@@ -514,7 +512,7 @@ fn neighbourhood(scratch: &Overlay<'_>, seeds: &BTreeSet<Key>) -> BTreeSet<Key> 
     keys
 }
 
-fn seeds_of(seeds: &BTreeSet<Key>, kind: EntityKind) -> HashSet<Uuid> {
+fn seeds_of(seeds: &BTreeSet<Key>, kind: EntityKind) -> HashSet<Id> {
     seeds
         .iter()
         .filter(|(k, _)| *k == kind)
@@ -776,7 +774,7 @@ impl Checker<'_> {
     }
 
     /// Whether `task_id` lies on a parent cycle in the scratch state.
-    fn in_cycle(&self, task_id: Uuid) -> bool {
+    fn in_cycle(&self, task_id: Id) -> bool {
         let mut seen = HashSet::new();
         let mut current = self
             .scratch
@@ -798,7 +796,7 @@ impl Checker<'_> {
     }
 }
 
-fn task_project_target(state: &Overlay<'_>, task_id: Uuid) -> Option<(EntityKind, Uuid)> {
+fn task_project_target(state: &Overlay<'_>, task_id: Id) -> Option<(EntityKind, Id)> {
     state.effective_location(task_id).and_then(Location::target)
 }
 

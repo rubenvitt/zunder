@@ -7,7 +7,7 @@ use std::time::Duration;
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 use url::Url;
-use uuid::Uuid;
+use zunder_core::ids::Id;
 use zunder_core::Op;
 
 use crate::error::{Error, Result};
@@ -113,7 +113,7 @@ impl FlameAction {
 impl HttpClient {
     /// `GET /api/tasks/{id}/history`: all operations of the task in `seq`
     /// order. The server only knows operations it has received.
-    pub async fn task_history(&self, task_id: Uuid) -> Result<Vec<HistoryEntry>> {
+    pub async fn task_history(&self, task_id: Id) -> Result<Vec<HistoryEntry>> {
         let path = format!("api/tasks/{task_id}/history");
         self.send(self.http.get(self.url(&path)?)).await
     }
@@ -122,7 +122,7 @@ impl HttpClient {
     /// unchanged (`{task, running, stopped_task_ids, unchanged, timing,
     /// warnings}`); the flame fields themselves arrive with the next pull.
     /// Stopping without a running flame is `Error::Server` with status 409.
-    pub async fn flame(&self, task_id: Uuid, action: FlameAction) -> Result<serde_json::Value> {
+    pub async fn flame(&self, task_id: Id, action: FlameAction) -> Result<serde_json::Value> {
         let path = format!("api/tasks/{task_id}/flame/{}", action.as_str());
         self.send(self.http.post(self.url(&path)?)).await
     }
@@ -234,11 +234,11 @@ mod tests {
         .unwrap()
     }
 
-    const TASK: &str = "0192f0a0-0000-7000-8000-000000000001";
+    const TASK: &str = "tz4a98xxat96iws9zmbrgj3a";
 
     #[tokio::test]
     async fn task_history_sends_the_token_and_parses_entries() {
-        let body = r#"[{"seq":7,"op":{"op_id":"0192f0a0-0000-7000-8000-0000000000aa","entity":"task","entity_id":"0192f0a0-0000-7000-8000-000000000001","field":"title","value":"Zahnarzt","hlc":"1760000000000:00000:web-abc"},"source":"api:app","received_at":"2026-10-11T08:00:00Z"}]"#;
+        let body = r#"[{"seq":7,"op":{"op_id":"0192f0a0-0000-7000-8000-0000000000aa","entity":"task","entity_id":"tz4a98xxat96iws9zmbrgj3a","field":"title","value":"Zahnarzt","hlc":"1760000000000:00000:web-abc"},"source":"api:app","received_at":"2026-10-11T08:00:00Z"}]"#;
         let (url, seen) = canned(vec![(200, body)]);
         let entries = client(&url)
             .task_history(TASK.parse().unwrap())
@@ -267,7 +267,7 @@ mod tests {
             (401, r#"{"error":{"code":"unauthorized","message":"nope"}}"#),
         ]);
         let client = client(&url);
-        let id: Uuid = TASK.parse().unwrap();
+        let id: Id = TASK.parse().unwrap();
 
         let outcome = client.flame(id, FlameAction::Start).await.unwrap();
         assert_eq!(outcome["running"], true);

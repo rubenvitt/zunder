@@ -1,5 +1,6 @@
 //! `/api` handlers (all behind [`crate::auth::middleware::require_auth`]).
 
+use std::collections::HashMap;
 use std::convert::Infallible;
 
 use axum::extract::{DefaultBodyLimit, Path, State};
@@ -11,11 +12,11 @@ use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use futures_util::{stream, Stream, StreamExt};
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{json, Value};
 use tokio_stream::wrappers::BroadcastStream;
 use zunder_core::Op;
 
-use super::extract::{parse_id, ApiJson, ApiQuery};
+use super::extract::{parse_id, parse_uuid, ApiJson, ApiQuery};
 use crate::app::{App, CreatedToken, HistoryEntry, PullPage, PushResult, Snapshot, TokenInfo};
 use crate::auth::Principal;
 use crate::error::{AppError, AppResult};
@@ -169,14 +170,75 @@ async fn snapshot(
 struct PushBody {
     #[serde(default)]
     client_id: Option<String>,
-    ops: Vec<Op>,
+    ops: Vec<SentOp>,
+}
+
+/// An operation as sent, with its IDs in the form the client used. Clients
+/// from before CUID2 send UUIDs; the server converts them, but answers with
+/// the IDs it was given, so such a client recognizes its own operations.
+struct SentOp {
+    op: Op,
+    op_id: String,
+    entity_id: String,
+}
+
+impl<'de> Deserialize<'de> for SentOp {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = serde_json::Value::deserialize(deserializer)?;
+        let text = |key: &str| {
+            raw.get(key)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned()
+        };
+        let (op_id, entity_id) = (text("op_id"), text("entity_id"));
+        let op = Op::deserialize(raw).map_err(serde::de::Error::custom)?;
+        Ok(SentOp {
+            op,
+            op_id,
+            entity_id,
+        })
+    }
+}
+
+/// Writes IDs back in the form the client sent them (see [`SentOp`]).
+fn echo_sent_ids(result: &PushResult, sent: &[SentOp]) -> serde_json::Result<Value> {
+    let mut ops = HashMap::new();
+    let mut entities = HashMap::new();
+    for s in sent {
+        if s.op.op_id.as_str() != s.op_id {
+            ops.insert(s.op.op_id.to_string(), s.op_id.clone());
+        }
+        if s.op.entity_id.as_str() != s.entity_id {
+            entities.insert(s.op.entity_id.to_string(), s.entity_id.clone());
+        }
+    }
+    let mut value = serde_json::to_value(result)?;
+    if ops.is_empty() && entities.is_empty() {
+        return Ok(value);
+    }
+    let replace = |v: &mut Value, map: &HashMap<String, String>| {
+        if let Some(original) = v.as_str().and_then(|s| map.get(s)) {
+            *v = Value::String(original.clone());
+        }
+    };
+    for v in value["accepted"].as_array_mut().into_iter().flatten() {
+        replace(v, &ops);
+    }
+    for r in value["rejected"].as_array_mut().into_iter().flatten() {
+        replace(&mut r["op_id"], &ops);
+    }
+    for w in value["warnings"].as_array_mut().into_iter().flatten() {
+        replace(&mut w["entity_id"], &entities);
+    }
+    Ok(value)
 }
 
 async fn push(
     State(app): State<App>,
     principal: Principal,
     ApiJson(body): ApiJson<PushBody>,
-) -> AppResult<Json<PushResult>> {
+) -> AppResult<Json<Value>> {
     if body
         .client_id
         .as_ref()
@@ -186,10 +248,12 @@ async fn push(
             "client_id darf höchstens {MAX_CLIENT_ID_CHARS} Zeichen lang sein"
         )));
     }
+    let ops = body.ops.iter().map(|s| s.op.clone()).collect();
     let result = app
-        .push(body.ops, principal.sync_source(), body.client_id)
+        .push(ops, principal.sync_source(), body.client_id)
         .await?;
-    Ok(Json(result))
+    let echoed = echo_sent_ids(&result, &body.ops).map_err(|e| AppError::Internal(e.into()))?;
+    Ok(Json(echoed))
 }
 
 #[derive(Deserialize)]
@@ -355,7 +419,7 @@ async fn revoke_token(
     Path(id): Path<String>,
 ) -> AppResult<StatusCode> {
     require_browser(&principal)?;
-    let id = parse_id(&id)?;
+    let id = parse_uuid(&id)?;
     app.revoke_token(principal.user_id, id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -394,7 +458,7 @@ async fn revoke_device(
     Path(id): Path<String>,
 ) -> AppResult<StatusCode> {
     require_browser(&principal)?;
-    let id = parse_id(&id)?;
+    let id = parse_uuid(&id)?;
     oauth::revoke_device(&app, principal.user_id, id).await?;
     Ok(StatusCode::NO_CONTENT)
 }

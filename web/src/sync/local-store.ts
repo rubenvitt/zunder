@@ -6,6 +6,7 @@
 // one shared queue would overwrite each other's unpushed edits. The queue of a
 // page that is gone (closed, reloaded) is adopted by the next page that looks.
 
+import { upgradeOp } from "./ids";
 import type { Hlc, Op, SnapshotEntity } from "./types";
 
 export interface PersistedState {
@@ -95,7 +96,10 @@ function parseGroups(raw: string | null): Op[][] {
   try {
     const data: unknown = JSON.parse(raw);
     if (!Array.isArray(data)) return [];
-    return data.filter((g): g is Op[] => Array.isArray(g) && g.length > 0 && g.every((op) => op && typeof op.op_id === "string"));
+    // Queues from before CUID2 hold UUIDs; they are converted like on the server.
+    return data
+      .filter((g): g is Op[] => Array.isArray(g) && g.length > 0 && g.every((op) => op && typeof op.op_id === "string"))
+      .map((g) => g.map(upgradeOp));
   } catch {
     return [];
   }

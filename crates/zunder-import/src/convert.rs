@@ -11,9 +11,9 @@ use chrono::{SecondsFormat, TimeZone, Timelike};
 use chrono_tz::Tz;
 use serde::Serialize;
 use serde_json::Value;
-use uuid::Uuid;
 use zunder_core::hlc::{Clock, NodeId};
 use zunder_core::ids::clickup_entity_id;
+use zunder_core::ids::Id;
 use zunder_core::model::{fields, MAX_TITLE_CHARS};
 use zunder_core::{
     Due, EntityKind, Link, Location, NewArea, NewProject, NewTask, OpBatch, ProjectKind,
@@ -50,7 +50,7 @@ const OWNED_OPTIONAL_PROJECT_FIELDS: &[&str] = &[fields::project::REPO];
 #[derive(Debug, Clone, PartialEq)]
 pub struct Desired {
     pub kind: EntityKind,
-    pub id: Uuid,
+    pub id: Id,
     /// Human-readable name for messages.
     pub label: String,
     pub fields: Vec<(String, Value)>,
@@ -80,11 +80,11 @@ pub struct Conversion {
     /// Tasks, parents before their subtasks.
     pub tasks: Vec<Desired>,
     /// Zunder IDs of areas/projects mapped via `existing_id`.
-    pub existing_refs: Vec<(EntityKind, Uuid, String)>,
+    pub existing_refs: Vec<(EntityKind, Id, String)>,
     /// Projects mapped via `existing_id` with the `kind` the mapping file
     /// declares. The dev rules of the conversion use that kind, so `run`
     /// checks it against the real project in Zunder.
-    pub existing_project_kinds: Vec<(Uuid, String, ProjectKind)>,
+    pub existing_project_kinds: Vec<(Id, String, ProjectKind)>,
     pub diagnostics: Diagnostics,
 }
 
@@ -556,7 +556,7 @@ pub fn convert(
 /// adds `null` for owned optional fields without a value.
 fn desired(
     kind: EntityKind,
-    id: Uuid,
+    id: Id,
     label: String,
     batch: OpBatch<'_>,
     owned_optional: &[&str],

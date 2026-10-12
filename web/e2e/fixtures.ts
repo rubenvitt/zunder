@@ -1,7 +1,7 @@
 // Shared e2e helpers. Data is seeded through the contract API (POST /api/sync/push),
 // so the same tests run against the mock and the real server.
 
-import { randomUUID } from "node:crypto";
+import { createId } from "@paralleldrive/cuid2";
 import { expect, type Page } from "@playwright/test";
 
 export const backend = process.env.ZUNDER_E2E_BACKEND ?? "mock";
@@ -20,11 +20,9 @@ function hlc(): string {
   return `${String(wall).padStart(13, "0")}:${String(counter).padStart(5, "0")}:e2e`;
 }
 
-/** UUIDv7-shaped id (time prefix + random), good enough for test data. */
+/** A new ID in the wire form (CUID2). */
 export function newId(): string {
-  const hex = Date.now().toString(16).padStart(12, "0");
-  const rand = randomUUID().replace(/-/g, "");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-7${rand.slice(1, 4)}-8${rand.slice(5, 8)}-${rand.slice(8, 20)}`;
+  return createId();
 }
 
 /** CSRF header the real server requires for cookie/dev-auth requests that change state. */

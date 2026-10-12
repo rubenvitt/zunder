@@ -85,8 +85,8 @@ class FakeServer implements SyncTransport {
   }
 }
 
-const P1 = "01900000-0000-7000-8000-0000000000a1";
-const A1 = "01900000-0000-7000-8000-0000000000b1";
+const P1 = "v000700080000000000000a1";
+const A1 = "v000700080000000000000b1";
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 const titleOf = (engine: SyncEngine, id: string) => {
   const e = engine.view.get("task", id);

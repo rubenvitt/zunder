@@ -2,6 +2,7 @@
 // "#/aufgabe/<id or reference like ZUN-42>" and "#/clickup/<clickup_id>" are links to a single task (e.g. from
 // the vault): they open the task's detail over its home view.
 
+import { upgradeId } from "../sync/ids";
 import { createSignal } from "solid-js";
 
 export type Route =
@@ -27,7 +28,8 @@ export function parseRoute(hash: string): Route {
     case "lose":
       return { view: "lose" };
     case "bereiche":
-      if ((parts[1] === "area" || parts[1] === "project") && parts[2]) return { view: "bereiche", kind: parts[1], id: parts[2] };
+      // Links from before CUID2 (UUIDs) lead to the same place.
+      if ((parts[1] === "area" || parts[1] === "project") && parts[2]) return { view: "bereiche", kind: parts[1], id: upgradeId(parts[2]) };
       return { view: "bereiche" };
     case "dev":
       return { view: "dev" };
@@ -41,7 +43,7 @@ export function parseRoute(hash: string): Route {
       return { view: "verbindung" };
     case "aufgabe":
     case "clickup":
-      return parts[1] ? { view: parts[0], id: parts[1] } : { view: "heute" };
+      return parts[1] ? { view: parts[0], id: parts[0] === "aufgabe" ? upgradeId(parts[1]) : parts[1] } : { view: "heute" };
     default:
       return { view: "heute" };
   }

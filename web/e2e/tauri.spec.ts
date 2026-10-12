@@ -47,7 +47,8 @@ function currentFire(): string {
 function installFakeApp(seed: { serverOps: WireOp[]; validToken: string }) {
   let counter = 0;
   const hlc = () => `${String(Date.now()).padStart(13, "0")}:${String(++counter % 100000).padStart(5, "0")}:server`;
-  const uuid = () => crypto.randomUUID();
+  // In the page: an ID in the wire form (letter + 23 base-36 characters).
+  const uuid = () => "a" + Array.from(crypto.getRandomValues(new Uint8Array(23)), (b) => (b % 36).toString(36)).join("");
   const config = {
     server_url: null as string | null,
     has_api_token: false,

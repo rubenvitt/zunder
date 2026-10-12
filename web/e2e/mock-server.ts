@@ -20,7 +20,8 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { dirname, extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
+import { createId } from "@paralleldrive/cuid2";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DIST = resolve(process.env.MOCK_DIST ?? join(here, "..", "dist"));
@@ -163,7 +164,7 @@ function alive(entity: string, id: string): boolean {
 
 // ---- Validation (subset of contract 2.5, core codes) ------------------------------
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const ID_RE = /^[a-z][a-z0-9]{23}$/;
 const HLC_RE = /^\d{13}:\d{5}:[a-z0-9-]{1,36}$/;
 const REQUIRED: Record<string, string[]> = { area: ["name"], project: ["name", "area_id"], task: ["title"] };
 
@@ -171,7 +172,7 @@ const REQUIRED: Record<string, string[]> = { area: ["name"], project: ["name", "
 function wireError(op: unknown): string | null {
   if (!op || typeof op !== "object") return "Operation ist kein Objekt.";
   const o = op as Record<string, unknown>;
-  if (!UUID_RE.test(String(o.op_id)) || !UUID_RE.test(String(o.entity_id))) return "Keine kanonische UUID.";
+  if (!ID_RE.test(String(o.op_id)) || !ID_RE.test(String(o.entity_id))) return "Keine kanonische ID.";
   if (!["area", "project", "task"].includes(String(o.entity))) return "Unbekannte Entitätsart.";
   if (typeof o.field !== "string") return "Feld fehlt.";
   if (!("value" in o)) return "value fehlt.";
@@ -200,8 +201,8 @@ function checkOp(op: Op): [string, string] | null {
     return ["invalid_value", "Ungültiger Schlüssel."];
   }
   if (op.field === "deleted" && typeof op.value !== "boolean") return ["invalid_value", "„deleted“ muss true oder false sein."];
-  if ((op.field === "parent_id" || op.field === "area_id") && !UUID_RE.test(String(op.value))) {
-    return ["invalid_value", `„${op.field}“ muss eine UUID (klein, mit Bindestrichen) sein.`];
+  if ((op.field === "parent_id" || op.field === "area_id") && !ID_RE.test(String(op.value))) {
+    return ["invalid_value", `„${op.field}“ muss eine ID sein.`];
   }
   return null;
 }
@@ -368,13 +369,13 @@ function assignRefs() {
   for (const { e, k } of pending) {
     const n = (last.get(k) ?? 0) + 1;
     last.set(k, n);
-    append({ op_id: randomUUID(), entity: "task", entity_id: e.id, field: "ref", value: `${k}-${n}`, hlc: serverHlc() }, "server");
+    append({ op_id: createId(), entity: "task", entity_id: e.id, field: "ref", value: `${k}-${n}`, hlc: serverHlc() }, "server");
   }
 }
 
 function serverOps(entity: EntityKind, id: string, fields: Record<string, Json>, source = "server") {
   for (const [field, value] of Object.entries(fields)) {
-    append({ op_id: randomUUID(), entity, entity_id: id, field, value, hlc: serverHlc() }, source);
+    append({ op_id: createId(), entity, entity_id: id, field, value, hlc: serverHlc() }, source);
   }
   notify();
 }
@@ -420,7 +421,7 @@ function seed(kind: string) {
   log = [];
   state = new Map();
   opIds = new Set();
-  tokens = [{ id: randomUUID(), name: "claude-code", created_at: new Date(Date.now() - 86400000 * 3).toISOString(), last_used_at: null }];
+  tokens = [{ id: createId(), name: "claude-code", created_at: new Date(Date.now() - 86400000 * 3).toISOString(), last_used_at: null }];
   oauthClients = [];
   timing = { token: null, project: null };
   devices = [];
@@ -429,7 +430,7 @@ function seed(kind: string) {
   let n = 0;
   const op = (entity: EntityKind, id: string, field: string, value: Json) => {
     n += 1;
-    append({ op_id: randomUUID(), entity, entity_id: id, field, value, hlc: `${String(base + n).padStart(13, "0")}:00000:import` }, "api:import");
+    append({ op_id: createId(), entity, entity_id: id, field, value, hlc: `${String(base + n).padStart(13, "0")}:00000:import` }, "api:import");
   };
   const today = new Date();
   const fire = isoWeek(today);
@@ -561,7 +562,7 @@ const server = createServer(async (req, res) => {
     if (path === "/__test/oauth-client" && method === "POST") {
       const body = await readJson(req);
       const client: OAuthClient = {
-        id: randomUUID(),
+        id: createId(),
         name: String(body.name ?? "Claude"),
         redirect_uris: ["https://claude.ai/api/mcp/auth_callback"],
         created_at: new Date().toISOString(),
@@ -572,7 +573,7 @@ const server = createServer(async (req, res) => {
     }
     if (path === "/__test/device" && method === "POST") {
       const body = await readJson(req);
-      const device: Device = { id: randomUUID(), name: String(body.name ?? "iPhone"), created_at: new Date().toISOString(), last_used_at: null };
+      const device: Device = { id: createId(), name: String(body.name ?? "iPhone"), created_at: new Date().toISOString(), last_used_at: null };
       devices.push(device);
       return send(res, 201, device);
     }
@@ -659,7 +660,7 @@ const server = createServer(async (req, res) => {
       let m = /^\/api\/tasks\/([^/]+)\/history$/.exec(path);
       if (m) {
         const id = decodeURIComponent(m[1]!);
-        if (!UUID_RE.test(id)) return error(res, 400, "invalid_request", "Keine kanonische ID.");
+        if (!ID_RE.test(id)) return error(res, 400, "invalid_request", "Keine kanonische ID.");
         if (!state.has(key("task", id))) return error(res, 404, "not_found", "Aufgabe nicht gefunden.");
         return send(res, 200, log.filter((e) => e.op.entity === "task" && e.op.entity_id === id));
       }
@@ -667,7 +668,7 @@ const server = createServer(async (req, res) => {
       m = /^\/api\/tasks\/([^/]+)\/flame\/(start|stop)$/.exec(path);
       if (m && method === "POST") {
         const id = decodeURIComponent(m[1]!);
-        if (!UUID_RE.test(id)) return error(res, 400, "invalid_request", "Keine kanonische ID.");
+        if (!ID_RE.test(id)) return error(res, 400, "invalid_request", "Keine kanonische ID.");
         if (!alive("task", id)) return error(res, 404, "not_found", "Aufgabe nicht gefunden.");
         const at = new Date().toISOString();
         const running = isFlameRunning(state.get(key("task", id)));
@@ -689,7 +690,7 @@ const server = createServer(async (req, res) => {
         const problem = tokenNameError(body.name);
         if (problem) return error(res, 400, "invalid_request", problem);
         if (tokens.some((t) => t.name === body.name)) return error(res, 409, "conflict", `Es gibt bereits einen Token „${body.name}“.`);
-        const token: Token = { id: randomUUID(), name: body.name, created_at: new Date().toISOString(), last_used_at: null };
+        const token: Token = { id: createId(), name: body.name, created_at: new Date().toISOString(), last_used_at: null };
         tokens.push(token);
         return send(res, 201, { ...token, token: `zt_${randomBytes(32).toString("base64url")}` });
       }

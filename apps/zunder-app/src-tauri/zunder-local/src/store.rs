@@ -23,7 +23,7 @@ use std::str::FromStr;
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
-use uuid::Uuid;
+use zunder_core::ids::Id;
 use zunder_core::{
     validate_push, EntityKind, Hlc, NodeId, Op, Rejection, SnapshotEntity, State, Warning,
 };
@@ -32,7 +32,7 @@ use crate::error::{Error, Result};
 use crate::reminders::{Reminder, ReminderKind, ScheduledReminder};
 use crate::wire::{PullPage, PushResponse, ServerSnapshot};
 
-const SCHEMA_VERSION: i32 = 2;
+const SCHEMA_VERSION: i32 = 3;
 
 const MIGRATIONS: &[&str] = &[
     r#"
@@ -70,7 +70,12 @@ CREATE TABLE reminders (
 "#,
     // Finds the operation at the cursor (see `LocalStore::cursor_anchor`).
     "CREATE INDEX ops_server_seq ON ops (server_seq);",
+    // IDs became CUID2; `upgrade_legacy_ids` rewrites the stored ones.
+    "SELECT 1;",
 ];
+
+/// The schema version whose migration rewrites legacy UUIDs.
+const CUID2_VERSION: usize = 3;
 
 const META_CURSOR: &str = "cursor";
 const META_NODE_ID: &str = "node_id";
@@ -98,7 +103,7 @@ pub struct LocalSnapshot {
 /// keys of a push response, judged locally, plus the pending count.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct ApplyResult {
-    pub accepted: Vec<Uuid>,
+    pub accepted: Vec<Id>,
     pub rejected: Vec<Rejection>,
     pub warnings: Vec<Warning>,
     pub pending: usize,
@@ -307,7 +312,7 @@ impl LocalStore {
     /// The ID of the operation at the cursor's `seq`, if this store pulled
     /// it (not yet right after a snapshot). Each pull overlaps by this one
     /// operation to check that the server's log still matches.
-    pub fn cursor_anchor(&self) -> Result<Option<Uuid>> {
+    pub fn cursor_anchor(&self) -> Result<Option<Id>> {
         if self.cursor == 0 {
             return Ok(None);
         }
@@ -318,7 +323,7 @@ impl LocalStore {
                 |r| r.get::<_, String>(0),
             )
             .optional()?
-            .map(|id| parse_uuid(&id))
+            .map(|id| parse_id(&id))
             .transpose()
     }
 
@@ -369,8 +374,8 @@ impl LocalStore {
     }
 
     fn push_response(&mut self, pushed: &[Op], response: &PushResponse) -> Result<PushApplied> {
-        let accepted: HashSet<Uuid> = response.accepted.iter().copied().collect();
-        let rejected: HashMap<Uuid, &Rejection> =
+        let accepted: HashSet<Id> = response.accepted.iter().copied().collect();
+        let rejected: HashMap<Id, &Rejection> =
             response.rejected.iter().map(|r| (r.op_id, r)).collect();
         let mut done = HashSet::new();
         let mut touched = BTreeSet::new();
@@ -635,7 +640,7 @@ impl LocalStore {
             out.push(ScheduledReminder {
                 id,
                 reminder: Reminder {
-                    task_id: parse_uuid(&task_id)?,
+                    task_id: parse_id(&task_id)?,
                     kind: ReminderKind::parse(&kind)
                         .ok_or_else(|| Error::Corrupt(format!("Erinnerungsart {kind:?}")))?,
                     at_ms,
@@ -683,8 +688,88 @@ fn migrate(conn: &mut Connection) -> Result<()> {
     for (index, sql) in MIGRATIONS.iter().enumerate().skip(version as usize) {
         let tx = conn.transaction()?;
         tx.execute_batch(sql)?;
+        if index + 1 == CUID2_VERSION {
+            upgrade_legacy_ids(&tx)?;
+        }
         tx.pragma_update(None, "user_version", index as i32 + 1)?;
         tx.commit()?;
+    }
+    Ok(())
+}
+
+/// Rewrites legacy UUIDs (from before CUID2) in the local log, the
+/// materialized entities and the reminders with the same fixed conversion as
+/// the server (`zunder_core::ids::Id::from_legacy`). The server's `seq`s are
+/// unchanged by its own migration, so the cursor and the pending operations
+/// stay valid; nothing has to be pulled again.
+fn upgrade_legacy_ids(tx: &rusqlite::Transaction<'_>) -> Result<()> {
+    let ops: Vec<(i64, String, String, String, String, String)> = {
+        let mut stmt = tx.prepare(
+            "SELECT local_seq, op_id, entity, entity_id, field, value_json FROM ops \
+             WHERE length(op_id) = 36 OR length(entity_id) = 36",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+            ))
+        })?;
+        rows.collect::<rusqlite::Result<_>>()?
+    };
+    for (seq, op_id, entity, entity_id, field, value_json) in ops {
+        let kind: EntityKind = entity
+            .parse()
+            .map_err(|_| Error::Corrupt(format!("Entitätsart {entity:?}")))?;
+        let mut value: serde_json::Value =
+            serde_json::from_str(&value_json).map_err(|e| Error::Corrupt(format!("Wert: {e}")))?;
+        zunder_core::op::upgrade_legacy_value(kind, &field, &mut value);
+        tx.execute(
+            "UPDATE ops SET op_id = ?2, entity_id = ?3, value_json = ?4 WHERE local_seq = ?1",
+            params![
+                seq,
+                parse_id(&op_id)?.to_string(),
+                parse_id(&entity_id)?.to_string(),
+                value.to_string()
+            ],
+        )?;
+    }
+    let entities: Vec<(String, String, String)> = {
+        let mut stmt = tx.prepare(
+            "SELECT entity, entity_id, data_json FROM entities WHERE length(entity_id) = 36",
+        )?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        rows.collect::<rusqlite::Result<_>>()?
+    };
+    for (entity, entity_id, data_json) in entities {
+        // Reading converts every ID in the entity, references included.
+        let converted: SnapshotEntity = serde_json::from_str(&data_json)
+            .map_err(|e| Error::Corrupt(format!("Entität: {e}")))?;
+        tx.execute(
+            "UPDATE entities SET entity_id = ?3, data_json = ?4 WHERE entity = ?1 AND entity_id = ?2",
+            params![
+                entity,
+                entity_id,
+                converted.entity_id.to_string(),
+                serde_json::to_string(&converted)
+                    .map_err(|e| Error::Corrupt(format!("Entität: {e}")))?
+            ],
+        )?;
+    }
+    let reminders: Vec<(i64, String)> = {
+        let mut stmt = tx
+            .prepare("SELECT notification_id, task_id FROM reminders WHERE length(task_id) = 36")?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        rows.collect::<rusqlite::Result<_>>()?
+    };
+    for (notification, task_id) in reminders {
+        tx.execute(
+            "UPDATE reminders SET task_id = ?2 WHERE notification_id = ?1",
+            params![notification, parse_id(&task_id)?.to_string()],
+        )?;
     }
     Ok(())
 }
@@ -720,7 +805,7 @@ impl Loaded {
             let mut stmt = conn.prepare("SELECT op_id FROM ops WHERE status = 'confirmed'")?;
             let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
             for op_id in rows {
-                confirmed.mark_op_known(parse_uuid(&op_id?)?);
+                confirmed.mark_op_known(parse_id(&op_id?)?);
             }
         }
         Ok(Self {
@@ -775,7 +860,7 @@ fn view_of(confirmed: &State, pending: &[Op]) -> State {
 
 /// `app-` plus 12 random hex digits (from the random tail of a UUIDv7).
 fn new_node_id() -> NodeId {
-    let simple = Uuid::now_v7().simple().to_string();
+    let simple = uuid::Uuid::now_v7().simple().to_string();
     NodeId::new(format!("app-{}", &simple[20..])).expect("valid node id")
 }
 
@@ -860,10 +945,10 @@ fn load_ops(conn: &Connection, status: OpStatus) -> Result<Vec<Op>> {
     for row in rows {
         let (op_id, entity, entity_id, field, value_json, hlc) = row?;
         ops.push(Op {
-            op_id: parse_uuid(&op_id)?,
+            op_id: parse_id(&op_id)?,
             entity: EntityKind::from_str(&entity)
                 .map_err(|_| Error::Corrupt(format!("Entitätsart {entity:?}")))?,
-            entity_id: parse_uuid(&entity_id)?,
+            entity_id: parse_id(&entity_id)?,
             field,
             value: serde_json::from_str::<Value>(&value_json)
                 .map_err(|e| Error::Corrupt(format!("Wert: {e}")))?,
@@ -876,7 +961,7 @@ fn load_ops(conn: &Connection, status: OpStatus) -> Result<Vec<Op>> {
 fn save_entities(
     tx: &Transaction<'_>,
     state: &State,
-    keys: &BTreeSet<(EntityKind, Uuid)>,
+    keys: &BTreeSet<(EntityKind, Id)>,
 ) -> Result<()> {
     let mut stmt = tx.prepare(
         "INSERT INTO entities (entity, entity_id, data_json) VALUES (?1, ?2, ?3)
@@ -892,8 +977,8 @@ fn save_entities(
     Ok(())
 }
 
-fn parse_uuid(s: &str) -> Result<Uuid> {
-    Uuid::parse_str(s).map_err(|_| Error::Corrupt(format!("ID {s:?}")))
+fn parse_id(s: &str) -> Result<Id> {
+    Id::parse_any(s).ok_or_else(|| Error::Corrupt(format!("ID {s:?}")))
 }
 
 /// `http(s)://host[:port][/path]` without query, fragment, credentials and

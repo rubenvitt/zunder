@@ -6,7 +6,7 @@
 use std::str::FromStr;
 
 use serde_json::{Map, Value};
-use uuid::Uuid;
+use zunder_core::ids::Id;
 
 use crate::error::{AppError, AppResult};
 use crate::views::TaskRef;
@@ -98,20 +98,20 @@ impl Args {
     }
 
     /// A canonical UUID.
-    pub fn id(&self, key: &str) -> AppResult<Option<Uuid>> {
+    pub fn id(&self, key: &str) -> AppResult<Option<Id>> {
         match self.str(key)? {
             None => Ok(None),
-            Some(s) => zunder_core::ids::parse_canonical(s)
+            Some(s) => zunder_core::ids::parse_id(s)
                 .map(Some)
                 .ok_or_else(|| {
                     invalid(format!(
-                        "„{key}“ muss eine UUID (klein, mit Bindestrichen) sein."
+                        "„{key}“ muss eine ID sein (24 Kleinbuchstaben und Ziffern; eine alte UUID wird umgerechnet)."
                     ))
                 }),
         }
     }
 
-    pub fn required_id(&self, key: &str) -> AppResult<Uuid> {
+    pub fn required_id(&self, key: &str) -> AppResult<Id> {
         self.id(key)?
             .ok_or_else(|| invalid(format!("Parameter „{key}“ fehlt.")))
     }
@@ -182,7 +182,7 @@ impl Args {
         let task_id = match self.str("task_id")? {
             None => None,
             Some(s) => Some(task_address(s).ok_or_else(|| {
-                invalid("„task_id“ muss eine UUID (klein, mit Bindestrichen) oder eine Kennung wie „ZUN-42“ sein.")
+                invalid("„task_id“ muss eine ID oder eine Kennung wie „ZUN-42“ sein.")
             })?),
         };
         TaskRef::from_args(task_id, clickup).map_err(invalid)
@@ -209,7 +209,7 @@ impl Args {
 
 /// A UUID or a task reference (`zun-42` counts as `ZUN-42`).
 fn task_address(s: &str) -> Option<TaskRef> {
-    if let Some(id) = zunder_core::ids::parse_canonical(s) {
+    if let Some(id) = zunder_core::ids::parse_id(s) {
         return Some(TaskRef::Id(id));
     }
     zunder_core::numbering::normalize_ref(s).map(TaskRef::Key)

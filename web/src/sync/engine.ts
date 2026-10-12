@@ -7,7 +7,7 @@ import type { LocalStore } from "./local-store";
 import { entityKey, EntityStore } from "./merge";
 import { isTransient, isUnauthorized, type SyncTransport } from "./transport";
 import type { EntityKind, JsonValue, Op, Rejection, Warning } from "./types";
-import { uuidv7 } from "./uuid";
+import { newId } from "./ids";
 import { validateOps, type ValidationIssue } from "./validate";
 
 export type SyncStatus = "loading" | "online" | "offline" | "unauthorized";
@@ -183,7 +183,7 @@ export class SyncEngine {
     const ops: Op[] = [];
     for (const change of changes) {
       for (const [field, value] of Object.entries(change.fields)) {
-        ops.push({ op_id: uuidv7(), entity: change.entity, entity_id: change.id, field, value: wellFormed(value), hlc: this.clock.now() });
+        ops.push({ op_id: newId(), entity: change.entity, entity_id: change.id, field, value: wellFormed(value), hlc: this.clock.now() });
       }
     }
     return ops;

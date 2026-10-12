@@ -11,6 +11,7 @@ use std::time::Duration;
 use anyhow::{anyhow, bail, Context};
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use uuid::Uuid;
+use zunder_core::ids::Id;
 use zunder_core::state::FieldEntry;
 use zunder_core::{EntityKind, Hlc, Op, SnapshotEntity, State};
 
@@ -20,6 +21,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0002_oauth.sql"),
     include_str!("../migrations/0003_settings.sql"),
     include_str!("../migrations/0004_devices.sql"),
+    include_str!("../migrations/0005_cuid2.sql"),
 ];
 
 /// The schema version this binary expects.
@@ -36,8 +38,164 @@ pub fn open(path: &Path) -> anyhow::Result<Connection> {
         bail!("SQLite WAL-Modus nicht verfügbar (journal_mode = {mode})");
     }
     conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL;")?;
+    let legacy = legacy_ids_present(&conn)?;
+    if legacy {
+        backup_before_id_migration(&conn, path)?;
+    }
     migrate(&mut conn)?;
+    if legacy {
+        migrate_legacy_ids(&mut conn, path)?;
+    }
     Ok(conn)
+}
+
+/// Whether the op log still holds IDs from before CUID2 (UUIDs, 36 chars).
+fn legacy_ids_present(conn: &Connection) -> anyhow::Result<bool> {
+    let has_ops: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ops')",
+        [],
+        |r| r.get(0),
+    )?;
+    if !has_ops {
+        return Ok(false);
+    }
+    Ok(conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM ops WHERE length(op_id) = 36 OR length(entity_id) = 36)",
+        [],
+        |r| r.get(0),
+    )?)
+}
+
+/// `<data>/backups/vor-cuid2-<UTC stamp>.db`, outside the rotation of the
+/// nightly backups (those are named `zunder-…`), so it is never pruned.
+fn backup_before_id_migration(conn: &Connection, db_path: &Path) -> anyhow::Result<()> {
+    let dir = db_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("backups");
+    std::fs::create_dir_all(&dir)
+        .with_context(|| format!("Backup-Verzeichnis {} anlegen", dir.display()))?;
+    let dest = dir.join(format!("vor-cuid2-{}.db", utc_stamp()));
+    if dest.exists() {
+        bail!("Backup {} existiert schon", dest.display());
+    }
+    vacuum_into(conn, &dest)
+        .with_context(|| format!("Backup vor der ID-Umstellung nach {}", dest.display()))?;
+    tracing::warn!(backup = %dest.display(), "backup written before switching IDs to CUID2");
+    Ok(())
+}
+
+fn utc_stamp() -> String {
+    let now = time::OffsetDateTime::now_utc();
+    format!(
+        "{:04}{:02}{:02}-{:02}{:02}{:02}",
+        now.year(),
+        u8::from(now.month()),
+        now.day(),
+        now.hour(),
+        now.minute(),
+        now.second()
+    )
+}
+
+/// Rewrites the op log from legacy UUIDs to IDs in one transaction:
+/// `op_id`, `entity_id` and the ID-valued fields (`area_id`, `parent_id`,
+/// `location.id`), each with the fixed conversion of
+/// [`zunder_core::ids::Id::from_legacy`]. `seq`, HLCs and sources stay, so
+/// clients keep their cursors. The `entities` table is cleared and rebuilt
+/// from the log on load. Writes the mapping of the entities to
+/// `<data>/id-zuordnung-<UTC stamp>.json` (e.g. for vault `zunder_id`s).
+pub fn migrate_legacy_ids(conn: &mut Connection, db_path: &Path) -> anyhow::Result<()> {
+    struct Entry {
+        entity: EntityKind,
+        old: String,
+        new: Id,
+        name: Option<String>,
+    }
+    let tx = conn.transaction()?;
+    let rows: Vec<(i64, String, String, String, String, String)> = {
+        let mut stmt = tx.prepare(
+            "SELECT seq, op_id, entity, entity_id, field, value_json FROM ops ORDER BY seq",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+            ))
+        })?;
+        rows.collect::<rusqlite::Result<_>>()?
+    };
+    let mut mapping: BTreeMap<(EntityKind, String), Entry> = BTreeMap::new();
+    let mut changed = 0usize;
+    {
+        let mut update = tx
+            .prepare("UPDATE ops SET op_id = ?2, entity_id = ?3, value_json = ?4 WHERE seq = ?1")?;
+        for (seq, op_id, entity, entity_id, field, value_json) in rows {
+            let kind = parse_kind(&entity)?;
+            let new_op = parse_entity_id(&op_id)?;
+            let new_entity = parse_entity_id(&entity_id)?;
+            let mut value: serde_json::Value = serde_json::from_str(&value_json)
+                .with_context(|| format!("ungültiges value_json in Operation {seq}"))?;
+            zunder_core::op::upgrade_legacy_value(kind, &field, &mut value);
+            let new_value = serde_json::to_string(&value)?;
+            let entry = mapping
+                .entry((kind, entity_id.clone()))
+                .or_insert_with(|| Entry {
+                    entity: kind,
+                    old: entity_id.clone(),
+                    new: new_entity,
+                    name: None,
+                });
+            if field == "name" || field == "title" {
+                entry.name = value.as_str().map(str::to_owned);
+            }
+            if new_op.as_str() != op_id
+                || new_entity.as_str() != entity_id
+                || new_value != value_json
+            {
+                update.execute(params![
+                    seq,
+                    new_op.to_string(),
+                    new_entity.to_string(),
+                    new_value
+                ])?;
+                changed += 1;
+            }
+        }
+    }
+    tx.execute("DELETE FROM entities", [])?;
+    tx.execute("DELETE FROM meta WHERE key LIKE 'materialized_seq:%'", [])?;
+    tx.commit()?;
+
+    let list: Vec<serde_json::Value> = mapping
+        .values()
+        .filter(|e| e.old != e.new.as_str())
+        .map(|e| {
+            serde_json::json!({
+                "entity": e.entity,
+                "old_id": e.old,
+                "new_id": e.new,
+                "name": e.name,
+            })
+        })
+        .collect();
+    let file = db_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(format!("id-zuordnung-{}.json", utc_stamp()));
+    std::fs::write(&file, serde_json::to_vec_pretty(&list)?)
+        .with_context(|| format!("Zuordnungsliste {} schreiben", file.display()))?;
+    tracing::warn!(
+        ops = changed,
+        entities = list.len(),
+        mapping = %file.display(),
+        "IDs switched to CUID2"
+    );
+    Ok(())
 }
 
 /// Applies all migrations newer than the database's `user_version`, each in
@@ -92,7 +250,7 @@ pub fn ensure_owner(conn: &Connection, now: i64) -> anyhow::Result<User> {
     if let Some(user) = existing {
         return Ok(user);
     }
-    let id = zunder_core::ids::new_id();
+    let id = Uuid::now_v7();
     conn.execute(
         "INSERT INTO users (id, created_at) VALUES (?1, ?2)",
         params![id.to_string(), now],
@@ -201,7 +359,7 @@ pub fn load_state(conn: &mut Connection, owner: Uuid) -> anyhow::Result<LoadedSt
                 let (entity, id, created, fields) = r?;
                 Ok(SnapshotEntity {
                     entity: parse_kind(&entity)?,
-                    entity_id: parse_uuid(&id)?,
+                    entity_id: parse_entity_id(&id)?,
                     created_hlc: Some(parse_hlc(&created)?),
                     fields: serde_json::from_str::<BTreeMap<String, FieldEntry>>(&fields)
                         .context("ungültiges fields_json in entities")?,
@@ -213,7 +371,7 @@ pub fn load_state(conn: &mut Connection, owner: Uuid) -> anyhow::Result<LoadedSt
         // ops must still be recognized, so mark the whole log as known.
         let mut stmt = conn.prepare("SELECT op_id FROM ops WHERE owner_id = ?1")?;
         for id in stmt.query_map([&owner_s], |r| r.get::<_, String>(0))? {
-            state.mark_op_known(parse_uuid(&id?)?);
+            state.mark_op_known(parse_entity_id(&id?)?);
         }
         (state, false)
     } else {
@@ -333,9 +491,9 @@ pub fn commit_ops(
 fn row_to_op(row: &Row<'_>, offset: usize) -> anyhow::Result<Op> {
     let value_json: String = row.get(offset + 4)?;
     Ok(Op {
-        op_id: parse_uuid(&row.get::<_, String>(offset)?)?,
+        op_id: parse_entity_id(&row.get::<_, String>(offset)?)?,
         entity: parse_kind(&row.get::<_, String>(offset + 1)?)?,
-        entity_id: parse_uuid(&row.get::<_, String>(offset + 2)?)?,
+        entity_id: parse_entity_id(&row.get::<_, String>(offset + 2)?)?,
         field: row.get(offset + 3)?,
         value: serde_json::from_str(&value_json).context("ungültiges value_json in ops")?,
         hlc: parse_hlc(&row.get::<_, String>(offset + 5)?)?,
@@ -376,7 +534,7 @@ pub fn entity_history(
     conn: &Connection,
     owner: Uuid,
     entity: EntityKind,
-    entity_id: Uuid,
+    entity_id: Id,
 ) -> anyhow::Result<Vec<HistoryRow>> {
     let mut stmt = conn.prepare_cached(
         "SELECT seq, op_id, entity, entity_id, field, value_json, hlc, source, received_at
@@ -1039,9 +1197,8 @@ pub fn vacuum_into(conn: &Connection, dest: &Path) -> anyhow::Result<()> {
 
 // ----- parsing helpers ------------------------------------------------------------
 
-fn parse_uuid(s: &str) -> anyhow::Result<Uuid> {
-    zunder_core::ids::parse_canonical(s)
-        .ok_or_else(|| anyhow!("ungültige ID in der Datenbank: {s}"))
+fn parse_entity_id(s: &str) -> anyhow::Result<Id> {
+    Id::parse_any(s).ok_or_else(|| anyhow!("ungültige ID in der Datenbank: {s}"))
 }
 
 fn parse_uuid_col(row: &Row<'_>, idx: usize) -> rusqlite::Result<Uuid> {

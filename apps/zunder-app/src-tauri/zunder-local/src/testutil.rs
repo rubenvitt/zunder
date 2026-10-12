@@ -4,8 +4,8 @@
 use std::collections::HashSet;
 use std::sync::Mutex;
 
-use uuid::Uuid;
 use zunder_core::hlc::system_time_ms;
+use zunder_core::ids::Id;
 use zunder_core::{validate_push, Clock, NodeId, Op, OpBatch, State};
 
 use crate::client::SyncApi;
@@ -38,8 +38,8 @@ impl Author {
     }
 
     /// Like [`Author::ops`], returning the ID the closure yields.
-    pub fn create(&mut self, build: impl FnOnce(&mut OpBatch<'_>) -> Uuid) -> (Uuid, Vec<Op>) {
-        let mut id = Uuid::nil();
+    pub fn create(&mut self, build: impl FnOnce(&mut OpBatch<'_>) -> Id) -> (Id, Vec<Op>) {
+        let mut id = Id::MIN;
         let ops = self.ops(|b| id = build(b));
         (id, ops)
     }

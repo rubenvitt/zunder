@@ -5,9 +5,9 @@ mod common;
 
 use common::{edited_mapping, ClickUpMock, ZunderMock, ZUNDER_TOKEN};
 use serde_json::json;
-use uuid::Uuid;
 use zunder_core::hlc::{Clock, NodeId};
 use zunder_core::ids::clickup_entity_id;
+use zunder_core::ids::Id;
 use zunder_core::{
     AreaState, EntityKind, Location, NewArea, NewProject, NewTask, OpBatch, ProjectKind,
     ProjectStatus, TaskStatus, TaskType,
@@ -18,7 +18,7 @@ use zunder_import::run::{self, RunOptions, RunSummary};
 use zunder_import::zunder::ZunderClient;
 use zunder_import::{plan, report};
 
-fn task_id(clickup: &str) -> Uuid {
+fn task_id(clickup: &str) -> Id {
     clickup_entity_id(EntityKind::Task, clickup)
 }
 

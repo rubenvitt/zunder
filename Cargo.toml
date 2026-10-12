@@ -16,6 +16,8 @@ uuid = { version = "1", features = ["v7", "v5", "serde"] }
 thiserror = "2"
 time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
 url = "2"
+cuid2 = "0.1"
+sha2 = "0.10"
 proptest = "1"
 
 [workspace.lints.rust]

@@ -6,7 +6,7 @@ import type { Change } from "../sync/engine";
 import { rankBetween } from "../sync/rank";
 import type { EntityKind, JsonValue, Location, ProjectKind, Task, TaskStatus } from "../sync/types";
 import { deleteCascade as cascadeTargets } from "../sync/validate";
-import { uuidv7 } from "../sync/uuid";
+import { newId } from "../sync/ids";
 import { STATUS_LABELS } from "../labels";
 import { api, data, getEngine, taskIndex } from "./store";
 import { toast } from "./ui";
@@ -36,7 +36,7 @@ export interface NewTask {
 
 /** Creates a task (one push group); returns its id or null when refused. */
 export function createTask(input: NewTask): string | null {
-  const id = uuidv7();
+  const id = newId();
   const fields: Record<string, JsonValue> = { title: input.title.trim() };
   if (input.location && input.location.kind !== "inbox") fields.location = locationValue(input.location);
   if (input.parent_id) fields.parent_id = input.parent_id;
@@ -125,7 +125,7 @@ export function shorten(text: string, max = 40): string {
 // ---- Areas and projects -----------------------------------------------
 
 export function createArea(name: string): string | null {
-  const id = uuidv7();
+  const id = newId();
   return apply([{ entity: "area", id, fields: { name: name.trim() } }]) ? id : null;
 }
 
@@ -134,7 +134,7 @@ export function updateArea(id: string, fields: Record<string, JsonValue>): boole
 }
 
 export function createProject(name: string, areaId: string, kind: ProjectKind = "standard", repo?: string | null, key?: string | null): string | null {
-  const id = uuidv7();
+  const id = newId();
   const fields: Record<string, JsonValue> = { name: name.trim(), area_id: areaId };
   if (kind !== "standard") fields.kind = kind;
   if (kind === "dev" && repo) fields.repo = repo;

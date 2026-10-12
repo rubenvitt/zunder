@@ -44,7 +44,7 @@ Erfolgskriterien:
 
 | Feld | Bemerkung |
 |---|---|
-| `id` | UUIDv7, clientseitig erzeugt (offline-tauglich) |
+| `id` | CUID2 (24 Zeichen), clientseitig erzeugt (offline-tauglich); alte UUIDs werden fest umgerechnet |
 | `title` | Pflicht |
 | `description` | Markdown |
 | `type` | siehe unten |
@@ -119,7 +119,7 @@ Das persönliche Produktivitätssystem (Wochenzyklen „Feuer“, Deep-Work-Blö
 
 ## 4. Sync (offline-first)
 
-- Jede Änderung ist eine **Operation**: `op_id` (UUIDv7), Entität, Feld, Wert, HLC-Zeitstempel.
+- Jede Änderung ist eine **Operation**: `op_id` (CUID2), Entität, Feld, Wert, HLC-Zeitstempel.
 - Clients schicken Operationen (`push`) und holen alle Operationen seit ihrem letzten Cursor (`pull`).
 - Der Server ist die Autorität. Er speichert das Operations-Log und den materialisierten Zustand.
 - **Konfliktauflösung:** Last-Writer-Wins pro Feld nach HLC. Für einen einzelnen Nutzer reicht das. Eine CRDT-Bibliothek wird bewusst nicht eingesetzt.

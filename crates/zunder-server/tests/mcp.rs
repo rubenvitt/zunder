@@ -516,7 +516,7 @@ async fn core_validation_messages_are_surfaced() {
     let (_, message) = mcp_err(&s, &t, "get_task", json!({})).await;
     assert!(message.contains("task_id oder clickup_id"), "{message}");
     let (_, message) = mcp_err(&s, &t, "get_task", json!({"task_id": "nope"})).await;
-    assert!(message.contains("UUID"), "{message}");
+    assert!(message.contains("ZUN-42"), "{message}");
     let (code, _) = mcp_err(
         &s,
         &t,
@@ -621,9 +621,22 @@ async fn structure_tools() {
     assert_eq!(r["area"]["vault_path"], Value::Null);
 
     // Explicit IDs (zunder_id from the vault) and their uniqueness.
-    let wanted = "01929c3e-0000-7000-8000-0000000000ab";
+    let wanted = "tz4a98xxat96iws9zmbrgj3a";
     let r = mcp_ok(&s, &t, "create_area", json!({"name": "Haus", "id": wanted})).await;
     assert_eq!(r["area"]["id"], wanted);
+    // A zunder_id from before CUID2 becomes its fixed ID.
+    let legacy = "01929c3e-0000-7000-8000-0000000000ab";
+    let r = mcp_ok(&s, &t, "create_area", json!({"name": "Alt", "id": legacy})).await;
+    let converted = zunder_core::ids::Id::parse_any(legacy).unwrap().to_string();
+    assert_eq!(r["area"]["id"], converted.as_str());
+    let r = mcp_ok(
+        &s,
+        &t,
+        "update_area",
+        json!({"area_id": legacy, "name": "Alt 2"}),
+    )
+    .await;
+    assert_eq!(r["area"]["id"], converted.as_str());
     let (code, _) = mcp_err(
         &s,
         &t,
@@ -828,7 +841,7 @@ async fn claims_conflict_and_release() {
     assert_eq!(r["released"], true);
 
     // An expired foreign claim can be taken over.
-    let id: uuid::Uuid = task.parse().unwrap();
+    let id: zunder_core::ids::Id = task.parse().unwrap();
     // Client clock slightly ahead, so its writes win over the server's.
     let mut clock = common::client_clock();
     let mut batch = OpBatch::new(&mut clock, zunder_core::hlc::system_time_ms() + 5_000);

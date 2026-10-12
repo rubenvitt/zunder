@@ -81,7 +81,7 @@ class Server implements SyncTransport {
   }
 }
 
-const TASK = "01900000-0000-7000-8000-000000000001";
+const TASK = "v00070008000000000000001";
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 function tab(server: Server, store: BrowserLocalStore) {
@@ -98,7 +98,7 @@ describe.each(variants)("BrowserLocalStore across tabs (%s)", (_, makeLocks) => 
     const storage = new FakeStorage();
     const locks = makeLocks();
     const server = new Server();
-    server.log.push({ op_id: "00000000-0000-7000-8000-000000000000", entity: "task", entity_id: TASK, field: "title", value: "Alt", hlc: "0000000001000:00000:server" });
+    server.log.push({ op_id: "v00070008000000000000000", entity: "task", entity_id: TASK, field: "title", value: "Alt", hlc: "0000000001000:00000:server" });
 
     const storeA = new BrowserLocalStore({ storage, locks });
     const storeB = new BrowserLocalStore({ storage, locks });
@@ -157,7 +157,7 @@ describe.each(variants)("BrowserLocalStore across tabs (%s)", (_, makeLocks) => 
 
   it("adopts the queue of the former single-key format", async () => {
     const storage = new FakeStorage();
-    const legacy: Op = { op_id: "00000000-0000-7000-8000-00000000000a", entity: "task", entity_id: TASK, field: "title", value: "Von früher", hlc: "0000000002000:00000:web-aaaaaaaaaaaa" };
+    const legacy: Op = { op_id: "v0007000800000000000000a", entity: "task", entity_id: TASK, field: "title", value: "Von früher", hlc: "0000000002000:00000:web-aaaaaaaaaaaa" };
     storage.setItem("zunder.pending.v1", JSON.stringify([[legacy]]));
     const store = new BrowserLocalStore({ storage, locks: makeLocks() });
     expect(await store.loadPending()).toEqual([[legacy]]);
