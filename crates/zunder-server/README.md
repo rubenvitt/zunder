@@ -19,6 +19,7 @@ Alle Einstellungen kommen aus `ZUNDER_*`-Umgebungsvariablen (Tabelle im Vertrag)
 | Modul | Inhalt |
 |---|---|
 | `config` | Umgebungsvariablen lesen und prüfen |
+| `settings` | Einstellungen aus der Web-UI (Timing-Token und -Projekt), die die Umgebungsvariablen Feld für Feld überschreiben |
 | `db` | SQLite (WAL, Fremdschlüssel, `busy_timeout`), eingebettete Migrationen über `user_version`, alle Abfragen |
 | `app` | Anwendungsdienst `App`: `push`, `mutate` (serverseitige Operationen), `snapshot`, `pull`, `task_history`, Tokens, Sitzungen, Backup |
 | `auth` | Principal, Token- und Sitzungs-Hashes, CSRF-Regel, Middleware `require_auth`, OIDC (`auth::oidc`) |
@@ -69,7 +70,9 @@ Codes und Tokens liegen nur als SHA-256 in SQLite (`oauth_clients`, `oauth_codes
 
 ## Flammen und Timing
 
-`POST /api/tasks/{id}/flame/start|stop` und die Werkzeuge `start_flame`/`stop_flame` teilen sich `flame::start`/`flame::stop`. Eine Flamme speichert immer `flame_started_at`/`flame_ended_at`; es läuft höchstens eine. Mit `ZUNDER_TIMING_TOKEN` (API-Key aus der Timing-Web-App) startet zusätzlich ein Timer in Timing (`POST /time-entries/start`, Titel = Aufgabentitel, Projekt = `ZUNDER_TIMING_PROJECT`, z. B. `/projects/1` oder ein Projekttitel); dessen Self-Link landet in `timing_ref`. Beim Beenden stoppt Zunder den Timer nur, wenn er noch der laufende ist. Ist Timing nicht erreichbar, läuft die Flamme mit Zeitstempeln weiter; die Antwort sagt unter `timing`, ob Timing genutzt wurde und warum nicht. Flammen-Operationen tragen die Quelle `server`.
+`POST /api/tasks/{id}/flame/start|stop` und die Werkzeuge `start_flame`/`stop_flame` teilen sich `flame::start`/`flame::stop`. Eine Flamme speichert immer `flame_started_at`/`flame_ended_at`; es läuft höchstens eine. Mit einem Timing-Token (API-Key aus der Timing-Web-App, in der Web-UI unter „Einstellungen“ oder per `ZUNDER_TIMING_TOKEN`) startet zusätzlich ein Timer in Timing (`POST /time-entries/start`, Titel = Aufgabentitel, Projekt aus den Einstellungen oder `ZUNDER_TIMING_PROJECT`, z. B. `/projects/1` oder ein Projekttitel); dessen Self-Link landet in `timing_ref`. Beim Beenden stoppt Zunder den Timer nur, wenn er noch der laufende ist. Ist Timing nicht erreichbar, läuft die Flamme mit Zeitstempeln weiter; die Antwort sagt unter `timing`, ob Timing genutzt wurde und warum nicht. Flammen-Operationen tragen die Quelle `server`.
+
+Einstellungen: `GET`/`PUT`/`DELETE /api/settings/timing` und `POST /api/settings/timing/check` (nur Browser-Sitzung). Gespeicherte Werte liegen in der Tabelle `settings` (Schema 3) und überschreiben die Umgebungsvariablen Feld für Feld; `App` hält die daraus gebaute Brücke und tauscht sie beim Speichern aus, die nächste Flamme nutzt sie ohne Neustart. Details im Vertrag, Abschnitt 4.2.
 
 ## Erweitern
 
@@ -92,5 +95,5 @@ UPDATE_SNAPSHOTS=1 cargo test -p zunder-server --test mcp tool_schemas_match_sna
 - `tests/oidc.rs`: kompletter Login gegen einen lokalen Mock-Anbieter (Discovery, JWKS, Token-Endpunkt) mit nur für Tests erzeugten RSA-Schlüsseln; Signatur, Issuer, Audience, Ablauf, Nonce, PKCE, Schlüsselrotation, erlaubte Person.
 - `tests/oauth.rs`: OAuth-Ablauf komplett (Registrierung → Freigabe mit Sitzung → Code → Token mit PKCE → `tools/list` → Rotation → Wiederverwendung → Widerruf) und die Gegenfälle (falscher Verifier, falsche Redirect-URI, abgelaufener/wiederverwendeter Code, Freigabe ohne bzw. mit fremder Sitzung oder fremdem Origin, fremde Ressource, Audience nach Wechsel der öffentlichen URL, Registrierungsregeln und -grenze, Loopback-Ports, HTML-Escaping, Dev-Auth). Der Umweg über den echten OIDC-Login steht in `tests/oidc.rs`.
 - `tests/mcp.rs`: MCP über HTTP mit Bearer-Token: `initialize` (Versionsaushandlung), Benachrichtigungen, `ping`, Batches, JSON-RPC-Fehler, Auth (kein Token, falscher/widerrufener Token, Cookie, Origin, Protokollversion, `GET`/`DELETE`), Snapshot der Werkzeug-Schemas, jedes Werkzeug inkl. `clickup_id`, Reservierungskonflikten, atomarem `decompose_task`, Suche nach geschlossenen Aufgaben, Filtern, Verschieben, Löschen und Kernmeldungen.
-- `tests/flame.rs`: Flammen per MCP und HTTP gegen einen lokalen Mock der Timing-API (Anfrageform, Token, Redirect bei `running`, fremder Timer bleibt laufen, Fehlerstatus, nicht erreichbar) und ohne Timing (Fallback-Zeitstempel, CSRF, 409).
+- `tests/flame.rs`: Flammen per MCP und HTTP gegen einen lokalen Mock der Timing-API (Anfrageform, Token, Redirect bei `running`, fremder Timer bleibt laufen, Fehlerstatus, nicht erreichbar) und ohne Timing (Fallback-Zeitstempel, CSRF, 409); Timing-Einstellungen aus der Web-UI (nur Sitzung, Validierung, sofort wirksam, Neustart, Vorrang vor und Rückfall auf die Umgebung).
 - `tests/process.rs`: das echte Binary mit `healthcheck` und sauberem Herunterfahren bei SIGTERM trotz offener SSE-Verbindung.

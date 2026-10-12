@@ -77,7 +77,7 @@ Das Skript
 
 - erzeugt `ZUNDER_SESSION_SECRET` (64 Zeichen, zufällig),
 - fragt Issuer, Client ID, Client Secret und die erlaubte E-Mail ab,
-- fragt optional Timing-Token und Timing-Projekt ab (leer lassen = Timing-Brücke aus),
+- fragt optional Timing-Token und Timing-Projekt ab (leer lassen = Timing-Brücke aus; beides lässt sich auch später in der Web-UI unter **Einstellungen** eintragen),
 - schreibt das Ergebnis nach `.env` neben `compose.yaml` (Rechte 600). `compose.yaml` lädt sie per `env_file`.
 
 `.env.example` bleibt unverändert: Es ist die Vorlage mit den Platzhaltern `WILL_BE_GENERATED`, `CHANGEME_MANUAL` und `CHANGEME_OPTIONAL`. Im Repo ist `deploy/.env` von Git ignoriert.
@@ -115,13 +115,13 @@ Dann `https://zunder.rubeen.dev` im Browser öffnen, über Pocket-ID anmelden un
 | `ZUNDER_OIDC_ALLOWED_EMAIL` | E-Mail des eigenen Pocket-ID-Kontos | `.env`, manuell |
 | `ZUNDER_OIDC_ALLOWED_SUBJECT` | Alternative zur E-Mail: `sub` des Kontos (in Pocket-ID die Benutzer-ID) | nicht gesetzt; bei Bedarf in `compose.yaml` ergänzen |
 | `ZUNDER_SESSION_SECRET` | zufällig | `.env`, generiert |
-| `ZUNDER_TIMING_TOKEN` | Timing-API-Token | `.env`, optional (leer = aus) |
-| `ZUNDER_TIMING_PROJECT` | Timing-Projekt für Flammen: Self-Link (z. B. `/projects/1`) oder Projekttitel, wird unverändert an Timing gegeben (eine reine Zahl liest Timing als Titel) | `.env`, optional |
+| `ZUNDER_TIMING_TOKEN` | Timing-API-Token | `.env`, optional (leer = aus); ein Token aus den **Einstellungen** der Web-UI hat Vorrang |
+| `ZUNDER_TIMING_PROJECT` | Timing-Projekt für Flammen: Self-Link (z. B. `/projects/1`) oder Projekttitel, wird unverändert an Timing gegeben (eine reine Zahl liest Timing als Titel) | `.env`, optional; ein Projekt aus den **Einstellungen** hat Vorrang |
 | `ZUNDER_BOOTSTRAP_TOKEN` | fester API-Token `zt_…` | nicht gesetzt; nur für Tests oder eine Inbetriebnahme ohne Web-Login |
 | `ZUNDER_DEV_AUTH` | `true` = Login ohne OIDC | **nie in Produktion**, nur lokal |
 | `ZUNDER_DEV_AUTH_ALLOW_REMOTE` | `true` = Dev-Auth auch mit nicht lokaler `ZUNDER_BIND` (nur für einen lokalen Container mit `-p 127.0.0.1:…`) | **nie in Produktion** |
 
-Leere Werte gelten als nicht gesetzt. Wer das Session-Secret ändert, meldet alle Browser-Sessions ab; API-Tokens bleiben gültig.
+Leere Werte gelten als nicht gesetzt. Timing lässt sich statt über `.env` auch in der Web-UI unter **Einstellungen** einrichten: Die Werte liegen dann in der Datenbank (Tabelle `settings`, der Token im Klartext, also auch in den Backups), gelten sofort ohne Neustart und überschreiben die beiden Variablen; „Zurücksetzen“ dort lässt wieder die Variablen gelten. Wer das Session-Secret ändert, meldet alle Browser-Sessions ab; API-Tokens bleiben gültig.
 
 ## API-Tokens
 

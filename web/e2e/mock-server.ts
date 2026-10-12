@@ -96,6 +96,8 @@ let state = new Map<string, Entity>();
 let opIds = new Set<string>();
 let tokens: Token[] = [];
 let oauthClients: OAuthClient[] = [];
+/** Timing settings from the settings view (the mock has no environment variables). */
+let timing: { token: string | null; project: string | null } = { token: null, project: null };
 let authenticated = true;
 const sseClients = new Set<ServerResponse>();
 
@@ -391,12 +393,27 @@ const SEED_IDS = {
   projMove: "0192a000-0000-7000-8000-000000000011",
 };
 
+function timingSettings() {
+  const overridden = timing.token !== null || timing.project !== null;
+  return {
+    configured: timing.token !== null,
+    token_source: timing.token !== null ? "settings" : null,
+    token_hint: timing.token !== null ? (timing.token.length >= 12 ? `…${timing.token.slice(-4)}` : "…") : null,
+    project: timing.project || null,
+    project_source: timing.project !== null ? "settings" : null,
+    overridden,
+    env_token: false,
+    env_project: null,
+  };
+}
+
 function seed(kind: string) {
   log = [];
   state = new Map();
   opIds = new Set();
   tokens = [{ id: randomUUID(), name: "claude-code", created_at: new Date(Date.now() - 86400000 * 3).toISOString(), last_used_at: null }];
   oauthClients = [];
+  timing = { token: null, project: null };
   if (kind === "empty") return;
   const base = Date.now() - 3600_000;
   let n = 0;
@@ -666,6 +683,21 @@ const server = createServer(async (req, res) => {
         if (!tokens.some((t) => t.id === tokenId)) return error(res, 404, "not_found", "Token nicht gefunden.");
         tokens = tokens.filter((t) => t.id !== tokenId);
         return send(res, 204);
+      }
+      if (path === "/api/settings/timing") {
+        if (method === "PUT") {
+          const body = await readJson(req);
+          const token = typeof body.token === "string" ? body.token.trim() : "";
+          if (/\s/.test(token)) return error(res, 400, "invalid_request", "Der Timing-Token darf keine Leer- oder Steuerzeichen enthalten");
+          if (token) timing.token = token;
+          if (typeof body.project === "string") timing.project = body.project.trim();
+        } else if (method === "DELETE") timing = { token: null, project: null };
+        else if (method !== "GET") return error(res, 405, "invalid_request", "Methode nicht erlaubt.");
+        return send(res, 200, timingSettings());
+      }
+      if (path === "/api/settings/timing/check" && method === "POST") {
+        if (!timing.token) return error(res, 409, "conflict", "Timing ist nicht eingerichtet.");
+        return send(res, 200, { ok: true, error: null });
       }
       if (path === "/api/oauth/clients" && method === "GET") return send(res, 200, oauthClients);
       m = /^\/api\/oauth\/clients\/([^/]+)$/.exec(path);

@@ -31,15 +31,14 @@ pub struct OidcConfig {
     pub allowed_email: Option<String>,
 }
 
-/// Timing web API settings (used by the Timing bridge).
+/// Timing web API settings from the environment (used by the Timing
+/// bridge). Settings stored in the web UI override them field by field
+/// ([`crate::settings`]).
 #[derive(Debug, Clone)]
 pub struct TimingConfig {
     pub token: String,
     /// Project for new time entries (self link like `/projects/1` or title).
     pub project: Option<String>,
-    /// Base URL of the API. Always [`crate::timing::DEFAULT_BASE_URL`] from
-    /// the environment; tests point it at a mock server.
-    pub base_url: Url,
 }
 
 #[derive(Debug, Clone)]
@@ -52,6 +51,9 @@ pub struct Config {
     /// Key for hashing session IDs (HMAC-SHA256).
     pub session_secret: String,
     pub timing: Option<TimingConfig>,
+    /// Base URL of the Timing API. Always [`crate::timing::DEFAULT_BASE_URL`]
+    /// from the environment; tests point it at a mock server.
+    pub timing_base_url: Url,
     pub bootstrap_token: Option<String>,
     pub dev_auth: bool,
     /// Local hour (0–23) of the nightly backup.
@@ -161,7 +163,6 @@ impl Config {
         let timing = get("ZUNDER_TIMING_TOKEN").map(|token| TimingConfig {
             token,
             project: get("ZUNDER_TIMING_PROJECT"),
-            base_url: Url::parse(crate::timing::DEFAULT_BASE_URL).expect("static URL is valid"),
         });
 
         let backup_hour = match get("ZUNDER_BACKUP_HOUR") {
@@ -180,6 +181,7 @@ impl Config {
             oidc,
             session_secret,
             timing,
+            timing_base_url: default_timing_base_url(),
             bootstrap_token: get("ZUNDER_BOOTSTRAP_TOKEN"),
             dev_auth,
             backup_hour,
@@ -198,6 +200,7 @@ impl Config {
             oidc: None,
             session_secret: DEV_SESSION_SECRET.to_owned(),
             timing: None,
+            timing_base_url: default_timing_base_url(),
             bootstrap_token: None,
             dev_auth: false,
             backup_hour: 3,
@@ -231,6 +234,10 @@ impl Config {
     pub fn public_origin(&self) -> String {
         self.public_url.origin().ascii_serialization()
     }
+}
+
+fn default_timing_base_url() -> Url {
+    Url::parse(crate::timing::DEFAULT_BASE_URL).expect("static URL is valid")
 }
 
 fn is_loopback_url(url: &Url) -> bool {

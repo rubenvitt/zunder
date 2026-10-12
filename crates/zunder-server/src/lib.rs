@@ -9,6 +9,7 @@
 //! - [`oauth`]: built-in OAuth 2.1 authorization server for `/mcp`
 //! - [`views`]: task, area and project representations for tools
 //! - [`flame`]: starting and stopping flames (shared by HTTP and MCP)
+//! - [`settings`]: settings changed in the web UI (Timing bridge)
 //! - [`timing`]: client for the Timing web API
 //! - [`backup`]: nightly `VACUUM INTO` backups
 //! - [`healthcheck`]: client for the `healthcheck` subcommand
@@ -24,6 +25,7 @@ pub mod healthcheck;
 pub mod http;
 pub mod mcp;
 pub mod oauth;
+pub mod settings;
 pub mod timing;
 pub mod views;
 
@@ -59,16 +61,15 @@ pub async fn build_with_http_client(
     config: Config,
     http: reqwest::Client,
 ) -> anyhow::Result<(App, Router)> {
-    let timing = timing::TimingClient::from_config(config.timing.as_ref(), http.clone());
     let oidc = config.oidc.clone().map(|c| {
         Arc::new(OidcClient::new(
             c,
             config.oidc_redirect_uri(),
             &config.session_secret,
-            http,
+            http.clone(),
         ))
     });
-    let app = App::open_with_timing(config, timing).await?;
+    let app = App::open_with_http_client(config, http).await?;
     let router = http::router(app.clone(), oidc);
     Ok((app, router))
 }

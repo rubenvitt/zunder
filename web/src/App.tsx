@@ -14,6 +14,7 @@ import { api, data, getEngine, pendingCount, ready, setNotifier, startSync, sync
 import { captureOpen, detailId, helpOpen, openSearch, palette, setCaptureOpen, setDetailId, setHelpOpen, setSelectedId, structureEdit, toast } from "./state/ui";
 import { InboxView, LooseView, TodayView } from "./views/Lists";
 import { DevView, LoginView, PhoenixView, TokensView } from "./views/Other";
+import { SettingsView } from "./views/Settings";
 import { StructureView } from "./views/Structure";
 
 interface NavItem {
@@ -147,10 +148,16 @@ function Shell() {
           <Show
             when={desktop}
             fallback={
-              <a href="#/tokens" class="nav-item small" classList={{ active: active("tokens") }}>
-                <Icon name="key" size={16} />
-                <span>API-Tokens</span>
-              </a>
+              <>
+                <a href="#/tokens" class="nav-item small" classList={{ active: active("tokens") }}>
+                  <Icon name="key" size={16} />
+                  <span>API-Tokens</span>
+                </a>
+                <a href="#/einstellungen" class="nav-item small" classList={{ active: active("einstellungen") }}>
+                  <Icon name="settings" size={16} />
+                  <span>Einstellungen</span>
+                </a>
+              </>
             }
           >
             <a href="#/verbindung" class="nav-item small" classList={{ active: active("verbindung") }}>
@@ -177,9 +184,14 @@ function Shell() {
         <Show
           when={desktop}
           fallback={
-            <a class="btn btn-ghost btn-icon" aria-label="API-Tokens" href="#/tokens">
-              <Icon name="key" />
-            </a>
+            <>
+              <a class="btn btn-ghost btn-icon" aria-label="API-Tokens" href="#/tokens">
+                <Icon name="key" />
+              </a>
+              <a class="btn btn-ghost btn-icon" aria-label="Einstellungen" href="#/einstellungen">
+                <Icon name="settings" />
+              </a>
+            </>
           }
         >
           <a class="btn btn-ghost btn-icon" aria-label="Verbindung" href="#/verbindung">
@@ -210,6 +222,9 @@ function Shell() {
           </Match>
           <Match when={route().view === "tokens"}>
             <TokensView />
+          </Match>
+          <Match when={route().view === "einstellungen"}>
+            <SettingsView />
           </Match>
           <Match when={route().view === "verbindung"}>
             <Show when={desktop} fallback={<TokensView />}>

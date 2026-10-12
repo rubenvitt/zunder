@@ -232,6 +232,35 @@ export interface CreatedToken extends ApiToken {
   token: string;
 }
 
+/** Where an effective setting comes from: the settings view or an environment variable. */
+export type SettingSource = "settings" | "env";
+
+/** Timing bridge settings, see `GET /api/settings/timing` (never contains the token itself). */
+export interface TimingSettings {
+  configured: boolean;
+  token_source: SettingSource | null;
+  /** Last characters of the token in effect, e.g. "…abcd". */
+  token_hint: string | null;
+  project: string | null;
+  project_source: SettingSource | null;
+  /** Whether stored settings override the environment. */
+  overridden: boolean;
+  env_token: boolean;
+  env_project: string | null;
+}
+
+/** `PUT /api/settings/timing`: missing/empty token keeps it; missing project keeps it, "" removes it. */
+export interface TimingSettingsUpdate {
+  token?: string;
+  project?: string;
+}
+
+/** `POST /api/settings/timing/check`. */
+export interface TimingCheck {
+  ok: boolean;
+  error: string | null;
+}
+
 /** An app connected via OAuth (e.g. a claude.ai connector), see `GET /api/oauth/clients`. */
 export interface OAuthClient {
   id: string;
