@@ -183,7 +183,7 @@ Ohne gültigen Token antwortet der Endpoint mit `401`.
 ## Health-Endpoint
 
 - `GET /healthz` ohne Anmeldung → `{"status":"ok","version":"…"}` mit HTTP 200, sobald die Datenbank offen ist.
-- Das Image hat einen Docker-`HEALTHCHECK` (`zunder-server healthcheck` fragt `/healthz` auf dem Port aus `ZUNDER_BIND` ab, alle 30 s). Status abfragen:
+- Das Image hat einen Docker-`HEALTHCHECK` (`zunder-server healthcheck` fragt `/healthz` auf dem Port aus `ZUNDER_BIND` ab, alle 30 s, in den ersten 20 s nach dem Start alle 2 s). Traefik leitet erst auf einen Container mit Status `healthy` weiter; nach einem Neustart oder Stack-Update ist Zunder dadurch nach etwa 2 s wieder erreichbar. Status abfragen:
 
   ```sh
   docker inspect --format '{{.State.Health.Status}}' zunder

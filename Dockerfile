@@ -130,7 +130,10 @@ VOLUME ["/data"]
 EXPOSE 8080
 
 # `zunder-server healthcheck` reads ZUNDER_BIND, so it follows a changed port.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+# Traefik only routes to a container once it is `healthy`; during the start
+# period the probe runs every 2 s (instead of Docker's default 5 s), so the
+# service is reachable about 2 s after a restart or stack update.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --start-interval=2s --retries=3 \
   CMD ["zunder-server", "healthcheck"]
 
 ENTRYPOINT ["/usr/bin/tini", "--"]

@@ -17,7 +17,7 @@ apps/zunder-app/           Tauri 2 (E4); src-tauri ist NICHT Workspace-Mitglied 
                            sondern eigener Workspace mit zunder-local (ohne webkit testbar)
 deploy/                    compose.yaml, stack.env (Vorlage), generate-secrets.sh (Portainer/Traefik)
 Dockerfile                 Multi-Stage: Web bauen, Server bauen, schlankes Runtime-Image
-.github/workflows/ci.yml   fmt, clippy -D warnings, Tests, Web, Playwright, GHCR
+.github/workflows/ci.yml   fmt, clippy -D warnings, Tests, Web, Playwright, Image (PR: nur Build, main/Tags: GHCR)
 docs/                      Spec, dieser Vertrag, betrieb.md, umstieg.md, entwicklung.md
 ```
 
@@ -253,7 +253,7 @@ Leere Werte gelten als nicht gesetzt (Compose und Portainer reichen optionale Va
 
 - Image `ghcr.io/<owner>/zunder` für `linux/amd64` und `linux/arm64`. Binärdateien `/usr/local/bin/zunder-server` und `/usr/local/bin/zunder-import`, Web-UI unter `/app/web`, Daten unter `/data` (Volume), Nutzer `zunder` (UID/GID 10001), Port 8080. Im Image gesetzt: `ZUNDER_BIND=0.0.0.0:8080`, `ZUNDER_DATA_DIR=/data`, `ZUNDER_WEB_DIR=/app/web`, `TZ=Europe/Berlin`.
 - `tini` ist PID 1. `zunder-server` beendet sich bei `SIGTERM` (und `SIGINT`) sauber: keine neuen Verbindungen, laufende Anfragen höchstens 8 s abschließen lassen (danach werden offene Verbindungen getrennt, unter Dockers Stopp-Frist von 10 s), SQLite schließen. Ein Request-Body, der 15 s lang nichts sendet, bricht ab.
-- Healthcheck: `zunder-server healthcheck` (kein `curl` im Image; folgt `ZUNDER_BIND`). `/healthz` antwortet erst mit 200, wenn die Datenbank geöffnet ist.
+- Healthcheck: `zunder-server healthcheck` (kein `curl` im Image; folgt `ZUNDER_BIND`), alle 30 s, in der 20-s-Startphase alle 2 s (`--start-interval`), damit Traefik den Container nach einem Neustart sofort wieder anspricht. `/healthz` antwortet erst mit 200, wenn die Datenbank geöffnet ist.
 - `tzdata` ist installiert, `TZ=Europe/Berlin` ist im Image gesetzt (überschreibbar) und bestimmt die Stunde des nächtlichen Backups.
 - Keine OpenSSL-/native-tls-Abhängigkeit (rustls verwenden), damit der Cross-Build ohne Ziel-`libssl` auskommt. SQLite kommt gebündelt über `rusqlite`.
 - Logs gehen nach stdout/stderr.
