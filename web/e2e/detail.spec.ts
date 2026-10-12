@@ -138,6 +138,8 @@ test("#/aufgabe/<id> öffnet die Aufgabe über ihrer Sicht", async ({ page }) =>
 });
 
 test("Heute: das Datum im Kopf folgt der Uhr über Mitternacht", async ({ page }) => {
+  // A fresh document (with the real backend, the login already loaded the app at "/").
+  await page.goto("about:blank");
   await page.clock.install({ time: new Date("2026-10-11T23:59:00+02:00") });
   await openApp(page, "#/heute");
   await expect(page.locator(".view-head .muted")).toHaveText("Sonntag, 11. Oktober");

@@ -10,7 +10,7 @@ import { isTauri } from "./platform/runtime";
 import { isUnauthorized } from "./sync/transport";
 import { navigate, parseRoute, route, type Route, type ViewName } from "./state/router";
 import { inboxCount } from "./state/selectors";
-import { api, data, pendingCount, ready, setNotifier, startSync, syncStatus, taskIndex } from "./state/store";
+import { api, data, getEngine, pendingCount, ready, setNotifier, startSync, syncStatus, taskIndex } from "./state/store";
 import { captureOpen, detailId, helpOpen, openSearch, palette, setCaptureOpen, setDetailId, setHelpOpen, setSelectedId, structureEdit, toast } from "./state/ui";
 import { InboxView, LooseView, TodayView } from "./views/Lists";
 import { DevView, LoginView, PhoenixView, TokensView } from "./views/Other";
@@ -257,10 +257,17 @@ function Shell() {
 
 /** "#/aufgabe/<id>" or "#/clickup/<clickup_id>": open the task over its home view. */
 function TaskLink() {
-  onMount(() => {
+  onMount(async () => {
     const r = route();
     if (r.view !== "aufgabe" && r.view !== "clickup") return;
-    const task = r.view === "aufgabe" ? data.tasks[r.id] : Object.values(data.tasks).find((t) => t.clickup_id === r.id);
+    const find = () => (r.view === "aufgabe" ? data.tasks[r.id] : Object.values(data.tasks).find((t) => t.clickup_id === r.id));
+    let task = find();
+    if (!task) {
+      // A running app may not have pulled a task created a moment ago.
+      await getEngine().pull();
+      if (route() !== r) return;
+      task = find();
+    }
     if (!task || taskIndex().isDeleted(task)) {
       toast("Aufgabe nicht gefunden oder gelöscht.", "error");
       navigate({ view: "heute" }, { replace: true });
