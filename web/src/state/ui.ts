@@ -137,6 +137,16 @@ function store(key: string, value: string): void {
   }
 }
 
+// Sidebar (desktop): ⌘B / Ctrl+B hides it for more room, remembered per device.
+const [sidebarHidden, setSidebarHiddenSignal] = createSignal(stored("zunder.sidebarHidden") === "1");
+export { sidebarHidden };
+
+export function toggleSidebar(): void {
+  const hidden = !sidebarHidden();
+  setSidebarHiddenSignal(hidden);
+  store("zunder.sidebarHidden", hidden ? "1" : "0");
+}
+
 export const DETAIL_MIN_WIDTH = 380;
 const [detailWide, setDetailWideSignal] = createSignal(stored("zunder.detailWide") === "1");
 const [detailWidth, setDetailWidthSignal] = createSignal(Number(stored("zunder.detailWidth")) || 560);

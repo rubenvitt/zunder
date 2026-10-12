@@ -114,3 +114,17 @@ test("Detail nimmt beim Öffnen den Fokus und gibt ihn beim Schließen zurück",
   await expect(detail(page)).toBeHidden();
   await expect.poll(() => page.evaluate(() => document.activeElement?.closest("[data-task-id]")?.getAttribute("data-task-id"))).toBe(id);
 });
+
+test("⌘B / Strg+B blendet die Seitenleiste aus und wieder ein", async ({ page }) => {
+  await openApp(page, "#/heute");
+  const sidebar = page.locator("nav.sidebar");
+  await expect(sidebar).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+b");
+  await expect(page.locator(".app")).toHaveClass(/sidebar-hidden/);
+  await expect(sidebar).toBeHidden();
+  // Remembered across a reload.
+  await page.reload();
+  await expect(page.locator(".app")).toHaveClass(/sidebar-hidden/);
+  await page.keyboard.press("ControlOrMeta+b");
+  await expect(sidebar).toBeVisible();
+});

@@ -665,6 +665,17 @@ input[type="checkbox"] {
 .app.detail-wide .main {
   visibility: hidden;
 }
+/* ⌘B: without the sidebar the views get its width. */
+.app.sidebar-hidden {
+  --sidebar: 0px;
+}
+.app.sidebar-hidden .sidebar {
+  /* Stays in the grid (as a 0px column), but out of sight and out of the tab order. */
+  visibility: hidden;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+}
 html.resizing,
 html.resizing * {
   cursor: col-resize !important;
@@ -2229,6 +2240,24 @@ html.resizing * {
 .md-content a {
   color: var(--accent-fg);
   cursor: pointer;
+}
+/* Task mentions ("ZUN-42"): a quiet pill, struck through once the task is closed. */
+.md-content a.task-mention {
+  color: var(--accent-fg);
+  background: var(--accent-softer);
+  border-radius: 4px;
+  padding: 0 0.25em;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+}
+.md-content a.task-mention:hover {
+  background: var(--accent-soft);
+}
+.md-content a.task-mention.closed {
+  color: var(--muted);
+  background: var(--surface-2);
+  text-decoration: line-through;
 }
 .md-content p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
