@@ -172,7 +172,8 @@ export function installKeyboard(): () => void {
       case "y": {
         // The open task first, then the selected row: "yank" the id for an agent.
         const id = detailId() ?? selectedTask()?.id;
-        if (id && data.tasks[id]) copyTaskId(id);
+        const task = id ? data.tasks[id] : undefined;
+        if (task) copyTaskId(task);
         else handled = false;
         break;
       }

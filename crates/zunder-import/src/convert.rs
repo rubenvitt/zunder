@@ -379,6 +379,7 @@ pub fn convert(
             repo: project.repo.clone(),
             description: None,
             view: None,
+            key: None,
         });
         conv.projects.push(desired(
             EntityKind::Project,

@@ -26,7 +26,7 @@ const SHORTCUTS: [string, string][] = [
   ["j / k", "Nächste / vorige Aufgabe"],
   ["Enter", "Aufgabe öffnen"],
   ["x", "Erledigt umschalten"],
-  ["y", "ID der Aufgabe kopieren (für Agenten)"],
+  ["y", "Kennung der Aufgabe (z. B. ZUN-42) kopieren, für Agenten"],
   ["Esc", "Panel oder Dialog schließen"],
   ["a / l / d", "Inbox: zuordnen / lose / verwerfen"],
   ["h / l bzw. ← / →", "Board: Spalte wechseln"],

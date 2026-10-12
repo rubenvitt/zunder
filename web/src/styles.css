@@ -320,6 +320,12 @@ select.field {
   background: transparent;
   padding-left: 0;
 }
+.chip-ref {
+  background: transparent;
+  padding-left: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.01em;
+}
 .chip-type-bug {
   background: var(--danger-soft);
   color: var(--danger);

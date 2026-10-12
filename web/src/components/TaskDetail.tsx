@@ -112,10 +112,15 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
       </Show>
 
       <div class="detail-grid">
-        <Show when={showDev()}>
-          <Row label="ID">
-            <button class="btn btn-ghost btn-small mono task-id" title="ID kopieren (y)" aria-label="ID kopieren" onClick={() => copyTaskId(t().id)}>
-              <span class="task-id-text">{t().id}</span>
+        <Show when={t().ref || showDev()}>
+          <Row label={t().ref ? "Kennung" : "ID"}>
+            <button
+              class="btn btn-ghost btn-small mono task-id"
+              title={`${t().ref ? "Kennung" : "ID"} kopieren (y)`}
+              aria-label={t().ref ? "Kennung kopieren" : "ID kopieren"}
+              onClick={() => copyTaskId(t())}
+            >
+              <span class="task-id-text">{t().ref ?? t().id}</span>
               <Icon name="copy" size={14} />
             </button>
           </Row>
@@ -324,12 +329,12 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
       <section class="detail-section detail-meta">
         <span>Erstellt {hlcLabel(t().created_hlc)}</span>
         <span>Geändert {hlcLabel(t().updated_hlc)}</span>
-        <a href={`#/aufgabe/${t().id}`} title="Dauerhafter Link zu dieser Aufgabe (z. B. für den Vault)">
+        <a href={`#/aufgabe/${t().ref ?? t().id}`} title="Dauerhafter Link zu dieser Aufgabe (z. B. für den Vault)">
           Link
         </a>
-        <Show when={!showDev()}>
-          <button class="link-button" title="ID kopieren (y)" onClick={() => copyTaskId(t().id)}>
-            ID kopieren
+        <Show when={t().ref || !showDev()}>
+          <button class="link-button" title="UUID der Aufgabe kopieren" onClick={() => copyTaskId({ id: t().id, ref: null })}>
+            UUID kopieren
           </button>
         </Show>
         <Show when={t().clickup_id}>

@@ -133,11 +133,12 @@ export function updateArea(id: string, fields: Record<string, JsonValue>): boole
   return apply([{ entity: "area", id, fields }]);
 }
 
-export function createProject(name: string, areaId: string, kind: ProjectKind = "standard", repo?: string | null): string | null {
+export function createProject(name: string, areaId: string, kind: ProjectKind = "standard", repo?: string | null, key?: string | null): string | null {
   const id = uuidv7();
   const fields: Record<string, JsonValue> = { name: name.trim(), area_id: areaId };
   if (kind !== "standard") fields.kind = kind;
   if (kind === "dev" && repo) fields.repo = repo;
+  if (key) fields.key = key;
   return apply([{ entity: "project", id, fields }]) ? id : null;
 }
 

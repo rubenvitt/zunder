@@ -38,9 +38,13 @@ export function copyText(text: string, done: string): void {
   );
 }
 
-/** The task id is what agents need (claim_task, get_task …), so it is one key or click away. */
-export function copyTaskId(id: string): void {
-  copyText(id, `ID kopiert: ${id}`);
+/**
+ * What agents need to address a task (claim_task, get_task …): its reference
+ * (`ZUN-42`) if it has one, else its ID. One key or click away.
+ */
+export function copyTaskId(task: { id: string; ref: string | null }): void {
+  if (task.ref) copyText(task.ref, `Kennung kopiert: ${task.ref}`);
+  else copyText(task.id, `ID kopiert: ${task.id}`);
 }
 
 // ---- Selection and detail panel ---------------------------------------

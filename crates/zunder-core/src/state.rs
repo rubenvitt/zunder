@@ -239,6 +239,7 @@ impl Entity {
                 .str_value(f::VIEW)
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(ProjectView::default_for(kind)),
+            key: self.string(f::KEY),
             deleted: self.is_deleted(),
         })
     }
@@ -276,6 +277,7 @@ impl Entity {
                 .and_then(crate::model::parse_rfc3339),
             clickup_id: self.string(f::CLICKUP_ID),
             rank: self.string(f::RANK),
+            reference: self.string(f::REF),
             deleted: self.is_deleted(),
         })
     }

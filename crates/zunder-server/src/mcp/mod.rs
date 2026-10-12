@@ -61,8 +61,10 @@ immer an der Stelle ihrer Wurzelaufgabe. Status (englische Codes): open, in_prog
 (nur Dev-Projekte), blocked, done, dropped. Typen: aufgabe; bug und feature nur in Dev-Projekten. \
 Ein Epic ist einfach eine Aufgabe mit Unteraufgaben (progress zeigt erledigt/gesamt). \
 filter_tasks blendet erledigte und verworfene Aufgaben 3 Tage nach der Statusänderung aus \
-(include_closed zeigt sie), search findet sie immer. Aufgaben werden über task_id oder clickup_id \
-adressiert; IDs von Bereichen und Projekten liefert list_structure (die ID ist die zunder_id im Vault). \
+(include_closed zeigt sie), search findet sie immer. Aufgaben werden über task_id (UUID oder \
+Kennung wie ZUN-42) oder clickup_id adressiert. Projekte können einen Schlüssel (key, z. B. ZUN) \
+haben; ihre Aufgaben bekommen dann vom Server eine feste Kennung (ref, ZUN-1, ZUN-2 …), die beim \
+Verschieben bleibt. IDs von Bereichen und Projekten liefert list_structure (die ID ist die zunder_id im Vault). \
 Dev-Modus: claim_task reserviert eine Aufgabe mit Ablaufzeit, plan, branch und pr_url halten \
 Ergebnisse fest. Phönix: phoenix markiert Feuer-Schritte und Flammen einer ISO-Woche; \
 start_flame/stop_flame messen Deep-Work-Blöcke (mit Timing, falls angebunden). \
