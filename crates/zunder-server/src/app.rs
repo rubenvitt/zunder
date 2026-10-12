@@ -24,6 +24,7 @@ use serde::Serialize;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
+use zunder_core::blocking::BlockingBefore;
 use zunder_core::hlc::system_time_ms;
 use zunder_core::ids::Id;
 use zunder_core::model::fields;
@@ -1175,16 +1176,18 @@ impl Inner {
                 now_ms(),
                 extra,
             )?;
-            {
+            let blocking = {
                 let mut mat = self
                     .materialized
                     .write()
                     .unwrap_or_else(PoisonError::into_inner);
+                let blocking = BlockingBefore::capture(&mat.state, &outcome.new_ops);
                 for op in &outcome.new_ops {
                     mat.state.apply(op);
                 }
                 mat.cursor = cursor;
-            }
+                blocking
+            };
             if remote {
                 for op in &outcome.new_ops {
                     clock.receive(&op.hlc);
@@ -1196,6 +1199,10 @@ impl Inner {
             // until the next push or restart.
             if let Err(e) = self.assign_refs(conn, clock, Scope::Ops(&outcome.new_ops)) {
                 tracing::error!(error = %e, "assigning task references failed");
+            }
+            // Likewise: a failure leaves the status as the push set it.
+            if let Err(e) = self.follow_blockers(conn, clock, &blocking) {
+                tracing::error!(error = %e, "updating blocked tasks failed");
             }
         }
         Ok(PushResult {
@@ -1232,6 +1239,36 @@ impl Inner {
         };
         for r in &validated.outcome.rejected {
             tracing::error!(op_id = %r.op_id, code = r.code.as_str(), message = %r.message, "task reference rejected");
+        }
+        self.persist(conn, clock, validated, &Source::Server, None, false, None)?;
+        Ok(())
+    }
+
+    /// Blocks open tasks that got an open blocker and opens blocked tasks
+    /// whose last open blocker was resolved (see `zunder_core::blocking`),
+    /// as the server's own push. Must be called with the writer lock held,
+    /// right after the push `before` was captured for.
+    fn follow_blockers(
+        &self,
+        conn: &mut Connection,
+        clock: &mut Clock,
+        before: &BlockingBefore,
+    ) -> AppResult<()> {
+        let now = system_time_ms();
+        let validated = {
+            let mat = self.read_materialized();
+            let changes = before.status_changes(&mat.state);
+            if changes.is_empty() {
+                return Ok(());
+            }
+            let mut batch = OpBatch::new(clock, now);
+            for (id, status) in changes {
+                batch.set_status(id, status);
+            }
+            Validated::by(&mat, batch.ops(), now, Author::Server)
+        };
+        for r in &validated.outcome.rejected {
+            tracing::error!(op_id = %r.op_id, code = r.code.as_str(), message = %r.message, "status from dependencies rejected");
         }
         self.persist(conn, clock, validated, &Source::Server, None, false, None)?;
         Ok(())

@@ -9,8 +9,10 @@
 //! - [`state`]: materialized LWW state with derived data and snapshots
 //! - [`validate`]: push validation with stable rejection codes
 //! - [`builder`]: ergonomic construction of operation batches
+//! - [`blocking`]: task status follows dependencies (`blocked_by`)
 //! - [`search`]: diacritic-tolerant full-text search
 
+pub mod blocking;
 pub mod builder;
 pub mod hlc;
 pub mod ids;
