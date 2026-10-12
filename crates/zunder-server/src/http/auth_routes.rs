@@ -33,6 +33,9 @@ pub fn routes<S>(state: AuthState) -> Router<S> {
         .with_state(state)
 }
 
+/// Longest accepted return path (it travels in the login cookie).
+const MAX_RETURN_TO: usize = 2048;
+
 /// Only local paths are allowed as return targets (no open redirect).
 ///
 /// Browsers strip TAB, CR and LF anywhere in a URL before parsing it, so
@@ -42,6 +45,7 @@ fn safe_return_to(raw: Option<&str>) -> String {
     match raw {
         Some(p)
             if p.starts_with('/')
+                && p.len() <= MAX_RETURN_TO
                 && !p.starts_with("//")
                 && !p.contains('\\')
                 && !p.chars().any(|c| c.is_control() || c.is_whitespace()) =>
@@ -126,7 +130,7 @@ async fn login(
             let max_age = time::Duration::seconds(LOGIN_TTL.as_secs() as i64);
             response
                 .headers_mut()
-                .append(SET_COOKIE, login_cookie(app, &start.state, max_age));
+                .append(SET_COOKIE, login_cookie(app, &start.cookie, max_age));
             response
         }
         Err(e) => {
@@ -186,19 +190,20 @@ async fn callback(
     let (Some(code), Some(login_state)) = (q.code, q.state) else {
         return fail(StatusCode::BAD_REQUEST, "code oder state fehlt.");
     };
-    // The state must belong to this browser (prevents login CSRF).
-    if cookie_value(&headers, LOGIN_COOKIE) != Some(login_state.as_str()) {
+    // The login cookie binds the state to this browser (prevents login CSRF).
+    let Some(login_cookie) = cookie_value(&headers, LOGIN_COOKIE).filter(|v| !v.is_empty()) else {
         return fail(
             StatusCode::BAD_REQUEST,
-            "Die Anmeldung wurde in einem anderen Browser begonnen oder ist abgelaufen.",
+            &crate::auth::oidc::OidcError::StateMismatch.to_string(),
         );
-    }
-    let done = match oidc.finish_login(&login_state, &code).await {
+    };
+    let done = match oidc.finish_login(login_cookie, &login_state, &code).await {
         Ok(done) => done,
         Err(e) => {
             tracing::warn!(error = %e, "OIDC login failed");
             let status = match e {
                 crate::auth::oidc::OidcError::NotAllowed => StatusCode::FORBIDDEN,
+                crate::auth::oidc::OidcError::StateMismatch => StatusCode::BAD_REQUEST,
                 crate::auth::oidc::OidcError::Provider(_) => StatusCode::BAD_GATEWAY,
                 _ => StatusCode::UNAUTHORIZED,
             };
@@ -258,6 +263,8 @@ mod tests {
         assert_eq!(safe_return_to(Some("https://evil.example")), "/");
         assert_eq!(safe_return_to(Some("/\\evil.example")), "/");
         assert_eq!(safe_return_to(Some("/inbox?x=1#y")), "/inbox?x=1#y");
+        let long = format!("/{}", "x".repeat(super::MAX_RETURN_TO));
+        assert_eq!(safe_return_to(Some(&long)), "/");
         for evil in [
             "/\t/evil.example",
             "/\n/evil.example",

@@ -2781,6 +2781,7 @@ dependencies = [
  "http-body-util",
  "jsonwebtoken",
  "reqwest",
+ "ring",
  "rsa",
  "rusqlite",
  "serde",

@@ -60,10 +60,14 @@ pub async fn build_with_http_client(
     http: reqwest::Client,
 ) -> anyhow::Result<(App, Router)> {
     let timing = timing::TimingClient::from_config(config.timing.as_ref(), http.clone());
-    let oidc = config
-        .oidc
-        .clone()
-        .map(|c| Arc::new(OidcClient::new(c, config.oidc_redirect_uri(), http)));
+    let oidc = config.oidc.clone().map(|c| {
+        Arc::new(OidcClient::new(
+            c,
+            config.oidc_redirect_uri(),
+            &config.session_secret,
+            http,
+        ))
+    });
     let app = App::open_with_timing(config, timing).await?;
     let router = http::router(app.clone(), oidc);
     Ok((app, router))

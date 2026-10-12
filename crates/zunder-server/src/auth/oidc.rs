@@ -3,9 +3,12 @@
 //!
 //! - Discovery (`/.well-known/openid-configuration`) and JWKS are fetched
 //!   lazily and cached; an unknown key ID triggers one refresh (rotation).
-//! - Pending logins (state → nonce, PKCE verifier, return path) live in
-//!   memory for [`LOGIN_TTL`]; the browser is bound to its login by a
-//!   short-lived cookie holding the state.
+//! - A pending login (state, nonce, PKCE verifier, return path, expiry)
+//!   lives only in the browser: sealed (ChaCha20-Poly1305, key derived from
+//!   `ZUNDER_SESSION_SECRET`) into a short-lived cookie that also binds the
+//!   browser to its login. Anonymous requests to `/auth/login` therefore
+//!   cannot crowd out the owner's login. A completed login's state is
+//!   remembered until it expires, so a callback cannot be replayed.
 //! - The ID token's signature, issuer, audience, expiry and nonce are
 //!   verified; only the configured person may log in.
 
@@ -13,9 +16,12 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
 use jsonwebtoken::jwk::{Jwk, JwkSet};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
-use serde::Deserialize;
+use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, CHACHA20_POLY1305, NONCE_LEN};
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::app::Identity;
@@ -28,8 +34,8 @@ pub const LOGIN_TTL: Duration = Duration::from_secs(10 * 60);
 pub const LOGIN_COOKIE: &str = "zunder_login";
 /// Discovery and JWKS are refreshed after this age.
 const PROVIDER_MAX_AGE: Duration = Duration::from_secs(60 * 60);
-/// Upper bound for pending logins (unauthenticated endpoint).
-const MAX_PENDING: usize = 256;
+/// Associated data of the sealed login cookie.
+const LOGIN_AAD: &[u8] = b"zunder-oidc-login";
 /// Accepted clock skew for `exp`/`iat`/`nbf`.
 const LEEWAY_SECS: u64 = 60;
 
@@ -39,6 +45,8 @@ pub enum OidcError {
     Provider(String),
     #[error("Die Anmeldung ist abgelaufen oder unbekannt. Bitte erneut anmelden.")]
     UnknownState,
+    #[error("Die Anmeldung wurde in einem anderen Browser begonnen oder ist abgelaufen.")]
+    StateMismatch,
     #[error("Der Anmeldedienst hat die Anmeldung abgelehnt: {0}")]
     Denied(String),
     #[error("Das ID-Token ist ungültig: {0}")]
@@ -63,20 +71,29 @@ struct Provider {
     fetched_at: Instant,
 }
 
-#[derive(Debug, Clone)]
+/// A pending login, sealed into the login cookie.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct PendingLogin {
+    state: String,
     nonce: String,
     verifier: String,
     return_to: String,
-    created: Instant,
+    /// Expiry (Unix seconds).
+    exp: u64,
+}
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
 }
 
 /// The start of a login: send the browser to `redirect` and set the login
-/// cookie to `state`.
+/// cookie to `cookie` (the sealed pending login).
 #[derive(Debug, Clone)]
 pub struct LoginStart {
     pub redirect: Url,
-    pub state: String,
+    pub cookie: String,
 }
 
 /// A completed login.
@@ -115,18 +132,68 @@ pub struct OidcClient {
     redirect_uri: Url,
     http: reqwest::Client,
     provider: tokio::sync::RwLock<Option<Provider>>,
-    pending: Mutex<HashMap<String, PendingLogin>>,
+    /// Key sealing the login cookie.
+    login_key: LessSafeKey,
+    /// States of completed logins (single use), until they would expire.
+    used: Mutex<HashMap<String, Instant>>,
 }
 
 impl OidcClient {
-    pub fn new(config: OidcConfig, redirect_uri: Url, http: reqwest::Client) -> Self {
+    /// `session_secret` keys the login cookie (through a derived subkey).
+    pub fn new(
+        config: OidcConfig,
+        redirect_uri: Url,
+        session_secret: &str,
+        http: reqwest::Client,
+    ) -> Self {
+        use hmac::{Hmac, Mac};
+        let mut mac = Hmac::<sha2::Sha256>::new_from_slice(session_secret.as_bytes())
+            .expect("HMAC accepts any key length");
+        mac.update(b"zunder-oidc-login-cookie");
+        let key = UnboundKey::new(&CHACHA20_POLY1305, &mac.finalize().into_bytes())
+            .expect("a 32-byte key fits ChaCha20-Poly1305");
         Self {
             config,
             redirect_uri,
             http,
             provider: tokio::sync::RwLock::new(None),
-            pending: Mutex::new(HashMap::new()),
+            login_key: LessSafeKey::new(key),
+            used: Mutex::new(HashMap::new()),
         }
+    }
+
+    fn seal(&self, login: &PendingLogin) -> String {
+        let mut nonce = [0u8; NONCE_LEN];
+        getrandom::fill(&mut nonce).expect("operating system RNG is available");
+        let mut data = serde_json::to_vec(login).expect("a pending login serializes");
+        self.login_key
+            .seal_in_place_append_tag(
+                Nonce::assume_unique_for_key(nonce),
+                Aad::from(LOGIN_AAD),
+                &mut data,
+            )
+            .expect("sealing a small cookie succeeds");
+        let mut out = nonce.to_vec();
+        out.extend_from_slice(&data);
+        URL_SAFE_NO_PAD.encode(out)
+    }
+
+    /// The pending login of a cookie; `None` when it was not sealed by this
+    /// server (or with another secret) or has expired.
+    fn open(&self, cookie: &str) -> Option<PendingLogin> {
+        let bytes = URL_SAFE_NO_PAD.decode(cookie).ok()?;
+        if bytes.len() <= NONCE_LEN {
+            return None;
+        }
+        let (nonce, sealed) = bytes.split_at(NONCE_LEN);
+        let nonce = Nonce::try_assume_unique_for_key(nonce).ok()?;
+        let mut sealed = sealed.to_vec();
+        let plain = self
+            .login_key
+            .open_in_place(nonce, Aad::from(LOGIN_AAD), &mut sealed)
+            .ok()?;
+        let login: PendingLogin = serde_json::from_slice(plain).ok()?;
+        (unix_now() < login.exp).then_some(login)
     }
 
     fn discovery_url(&self) -> String {
@@ -204,39 +271,33 @@ impl OidcClient {
             .append_pair("nonce", &nonce)
             .append_pair("code_challenge", &pkce_challenge(&verifier))
             .append_pair("code_challenge_method", "S256");
-        let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
-        pending.retain(|_, p| p.created.elapsed() < LOGIN_TTL);
-        if pending.len() >= MAX_PENDING {
-            if let Some(oldest) = pending
-                .iter()
-                .min_by_key(|(_, p)| p.created)
-                .map(|(k, _)| k.clone())
-            {
-                pending.remove(&oldest);
-            }
-        }
-        pending.insert(
-            state.clone(),
-            PendingLogin {
-                nonce,
-                verifier,
-                return_to,
-                created: Instant::now(),
-            },
-        );
-        Ok(LoginStart { redirect, state })
+        let cookie = self.seal(&PendingLogin {
+            state,
+            nonce,
+            verifier,
+            return_to,
+            exp: unix_now() + LOGIN_TTL.as_secs(),
+        });
+        Ok(LoginStart { redirect, cookie })
     }
 
-    /// Completes a login: exchanges the code, verifies the ID token and
-    /// checks that the person is allowed.
-    pub async fn finish_login(&self, state: &str, code: &str) -> Result<LoginDone, OidcError> {
-        let pending = self
-            .pending
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .remove(state)
-            .filter(|p| p.created.elapsed() < LOGIN_TTL)
-            .ok_or(OidcError::UnknownState)?;
+    /// Completes a login: checks the login cookie against `state`,
+    /// exchanges the code, verifies the ID token and checks that the person
+    /// is allowed.
+    pub async fn finish_login(
+        &self,
+        cookie: &str,
+        state: &str,
+        code: &str,
+    ) -> Result<LoginDone, OidcError> {
+        let pending = self.open(cookie).ok_or(OidcError::UnknownState)?;
+        // The state must belong to this browser (prevents login CSRF).
+        if !crate::auth::constant_time_eq(pending.state.as_bytes(), state.as_bytes()) {
+            return Err(OidcError::StateMismatch);
+        }
+        if self.is_used(state) {
+            return Err(OidcError::UnknownState);
+        }
         let provider = self.provider(false).await?;
 
         let mut form = vec![
@@ -282,6 +343,11 @@ impl OidcClient {
             tracing::warn!(subject = %claims.sub, "OIDC login of a person that is not allowed");
             return Err(OidcError::NotAllowed);
         }
+        // Only the allowed person's completed logins get here, so the set
+        // stays tiny and anonymous requests cannot fill it.
+        if !self.mark_used(state) {
+            return Err(OidcError::UnknownState);
+        }
         Ok(LoginDone {
             identity: Identity {
                 subject: claims.sub,
@@ -290,6 +356,19 @@ impl OidcClient {
             },
             return_to: pending.return_to,
         })
+    }
+
+    fn is_used(&self, state: &str) -> bool {
+        let mut used = self.used.lock().unwrap_or_else(|e| e.into_inner());
+        used.retain(|_, at| at.elapsed() < LOGIN_TTL);
+        used.contains_key(state)
+    }
+
+    /// Records a completed login's state; `false` if it was already used.
+    fn mark_used(&self, state: &str) -> bool {
+        let mut used = self.used.lock().unwrap_or_else(|e| e.into_inner());
+        used.retain(|_, at| at.elapsed() < LOGIN_TTL);
+        used.insert(state.to_owned(), Instant::now()).is_none()
     }
 
     fn verify_id_token(

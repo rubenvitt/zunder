@@ -270,16 +270,19 @@ async fn login_from(s: &TestServer, idp: &Idp, start_path: &str) -> TestResponse
     assert_eq!(q["code_challenge_method"], "S256");
     assert!(q["scope"].split(' ').any(|s| s == "openid"));
     let state = q["state"].clone();
-    assert_eq!(
-        start.cookie("zunder_login").as_deref(),
-        Some(state.as_str())
-    );
+    let cookie = start.cookie("zunder_login").expect("login cookie");
+    for secret in [&state, &q["nonce"]] {
+        assert!(
+            !cookie.contains(secret.as_str()),
+            "the login cookie is sealed"
+        );
+    }
     {
         let mut c = idp.control.lock().unwrap();
         c.nonce = q["nonce"].clone();
         c.challenge = q["code_challenge"].clone();
     }
-    callback(s, &state, Some(&state)).await
+    callback(s, &state, Some(&cookie)).await
 }
 
 async fn callback(s: &TestServer, state: &str, cookie: Option<&str>) -> TestResponse {
@@ -417,6 +420,29 @@ async fn allowed_email_must_be_verified() {
 }
 
 #[tokio::test]
+async fn anonymous_logins_do_not_evict_a_pending_login() {
+    let (idp, base) = Idp::start().await;
+    let s = server_for(&base, |_| {}).await;
+    let start = s.get("/auth/login?return_to=/heute", Auth::None).await;
+    let location = url::Url::parse(start.header("location").unwrap()).unwrap();
+    let q: HashMap<String, String> = location.query_pairs().into_owned().collect();
+    {
+        let mut c = idp.control.lock().unwrap();
+        c.nonce = q["nonce"].clone();
+        c.challenge = q["code_challenge"].clone();
+    }
+    // A flood of anonymous logins while the owner is at the provider.
+    for _ in 0..300 {
+        let r = s.get("/auth/login", Auth::None).await;
+        assert_eq!(r.status, StatusCode::SEE_OTHER);
+    }
+    let r = callback(&s, &q["state"], start.cookie("zunder_login").as_deref()).await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER, "{}", r.text());
+    assert_eq!(r.header("location"), Some("/heute"));
+    assert!(r.cookie("zunder_session").is_some());
+}
+
+#[tokio::test]
 async fn state_is_bound_to_the_browser_and_single_use() {
     let (idp, base) = Idp::start().await;
     let s = server_for(&base, |_| {}).await;
@@ -430,18 +456,26 @@ async fn state_is_bound_to_the_browser_and_single_use() {
         c.challenge = q["code_challenge"].clone();
     }
     let state = &q["state"];
+    let cookie = start.cookie("zunder_login").unwrap();
 
     // without the login cookie (another browser): refused before any token request
     let r = callback(&s, state, None).await;
     assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    // the cookie of another login in this browser does not fit the state
+    let other = s.get("/auth/login", Auth::None).await;
+    let r = callback(&s, state, other.cookie("zunder_login").as_deref()).await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    // a cookie the server did not seal
+    let r = callback(&s, state, Some("erfunden")).await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
     assert_eq!(idp.control.lock().unwrap().token_requests, 0);
 
-    let r = callback(&s, state, Some(state)).await;
+    let r = callback(&s, state, Some(&cookie)).await;
     assert_eq!(r.status, StatusCode::SEE_OTHER);
     assert_eq!(r.header("location"), Some("/"));
 
     // replay
-    let r = callback(&s, state, Some(state)).await;
+    let r = callback(&s, state, Some(&cookie)).await;
     assert_eq!(r.status, StatusCode::UNAUTHORIZED);
     assert!(r.cookie("zunder_session").is_none());
 
