@@ -5,10 +5,12 @@ import type {
   ApiToken,
   CalendarSettings,
   CreatedCalendarFeed,
+  CreatedIntakeChannel,
   CreatedToken,
   Device,
   FlameResult,
   HistoryEntry,
+  IntakeChannel,
   Me,
   OAuthClient,
   PullResponse,
@@ -94,6 +96,9 @@ export interface ApiClient {
   disableCalendarFeed(): Promise<CalendarSettings>;
   listDevices(): Promise<Device[]>;
   revokeDevice(id: string): Promise<void>;
+  listIntakeChannels(): Promise<IntakeChannel[]>;
+  createIntakeChannel(name: string, projectId: string): Promise<CreatedIntakeChannel>;
+  revokeIntakeChannel(id: string): Promise<void>;
   logout(): Promise<void>;
 }
 
@@ -249,6 +254,18 @@ export class HttpTransport implements SyncTransport, ApiClient {
 
   async revokeDevice(id: string): Promise<void> {
     await this.request("DELETE", `/api/devices/${encodeURIComponent(id)}`);
+  }
+
+  listIntakeChannels(): Promise<IntakeChannel[]> {
+    return this.request<IntakeChannel[]>("GET", "/api/intake/channels").then((data) => (Array.isArray(data) ? data : []));
+  }
+
+  createIntakeChannel(name: string, projectId: string): Promise<CreatedIntakeChannel> {
+    return this.request("POST", "/api/intake/channels", { name, project_id: projectId });
+  }
+
+  async revokeIntakeChannel(id: string): Promise<void> {
+    await this.request("DELETE", `/api/intake/channels/${encodeURIComponent(id)}`);
   }
 
   async logout(): Promise<void> {

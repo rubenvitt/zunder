@@ -14,7 +14,10 @@
 // format {"error":{"code","message"}}, CSRF header X-Zunder-Client: web for
 // state-changing requests, snapshot with created_hlc/op_id, history entries with
 // source/received_at, flame responses (409 without a running flame), token rules,
-// and a subset of the core validation with the core's rejection codes.
+// intake channels (management under /api/intake/channels, POST /intake/v1/tasks with
+// a zi_ token: idempotent per external_id, 409 for a dead or completed target, 429
+// after 30 tasks per hour), and a subset of the core validation with the core's
+// rejection codes.
 
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -74,6 +77,17 @@ interface Device {
   last_used_at: string | null;
 }
 
+interface IntakeChannel {
+  id: string;
+  name: string;
+  project_id: string;
+  token: string;
+  created_at: string;
+  last_used_at: string | null;
+  /** external_id → created task and when. */
+  submissions: Map<string, { task_id: string; at: number }>;
+}
+
 interface Rejection {
   op_id: string;
   code: string;
@@ -115,6 +129,7 @@ const TIMING_PROJECTS = [
   { self: "/projects/3", title: "Privat", title_chain: ["Privat"], color: null },
 ];
 let devices: Device[] = [];
+let intakeChannels: IntakeChannel[] = [];
 /** Calendar feed: creation time of the token, null without a feed. */
 let calendarCreatedAt: string | null = null;
 let authenticated = true;
@@ -438,6 +453,7 @@ function seed(kind: string) {
   oauthClients = [];
   timing = { token: null, project: null };
   devices = [];
+  intakeChannels = [];
   calendarCreatedAt = null;
   if (kind === "empty") return;
   const base = Date.now() - 3600_000;
@@ -547,6 +563,53 @@ function flameOutcome(id: string, running: boolean, stopped: string[], unchanged
   };
 }
 
+function intakeInfo(c: IntakeChannel) {
+  const name = state.get(key("project", c.project_id))?.fields.name?.value;
+  return {
+    id: c.id,
+    name: c.name,
+    project_id: c.project_id,
+    project_name: typeof name === "string" ? name : null,
+    created_at: c.created_at,
+    last_used_at: c.last_used_at,
+  };
+}
+
+/** Why the project takes no intake tasks (dead or completed), null when it does. */
+function intakeTargetProblem(projectId: string): string | null {
+  if (!alive("project", projectId)) return "Das Zielprojekt gibt es nicht (mehr)";
+  if (state.get(key("project", projectId))?.fields.status?.value === "completed") return "Das Zielprojekt ist abgeschlossen";
+  return null;
+}
+
+const INTAKE_FIELDS = ["external_id", "title", "description", "type", "links"];
+
+/** Field checks of POST /intake/v1/tasks; the core rules run in push(). */
+function intakeBodyError(body: Record<string, any>): string | null {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return "Der Body muss ein JSON-Objekt sein";
+  const unknown = Object.keys(body).find((k) => !INTAKE_FIELDS.includes(k));
+  if (unknown) return `Unbekanntes Feld „${unknown}“`;
+  if (typeof body.external_id !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(body.external_id)) return "„external_id“ ist ungültig";
+  if (typeof body.title !== "string" || body.title.trim() === "" || [...body.title.trim()].length > 200) return "„title“ ist ungültig";
+  if (body.description != null && (typeof body.description !== "string" || [...body.description].length > 20000)) return "„description“ ist ungültig";
+  if (body.type != null && !["aufgabe", "bug", "feature"].includes(body.type)) return "„type“ muss „aufgabe“, „bug“ oder „feature“ sein";
+  if (body.links != null) {
+    if (!Array.isArray(body.links)) return "„links“ muss eine Liste sein";
+    if (body.links.length > 5) return "Höchstens 5 Links erlaubt";
+    for (const link of body.links) {
+      if (typeof link?.url !== "string") continue;
+      let ok = false;
+      try {
+        ok = ["http:", "https:"].includes(new URL(link.url).protocol);
+      } catch {
+        ok = false;
+      }
+      if (!ok) return "Links müssen http- oder https-Adressen sein";
+    }
+  }
+  return null;
+}
+
 function tokenNameError(name: unknown): string | null {
   if (typeof name !== "string" || name.trim() === "" || [...name].length > 64) return "Der Name muss 1 bis 64 Zeichen lang sein.";
   // eslint-disable-next-line no-control-regex
@@ -610,6 +673,55 @@ const server = createServer(async (req, res) => {
       if (!csrfOk) return error(res, 403, "forbidden", "Header X-Zunder-Client fehlt.");
       authenticated = false;
       return send(res, 204);
+    }
+
+    if (path === "/intake/v1/tasks" && method === "POST") {
+      // Only the token of an active channel; no session, no CSRF header.
+      const auth = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? "");
+      const channel = auth ? intakeChannels.find((c) => c.token === auth[1]) : undefined;
+      if (!channel) {
+        res.setHeader("WWW-Authenticate", 'Bearer realm="zunder"');
+        return error(res, 401, "unauthorized", "Anmeldung erforderlich");
+      }
+      channel.last_used_at = new Date().toISOString();
+      let body: Record<string, any>;
+      try {
+        body = await readJson(req);
+      } catch {
+        return error(res, 400, "invalid_request", "Kein gültiges JSON.");
+      }
+      const problem = intakeBodyError(body);
+      if (problem) return error(res, 400, "invalid_request", problem);
+      const refOf = (id: string) => {
+        const r = state.get(key("task", id))?.fields.ref?.value;
+        return typeof r === "string" ? r : null;
+      };
+      const known = channel.submissions.get(body.external_id);
+      if (known) return send(res, 200, { id: known.task_id, ref: refOf(known.task_id) });
+      const hourAgo = Date.now() - 3600_000;
+      const recent = [...channel.submissions.values()].filter((s) => s.at >= hourAgo);
+      if (recent.length >= 30) {
+        const oldest = Math.min(...recent.map((s) => s.at));
+        res.setHeader("Retry-After", String(Math.max(1, Math.ceil((oldest + 3600_000 - Date.now()) / 1000))));
+        return error(res, 429, "too_many_requests", "Mehr als 30 Aufgaben in der letzten Stunde über diesen Eingang");
+      }
+      const target = intakeTargetProblem(channel.project_id);
+      if (target) return error(res, 409, "conflict", target);
+      const id = createId();
+      const fields: Record<string, Json> = {
+        title: body.title.trim(),
+        type: body.type ?? "aufgabe",
+        status: "open",
+        location: { kind: "project", id: channel.project_id },
+      };
+      if (typeof body.description === "string" && body.description.trim()) fields.description = body.description;
+      if (Array.isArray(body.links) && body.links.length > 0) fields.links = body.links;
+      const ops = Object.entries(fields).map(([field, value]) => ({ op_id: createId(), entity: "task" as const, entity_id: id, field, value, hlc: serverHlc() }));
+      const result = push(ops, `intake:${channel.name}`);
+      const cause = result.rejected.find((r) => r.code !== "entity_rejected") ?? result.rejected[0];
+      if (cause) return error(res, 400, "invalid_request", cause.message);
+      channel.submissions.set(body.external_id, { task_id: id, at: Date.now() });
+      return send(res, 201, { id, ref: refOf(id) });
     }
 
     if (path.startsWith("/api/")) {
@@ -752,6 +864,38 @@ const server = createServer(async (req, res) => {
         devices = devices.filter((d) => d.id !== deviceId);
         return send(res, 204);
       }
+      if (path === "/api/intake/channels" && method === "GET") return send(res, 200, intakeChannels.map(intakeInfo));
+      if (path === "/api/intake/channels" && method === "POST") {
+        const body = await readJson(req);
+        const unknown = Object.keys(body).find((k) => k !== "name" && k !== "project_id");
+        if (unknown) return error(res, 400, "invalid_request", `Unbekanntes Feld „${unknown}“`);
+        const name = typeof body.name === "string" ? body.name.trim() : "";
+        const problem = tokenNameError(name);
+        if (problem && name !== "bootstrap") return error(res, 400, "invalid_request", problem);
+        if (typeof body.project_id !== "string" || !ID_RE.test(body.project_id)) return error(res, 400, "invalid_request", "Ungültige Projekt-ID");
+        const target = intakeTargetProblem(body.project_id);
+        if (target) return error(res, 409, "conflict", target);
+        if (intakeChannels.some((c) => c.name === name)) return error(res, 409, "conflict", `Es gibt bereits einen Eingang mit dem Namen „${name}“`);
+        const channel: IntakeChannel = {
+          id: createId(),
+          name,
+          project_id: body.project_id,
+          token: `zi_${randomBytes(32).toString("base64url")}`,
+          created_at: new Date().toISOString(),
+          last_used_at: null,
+          submissions: new Map(),
+        };
+        intakeChannels.push(channel);
+        return send(res, 201, { ...intakeInfo(channel), token: channel.token });
+      }
+      m = /^\/api\/intake\/channels\/([^/]+)$/.exec(path);
+      if (m && method === "DELETE") {
+        const channelId = decodeURIComponent(m[1]!);
+        if (!intakeChannels.some((c) => c.id === channelId)) return error(res, 404, "not_found", "Eingang nicht gefunden");
+        intakeChannels = intakeChannels.filter((c) => c.id !== channelId);
+        return send(res, 204);
+      }
+
       if (path === "/api/oauth/clients" && method === "GET") return send(res, 200, oauthClients);
       m = /^\/api\/oauth\/clients\/([^/]+)$/.exec(path);
       if (m && method === "DELETE") {
