@@ -8,7 +8,7 @@ Einen Rückweg nach ClickUp gibt es nicht. Das Sicherheitsnetz sind das Roh-Back
 
 | Wann | Was |
 |---|---|
-| bis Start E3 | Entscheidung Funke (siehe [unten](#funke)); claude.ai-Connector verbinden ([`betrieb.md`](betrieb.md#claudeai), OAuth ist umgesetzt) |
+| bis Start E3 | Funke auf Zunder umgestellt bauen und testen (siehe [unten](#funke)); claude.ai-Connector verbinden ([`betrieb.md`](betrieb.md#claudeai), OAuth ist umgesetzt) |
 | Vorbereitung | Probelauf, Zuordnung prüfen, Probeimport in eine Testinstanz, Skill-Branch |
 | Umstiegstag | ClickUp einfrieren, Komplettsicherung, finaler Import, Skills umschalten |
 | +1 Woche | Sicherheitsnetz mit Lesezugriff auf ClickUp |
@@ -124,7 +124,7 @@ Im Skill-Repo einen Branch `zunder` anlegen und dort umstellen (Anleitung in [Ab
 ### Checkliste
 
 - [ ] **ClickUp einfrieren:** nichts Neues mehr anlegen oder ändern. Laufende ClickUp-Timer stoppen. Automationen und Integrationen in ClickUp deaktivieren.
-- [ ] **Funke** gemäß Entscheidung umgestellt oder pausiert (siehe [unten](#funke)).
+- [ ] **Funke** mit Zunder-Server-URL und eigenem API-Token auf iPhone und Watch installiert und gegen die Produktion getestet (siehe [unten](#funke)).
 - [ ] **Finale Komplettsicherung:** `zunder-import backup --out ~/zunder-umstieg/backup-final-$(date +%F)`
 - [ ] **Bericht** gegen den eingefrorenen Stand: `zunder-import report --mapping mapping.toml` ist sauber.
 - [ ] **Manuelles Zunder-Backup** vor dem Import ([`betrieb.md`](betrieb.md#manuelles-backup-z-b-vor-einem-update)).
@@ -232,7 +232,7 @@ Die Übersetzung alter ClickUp-Statusnamen auf diese Codes gehört nicht in die 
 
 ## Funke
 
-Die iOS-/watchOS-Capture-App **Funke** schreibt heute direkt nach ClickUp und bricht beim harten Schnitt. **Vor Beginn von E3 muss entschieden werden**, welcher der beiden Wege gilt.
+Die iOS-/watchOS-Capture-App **Funke** schreibt heute direkt nach ClickUp und bricht beim harten Schnitt. Entschieden ist Option A (siehe Entscheidung am Ende des Abschnitts).
 
 ### Option A: Task-Pfad auf die Zunder-Sync-API umhängen
 
@@ -358,4 +358,4 @@ Die Tauri-App (E4) übernimmt die mobile Erfassung, Funke wird eingestellt.
 | Watch-Erfassung langfristig | ja | nein |
 | Pflege | zweiter Client (nur Push) | ein Client |
 
-**Entscheidung: offen.** Muss vor Beginn von E3 (laut Etappenplan ~08.11.2026) getroffen und hier eingetragen werden. Wird A gewählt, gehört „Funke umgestellt und gegen die Produktion getestet“ in die Checkliste des Umstiegstags; wird B gewählt, wird Funke am Umstiegstag deaktiviert, damit sie nicht ins Leere schreibt.
+**Entscheidung (12.10.2026): Option A.** Funke schreibt direkt nach Zunder, ClickUp ist aus Funke entfernt ([rubenvitt/funke#1](https://github.com/rubenvitt/funke/pull/1)). Aufgaben gehen per Push in die Inbox, die Heute-Liste kommt über MCP `filter_tasks`. Auf den Umstiegstag gehört deshalb: Funke-Build mit Zunder-Server-URL und eigenem API-Token auf iPhone und Watch, gegen die Produktion getestet.
