@@ -2740,3 +2740,8 @@ a.sync {
   color: var(--accent);
   padding: 0 0.15rem;
 }
+
+.credit {
+  align-self: center;
+  text-decoration: none;
+}

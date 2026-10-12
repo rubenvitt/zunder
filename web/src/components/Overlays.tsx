@@ -59,6 +59,10 @@ export function ShortcutHelp() {
         </For>
       </dl>
       <div class="modal-actions">
+        <a class="small muted credit" href="https://icons8.com" target="_blank" rel="noopener noreferrer">
+          Icons von Icons8
+        </a>
+        <span class="spacer" />
         <button class="btn btn-primary" onClick={() => setHelpOpen(false)}>
           Schließen
         </button>
