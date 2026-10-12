@@ -16,7 +16,13 @@ Zunder läuft unter **`zunder.rubeen.dev`** (öffentlich) und nicht unter `*.rub
 
 Was das für die Sicherheit heißt:
 
-- Ohne Anmeldung erreichbar sind nur `/healthz`, die Login-Strecke unter `/auth/*` und die statischen Dateien der Web-UI. Alles unter `/api/*` und `/mcp` verlangt eine Session oder einen API-Token.
+- Ohne Anmeldung erreichbar sind nur `/healthz`, die Login-Strecke unter `/auth/*`, die statischen Dateien der Web-UI und der OAuth-Autorisierungsserver für claude.ai (siehe [claude.ai](#claudeai)):
+  - Metadaten unter `/.well-known/oauth-protected-resource`, `/.well-known/oauth-protected-resource/mcp` und `/.well-known/oauth-authorization-server`,
+  - die offene dynamische Client-Registrierung `POST /oauth/register` (höchstens 30 Registrierungen pro Stunde und 500 Clients insgesamt; Clients ohne gültige Freigabe verschwinden nach einem Tag),
+  - `GET /oauth/authorize` (prüft die Anfrage und leitet ohne Session auf den Login um; die Freigabe `POST /oauth/authorize` verlangt eine Session),
+  - `POST /oauth/token` und `POST /oauth/revoke` (wirken nur mit einem Code, Refresh- oder Access-Token aus einer erteilten Freigabe).
+
+  Alles unter `/api/*` verlangt eine Session oder einen API-Token, `/mcp` einen API-Token oder ein OAuth-Access-Token. Wer vor Traefik eine IP-Allowlist oder Forward-Auth schaltet, muss `/.well-known/*` und `/oauth/*` (wie `/mcp`) davon ausnehmen, sonst funktioniert der claude.ai-Connector nicht.
 - Anmelden darf sich genau eine Person (`ZUNDER_OIDC_ALLOWED_EMAIL` bzw. `ZUNDER_OIDC_ALLOWED_SUBJECT`).
 - API-Tokens liegen in der Datenbank nur als SHA-256-Hash und sind einzeln widerrufbar.
 - TLS übernimmt Traefik.
@@ -98,7 +104,7 @@ Dann `https://zunder.rubeen.dev` im Browser öffnen, über Pocket-ID anmelden un
 | `ZUNDER_OIDC_ALLOWED_SUBJECT` | Alternative zur E-Mail: `sub` des Kontos (in Pocket-ID die Benutzer-ID) | nicht gesetzt; bei Bedarf in `compose.yaml` ergänzen |
 | `ZUNDER_SESSION_SECRET` | zufällig | `stack.env`, generiert |
 | `ZUNDER_TIMING_TOKEN` | Timing-API-Token | `stack.env`, optional (leer = aus) |
-| `ZUNDER_TIMING_PROJECT` | ID des Timing-Projekts für Flammen | `stack.env`, optional |
+| `ZUNDER_TIMING_PROJECT` | Timing-Projekt für Flammen: Self-Link (z. B. `/projects/1`) oder Projekttitel, wird unverändert an Timing gegeben (eine reine Zahl liest Timing als Titel) | `stack.env`, optional |
 | `ZUNDER_BOOTSTRAP_TOKEN` | fester API-Token `zt_…` | nicht gesetzt; nur für Tests oder eine Inbetriebnahme ohne Web-Login |
 | `ZUNDER_DEV_AUTH` | `true` = Login ohne OIDC | **nie in Produktion**, nur lokal |
 
