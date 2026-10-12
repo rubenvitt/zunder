@@ -1,11 +1,12 @@
 // Heute, Inbox and Lose.
 
 import { createMemo, onMount, Show } from "solid-js";
+import { EmptyState } from "../components/EmptyState";
 import { TaskList } from "../components/TaskList";
 import type { Task } from "../sync/types";
 import { moveTask, setStatus, shorten } from "../state/actions";
 import { inboxTasks, tasksAt, todayGroups } from "../state/selectors";
-import { activeList, pickLocation, registerList, selectedId, setSelectedId, toast } from "../state/ui";
+import { activeList, pickLocation, registerList, selectedId, setCaptureOpen, setSelectedId, toast } from "../state/ui";
 import { now } from "../state/store";
 import { locationLabel } from "../labels";
 
@@ -49,7 +50,11 @@ export function TodayView() {
         </section>
       </Show>
       <Show when={nothing()}>
-        <p class="empty big">Nichts fällig. Ein guter Tag für eine Flamme.</p>
+        <EmptyState icon="sun" title="Nichts fällig." hint="Kein Termin drängt. Ein guter Tag für eine Flamme.">
+          <a class="btn btn-small" href="#/phoenix">
+            Zu Phönix
+          </a>
+        </EmptyState>
       </Show>
     </div>
   );
@@ -96,7 +101,14 @@ export function InboxView() {
       <TaskList
         tasks={tasks()}
         label="Inbox"
-        empty="Inbox leer. Alles eingeordnet."
+        empty={
+          <EmptyState icon="checkCircle" title="Inbox leer." hint="Alles eingeordnet. Neue Gedanken landen hier, bis du sie zuordnest.">
+            {/* Phones have the big plus button instead. */}
+            <button class="btn btn-small hide-mobile" onClick={() => setCaptureOpen(true)}>
+              Aufgabe erfassen <kbd>n</kbd>
+            </button>
+          </EmptyState>
+        }
         actions={(task) => [
           // Spec 7: assign, loose, drop with one key or one swipe each; on the phone the
           // swipes cover loose (right) and drop (left), assigning stays a visible button.
@@ -122,7 +134,11 @@ export function LooseView() {
         <h1>Lose</h1>
         <span class="count-badge">{tasks().length}</span>
       </header>
-      <TaskList tasks={tasks()} label="Lose Aufgaben" empty="Keine losen Aufgaben." />
+      <TaskList
+        tasks={tasks()}
+        label="Lose Aufgaben"
+        empty={<EmptyState icon="loose" title="Keine losen Aufgaben." hint="Hier liegt, was bewusst zu keinem Bereich gehört. Aus der Inbox mit l hierher schieben." />}
+      />
     </div>
   );
 }

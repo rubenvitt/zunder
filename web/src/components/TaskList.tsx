@@ -1,11 +1,12 @@
-import { For, Show } from "solid-js";
+import { For, Show, type JSX } from "solid-js";
 import type { Task } from "../sync/types";
 import { selectedId, setDetailId, setSelectedId } from "../state/ui";
 import { TaskRow, type RowAction, type SwipeActions } from "./TaskRow";
 
 export interface TaskListProps {
   tasks: Task[];
-  empty?: string;
+  /** Shown instead of the list when it has no tasks, usually an `EmptyState`. */
+  empty?: JSX.Element;
   showLocation?: boolean;
   actions?: (task: Task) => RowAction[];
   swipe?: (task: Task) => SwipeActions;
@@ -15,7 +16,7 @@ export interface TaskListProps {
 /** A plain task list; keyboard navigation is registered by the surrounding view. */
 export function TaskList(props: TaskListProps) {
   return (
-    <Show when={props.tasks.length > 0} fallback={<Show when={props.empty}>{<p class="empty">{props.empty}</p>}</Show>}>
+    <Show when={props.tasks.length > 0} fallback={props.empty}>
       <ul class="task-list" aria-label={props.label}>
         <For each={props.tasks}>
           {(task) => (
