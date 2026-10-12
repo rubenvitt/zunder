@@ -62,15 +62,20 @@ ZUNDER_SERVER_BIN=$PWD/target/debug/zunder-server \
 
 Die Desktop-App aktualisiert sich selbst aus den GitHub-Releases (`tauri-plugin-updater`, nur Desktop, nur Release-Builds; `src/update.rs`). Sie prüft beim Start und dann alle 6 Stunden `https://github.com/rubenvitt/zunder/releases/latest/download/latest.json`, lädt eine neuere Version im Hintergrund herunter, installiert sie und meldet das per Benachrichtigung. Aktiv wird sie beim nächsten Start; die App startet nicht von selbst neu. Updates müssen mit dem Schlüssel signiert sein, dessen öffentlicher Teil in `tauri.conf.json` (`plugins.updater.pubkey`) steht.
 
-Ein Release entsteht durch einen Tag:
+Releases entstehen automatisch aus [Conventional Commits](https://www.conventionalcommits.org/de/v1.0.0/): Nach jedem grünen CI-Lauf eines Pushs auf `main` bestimmt semantic-release (`.github/workflows/release.yml`, Konfiguration in `.github/release/release.mjs`) die nächste Version aus den Commits seit dem letzten Tag `v*`, setzt den Tag und ruft `.github/workflows/app.yml` auf.
 
-```sh
-git tag v0.2.0 && git push origin v0.2.0
-```
+| Commits seit dem letzten Tag | Version |
+|---|---|
+| `typ!:` im Betreff oder `BREAKING CHANGE:` im Text | Major (`v1.4.2` → `v2.0.0`) |
+| `feat:` | Minor (`v1.4.2` → `v1.5.0`) |
+| `fix:`, `perf:` | Patch (`v1.4.2` → `v1.4.3`) |
+| nur `docs:`, `chore:`, `ci:`, `test:`, `refactor:`, `build:`, `style:` | kein Release |
 
-Der Workflow `.github/workflows/app.yml` baut dann auf macOS (Apple Silicon), signiert mit der Developer ID, notarisiert über die App Store Connect API und legt das Release mit `.dmg`, `.app.tar.gz`, Signatur und `latest.json` an. Die Version kommt aus dem Tag (`v0.2.0` → `0.2.0`), nicht aus `tauri.conf.json`; der Updater installiert nur höhere Versionen. Bei Pull Requests baut derselbe Workflow nur (unsigniert, ohne Release).
+Das erste Release ist `v1.0.0`. Ein von Hand gepushter Tag `v*` startet `app.yml` und `ci.yml` wie bisher direkt; semantic-release zählt danach von diesem Tag weiter.
 
-Der Tag startet auch `ci.yml`: Das Server-Image erscheint dann zusätzlich mit den SemVer-Tags (etwa `0.2.0`, `0.2`) in GHCR. App und Server teilen sich die Versionsnummer.
+`app.yml` baut dann auf macOS (Apple Silicon), signiert mit der Developer ID, notarisiert über die App Store Connect API und legt das Release als Entwurf mit `.dmg`, `.app.tar.gz`, Signatur, `latest.json` und den Release-Notes von semantic-release (Neu, Behoben, Schneller, Breaking Changes) an. Erst wenn alles hochgeladen ist, wird es veröffentlicht; `releases/latest` zeigt also nie auf ein Release ohne `latest.json`. Schlägt der Build fehl, bleibt der Tag ohne Release stehen (den Job neu starten oder einfach das nächste Release abwarten). Die Version kommt aus dem Tag (`v0.2.0` → `0.2.0`), nicht aus `tauri.conf.json`; der Updater installiert nur höhere Versionen. Bei Pull Requests baut derselbe Workflow nur (unsigniert, ohne Release).
+
+Das Server-Image bekommt beim Release zusätzlich die SemVer-Tags (etwa `0.2.0`, `0.2`; ab `1.0` auch `1`) in GHCR, ohne neu zu bauen: `release.yml` hängt sie an das Image, das die CI schon unter dem Commit-SHA veröffentlicht hat. App und Server teilen sich die Versionsnummer.
 
 Secrets im Repo, Originale im 1Password-Tresor „Dev“:
 

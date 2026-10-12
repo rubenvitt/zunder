@@ -16,7 +16,7 @@ Zunder ersetzt ClickUp; Stichtag für den Umstieg ist Ende November 2026. Das De
 | | Container-Image, CI mit Deployment für den deploy-agent, Compose-Stack für Traefik, Betriebsdoku | umgesetzt |
 | **E2 Oberfläche** | [Web-UI](web) mit allen Sichten, MCP-Endpunkt für Agenten, Timing-Brücke für Flammen; Playwright gegen Mock und echten Server | umgesetzt |
 | **E3 Umstieg** | Import, Skill-Umstellung, Umschalten, Sicherheitsnetz | Runbook in [`docs/umstieg.md`](docs/umstieg.md); offen: Entscheidung zu Funke |
-| **E4 Apps** | [Tauri 2](apps/zunder-app) für Desktop, iOS und Android | Lokaler Speicher, Sync und Erinnerungen in `zunder-local` (gegen den echten Server getestet); Web-UI in der App über `TauriTransport` angebunden (`local_snapshot`/`local_apply`, Playwright `web/e2e/tauri.spec.ts`); Desktop (macOS) baut und veröffentlicht die CI bei Tags `v*`, die App aktualisiert sich selbst; Anmeldung im Browser (Geräte-Token statt API-Token); iOS lokal gebaut; offen: fertige App nicht von Hand durchgeklickt, Android nicht eingerichtet |
+| **E4 Apps** | [Tauri 2](apps/zunder-app) für Desktop, iOS und Android | Lokaler Speicher, Sync und Erinnerungen in `zunder-local` (gegen den echten Server getestet); Web-UI in der App über `TauriTransport` angebunden (`local_snapshot`/`local_apply`, Playwright `web/e2e/tauri.spec.ts`); Desktop (macOS) baut und veröffentlicht die CI nach jedem grünen Push auf `main` als Release (semantic-release, Version aus Conventional Commits), die App aktualisiert sich selbst; Anmeldung im Browser (Geräte-Token statt API-Token); iOS lokal gebaut; offen: fertige App nicht von Hand durchgeklickt, Android nicht eingerichtet |
 
 ## Schnellstart (lokale Entwicklung)
 

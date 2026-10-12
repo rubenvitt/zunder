@@ -1,0 +1,13 @@
+{
+  "name": "zunder-release",
+  "private": true,
+  "description": "semantic-release und commitlint für die CI (.github/workflows/release.yml, ci.yml)",
+  "type": "module",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@commitlint/cli": "21.2.3",
+    "@commitlint/config-conventional": "21.2.3",
+    "conventional-changelog-conventionalcommits": "9.3.1",
+    "semantic-release": "25.0.9"
+  }
+}

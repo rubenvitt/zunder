@@ -1,0 +1,98 @@
+name: Release
+
+# Every green CI run of a push to main can become a release: semantic-release
+# (.github/release/release.mjs) picks the next version from the Conventional
+# Commits since the last tag v* and pushes the tag; this workflow then adds
+# the version tags to the image CI already pushed and builds the desktop app
+# as a GitHub release with latest.json and the release notes (app.yml), so
+# installed apps update themselves.
+#
+#   fix: / perf:                              -> patch
+#   feat:                                     -> minor
+#   "type!:" or BREAKING CHANGE: in the body  -> major
+#   anything else (docs, chore, ci, ...)      -> no release
+#
+# A tag pushed with GITHUB_TOKEN starts no workflow, so app.yml is called
+# here directly. Tags pushed by hand still go through ci.yml and app.yml.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  version:
+    name: Version und Tag
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      notes: ${{ steps.release.outputs.notes }}
+    steps:
+      # semantic-release releases only when this commit is still the head
+      # of main; a newer push gets its own run.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: .github/release/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: .github/release
+      - id: release
+        name: semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .github/release/release.mjs
+
+  # CI already pushed the image under the full commit SHA; the version tags
+  # (1.2.3, 1.2 and, from 1.0 on, 1) point to the same manifest, no rebuild.
+  image:
+    name: Image-Versionstags (GHCR)
+    needs: version
+    if: needs.version.outputs.tag != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tags setzen
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          IFS=. read -r major minor _ <<< "$version"
+          tags=(-t "$IMAGE:$version" -t "$IMAGE:$major.$minor")
+          [ "$major" = 0 ] || tags+=(-t "$IMAGE:$major")
+          docker buildx imagetools create "${tags[@]}" "$IMAGE:$SHA"
+
+  app:
+    name: Desktop-App
+    needs: version
+    if: needs.version.outputs.tag != ''
+    permissions:
+      contents: write
+    uses: ./.github/workflows/app.yml
+    with:
+      tag: ${{ needs.version.outputs.tag }}
+      notes: ${{ needs.version.outputs.notes }}
+    secrets: inherit
