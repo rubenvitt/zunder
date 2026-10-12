@@ -2770,6 +2770,11 @@ html.resizing * {
     z-index: 40;
     border: 0;
     animation: sheet-in 0.22s var(--ease);
+    transition: transform 0.18s var(--ease);
+  }
+  /* Edge swipe back: the panel follows the finger over the list. */
+  .detail.swiping-back {
+    box-shadow: var(--shadow-lg);
   }
   @keyframes sheet-in {
     from {

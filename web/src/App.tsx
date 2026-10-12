@@ -6,6 +6,7 @@ import { QuickCapture } from "./components/QuickCapture";
 import { StructureForm } from "./components/StructureForm";
 import { TaskDetail } from "./components/TaskDetail";
 import { installKeyboard } from "./keys";
+import { installDetailHistory, NARROW_LAYOUT } from "./state/back";
 import { isTauri } from "./platform/runtime";
 import { isUnauthorized } from "./sync/transport";
 import { navigate, parseRoute, route, type Route, type ViewName } from "./state/router";
@@ -107,6 +108,7 @@ function markReady(): void {
 function Shell() {
   const desktop = isTauri();
   onMount(() => onCleanup(installKeyboard()));
+  installDetailHistory();
   // The Markdown editor is a separate chunk: fetch it once the app is idle, so the first task opens instantly.
   onMount(() => {
     const idle = window.requestIdleCallback ?? ((cb: () => void) => setTimeout(cb, 1500));
@@ -114,7 +116,7 @@ function Shell() {
   });
   const active = (view: ViewName) => route().view === view;
   // On phones the detail panel covers everything: keep focus and screen readers out of what is behind it.
-  const narrowQuery = window.matchMedia("(max-width: 900px)");
+  const narrowQuery = window.matchMedia(NARROW_LAYOUT);
   const [narrow, setNarrow] = createSignal(narrowQuery.matches);
   const onNarrow = () => setNarrow(narrowQuery.matches);
   narrowQuery.addEventListener("change", onNarrow);
