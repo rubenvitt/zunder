@@ -36,7 +36,7 @@ Variante B, aus dem Container-Image (keine Rust-Toolchain nötig):
 
 ```sh
 alias zunder-import='docker run --rm -it --user "$(id -u):$(id -g)" \
-  -e CLICKUP_TOKEN -e CLICKUP_TEAM_ID -e ZUNDER_URL -e ZUNDER_TOKEN \
+  -e CLICKUP_TOKEN -e ZUNDER_URL -e ZUNDER_TOKEN \
   -v "$PWD:/work" -w /work --entrypoint zunder-import ghcr.io/rubenvitt/zunder:latest'
 ```
 
@@ -45,7 +45,6 @@ Konfiguration über Umgebungsvariablen (oder gleichnamige Optionen, z. B. `--cli
 ```sh
 cd ~/zunder-umstieg
 export CLICKUP_TOKEN=pk_…              # ClickUp, lesend
-export CLICKUP_TEAM_ID=…               # nur bei mehreren Workspaces
 export ZUNDER_URL=https://zunder.rubeen.dev
 export ZUNDER_TOKEN=zt_…               # Token "import"
 ```
@@ -65,6 +64,8 @@ Roh-JSON aller Spaces, Ordner, Listen, Aufgaben (auch geschlossene) und Zeiteint
 ```sh
 zunder-import plan --out mapping.toml
 ```
+
+Sieht der ClickUp-Token mehrere Workspaces, bricht `plan` mit „Mehrere Workspaces sichtbar, bitte mit --team wählen“ ab und listet sie auf. Dann den Workspace als Option angeben: `zunder-import plan --team <workspace-id> --out mapping.toml` (eine Umgebungsvariable dafür gibt es nicht). `report` und `run` lesen den Workspace danach aus `mapping.toml`.
 
 Liest Spaces, Ordner und Listen und schlägt eine Zuordnung vor:
 
@@ -148,7 +149,7 @@ Die Zunder-Werkzeuge spiegeln die genutzten ClickUp-Aufrufe. Die Umstellung ist 
 | `clickup_create_task` | `create_task` | `list_id` → Stelle (`location` bzw. Projekt/Bereich); ohne Stelle landet die Aufgabe in der Inbox. `parent` → `parent_id`. `markdown_description` → `description`. `due_date` als `YYYY-MM-DD` oder RFC 3339. Priorität, Tags, Zuständige entfallen. |
 | `clickup_update_task` | `update_task` | `task_id` oder `clickup_id` plus die zu ändernden Felder. Status als englischer Code. `null` setzt ein optionales Feld zurück. Verschieben läuft über `move_task`. |
 | `clickup_move_task` | `move_task` | Neue Stelle und/oder neuer `parent_id`. Unteraufgaben wandern mit ihrer Wurzel. |
-| `clickup_delete_task` | `delete_task` | Setzt einen Tombstone statt endgültig zu löschen; über das Änderungsprotokoll nachvollziehbar und wiederherstellbar. |
+| `clickup_delete_task` | `delete_task` | Setzt einen Tombstone (Aufgabe samt Unteraufgaben) statt endgültig zu löschen; der Verlauf bleibt über `get_task_history` lesbar. **Nicht rückgängig zu machen** über MCP oder die Oberfläche: Alle anderen Werkzeuge melden die Aufgabe als gelöscht. Das Datenmodell kann zwar wiederherstellen (`deleted: false`, [Vertrag](superpowers/plans/2026-10-11-zunder-implementation.md) Abschnitt 2.3), aber nur über eine rohe Operation an `/api/sync/push`. Skills sollten deshalb vor dem Löschen nachfragen oder lieber auf `dropped` setzen. |
 | `clickup_search` | `search` | Volltext über Titel, Beschreibung und Plan, auch erledigte Aufgaben. Trifft zusätzlich Projekte und Bereiche. |
 | `clickup_create_task_comment` | – | Zunder hat **keine Kommentare** (bewusst, Spec Abschnitt 2). Ersatz siehe unten. |
 | `clickup_add_time_entry`, `clickup_start_time_tracking` (und Stoppen) | `start_flame` / `stop_flame` oder Timing direkt | Zeiterfassung liegt bei **Timing**. An einer Aufgabe: `start_flame`/`stop_flame` startet bzw. stoppt über die Timing-Brücke einen Timer und merkt sich `timing_ref`. Nachträgliche Einträge ohne Aufgabenbezug direkt über den Timing-MCP (`create_time_entry`, `start_timer`, `stop_timer`). |
@@ -164,7 +165,7 @@ Je nach Zweck des bisherigen Kommentars:
 |---|---|
 | Notiz, Zwischenstand, Kontext | an die Beschreibung anhängen: `update_task` mit `description` = bisherige Beschreibung + Abschnitt `## Notizen` mit Datum je Eintrag. Vorher `get_task` lesen, damit nichts überschrieben wird. |
 | Ergebnis eines Agenten im Dev-Modus | strukturierte Felder `plan`, `branch`, `pr_url` per `update_task` |
-| „Wer hat wann was geändert?“ | entfällt als Kommentar: Das Änderungsprotokoll (`get_task_history`) zeichnet jede Änderung mit Zeit und Quelle (`web`, `mcp:<token-name>`, `import`, `server`) automatisch auf. |
+| „Wer hat wann was geändert?“ | entfällt als Kommentar: Das Änderungsprotokoll (`get_task_history`) zeichnet jede Änderung mit Zeit und Quelle (`web`, `api:<token-name>`, z. B. `api:import` für den ClickUp-Import, `mcp:<token-name>`, `server`) automatisch auf. |
 | Verweis auf eine Notiz | `vault_links` (Vault-Pfad oder `obsidian://`-URI) |
 | Verweis auf eine Webseite | `links` mit `url` und optional `title` |
 
@@ -209,7 +210,10 @@ Die Übersetzung alter ClickUp-Statusnamen auf diese Codes gehört nicht in die 
 ## 4. Eine Woche Sicherheitsnetz
 
 - ClickUp bleibt **lesend** verfügbar: nicht mehr hineinschreiben, aber nachsehen, falls in Zunder etwas fehlt.
-- Fehlt etwas: in Zunder von Hand nachtragen oder, bei größeren Lücken, `mapping.toml` korrigieren und `zunder-import run` erneut laufen lassen. Der Lauf aktualisiert über `clickup_id` statt zu duplizieren, **überschreibt dabei aber importierte Felder**, die seit dem Umstieg in Zunder geändert wurden. Deshalb nur gezielt (nur die betroffene Liste in der Zuordnung aktiv) und nach einem manuellen Zunder-Backup.
+- Fehlt etwas: in Zunder von Hand nachtragen oder, bei größeren Lücken, `mapping.toml` korrigieren und `zunder-import run` erneut laufen lassen. Der Lauf aktualisiert über `clickup_id` statt zu duplizieren, **überschreibt dabei aber importierte Felder**, die seit dem Umstieg in Zunder geändert wurden. Was er anfasst:
+  - **Aufgaben** nur aus Listen, die nicht auf `target = "skip"` stehen. Alle anderen Listen auf `skip` zu setzen, begrenzt also die Aufgaben auf die betroffene Liste.
+  - **Bereiche und Projekte** dagegen immer **alle** aus der Zuordnung, egal welche Listen aktiv sind: beim Bereich Name und Zustand, beim Projekt Name, Bereich, Status, Art und Repo. Wer seit dem Umstieg in Zunder einen Bereich oder ein Projekt umbenannt, archiviert, abgeschlossen oder auf Dev umgestellt hat, trägt dort vorher `existing_id = "<Zunder-ID>"` ein (ID aus `list_structure` oder aus der Adresse `#/bereiche/project/<id>` in der Web-UI). Dann lässt der Import den Eintrag unverändert. Ohne das setzt er die Werte aus `mapping.toml` zurück; enthält ein inzwischen auf Dev umgestelltes Projekt Bugs, Features oder Reviews, bricht der Lauf sogar mit `dev_tasks_present` ab, ohne etwas zu schreiben.
+  - Immer zuerst ein manuelles Zunder-Backup, dann `zunder-import run --dry-run`. Der Probelauf zeigt, wie viele Einträge sich ändern würden, und meldet Ablehnungen der lokalen Prüfung, ohne etwas zu schreiben.
 - Jeden Tag kurz notieren, was gefehlt hat. Am Ende der Woche ist die Liste leer oder abgearbeitet.
 
 ## 5. Kündigung

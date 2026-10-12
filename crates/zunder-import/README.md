@@ -131,6 +131,7 @@ Aufgaben-IDs werden aus der ClickUp-ID abgeleitet (UUIDv5), daher aktualisiert e
 - Unveränderte Aufgaben erzeugen keine Operation; ein Lauf ohne Änderungen in ClickUp schreibt nichts.
 - Bei den vom Import verwalteten Feldern (Titel, Beschreibung, Typ, Status, Stelle, Eltern, Fälligkeit, Links, Rang, `clickup_id`) gewinnt ClickUp. Ist ein Feld in ClickUp leer geworden, wird es in Zunder geleert.
 - Alles andere, was in Zunder ergänzt wurde (Erinnerung, Phönix, Vault-Links, Plan …), bleibt unberührt.
+- Bereiche und Projekte der Zuordnung ohne `existing_id` schreibt jeder Lauf auf den Stand aus `mapping.toml` (Bereich: Name, Zustand; Projekt: Name, Bereich, Status, Art, Repo), auch wenn alle ihre Listen auf `skip` stehen. Was in Zunder seitdem geändert wurde und so bleiben soll, bekommt vorher `existing_id`.
 - In Zunder gelöschte Einträge bleiben gelöscht.
 
 ## Umstiegstag
