@@ -8,7 +8,7 @@ import { PHOENIX_ROLES, TASK_STATUSES, TASK_TYPES, type HistoryEntry, type JsonV
 import { FIELD_LABELS, locationLabel, PHOENIX_LABELS, sourceLabel, STATUS_LABELS, TYPE_LABELS } from "../labels";
 import { createTask, deleteTask, dependentsCount, flame, moveTask, setParent, setStatus, toggleDone, updateTask } from "../state/actions";
 import { api, data, now, pendingCount, taskIndex } from "../state/store";
-import { pickLocation, pickTask, selectedId, setDetailId, setSelectedId } from "../state/ui";
+import { copyTaskId, pickLocation, pickTask, selectedId, setDetailId, setSelectedId } from "../state/ui";
 import { Row, TextField } from "./Fields";
 import { Icon } from "./Icon";
 
@@ -112,6 +112,20 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
       </Show>
 
       <div class="detail-grid">
+        <Show when={t().ref || showDev()}>
+          <Row label={t().ref ? "Kennung" : "ID"}>
+            <button
+              class="btn btn-ghost btn-small mono task-id"
+              title={`${t().ref ? "Kennung" : "ID"} kopieren (y)`}
+              aria-label={t().ref ? "Kennung kopieren" : "ID kopieren"}
+              onClick={() => copyTaskId(t())}
+            >
+              <span class="task-id-text">{t().ref ?? t().id}</span>
+              <Icon name="copy" size={14} />
+            </button>
+          </Row>
+        </Show>
+
         <Row label="Status">
           <select
             class="field"
@@ -315,9 +329,14 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
       <section class="detail-section detail-meta">
         <span>Erstellt {hlcLabel(t().created_hlc)}</span>
         <span>Geändert {hlcLabel(t().updated_hlc)}</span>
-        <a href={`#/aufgabe/${t().id}`} title="Dauerhafter Link zu dieser Aufgabe (z. B. für den Vault)">
+        <a href={`#/aufgabe/${t().ref ?? t().id}`} title="Dauerhafter Link zu dieser Aufgabe (z. B. für den Vault)">
           Link
         </a>
+        <Show when={t().ref || !showDev()}>
+          <button class="link-button" title="UUID der Aufgabe kopieren" onClick={() => copyTaskId({ id: t().id, ref: null })}>
+            UUID kopieren
+          </button>
+        </Show>
         <Show when={t().clickup_id}>
           <span class="mono">ClickUp {t().clickup_id}</span>
         </Show>

@@ -25,9 +25,11 @@ use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 use zunder_core::hlc::system_time_ms;
+use zunder_core::model::fields;
+use zunder_core::numbering::{pending_refs, Scope};
 use zunder_core::{
-    validate_push, Clock, EntityKind, NodeId, Op, OpBatch, Rejection, SnapshotEntity, State,
-    Warning,
+    validate_push_as, Author, Clock, EntityKind, NodeId, Op, OpBatch, Rejection, SnapshotEntity,
+    State, Warning,
 };
 
 use crate::auth::{self, Principal, PrincipalKind};
@@ -261,7 +263,7 @@ impl App {
             "state loaded"
         );
         let bootstrap_hash = config.bootstrap_token.as_deref().map(auth::sha256_hex);
-        Ok(App {
+        let app = App {
             inner: Arc::new(Inner {
                 owner_id: owner.id,
                 writer: Mutex::new(Writer { conn, clock }),
@@ -276,7 +278,15 @@ impl App {
                 timing,
                 config,
             }),
-        })
+        };
+        // References a key change or an interrupted run left out.
+        {
+            let inner = &app.inner;
+            let mut writer = lock(&inner.writer);
+            let Writer { conn, clock } = &mut *writer;
+            inner.assign_refs(conn, clock, Scope::All)?;
+        }
+        Ok(app)
     }
 
     pub fn config(&self) -> &Config {
@@ -895,6 +905,11 @@ impl Inner {
             }
             // No subscribers is fine.
             let _ = self.events.send(cursor);
+            // The push is stored; a failure here only delays the references
+            // until the next push or restart.
+            if let Err(e) = self.assign_refs(conn, clock, Scope::Ops(&outcome.new_ops)) {
+                tracing::error!(error = %e, "assigning task references failed");
+            }
         }
         Ok(PushResult {
             accepted: outcome.accepted,
@@ -902,6 +917,37 @@ impl Inner {
             warnings: outcome.warnings,
             cursor,
         })
+    }
+}
+
+impl Inner {
+    /// Gives every task in `scope` that lies in a project with a key its
+    /// reference (`ZUN-42`, see `zunder_core::numbering`), as the server's
+    /// own push. Must be called with the writer lock held.
+    fn assign_refs(
+        &self,
+        conn: &mut Connection,
+        clock: &mut Clock,
+        scope: Scope<'_>,
+    ) -> AppResult<()> {
+        let now = system_time_ms();
+        let validated = {
+            let mat = self.read_materialized();
+            let pending = pending_refs(&mat.state, scope);
+            if pending.is_empty() {
+                return Ok(());
+            }
+            let mut batch = OpBatch::new(clock, now);
+            for (id, reference) in pending {
+                batch.set_task(id, fields::task::REF, reference);
+            }
+            Validated::by(&mat, batch.ops(), now, Author::Server)
+        };
+        for r in &validated.outcome.rejected {
+            tracing::error!(op_id = %r.op_id, code = r.code.as_str(), message = %r.message, "task reference rejected");
+        }
+        self.persist(conn, clock, validated, &Source::Server, None, false)?;
+        Ok(())
     }
 }
 
@@ -917,7 +963,11 @@ struct Validated {
 
 impl Validated {
     fn new(mat: &Materialized, ops: &[Op], now: u64) -> Self {
-        let outcome = validate_push(&mat.state, ops, now);
+        Self::by(mat, ops, now, Author::Client)
+    }
+
+    fn by(mat: &Materialized, ops: &[Op], now: u64, author: Author) -> Self {
+        let outcome = validate_push_as(&mat.state, ops, now, author);
         let touched = touched_entities(&mat.state, &outcome.new_ops);
         Validated {
             outcome,

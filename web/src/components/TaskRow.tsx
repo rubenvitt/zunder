@@ -53,6 +53,11 @@ export function TaskMeta(props: { task: Task; showLocation?: boolean }) {
   const progress = () => taskIndex().progress(props.task.id);
   return (
     <span class="task-meta">
+      <Show when={props.task.ref}>
+        <span class="chip chip-ref mono" title="Kennung">
+          {props.task.ref}
+        </span>
+      </Show>
       <Show when={props.task.type !== "aufgabe"}>
         <span class={`chip chip-type-${props.task.type}`}>{TYPE_LABELS[props.task.type]}</span>
       </Show>

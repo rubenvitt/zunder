@@ -38,6 +38,9 @@ pub mod fields {
         pub const REPO: &str = "repo";
         pub const DESCRIPTION: &str = "description";
         pub const VIEW: &str = "view";
+        /// Prefix of the task references (`ZUN` → `ZUN-42`), unique among
+        /// live projects.
+        pub const KEY: &str = "key";
         pub const DELETED: &str = super::DELETED;
         pub const ALL: &[&str] = &[
             NAME,
@@ -47,6 +50,7 @@ pub mod fields {
             REPO,
             DESCRIPTION,
             VIEW,
+            KEY,
             DELETED,
         ];
         pub const REQUIRED: &[&str] = &[NAME, AREA_ID];
@@ -74,6 +78,9 @@ pub mod fields {
         pub const FLAME_ENDED_AT: &str = "flame_ended_at";
         pub const CLICKUP_ID: &str = "clickup_id";
         pub const RANK: &str = "rank";
+        /// Human-readable reference (`ZUN-42`). Assigned once by the server,
+        /// never changed afterwards (see [`crate::numbering`]).
+        pub const REF: &str = "ref";
         pub const DELETED: &str = super::DELETED;
         pub const ALL: &[&str] = &[
             TITLE,
@@ -97,6 +104,7 @@ pub mod fields {
             FLAME_ENDED_AT,
             CLICKUP_ID,
             RANK,
+            REF,
             DELETED,
         ];
         pub const REQUIRED: &[&str] = &[TITLE];
@@ -531,6 +539,7 @@ pub struct Project {
     pub description: Option<String>,
     /// Effective view (explicit value or the default for `kind`).
     pub view: ProjectView,
+    pub key: Option<String>,
     pub deleted: bool,
 }
 
@@ -568,6 +577,9 @@ pub struct Task {
     pub flame_ended_at: Option<OffsetDateTime>,
     pub clickup_id: Option<String>,
     pub rank: Option<String>,
+    /// Reference such as `ZUN-42`, once the server has assigned it.
+    #[serde(rename = "ref")]
+    pub reference: Option<String>,
     pub deleted: bool,
 }
 
@@ -604,6 +616,8 @@ enum Shape {
     Phoenix,
     Repo,
     HttpUrl,
+    ProjectKey,
+    TaskRef,
 }
 
 fn shape_of(kind: EntityKind, field: &str) -> Option<Shape> {
@@ -626,6 +640,7 @@ fn shape_of(kind: EntityKind, field: &str) -> Option<Shape> {
             p::REPO => Shape::Repo,
             p::DESCRIPTION => Shape::Text,
             p::VIEW => Shape::Enum(ProjectView::codes),
+            p::KEY => Shape::ProjectKey,
             _ => return None,
         },
         EntityKind::Task => match field {
@@ -642,6 +657,7 @@ fn shape_of(kind: EntityKind, field: &str) -> Option<Shape> {
             t::LINKS => Shape::Links,
             t::PHOENIX => Shape::Phoenix,
             t::PR_URL => Shape::HttpUrl,
+            t::REF => Shape::TaskRef,
             t::DESCRIPTION
             | t::CLAIMED_BY
             | t::PLAN
@@ -800,6 +816,24 @@ fn check_shape(shape: Shape, field: &str, value: &Value) -> Result<(), ValueErro
             if !is_http_url(s) {
                 return Err(ValueError::invalid(format!(
                     "„{field}“ muss eine http(s)-URL sein."
+                )));
+            }
+        }
+        Shape::ProjectKey => {
+            let s = text()?;
+            if !crate::numbering::is_valid_key(s) {
+                return Err(ValueError::invalid(format!(
+                    "„{field}“ muss mit einem Großbuchstaben beginnen und darf nur Großbuchstaben \
+                     und Ziffern enthalten (höchstens {} Zeichen), z. B. „ZUN“.",
+                    crate::numbering::MAX_KEY_CHARS
+                )));
+            }
+        }
+        Shape::TaskRef => {
+            let s = text()?;
+            if crate::numbering::parse_ref(s).is_none() {
+                return Err(ValueError::invalid(format!(
+                    "„{field}“ muss die Form „SCHLÜSSEL-Nummer“ haben, z. B. „ZUN-42“."
                 )));
             }
         }

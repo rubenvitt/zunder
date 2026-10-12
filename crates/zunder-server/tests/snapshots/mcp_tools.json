@@ -76,7 +76,7 @@
           "type": "string"
         },
         "parent_id": {
-          "description": "Nur direkte Unteraufgaben dieser Aufgabe (UUID oder ClickUp-ID einer importierten Aufgabe).",
+          "description": "Nur direkte Unteraufgaben dieser Aufgabe (UUID, Kennung wie „ZUN-42“ oder ClickUp-ID einer importierten Aufgabe).",
           "type": "string"
         },
         "phoenix_fire": {
@@ -148,7 +148,7 @@
           "type": "string"
         },
         "task_id": {
-          "description": "ID der Aufgabe (UUID). Alternativ clickup_id angeben.",
+          "description": "ID der Aufgabe (UUID) oder ihre Kennung wie „ZUN-42“. Alternativ clickup_id angeben.",
           "type": "string"
         }
       },
@@ -227,7 +227,7 @@
           "type": "object"
         },
         "parent_id": {
-          "description": "Elternaufgabe für eine Unteraufgabe: UUID oder ClickUp-ID einer importierten Aufgabe.",
+          "description": "Elternaufgabe für eine Unteraufgabe: UUID, Kennung wie „ZUN-42“ oder ClickUp-ID einer importierten Aufgabe.",
           "type": "string"
         },
         "phoenix": {
@@ -426,7 +426,7 @@
           "type": "string"
         },
         "task_id": {
-          "description": "ID der Aufgabe (UUID). Alternativ clickup_id angeben.",
+          "description": "ID der Aufgabe (UUID) oder ihre Kennung wie „ZUN-42“. Alternativ clickup_id angeben.",
           "type": "string"
         },
         "title": {
@@ -497,14 +497,14 @@
           "type": "object"
         },
         "parent_id": {
-          "description": "Neue Elternaufgabe (UUID oder ClickUp-ID einer importierten Aufgabe) oder null, um die Aufgabe zu lösen.",
+          "description": "Neue Elternaufgabe (UUID, Kennung wie „ZUN-42“ oder ClickUp-ID einer importierten Aufgabe) oder null, um die Aufgabe zu lösen.",
           "type": [
             "string",
             "null"
           ]
         },
         "task_id": {
-          "description": "ID der Aufgabe (UUID). Alternativ clickup_id angeben.",
+          "description": "ID der Aufgabe (UUID) oder ihre Kennung wie „ZUN-42“. Alternativ clickup_id angeben.",
           "type": "string"
         }
       },
@@ -531,7 +531,7 @@
           "type": "string"
         },
         "task_id": {
-          "description": "ID der Aufgabe (UUID). Alternativ clickup_id angeben.",
+          "description": "ID der Aufgabe (UUID) oder ihre Kennung wie „ZUN-42“. Alternativ clickup_id angeben.",
           "type": "string"
         }
       },
@@ -592,7 +592,7 @@
           "type": "string"
         },
         "task_id": {
-          "description": "ID der Aufgabe (UUID). Alternativ clickup_id angeben.",
+          "description": "ID der Aufgabe (UUID) oder ihre Kennung wie „ZUN-42“. Alternativ clickup_id angeben.",
           "type": "string"
         },
         "ttl_minutes": {
@@ -636,7 +636,7 @@
           "type": "boolean"
         },
         "task_id": {
-          "description": "ID der Aufgabe (UUID). Alternativ clickup_id angeben.",
+          "description": "ID der Aufgabe (UUID) oder ihre Kennung wie „ZUN-42“. Alternativ clickup_id angeben.",
           "type": "string"
         }
       },
@@ -719,7 +719,7 @@
           "type": "array"
         },
         "task_id": {
-          "description": "ID der Aufgabe (UUID). Alternativ clickup_id angeben.",
+          "description": "ID der Aufgabe (UUID) oder ihre Kennung wie „ZUN-42“. Alternativ clickup_id angeben.",
           "type": "string"
         }
       },
@@ -861,6 +861,10 @@
           "description": "Optionale eigene ID (UUID, klein, mit Bindestrichen).",
           "type": "string"
         },
+        "key": {
+          "description": "Schlüssel für die Kennungen der Aufgaben, z. B. ZUN → ZUN-1, ZUN-2 … (Großbuchstaben und Ziffern, höchstens 10 Zeichen, eindeutig).",
+          "type": "string"
+        },
         "kind": {
           "description": "Art (Standard standard).",
           "enum": [
@@ -922,6 +926,13 @@
         },
         "description": {
           "description": "Beschreibung (Markdown); null entfernt sie.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "key": {
+          "description": "Schlüssel für die Kennungen (z. B. ZUN); null entfernt ihn. Vergebene Kennungen bleiben, neue Aufgaben zählen unter dem neuen Schlüssel.",
           "type": [
             "string",
             "null"
@@ -997,7 +1008,7 @@
           "type": "string"
         },
         "task_id": {
-          "description": "ID der Aufgabe (UUID). Alternativ clickup_id angeben.",
+          "description": "ID der Aufgabe (UUID) oder ihre Kennung wie „ZUN-42“. Alternativ clickup_id angeben.",
           "type": "string"
         }
       },
@@ -1024,7 +1035,7 @@
           "type": "string"
         },
         "task_id": {
-          "description": "ID der Aufgabe (UUID). Alternativ clickup_id angeben.",
+          "description": "ID der Aufgabe (UUID) oder ihre Kennung wie „ZUN-42“. Alternativ clickup_id angeben.",
           "type": "string"
         }
       },
@@ -1056,7 +1067,7 @@
           "type": "integer"
         },
         "task_id": {
-          "description": "ID der Aufgabe (UUID). Alternativ clickup_id angeben.",
+          "description": "ID der Aufgabe (UUID) oder ihre Kennung wie „ZUN-42“. Alternativ clickup_id angeben.",
           "type": "string"
         }
       },

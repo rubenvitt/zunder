@@ -99,6 +99,7 @@ export function toProject(e: EntityState): Project {
     repo: str(value(e, "repo")),
     description: str(value(e, "description")),
     view: oneOf(value(e, "view"), PROJECT_VIEWS, kind === "dev" ? "board" : "list"),
+    key: str(value(e, "key")),
   };
 }
 
@@ -130,6 +131,7 @@ export function toTask(e: EntityState): Task {
     flame_ended_at: str(value(e, "flame_ended_at")),
     clickup_id: str(value(e, "clickup_id")),
     rank: str(value(e, "rank")),
+    ref: str(value(e, "ref")),
     status_hlc: e.fields.status?.hlc ?? min,
   };
 }
