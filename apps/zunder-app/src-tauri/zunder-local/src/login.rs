@@ -134,6 +134,15 @@ pub async fn start(
             .map_err(|e| Error::Network(e.to_string()))?,
     )
     .await?;
+    // The app opens the authorization endpoint in the OS and sends the code
+    // to the token endpoint: both must belong to the server the user named.
+    for endpoint in [
+        &metadata.authorization_endpoint,
+        &metadata.token_endpoint,
+        &metadata.registration_endpoint,
+    ] {
+        same_origin(&base, endpoint)?;
+    }
     let registered: Registered = oauth_response(
         http.post(&metadata.registration_endpoint)
             .json(&serde_json::json!({
@@ -170,6 +179,18 @@ pub async fn start(
         .append_pair("state", &pending.state)
         .append_pair("resource", &pending.resource);
     Ok((pending, url.into()))
+}
+
+/// Fails unless `endpoint` is on the same origin (scheme, host, port) as
+/// the server.
+fn same_origin(base: &Url, endpoint: &str) -> Result<()> {
+    match Url::parse(endpoint) {
+        Ok(url) if url.origin() == base.origin() => Ok(()),
+        _ => Err(Error::Protocol(format!(
+            "OAuth-Endpunkt {endpoint:?} gehört nicht zum Server {}",
+            base.origin().ascii_serialization()
+        ))),
+    }
 }
 
 /// Whether a URL the OS handed to the app is the login callback:
@@ -309,6 +330,16 @@ mod tests {
         assert!(code_from_callback(&p, &other_path).is_err());
         let missing = url("dev.rubeen.zunder:/oauth?state=s1");
         assert!(code_from_callback(&p, &missing).is_err());
+    }
+
+    #[test]
+    fn endpoints_must_belong_to_the_server() {
+        let base = url("https://zunder.example.org/");
+        assert!(same_origin(&base, "https://zunder.example.org/oauth/authorize").is_ok());
+        assert!(same_origin(&base, "https://evil.example/oauth/authorize").is_err());
+        assert!(same_origin(&base, "http://zunder.example.org/oauth/authorize").is_err());
+        assert!(same_origin(&base, "file:///etc/passwd").is_err());
+        assert!(same_origin(&base, "javascript:alert(1)").is_err());
     }
 
     #[test]

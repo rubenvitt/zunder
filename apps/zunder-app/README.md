@@ -121,6 +121,7 @@ Statt einen API-Token aus der Web-Oberfläche abzuschreiben, meldet sich die App
 
 Das Gerät erscheint in der Web-Oberfläche auf der Token-Seite unter „Geräte“ und lässt sich dort abmelden; seine Änderungen tragen die Quelle `app:<Gerätename>`.
 
+- **Adresse:** Die Endpunkte aus den Metadaten müssen auf demselben Origin liegen wie die eingegebene Server-Adresse (die App öffnet sonst womöglich fremde Adressen). Für die Anmeldung also die öffentliche Adresse (`ZUNDER_PUBLIC_URL`) eingeben, nicht etwa eine IP im VPN.
 - **macOS:** Deep-Links erreichen nur eine installierte App (Release-Bundle), nicht `npm run dev`. Dort bleibt der Token-Weg.
 - **Linux/Windows:** bräuchten zusätzlich `tauri-plugin-single-instance`, damit der Link die laufende App erreicht; nicht eingerichtet, die CI baut dafür auch nichts.
 

@@ -268,7 +268,7 @@ test("App: Anmeldung im Browser statt Token", async ({ page }) => {
   await page.getByLabel("Server-Adresse").fill("https://zunder.example.org");
   await page.getByLabel("Gerätename").fill("Testgerät");
   await page.getByRole("button", { name: "Im Browser anmelden" }).click();
-  await expect(page.getByText("Melde dich im Browser an")).toBeVisible();
+  await expect(page.getByText("Melde dich im Browser an und erlaube")).toBeVisible();
   const started = await page.evaluate(() => window.__ZUNDER_FAKE_APP__.calls.filter((c) => c.cmd === "login_start").map((c) => c.args));
   expect(started).toEqual([{ server_url: "https://zunder.example.org", device_name: "Testgerät", discard_pending: false }]);
 
