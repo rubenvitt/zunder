@@ -33,6 +33,9 @@ struct MockState {
     running: Option<u32>,
     next: u32,
     fail_start: bool,
+    /// `GET /time-entries/running` finds nothing although a timer runs
+    /// (as when its redirect is not followed with the token).
+    blind_running: bool,
 }
 
 #[derive(Clone, Default)]
@@ -160,7 +163,7 @@ async fn list_projects(
 async fn running_timer(State(mock): State<TimingMock>, headers: HeaderMap) -> Response {
     mock.record("GET", "/time-entries/running", &headers, Value::Null);
     let s = mock.0.lock().unwrap();
-    match s.running {
+    match s.running.filter(|_| !s.blind_running) {
         // Like the real API: a redirect to the entry.
         Some(id) => (
             StatusCode::FOUND,
@@ -255,11 +258,7 @@ async fn flame_with_timing_via_mcp() {
     assert_eq!(r["task"]["flame_running"], false);
     assert_eq!(
         mock.calls(),
-        [
-            "GET /time-entries/running",
-            "GET /time-entries/2",
-            "PUT /time-entries/stop"
-        ]
+        ["GET /time-entries/2", "PUT /time-entries/stop"]
     );
 
     let (code, message) = mcp_err(&s, &t, "stop_flame", json!({"task_id": b})).await;
@@ -306,6 +305,27 @@ async fn foreign_timer_is_not_stopped() {
         "{calls:?}"
     );
     assert_eq!(mock.0.lock().unwrap().running, Some(2));
+}
+
+#[tokio::test]
+async fn stop_and_restart_do_not_rely_on_the_running_redirect() {
+    let (s, mock) = with_timing(None).await;
+    mock.0.lock().unwrap().blind_running = true;
+    let t = api_token(&s, "claude").await;
+    let a = task(&s, &t, "Folien").await;
+
+    mcp_ok(&s, &t, "start_flame", json!({"task_id": a})).await;
+    let r = mcp_ok(&s, &t, "stop_flame", json!({"task_id": a})).await;
+    assert_eq!(r["timing"]["used"], true);
+    assert_eq!(mock.0.lock().unwrap().running, None, "Timing timer stopped");
+
+    // Started again: a new timer runs, and stopping ends it as well.
+    let r = mcp_ok(&s, &t, "start_flame", json!({"task_id": a})).await;
+    assert_eq!(r["running"], true);
+    assert_eq!(r["task"]["timing_ref"], "/time-entries/2");
+    assert_eq!(mock.0.lock().unwrap().running, Some(2));
+    mcp_ok(&s, &t, "stop_flame", json!({"task_id": a})).await;
+    assert_eq!(mock.0.lock().unwrap().running, None);
 }
 
 #[tokio::test]

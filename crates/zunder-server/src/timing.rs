@@ -9,9 +9,12 @@
 //!   (`data.self`, e.g. `/time-entries/2`); Zunder stores that link as
 //!   `timing_ref`.
 //! - **stop**: `PUT /time-entries/stop` stops *the* running timer. To never
-//!   stop a timer the user started elsewhere, the client first asks for the
-//!   running timer (`GET /time-entries/running`, a redirect to the entry or
-//!   404) and only stops it when it is the entry Zunder started.
+//!   stop a timer the user started elsewhere, the client first reads the
+//!   entry Zunder started (`GET` on its self link, appended to the API root)
+//!   and only stops when that entry still runs. Only one timer runs at a
+//!   time, so a running entry is the running timer. It does not ask
+//!   `GET /time-entries/running`: that answers with a redirect, and a stop
+//!   must not depend on how the redirect is followed.
 //! - **check**: the same `GET /time-entries/running` tells whether Timing
 //!   accepts the token (settings view, "Verbindung prüfen").
 //! - **projects**: `GET /projects?hide_archived=true` lists the projects the
@@ -191,6 +194,17 @@ impl TimingClient {
         }
     }
 
+    /// The entry behind a self link (`/time-entries/2` or an absolute URL),
+    /// `None` if Timing does not know it (any more).
+    pub async fn entry_by_ref(&self, self_ref: &str) -> Result<Option<TimingEntry>, TimingError> {
+        let (status, json) = self.send(Method::GET, entry_path(self_ref), None).await?;
+        match status {
+            StatusCode::NOT_FOUND => Ok(None),
+            s if s.is_success() => Self::entry(json).map(Some),
+            s => Err(Self::status_error(s, &json)),
+        }
+    }
+
     pub async fn start_timer(&self, request: &StartTimer) -> Result<TimingEntry, TimingError> {
         let (status, json) = self
             .send(Method::POST, "/time-entries/start", Some(request))
@@ -242,8 +256,8 @@ impl TimingApi for TimingClient {
         self_ref: &'a str,
     ) -> BoxFuture<'a, Result<bool, TimingError>> {
         Box::pin(async move {
-            match self.running().await? {
-                Some(running) if same_entry(&running.self_ref, self_ref) => {
+            match self.entry_by_ref(self_ref).await? {
+                Some(entry) if entry.is_running => {
                     self.stop_timer().await?;
                     Ok(true)
                 }
@@ -262,15 +276,14 @@ impl TimingApi for TimingClient {
 }
 
 /// Compares self links, tolerating an absolute URL on one side.
-fn same_entry(a: &str, b: &str) -> bool {
-    fn path(s: &str) -> &str {
-        let s = s.trim_end_matches('/');
-        match s.find("/time-entries/") {
-            Some(i) => &s[i..],
-            None => s,
-        }
+/// The path of an entry's self link below the API root (`/time-entries/2`),
+/// also for an absolute URL.
+fn entry_path(self_ref: &str) -> &str {
+    let s = self_ref.trim_end_matches('/');
+    match s.find("/time-entries/") {
+        Some(i) => &s[i..],
+        None => s,
     }
-    path(a) == path(b)
 }
 
 #[cfg(test)]
@@ -278,13 +291,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn self_links_compare_by_path() {
-        assert!(same_entry("/time-entries/2", "/time-entries/2"));
-        assert!(same_entry(
-            "https://web.timingapp.com/api/v1/time-entries/2",
+    fn entry_paths_below_the_api_root() {
+        assert_eq!(entry_path("/time-entries/2"), "/time-entries/2");
+        assert_eq!(
+            entry_path("https://web.timingapp.com/api/v1/time-entries/2/"),
             "/time-entries/2"
-        ));
-        assert!(!same_entry("/time-entries/2", "/time-entries/20"));
+        );
     }
 
     #[test]
