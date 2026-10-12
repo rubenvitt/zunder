@@ -5,10 +5,11 @@ Wie Zunder auf dem eigenen Server läuft: Container, Konfiguration, Login, Token
 ## Überblick
 
 - **Ein Container** `ghcr.io/rubenvitt/zunder` (amd64 und arm64) enthält `zunder-server`, die gebaute Web-UI und `zunder-import`.
-- **Daten** liegen im Volume unter `/data`: SQLite-Datenbank `zunder.db` (WAL-Modus) und nächtliche Backups in `/data/backups/`.
+- **Daten** liegen unter `/data`, auf dem Server gemountet aus `~/server/zunder/data`: SQLite-Datenbank `zunder.db` (WAL-Modus) und nächtliche Backups in `/data/backups/`.
 - **Port** 8080 im Container, nach außen nur über Traefik (keine Port-Mappings).
 - **Login** über Pocket-ID (OIDC), für Agenten und MCP gibt es API-Tokens.
-- **Stack-Dateien** liegen in [`deploy/`](../deploy): `compose.yaml`, `stack.env` (Vorlage) und `generate-secrets.sh`.
+- **Stack-Dateien** liegen in [`deploy/`](../deploy): `compose.yaml`, `.env.example` (Vorlage) und `generate-secrets.sh`. Auf dem Server liegen sie unter `~/server/zunder/` und werden von Hand mit `docker compose` betrieben (kein Portainer).
+- **Server** ist `r-server` (Hetzner, amd64); Traefik hängt am externen Netzwerk `proxy`, Entrypoint `https`, Zertifikate über den Resolver `letsencrypt`.
 
 ### Warum eine öffentliche Domain
 
@@ -49,13 +50,27 @@ Danach notieren:
 
 Optional kann der Client in Pocket-ID auf eine Benutzergruppe beschränkt werden. Zunder prüft unabhängig davon selbst, wer sich anmeldet.
 
-### 2. Geheimnisse erzeugen
-
-Auf einem Rechner mit Repo-Checkout:
+### 2. Ordner auf dem Server anlegen
 
 ```sh
-cd deploy
+mkdir -p ~/server/zunder/data
+cd ~/server/zunder
+# compose.yaml, .env.example und generate-secrets.sh aus deploy/ hierher kopieren, z. B.:
+for f in compose.yaml .env.example generate-secrets.sh; do
+  curl -fsSLO "https://raw.githubusercontent.com/rubenvitt/zunder/main/deploy/$f"
+done
+chmod +x generate-secrets.sh
+sudo chown 10001:10001 data   # der Container läuft als uid/gid 10001
+```
+
+### 3. Geheimnisse erzeugen und starten
+
+```sh
+cd ~/server/zunder
 ./generate-secrets.sh
+docker compose pull
+docker compose up -d
+docker compose logs -f zunder
 ```
 
 Das Skript
@@ -63,20 +78,17 @@ Das Skript
 - erzeugt `ZUNDER_SESSION_SECRET` (64 Zeichen, zufällig),
 - fragt Issuer, Client ID, Client Secret und die erlaubte E-Mail ab,
 - fragt optional Timing-Token und Timing-Projekt ab (leer lassen = Timing-Brücke aus),
-- schreibt das Ergebnis nach `deploy/stack.env.local` (Rechte 600, von Git ignoriert) und gibt es zum Kopieren aus.
+- schreibt das Ergebnis nach `.env` neben `compose.yaml` (Rechte 600). `compose.yaml` lädt sie per `env_file`.
 
-`deploy/stack.env` selbst bleibt unverändert: Es ist die eingecheckte Vorlage mit den Platzhaltern `WILL_BE_GENERATED`, `CHANGEME_MANUAL` und `CHANGEME_OPTIONAL`. Nach dem Kopieren nach Portainer `deploy/stack.env.local` löschen und `history -c` ausführen.
+`.env.example` bleibt unverändert: Es ist die Vorlage mit den Platzhaltern `WILL_BE_GENERATED`, `CHANGEME_MANUAL` und `CHANGEME_OPTIONAL`. Im Repo ist `deploy/.env` von Git ignoriert.
 
-### 3. Stack in Portainer anlegen
+Voraussetzungen auf dem Server: das externe Netzwerk `proxy` mit Traefik (Entrypoint `https`, Zertifikats-Resolver `letsencrypt`) und ein DNS-Eintrag für `zunder.rubeen.dev`. Heißen Netzwerk, Entrypoint oder Resolver dort anders, die drei Werte in `compose.yaml` anpassen (`docker network ls`, Traefik-Konfiguration unter `~/server/traefik/`).
 
-1. **Stacks → Add stack**, Name `zunder`.
-2. Inhalt von `deploy/compose.yaml` einfügen (oder per Git-Repository auf `deploy/compose.yaml` zeigen).
-3. Unter **Environment variables → Advanced mode** den Inhalt aus `stack.env.local` einfügen.
-4. **Deploy the stack.**
+Ist das GHCR-Paket privat, braucht der Server eine Anmeldung: `docker login ghcr.io` mit GitHub-Nutzer und Personal Access Token (`read:packages`). Alternativ das Paket in den GitHub-Einstellungen auf öffentlich stellen; es enthält keine Geheimnisse.
 
-Voraussetzungen auf dem Server: das externe Netzwerk `infrastructure` mit Traefik (Entrypoint `websecure`) und ein DNS-Eintrag für `zunder.rubeen.dev`. Das Volume `zunder_data` legt Docker beim ersten Start selbst an (in Portainer heißt es dann `zunder_zunder_data`).
+### Automatisches Ausrollen (optional)
 
-Ist das GHCR-Paket privat, braucht Portainer eine Registry-Anmeldung für `ghcr.io` (GitHub-Nutzer plus Personal Access Token mit `read:packages`). Alternativ das Paket in den GitHub-Einstellungen auf öffentlich stellen; es enthält keine Geheimnisse.
+Nach jedem grünen Push auf `main` legt die CI ein GitHub-Deployment (Umgebung `production`, `payload.tag` = voller Commit-SHA) an, wie bei den anderen Projekten auf r-server. Der `~/server/deploy-agent` holt es ab, zieht `ghcr.io/rubenvitt/zunder:<sha>`, startet neu, wartet auf `healthy` und meldet Erfolg oder Fehler zurück. Damit das greift, muss Zunder im deploy-agent eingetragen sein. Ohne Eintrag bleibt das Deployment auf GitHub einfach in der Warteschlange und es passiert nichts.
 
 ### 4. Prüfen
 
@@ -97,14 +109,14 @@ Dann `https://zunder.rubeen.dev` im Browser öffnen, über Pocket-ID anmelden un
 | `ZUNDER_WEB_DIR` | `/app/web` | statisch (auch Image-Default) |
 | `ZUNDER_BACKUP_HOUR` | `3` | statisch; Stunde in der Zeitzone `TZ` |
 | `TZ` | `Europe/Berlin` | statisch (auch Image-Default, `tzdata` ist im Image); bestimmt, was „3 Uhr“ heißt |
-| `ZUNDER_OIDC_ISSUER` | Pocket-ID-URL | `stack.env`, manuell |
-| `ZUNDER_OIDC_CLIENT_ID` | aus Pocket-ID | `stack.env`, manuell |
-| `ZUNDER_OIDC_CLIENT_SECRET` | aus Pocket-ID | `stack.env`, manuell |
-| `ZUNDER_OIDC_ALLOWED_EMAIL` | E-Mail des eigenen Pocket-ID-Kontos | `stack.env`, manuell |
+| `ZUNDER_OIDC_ISSUER` | Pocket-ID-URL | `.env`, manuell |
+| `ZUNDER_OIDC_CLIENT_ID` | aus Pocket-ID | `.env`, manuell |
+| `ZUNDER_OIDC_CLIENT_SECRET` | aus Pocket-ID | `.env`, manuell |
+| `ZUNDER_OIDC_ALLOWED_EMAIL` | E-Mail des eigenen Pocket-ID-Kontos | `.env`, manuell |
 | `ZUNDER_OIDC_ALLOWED_SUBJECT` | Alternative zur E-Mail: `sub` des Kontos (in Pocket-ID die Benutzer-ID) | nicht gesetzt; bei Bedarf in `compose.yaml` ergänzen |
-| `ZUNDER_SESSION_SECRET` | zufällig | `stack.env`, generiert |
-| `ZUNDER_TIMING_TOKEN` | Timing-API-Token | `stack.env`, optional (leer = aus) |
-| `ZUNDER_TIMING_PROJECT` | Timing-Projekt für Flammen: Self-Link (z. B. `/projects/1`) oder Projekttitel, wird unverändert an Timing gegeben (eine reine Zahl liest Timing als Titel) | `stack.env`, optional |
+| `ZUNDER_SESSION_SECRET` | zufällig | `.env`, generiert |
+| `ZUNDER_TIMING_TOKEN` | Timing-API-Token | `.env`, optional (leer = aus) |
+| `ZUNDER_TIMING_PROJECT` | Timing-Projekt für Flammen: Self-Link (z. B. `/projects/1`) oder Projekttitel, wird unverändert an Timing gegeben (eine reine Zahl liest Timing als Titel) | `.env`, optional |
 | `ZUNDER_BOOTSTRAP_TOKEN` | fester API-Token `zt_…` | nicht gesetzt; nur für Tests oder eine Inbetriebnahme ohne Web-Login |
 | `ZUNDER_DEV_AUTH` | `true` = Login ohne OIDC | **nie in Produktion**, nur lokal |
 | `ZUNDER_DEV_AUTH_ALLOW_REMOTE` | `true` = Dev-Auth auch mit nicht lokaler `ZUNDER_BIND` (nur für einen lokalen Container mit `-p 127.0.0.1:…`) | **nie in Produktion** |
@@ -202,11 +214,7 @@ Ohne gültigen Token antwortet der Endpoint mit `401`.
 
 ### Vom Server wegkopieren
 
-Die Backups liegen im selben Volume wie die Datenbank und schützen damit nur vor Bedienfehlern und kaputten Updates, nicht vor einem Plattenausfall. Das Volume (oder nur `backups/`) gehört deshalb in die übliche Server-Sicherung. Pfad auf dem Host:
-
-```sh
-docker volume inspect --format '{{.Mountpoint}}' zunder_zunder_data
-```
+Die Backups liegen im selben Ordner wie die Datenbank und schützen damit nur vor Bedienfehlern und kaputten Updates, nicht vor einem Plattenausfall. Auf dem Host ist das `~/server/zunder/data/` (Datenbank) bzw. `~/server/zunder/data/backups/`; beides liegt unter `~/server` und damit in der normalen Server-Sicherung.
 
 ### Manuelles Backup (z. B. vor einem Update)
 
@@ -218,11 +226,11 @@ Manuelle Kopien bewusst nicht nach `/data/backups/` legen, damit die Rotation si
 
 ### Wiederherstellen
 
-1. Stack in Portainer stoppen (oder `docker stop zunder`).
+1. Zunder stoppen: `cd ~/server/zunder && docker compose stop zunder`.
 2. Gewünschtes Backup auswählen und an die Stelle der Datenbank kopieren. Die alte Datenbank wird zur Sicherheit beiseitegelegt, WAL- und SHM-Dateien müssen weg:
 
    ```sh
-   docker run --rm -it -v zunder_zunder_data:/data --entrypoint sh ghcr.io/rubenvitt/zunder:latest
+   docker compose run --rm --no-deps --entrypoint sh zunder
    # im Container:
    ls -l /data/backups/
    mkdir -p /data/vor-wiederherstellung
@@ -232,23 +240,23 @@ Manuelle Kopien bewusst nicht nach `/data/backups/` legen, damit die Rotation si
    exit
    ```
 
-3. Stack wieder starten und `/healthz` prüfen.
+3. `docker compose start zunder` und `/healthz` prüfen.
 4. Alle offenen Browser-Tabs neu laden. Änderungen nach dem Zeitpunkt des Backups sind weg, außer ein Client hat sie noch ungesendet in seiner Warteschlange und schickt sie erneut. Die Tauri-App merkt beim nächsten Abgleich selbst, dass das Operations-Log des Servers nicht mehr zu ihrem passt, verwirft ihre bestätigten Daten, behält ihre noch nicht gesendeten Änderungen und lädt den Snapshot neu; dazu muss sie nur einmal mit dem Server abgleichen.
 5. Wenn alles passt, `/data/vor-wiederherstellung/` löschen.
 
 ## Updates
 
-- Jeder Push auf `main` baut `ghcr.io/rubenvitt/zunder:latest` neu (dazu `sha-<commit>`). Ein Git-Tag `v1.2.3` erzeugt zusätzlich `1.2.3`, `1.2` und `1`.
-- Einspielen: in Portainer beim Stack **Update the stack** mit **Re-pull image** (bzw. „Pull and redeploy“).
+- Jeder Push auf `main` baut `ghcr.io/rubenvitt/zunder:latest` neu (dazu `sha-<kurz>` und den vollen Commit-SHA als Tag). Ein Git-Tag `v1.2.3` erzeugt zusätzlich `1.2.3`, `1.2` und `1`.
+- Einspielen von Hand: `cd ~/server/zunder && docker compose pull && docker compose up -d` (oder `~/server/server.sh update` für alle Stacks). Mit eingetragenem deploy-agent passiert das nach jedem grünen Push auf `main` automatisch (siehe [Automatisches Ausrollen](#automatisches-ausrollen-optional)).
 - Vorher ein manuelles Backup ziehen (siehe oben). Datenbank-Migrationen laufen beim Start des Servers.
-- **Zurückrollen:** in `compose.yaml` statt `latest` den vorherigen Tag eintragen (`sha-<commit>` oder Versionsnummer) und neu deployen. Hat die neue Version das Schema migriert, zusätzlich das Backup von vor dem Update wiederherstellen.
+- **Zurückrollen:** in `compose.yaml` statt `latest` den vorherigen Tag eintragen (`sha-<commit>` oder Versionsnummer) und `docker compose up -d`. Hat die neue Version das Schema migriert, zusätzlich das Backup von vor dem Update wiederherstellen.
 - Wer Updates bewusst steuern will, pinnt in `compose.yaml` eine Version statt `latest`.
 
 ## Fehlersuche
 
 | Symptom | Prüfen |
 |---|---|
-| 404 von Traefik / keine Verbindung | Container im Netzwerk `infrastructure`? Labels korrekt? Traefik-Dashboard |
+| 404 von Traefik / keine Verbindung | Container im Netzwerk `proxy`? Entrypoint `https` und Resolver `letsencrypt` passen zur Traefik-Konfiguration? `docker logs` von Traefik |
 | Container startet neu | `docker logs zunder`: meist fehlende oder falsche OIDC-Variablen |
 | Login-Schleife oder Fehler nach Pocket-ID | Callback-URL in Pocket-ID exakt `https://zunder.rubeen.dev/auth/callback`? `ZUNDER_PUBLIC_URL` korrekt? Uhrzeit des Servers korrekt? |
 | „Nicht berechtigt“ nach erfolgreichem Pocket-ID-Login | `ZUNDER_OIDC_ALLOWED_EMAIL` stimmt nicht mit der E-Mail im Pocket-ID-Konto überein |

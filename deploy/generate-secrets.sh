@@ -6,8 +6,9 @@ set -e
 # ============================================================================
 # Based on the docker-compose-deployment template, with three deliberate
 # differences:
-#   - The committed template stack.env is never modified. The filled-in file
-#     is written to stack.env.local (ignored by git, mode 600).
+#   - The committed template .env.example is never modified. The filled-in
+#     file is written to .env (ignored by git, mode 600), which compose.yaml
+#     loads via env_file.
 #   - Prompts go to stderr, so $(prompt_secret ...) captures only the value.
 #   - Values are escaped for sed and replaced without `sed -i`, so tokens
 #     containing / & | (e.g. Timing tokens like "123|abc") and macOS sed work.
@@ -27,8 +28,8 @@ NC='\033[0m' # No Color
 cd "$(dirname "$0")"
 
 # Template (committed) and output (ignored by git)
-TEMPLATE_FILE="stack.env"
-ENV_FILE="stack.env.local"
+TEMPLATE_FILE=".env.example"
+ENV_FILE=".env"
 TEMP_FILE="${ENV_FILE}.tmp"
 
 # Function to generate random secret (alphanumeric, default 32 characters)
@@ -200,15 +201,12 @@ echo ""
 echo "================================================"
 echo -e "${GREEN}✅ All secrets configured!${NC}"
 echo ""
-echo "📋 Copy the following content to Portainer's stack.env:"
-echo "================================================"
+echo "📄 Written: $(pwd)/$ENV_FILE (mode 600)"
 echo ""
-grep -Ev '^[[:space:]]*(#|$)' "$ENV_FILE"
-echo ""
-echo "================================================"
+echo "Next steps (on the server, in ~/server/zunder):"
+echo "   sudo chown 10001:10001 data   # once, the container runs as uid 10001"
+echo "   docker compose pull && docker compose up -d"
 echo ""
 echo "⚠️  Security Reminders:"
-echo "   - Copy the output above to Portainer immediately"
-echo "   - Clear your terminal history: history -c"
-echo "   - Delete the generated file: rm $(pwd)/$ENV_FILE"
-echo "   - Never commit stack.env.local to git"
+echo "   - Never commit .env to git"
+echo "   - If you generated it on another machine: copy it with scp, then delete the local copy"
