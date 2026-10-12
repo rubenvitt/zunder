@@ -6,6 +6,7 @@ import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { Placeholder } from "@tiptap/extensions";
 import { Markdown } from "@tiptap/markdown";
 import StarterKit from "@tiptap/starter-kit";
+import { openExternal } from "../../platform/runtime";
 
 export type { Editor };
 
@@ -31,6 +32,13 @@ function safeUrl(url: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** The safe link under a primary click that should open rather than edit. */
+function linkToOpen(focused: boolean, event: MouseEvent): string | null {
+  if (event.button !== 0 || (focused && !event.metaKey && !event.ctrlKey)) return null;
+  const anchor = (event.target as Element | null)?.closest?.("a");
+  return anchor ? safeUrl(anchor.getAttribute("href") ?? "") : null;
 }
 
 export function createMarkdownEditor(options: MarkdownEditorOptions): Editor {
@@ -76,16 +84,22 @@ export function createMarkdownEditor(options: MarkdownEditorOptions): Editor {
         }
         return false;
       },
-      handleClick(view, _pos, event) {
-        // Reading mode: a click on a link opens it; while writing, Cmd/Ctrl+click does.
-        const anchor = (event.target as HTMLElement | null)?.closest("a");
-        if (!anchor) return false;
-        if (view.hasFocus() && !event.metaKey && !event.ctrlKey) return false;
-        const href = safeUrl(anchor.getAttribute("href") ?? "");
-        if (!href) return false;
-        event.preventDefault();
-        window.open(href, "_blank", "noopener,noreferrer");
-        return true;
+      handleDOMEvents: {
+        // Reading mode (editor not focused): a click on a link opens it instead of
+        // starting to edit; while writing, Cmd/Ctrl+click does. Decided on mousedown,
+        // because the click would focus the editor first.
+        mousedown(view, event) {
+          if (!linkToOpen(view.hasFocus(), event)) return false;
+          event.preventDefault();
+          return true;
+        },
+        click(view, event) {
+          const href = linkToOpen(view.hasFocus(), event);
+          if (!href) return false;
+          event.preventDefault();
+          openExternal(href);
+          return true;
+        },
       },
     },
     onUpdate: ({ transaction }) => {
