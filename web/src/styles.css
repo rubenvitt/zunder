@@ -281,6 +281,12 @@ select.field {
   gap: 0.8rem;
   flex-wrap: wrap;
 }
+.form .hint {
+  font-size: 0.8rem;
+}
+.settings-form {
+  max-width: 32rem;
+}
 .toggle {
   display: flex;
   gap: 0.4rem;

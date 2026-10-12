@@ -76,6 +76,7 @@ export function CommandPalette(props: { request: PaletteRequest }) {
         ]
       : [
           go("API-Tokens verwalten", () => navigate({ view: "tokens" })),
+          go("Einstellungen", () => navigate({ view: "einstellungen" }), "Timing"),
           go("Abmelden", () => {
             void api()
               .logout()
