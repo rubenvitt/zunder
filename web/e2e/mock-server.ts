@@ -100,7 +100,7 @@ const FIELDS: Record<string, string[]> = {
   task: [
     "title", "description", "type", "status", "location", "parent_id", "due", "remind_at", "vault_links", "links",
     "phoenix", "claimed_by", "claim_expires_at", "plan", "branch", "pr_url", "timing_ref", "flame_started_at",
-    "flame_ended_at", "clickup_id", "rank", "undated_ack", "ref", "deleted",
+    "flame_ended_at", "clickup_id", "rank", "undated_ack", "blocked_by", "ref", "deleted",
   ],
   comment: ["task_id", "body", "author", "deleted"],
 };
@@ -225,6 +225,12 @@ function checkOp(op: Op): [string, string] | null {
     return ["invalid_value", "Ungültiger Schlüssel."];
   }
   if (op.field === "deleted" && typeof op.value !== "boolean") return ["invalid_value", "„deleted“ muss true oder false sein."];
+  if (op.field === "blocked_by") {
+    const ids = Array.isArray(op.value) ? op.value.map(String) : null;
+    if (!ids || !ids.every((v) => ID_RE.test(v)) || new Set(ids).size !== ids.length || ids.length > 100) {
+      return ["invalid_value", "„blocked_by“ muss eine Liste verschiedener Aufgaben-IDs sein (höchstens 100)."];
+    }
+  }
   if (["parent_id", "area_id", "task_id"].includes(op.field) && !ID_RE.test(String(op.value))) {
     return ["invalid_value", `„${op.field}“ muss eine ID sein.`];
   }

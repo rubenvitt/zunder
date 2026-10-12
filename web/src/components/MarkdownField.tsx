@@ -1,11 +1,17 @@
 // Markdown field: rendered like a document, edited in place (WYSIWYG), or as source.
 //
+// Task references such as "ZUN-42" become links to the task (with a hover card)
+// as long as such a task exists; the stored Markdown stays plain text.
+//
 // Same rules as TextField: only real edits are committed (on blur or Cmd/Ctrl+Enter),
 // Escape reverts, and while nothing was typed the field follows the stored value,
 // so a plan an agent writes meanwhile is never overwritten with stale text.
 
 import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
-import type { Editor, ToolbarCommand } from "./editor/tiptap";
+import { isClosed } from "../sync/derived";
+import { taskIndex } from "../state/store";
+import { openTask } from "../state/ui";
+import type { Editor, TaskRefs, ToolbarCommand } from "./editor/tiptap";
 import { Icon, type IconName } from "./Icon";
 import { TextField } from "./Fields";
 
@@ -31,6 +37,17 @@ const TOOLBAR: { command: ToolbarCommand; icon: IconName; label: string }[] = [
   { command: "blockquote", icon: "quote", label: "Zitat" },
   { command: "codeBlock", icon: "codeBlock", label: "Codeblock" },
 ];
+
+const taskRefs: TaskRefs = {
+  resolve(ref) {
+    const task = taskIndex().byRef(ref);
+    return task ? { closed: isClosed(task.status) } : null;
+  },
+  open(ref) {
+    const task = taskIndex().byRef(ref);
+    if (task) openTask(task.id);
+  },
+};
 
 export interface MarkdownFieldProps {
   value: string | null;
@@ -92,6 +109,7 @@ export function MarkdownField(props: MarkdownFieldProps) {
           commit();
         },
         onEscape: revert,
+        taskRefs,
         onSubmit: () => {
           commit();
           ed.commands.blur();
@@ -113,6 +131,14 @@ export function MarkdownField(props: MarkdownFieldProps) {
       if (!ed || !mod || dirty()) return;
       if (mod.getMarkdown(ed) !== value) mod.setMarkdown(ed, value);
     }),
+  );
+
+  // Mentions follow the tasks: a new, renamed or closed task changes how they look.
+  createEffect(
+    on(taskIndex, () => {
+      const ed = editor();
+      if (ed && mod) mod.refreshTaskRefs(ed);
+    }, { defer: true }),
   );
 
   const active = (command: ToolbarCommand) => {

@@ -62,6 +62,7 @@ export const FIELD_LABELS: Record<string, string> = {
   clickup_id: "ClickUp-ID",
   rank: "Reihenfolge",
   undated_ack: "Bewusst ohne Fälligkeit",
+  blocked_by: "Blockiert durch",
   ref: "Kennung",
   key: "Schlüssel",
   deleted: "Gelöscht",

@@ -1100,3 +1100,135 @@ fn comment_values_are_checked() {
     });
     assert_all_rejected(&push(&state, &ops), &ops, RejectCode::MissingRequired);
 }
+
+fn applied(mut state: State, outcome: &PushOutcome) -> State {
+    for op in &outcome.new_ops {
+        state.apply(op);
+    }
+    state
+}
+
+fn blocked_by(ids: &[Id]) -> Value {
+    json!(ids.iter().map(Id::to_string).collect::<Vec<_>>())
+}
+
+#[test]
+fn blockers_must_be_other_live_tasks() {
+    let (state, ids) = fixture();
+    let ops = batch(|b| {
+        b.set_task(
+            ids.inbox_task,
+            "blocked_by",
+            blocked_by(&[ids.bug, ids.area_task]),
+        );
+    });
+    let outcome = push(&state, &ops);
+    assert_accepted(&outcome);
+    let state = applied(state, &outcome);
+    assert_eq!(state.blockers(ids.inbox_task), vec![ids.bug, ids.area_task]);
+    assert_eq!(
+        state.task(ids.inbox_task).unwrap().blocked_by,
+        vec![ids.bug, ids.area_task]
+    );
+    let index = state.blocks_index();
+    assert_eq!(index.get(&ids.bug), Some(&vec![ids.inbox_task]));
+    assert_eq!(index.get(&ids.area_task), Some(&vec![ids.inbox_task]));
+
+    let ops = batch(|b| {
+        b.set_task(ids.parent, "blocked_by", blocked_by(&[ids.parent]));
+    });
+    assert_all_rejected(&push(&state, &ops), &ops, RejectCode::InvalidValue);
+    let ops = batch(|b| {
+        b.set_task(ids.parent, "blocked_by", blocked_by(&[uid(902)]));
+    });
+    assert_all_rejected(&push(&state, &ops), &ops, RejectCode::InvalidReference);
+    let ops = batch(|b| {
+        b.set_task(ids.parent, "blocked_by", blocked_by(&[ids.dev]));
+    });
+    assert_all_rejected(&push(&state, &ops), &ops, RejectCode::InvalidReference);
+}
+
+#[test]
+fn deleting_a_blocker_is_allowed_and_ends_the_block() {
+    let (state, ids) = fixture();
+    let ops = batch(|b| {
+        b.set_task(ids.inbox_task, "blocked_by", blocked_by(&[ids.area_task]));
+    });
+    let outcome = push(&state, &ops);
+    let state = applied(state, &outcome);
+    let ops = batch(|b| {
+        b.delete_cascade(&state, T, ids.area_task);
+    });
+    let outcome = push(&state, &ops);
+    assert_accepted(&outcome);
+    let state = applied(state, &outcome);
+    assert!(state.blockers(ids.inbox_task).is_empty());
+    assert!(state.blocks_index().is_empty());
+
+    // The dead entry does not stand in the way of other changes, nor of
+    // adding a further blocker next to it; a new dead entry does.
+    let ops = batch(|b| {
+        b.set_task(ids.inbox_task, "title", "Weiter");
+        b.set_task(
+            ids.inbox_task,
+            "blocked_by",
+            blocked_by(&[ids.area_task, ids.bug]),
+        );
+    });
+    let outcome = push(&state, &ops);
+    assert_accepted(&outcome);
+    let state = applied(state, &outcome);
+    assert_eq!(state.blockers(ids.inbox_task), vec![ids.bug]);
+    let ops = batch(|b| {
+        b.set_task(ids.parent, "blocked_by", blocked_by(&[ids.area_task]));
+    });
+    assert_all_rejected(&push(&state, &ops), &ops, RejectCode::InvalidReference);
+
+    // Restoring the blocker brings the block back.
+    let ops = batch(|b| {
+        b.set_task(ids.area_task, "deleted", false);
+    });
+    let outcome = push(&state, &ops);
+    let state = applied(state, &outcome);
+    assert_eq!(state.blockers(ids.inbox_task), vec![ids.area_task, ids.bug]);
+}
+
+#[test]
+fn blocking_each_other_is_a_cycle() {
+    let (state, ids) = fixture();
+    let ops = batch(|b| {
+        b.set_task(ids.inbox_task, "blocked_by", blocked_by(&[ids.bug]));
+        b.set_task(ids.bug, "blocked_by", blocked_by(&[ids.parent]));
+    });
+    let outcome = push(&state, &ops);
+    let state = applied(state, &outcome);
+    for blocker in [ids.inbox_task, ids.bug] {
+        let ops = batch(|b| {
+            b.set_task(ids.parent, "blocked_by", blocked_by(&[blocker]));
+        });
+        let outcome = push(&state, &ops);
+        assert_all_rejected(&outcome, &ops, RejectCode::Cycle);
+        assert!(outcome.rejected[0].message.contains('„'));
+    }
+    // Waiting for the same task on two paths is no cycle.
+    let ops = batch(|b| {
+        b.set_task(ids.parent, "blocked_by", blocked_by(&[ids.area_task]));
+        b.set_task(
+            ids.inbox_task,
+            "blocked_by",
+            blocked_by(&[ids.bug, ids.area_task]),
+        );
+    });
+    assert_accepted(&push(&state, &ops));
+}
+
+#[test]
+fn a_new_task_can_be_blocked_by_another_new_task() {
+    let (state, ids) = fixture();
+    let ops = batch(|b| {
+        let first = b.create_task(NewTask::new("Zuerst"));
+        let second = b.create_task(NewTask::new("Danach"));
+        b.set_task(second, "blocked_by", blocked_by(&[first, ids.bug]));
+    });
+    assert_accepted(&push(&state, &ops));
+}

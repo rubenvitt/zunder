@@ -52,6 +52,12 @@ export function copyTaskId(task: { id: string; ref: string | null }): void {
 export const [selectedId, setSelectedId] = createSignal<string | null>(null);
 export const [detailId, setDetailId] = createSignal<string | null>(null);
 
+/** Opens a task in the detail panel and selects it (links between tasks, mentions). */
+export function openTask(id: string): void {
+  setSelectedId(id);
+  setDetailId(id);
+}
+
 /** The keyboard-navigable task list of the current view (registered by the view). */
 const NO_LIST: Accessor<Task[]> = () => [];
 const [activeList, setActiveListSignal] = createSignal<Accessor<Task[]>>(NO_LIST);

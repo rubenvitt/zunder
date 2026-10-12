@@ -2241,6 +2241,24 @@ html.resizing * {
   border-top-color: var(--text);
 }
 
+/* Task mentions ("ZUN-42"): a quiet pill, struck through once the task is closed. */
+.md-content a.task-mention {
+  color: var(--accent-fg);
+  background: var(--accent-softer);
+  border-radius: 4px;
+  padding: 0 0.25em;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+}
+.md-content a.task-mention:hover {
+  background: var(--accent-soft);
+}
+.md-content a.task-mention.closed {
+  color: var(--muted);
+  background: var(--surface-2);
+  text-decoration: line-through;
+}
 /* ---- Phönix ----------------------------------------------------------------- */
 
 .fire-nav {
@@ -2917,4 +2935,161 @@ a.sync {
 .credit {
   align-self: center;
   text-decoration: none;
+}
+
+/* ---- Task links: hover card and dependencies ---------------------------- */
+
+.task-card {
+  position: fixed;
+  z-index: 60;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  animation: fade 0.1s ease-out;
+}
+.task-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.7rem 0.8rem;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  border-radius: inherit;
+}
+.task-card-head,
+.task-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.7rem;
+}
+.task-card-head {
+  gap: 0.35rem;
+}
+.task-card-ref {
+  font-size: 0.76rem;
+  color: var(--muted);
+  margin-right: 0.15rem;
+}
+.task-card-title {
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.task-card-title.closed {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.task-card-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.task-card-meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.task-card-blocked {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--warning);
+}
+
+.dependencies h4 {
+  margin-top: 0.4rem;
+}
+.relation + .relation {
+  margin-top: 0.4rem;
+}
+.related-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.related-task {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.4rem;
+  border-radius: var(--radius-xs);
+  min-height: 2rem;
+}
+.related-task:hover {
+  background: var(--surface-2);
+}
+.related-task .btn {
+  margin-left: auto;
+  opacity: 0;
+}
+.related-task:hover .btn,
+.related-task .btn:focus-visible {
+  opacity: 1;
+}
+.task-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  min-width: 0;
+  color: var(--text);
+  text-decoration: none;
+}
+.task-link:hover .task-link-title {
+  text-decoration: underline;
+}
+.task-link-ref {
+  flex: none;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+.task-link-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.related-task.closed .task-link-title {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.status-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  border: 1.5px solid var(--muted);
+}
+.status-dot[data-status="in_progress"] {
+  border-color: var(--info);
+  background: var(--info);
+}
+.status-dot[data-status="review"] {
+  border-color: var(--violet);
+  background: var(--violet);
+}
+.status-dot[data-status="blocked"] {
+  border-color: var(--warning);
+  background: var(--warning);
+}
+.status-dot[data-status="done"] {
+  border-color: var(--success);
+  background: var(--success);
+}
+.add-relation {
+  margin-top: 0.15rem;
+  color: var(--muted);
+}
+.chip-waiting {
+  gap: 0.2rem;
+}
+@media (hover: none) {
+  .related-task .btn {
+    opacity: 1;
+  }
 }

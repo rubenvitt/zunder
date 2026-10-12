@@ -209,6 +209,23 @@ impl Entity {
         self.code(fields::task::STATUS)
     }
 
+    /// The task's `blocked_by` IDs as stored (only meaningful for tasks;
+    /// malformed entries are skipped).
+    pub fn blocked_by(&self) -> Vec<Id> {
+        if self.kind != EntityKind::Task {
+            return Vec::new();
+        }
+        self.value(fields::task::BLOCKED_BY)
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|v| v.as_str().and_then(crate::ids::parse_id))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     pub fn project_kind(&self) -> ProjectKind {
         self.code(fields::project::KIND)
     }
@@ -288,6 +305,7 @@ impl Entity {
             undated_ack: self
                 .str_value(f::UNDATED_ACK)
                 .and_then(crate::model::parse_rfc3339),
+            blocked_by: self.blocked_by(),
             reference: self.string(f::REF),
             deleted: self.is_deleted(),
         })
@@ -617,6 +635,40 @@ impl State {
     /// Number of live direct subtasks that are neither done nor dropped.
     pub fn open_subtask_count(&self, task_id: Id) -> usize {
         Lookup::open_subtask_count(self, task_id)
+    }
+
+    /// Live tasks named in the `blocked_by` of a live task, in stored order
+    /// (deleted or unknown blockers no longer count).
+    pub fn blockers(&self, task_id: Id) -> Vec<Id> {
+        self.live_entity(EntityKind::Task, task_id)
+            .map(|t| {
+                t.blocked_by()
+                    .into_iter()
+                    .filter(|b| self.live_entity(EntityKind::Task, *b).is_some())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// The reverse of `blocked_by` over all live tasks: blocker → the live
+    /// tasks waiting for it, ordered by ID. Computed in one pass, for callers
+    /// that need it for many tasks.
+    pub fn blocks_index(&self) -> HashMap<Id, Vec<Id>> {
+        let mut index: HashMap<Id, Vec<Id>> = HashMap::new();
+        for task in self.entities_of(EntityKind::Task) {
+            if task.is_deleted() {
+                continue;
+            }
+            for blocker in task.blocked_by() {
+                if self.live_entity(EntityKind::Task, blocker).is_some() {
+                    index.entry(blocker).or_default().push(task.id());
+                }
+            }
+        }
+        for list in index.values_mut() {
+            list.sort_unstable();
+        }
+        index
     }
 
     /// Whether a task appears in the default views at `now_ms`: tombstoned

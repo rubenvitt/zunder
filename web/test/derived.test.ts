@@ -99,6 +99,42 @@ describe("TaskIndex", () => {
   });
 });
 
+describe("references and blocking", () => {
+  const ops = [
+    op("task", "offer", "title", "Angebot", 1),
+    op("task", "offer", "ref", "UMZ-1", 2),
+    op("task", "gone", "title", "Gelöscht", 3),
+    op("task", "gone", "ref", "UMZ-2", 4),
+    op("task", "gone", "deleted", true, 5),
+    op("task", "done", "title", "Erledigt", 6),
+    op("task", "done", "status", "done", 7),
+    op("task", "contract", "title", "Vertrag", 8),
+    op("task", "contract", "blocked_by", ["gone", "done", "offer", "unknown"], 9),
+    op("task", "move", "title", "Umzug", 10),
+    op("task", "move", "blocked_by", ["offer"], 11),
+  ];
+  const index = new TaskIndex(tasksFrom(ops));
+  const task = (id: string) => index.byId.get(id)!;
+
+  it("finds live tasks by reference", () => {
+    expect(index.byRef("UMZ-1")?.id).toBe("offer");
+    expect(index.byRef("UMZ-2")).toBeUndefined();
+    expect(index.byRef("umz-1")).toBeUndefined();
+  });
+
+  it("blockers skip deleted and unknown tasks, open blockers skip closed ones", () => {
+    expect(index.blockersOf(task("contract")).map((t) => t.id)).toEqual(["done", "offer"]);
+    expect(index.openBlockersOf(task("contract")).map((t) => t.id)).toEqual(["offer"]);
+    expect(index.blockersOf(task("offer"))).toEqual([]);
+  });
+
+  it("derives the reverse direction", () => {
+    expect(index.blockedBy("offer").map((t) => t.id)).toEqual(["contract", "move"]);
+    expect(index.blockedBy("gone")).toEqual([]);
+    expect(index.blockedBy("contract")).toEqual([]);
+  });
+});
+
 describe("3-day hiding", () => {
   const [done] = tasksFrom([op("task", "t", "title", "T", 1_000), op("task", "t", "status", "done", 10_000)]);
   it("hides closed tasks 3 days after the status change", () => {

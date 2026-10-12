@@ -5,6 +5,7 @@ import { ShortcutHelp, Toasts } from "./components/Overlays";
 import { QuickCapture } from "./components/QuickCapture";
 import { StructureForm } from "./components/StructureForm";
 import { TaskDetail } from "./components/TaskDetail";
+import { TaskHoverCard } from "./components/TaskLinks";
 import { installKeyboard } from "./keys";
 import { installDetailHistory, NARROW_LAYOUT } from "./state/back";
 import { isTauri } from "./platform/runtime";
@@ -276,6 +277,7 @@ function Shell() {
         <ShortcutHelp />
       </Show>
       <Toasts />
+      <TaskHoverCard />
     </div>
   );
 }

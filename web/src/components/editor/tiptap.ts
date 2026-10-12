@@ -1,12 +1,16 @@
 // WYSIWYG Markdown editor (TipTap/ProseMirror). Loaded on demand by MarkdownField,
 // so the editor stays out of the start bundle.
 
-import { Editor } from "@tiptap/core";
+import { Editor, Extension } from "@tiptap/core";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { Placeholder } from "@tiptap/extensions";
 import { Markdown } from "@tiptap/markdown";
+import type { Node as PmNode } from "@tiptap/pm/model";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import StarterKit from "@tiptap/starter-kit";
 import { openExternal } from "../../platform/runtime";
+import { findTaskRefs } from "./task-refs";
 
 export type { Editor };
 
@@ -22,6 +26,72 @@ export interface MarkdownEditorOptions {
   onBlur: (related: EventTarget | null) => void;
   onEscape: () => void;
   onSubmit: () => void;
+  /** Task references ("ZUN-42") in the text become links when they resolve. */
+  taskRefs?: TaskRefs;
+}
+
+/** How mentions of tasks are resolved and opened. */
+export interface TaskRefs {
+  /** The task behind a reference, or null when there is none (then the text stays plain). */
+  resolve(ref: string): { closed: boolean } | null;
+  open(ref: string): void;
+}
+
+const mentionKey = new PluginKey<DecorationSet>("taskMentions");
+
+/** Mentions as decorations: the Markdown stays plain text, only the view links them. */
+function mentionDecorations(doc: PmNode, refs: TaskRefs): DecorationSet {
+  const decorations: Decoration[] = [];
+  doc.descendants((node, pos, parent) => {
+    if (parent?.type.spec.code) return false;
+    if (!node.isText || !node.text) return true;
+    if (node.marks.some((m) => m.type.name === "code" || m.type.name === "link")) return false;
+    for (const m of findTaskRefs(node.text)) {
+      const task = refs.resolve(m.ref);
+      if (!task) continue;
+      decorations.push(
+        Decoration.inline(pos + m.start, pos + m.end, {
+          nodeName: "a",
+          href: `#/aufgabe/${m.ref}`,
+          class: task.closed ? "task-mention closed" : "task-mention",
+          "data-task-ref": m.ref,
+        }),
+      );
+    }
+    return false;
+  });
+  return DecorationSet.create(doc, decorations);
+}
+
+function taskMentions(refs: TaskRefs) {
+  return Extension.create({
+    name: "taskMentions",
+    addProseMirrorPlugins() {
+      return [
+        new Plugin<DecorationSet>({
+          key: mentionKey,
+          state: {
+            init: (_, state) => mentionDecorations(state.doc, refs),
+            apply: (tr, old, _oldState, state) => (tr.docChanged || tr.getMeta(mentionKey) ? mentionDecorations(state.doc, refs) : old),
+          },
+          props: {
+            decorations: (state) => mentionKey.getState(state),
+          },
+        }),
+      ];
+    },
+  });
+}
+
+/** Re-resolves the mentions, e.g. after tasks were created, renamed or closed. */
+export function refreshTaskRefs(editor: Editor): void {
+  if (!editor.isDestroyed) editor.view.dispatch(editor.state.tr.setMeta(mentionKey, true).setMeta("addToHistory", false));
+}
+
+/** The mention under a primary click that should open its task rather than edit. */
+function mentionToOpen(focused: boolean, event: MouseEvent): string | null {
+  if (event.button !== 0 || (focused && !event.metaKey && !event.ctrlKey)) return null;
+  return (event.target as Element | null)?.closest?.("a[data-task-ref]")?.getAttribute("data-task-ref") ?? null;
 }
 
 const SAFE_PROTOCOLS = ["http:", "https:", "mailto:"];
@@ -61,6 +131,7 @@ export function createMarkdownEditor(options: MarkdownEditorOptions): Editor {
       TaskItem.configure({ nested: true }),
       Placeholder.configure({ placeholder: options.placeholder }),
       Markdown.configure({ indentation: { style: "space", size: 2 } }),
+      ...(options.taskRefs ? [taskMentions(options.taskRefs)] : []),
     ],
     editorProps: {
       attributes: {
@@ -89,11 +160,17 @@ export function createMarkdownEditor(options: MarkdownEditorOptions): Editor {
         // starting to edit; while writing, Cmd/Ctrl+click does. Decided on mousedown,
         // because the click would focus the editor first.
         mousedown(view, event) {
-          if (!linkToOpen(view.hasFocus(), event)) return false;
+          if (!linkToOpen(view.hasFocus(), event) && !mentionToOpen(view.hasFocus(), event)) return false;
           event.preventDefault();
           return true;
         },
         click(view, event) {
+          const ref = mentionToOpen(view.hasFocus(), event);
+          if (ref && options.taskRefs) {
+            event.preventDefault();
+            options.taskRefs.open(ref);
+            return true;
+          }
           const href = linkToOpen(view.hasFocus(), event);
           if (!href) return false;
           event.preventDefault();

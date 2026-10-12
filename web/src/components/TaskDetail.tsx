@@ -14,6 +14,7 @@ import { TextField } from "./Fields";
 import { Icon, type IconName } from "./Icon";
 import { MarkdownField } from "./MarkdownField";
 import { CheckButton, ProgressBar, SubtaskTree } from "./TaskBits";
+import { Dependencies } from "./TaskLinks";
 
 /** Only http(s) and mailto links become clickable; anything else (javascript:, data: …) is shown as text. */
 export function safeHref(url: string): string | undefined {
@@ -436,6 +437,8 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
             <SubtaskTree parentId={t().id} />
             <AddSubtask parentId={t().id} />
           </section>
+
+          <Dependencies task={t()} />
 
           <Show when={showDev()}>
             <section class="detail-section dev-section">
@@ -924,6 +927,10 @@ function describeValue(field: string, value: JsonValue): string {
     if ((kind === "area" || kind === "project") && typeof value.id === "string") return locationLabel({ kind, id: value.id });
   }
   if (field === "parent_id" && typeof value === "string") return data.tasks[value]?.title ?? "andere Aufgabe";
+  if (field === "blocked_by" && Array.isArray(value)) {
+    if (value.length === 0) return "keine";
+    return value.map((id) => (typeof id === "string" && data.tasks[id] ? (data.tasks[id]!.ref ?? `„${data.tasks[id]!.title}“`) : "andere Aufgabe")).join(", ");
+  }
   if (field === "deleted") return "ja";
   if (field === "phoenix" && value && typeof value === "object" && !Array.isArray(value)) {
     return `${PHOENIX_LABELS[value.role as keyof typeof PHOENIX_LABELS] ?? value.role} ${value.fire}`;

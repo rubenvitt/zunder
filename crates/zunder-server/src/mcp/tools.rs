@@ -500,11 +500,12 @@ async fn filter_tasks(app: &App, args: &Args) -> AppResult<Value> {
                 }
             });
             let total = hits.len();
+            let blocks = state.blocks_index();
             let tasks: Vec<TaskView> = hits
                 .into_iter()
                 .skip(offset)
                 .take(limit)
-                .filter_map(|(_, _, id)| TaskView::build(state, id, now, false))
+                .filter_map(|(_, _, id)| TaskView::build_with(state, &blocks, id, now, false))
                 .collect();
             (tasks, total)
         })
@@ -541,6 +542,7 @@ async fn search_all(app: &App, args: &Args) -> AppResult<Value> {
     let now = system_time_ms();
     let hits: Vec<Value> = app
         .read_blocking(move |state| {
+            let blocks = state.blocks_index();
             search(state, &query, limit)
                 .into_iter()
                 .map(|hit| {
@@ -552,7 +554,9 @@ async fn search_all(app: &App, args: &Args) -> AppResult<Value> {
                     });
                     match hit.entity {
                         EntityKind::Task => {
-                            if let Some(t) = TaskView::build(state, hit.entity_id, now, false) {
+                            if let Some(t) =
+                                TaskView::build_with(state, &blocks, hit.entity_id, now, false)
+                            {
                                 v["status"] = json!(t.status);
                                 v["type"] = json!(t.task_type);
                                 v["location"] = json!(t.location);
@@ -674,9 +678,13 @@ async fn create_task(app: &App, source: Source, args: &Args) -> AppResult<Value>
     }
     let task_type = take(&mut fields, ft::TYPE).unwrap_or_else(|| TaskType::Aufgabe.into());
     let status = take(&mut fields, ft::STATUS).unwrap_or_else(|| TaskStatus::Open.into());
+    let blockers = args.task_links(ft::BLOCKED_BY)?.flatten();
     let (id, warnings) = app
         .mutate_atomic(source, move |state, batch| {
             let id = zunder_core::ids::new_id();
+            if let Some(blockers) = blockers {
+                batch.set_task(id, ft::BLOCKED_BY, blocked_by_value(state, &blockers)?);
+            }
             batch.set_task(id, ft::TITLE, title);
             batch.set_task(id, ft::TYPE, task_type);
             batch.set_task(id, ft::STATUS, status);
@@ -701,6 +709,22 @@ fn parent_value(state: &State, parent: &TaskRef) -> AppResult<Value> {
         TaskRef::Key(_) | TaskRef::ClickUp(_) => parent.resolve(state, false)?,
     };
     Ok(Value::String(id.to_string()))
+}
+
+/// The value written to `blocked_by`: IDs as given (the core checks them),
+/// references and ClickUp IDs resolved to their tasks; repeats dropped.
+fn blocked_by_value(state: &State, blockers: &[TaskRef]) -> AppResult<Value> {
+    let mut ids: Vec<Id> = Vec::with_capacity(blockers.len());
+    for blocker in blockers {
+        let id = match blocker {
+            TaskRef::Id(id) => *id,
+            TaskRef::Key(_) | TaskRef::ClickUp(_) => blocker.resolve(state, false)?,
+        };
+        if !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+    Ok(json!(ids.iter().map(Id::to_string).collect::<Vec<_>>()))
 }
 
 /// The value written to `undated_ack`: `true` marks the task as undated on
@@ -730,12 +754,20 @@ async fn update_task(app: &App, source: Source, args: &Args) -> AppResult<Value>
     if let Some(ack) = undated_ack_value(args)? {
         fields.push((ft::UNDATED_ACK, ack));
     }
-    if fields.is_empty() {
+    let blockers = args.task_links(ft::BLOCKED_BY)?;
+    if fields.is_empty() && blockers.is_none() {
         return Err(invalid("Keine Änderung angegeben."));
     }
     let (id, warnings) = app
         .mutate_atomic(source, move |state, batch| {
             let id = target.resolve(state, false)?;
+            match blockers {
+                None => {}
+                Some(None) => fields.push((ft::BLOCKED_BY, Value::Null)),
+                Some(Some(blockers)) => {
+                    fields.push((ft::BLOCKED_BY, blocked_by_value(state, &blockers)?))
+                }
+            }
             for (field, value) in fields {
                 if changes(state, EntityKind::Task, id, field, &value) {
                     batch.set_task(id, field, value);

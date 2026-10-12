@@ -60,6 +60,9 @@ loose (bewusst ohne Zuordnung), area oder project. Unteraufgaben (parent_id, bel
 immer an der Stelle ihrer Wurzelaufgabe. Status (englische Codes): open, in_progress, review \
 (nur Dev-Projekte), blocked, done, dropped. Typen: aufgabe; bug und feature nur in Dev-Projekten. \
 Ein Epic ist einfach eine Aufgabe mit Unteraufgaben (progress zeigt erledigt/gesamt). \
+Abhängigkeiten: blocked_by nennt die Aufgaben, die vorher erledigt sein müssen; blocks zeigt die \
+Gegenrichtung (abgeleitet). Kennungen wie ZUN-42 in Beschreibungen und Kommentaren verlinkt die \
+Oberfläche auf die Aufgabe. \
 filter_tasks blendet erledigte und verworfene Aufgaben 3 Tage nach der Statusänderung aus \
 (include_closed zeigt sie), search findet sie immer. Aufgaben werden über task_id (ID oder \
 Kennung wie ZUN-42) oder clickup_id adressiert. Projekte können einen Schlüssel (key, z. B. ZUN) \

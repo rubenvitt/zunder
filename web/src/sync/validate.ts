@@ -44,6 +44,8 @@ export interface ValidationIssue {
 }
 
 export const TITLE_MAX = 500;
+/** Most entries in a task's `blocked_by` (core: model::MAX_BLOCKED_BY). */
+export const MAX_BLOCKED_BY = 100;
 export const MAX_FUTURE_MS = 24 * 60 * 60 * 1000;
 
 export const REQUIRED_FIELDS: Record<EntityKind, readonly string[]> = {
@@ -142,6 +144,7 @@ type Shape =
   | "due"
   | "timestamp"
   | "string_list"
+  | "id_list"
   | "links"
   | "phoenix"
   | "repo"
@@ -186,6 +189,7 @@ const SHAPES: Record<EntityKind, Record<string, Shape>> = {
     clickup_id: "text",
     rank: "text",
     undated_ack: "timestamp",
+    blocked_by: "id_list",
     ref: "task_ref",
     deleted: "bool",
   },
@@ -198,6 +202,7 @@ const FIELD_LABELS: Record<string, string> = {
   due: "Fälligkeit (Datum JJJJ-MM-TT oder Zeitpunkt)",
   remind_at: "Erinnerung",
   undated_ack: "Bewusst ohne Fälligkeit (Zeitpunkt)",
+  blocked_by: "Blockiert durch (verschiedene Aufgaben-IDs)",
   links: "Links (absolute URL)",
   phoenix: "Phönix (Rolle und Feuer wie 2026-W45)",
   pr_url: "PR-Link (http(s)-URL)",
@@ -232,6 +237,8 @@ function shapeOk(shape: Shape, v: JsonValue): boolean {
       return typeof v === "string" && isRfc3339(v);
     case "string_list":
       return Array.isArray(v) && v.every((x) => typeof x === "string" && x !== "");
+    case "id_list":
+      return Array.isArray(v) && v.length <= MAX_BLOCKED_BY && v.every(isCanonicalId) && new Set(v).size === v.length;
     case "links":
       return (
         Array.isArray(v) &&
@@ -419,6 +426,12 @@ function target(loc: Location): [EntityKind, string] | null {
   return loc.kind === "area" || loc.kind === "project" ? [loc.kind, loc.id] : null;
 }
 
+/** The task's `blocked_by` IDs (malformed entries skipped, core: Entity::blocked_by). */
+function blockedBy(e: EntityState): string[] {
+  const v = value(e, "blocked_by");
+  return e.entity === "task" && Array.isArray(v) ? v.filter((x): x is string => isCanonicalId(x)) : [];
+}
+
 function taskType(e: EntityState): string {
   return strValue(e, "type") ?? "aufgabe";
 }
@@ -538,6 +551,7 @@ class Checker {
       const tgt = target(ownLocation(t));
       if (tgt) this.brokenReference("task", t.id, refFields, tgt[0], tgt[1]);
     }
+    if (this.changedAny("task", t.id, ["blocked_by"])) this.checkBlockedBy(t);
 
     const type = taskType(t);
     const devType = type === "bug" || type === "feature";
@@ -594,6 +608,59 @@ class Checker {
       }
     }
     if (!responsible && this.touched(key)) this.blame(key, "dev_only", `${what} ist nur in Dev-Projekten erlaubt.`);
+  }
+
+  /**
+   * New entries of `blocked_by` must be other live tasks that do not wait for this one
+   * themselves (core: Checker::check_blocked_by). Entries that were already there stay,
+   * even if their task was deleted meanwhile.
+   */
+  private checkBlockedBy(t: EntityState): void {
+    const key = keyOf("task", t.id);
+    const prev = this.before.entity("task", t.id);
+    const before = new Set(prev ? blockedBy(prev) : []);
+    for (const blocker of blockedBy(t)) {
+      if (before.has(blocker)) continue;
+      if (blocker === t.id) {
+        this.blame(key, "invalid_value", "Eine Aufgabe kann nicht von sich selbst blockiert werden.");
+        return;
+      }
+      const other = this.scratch.live("task", blocker);
+      if (!other) {
+        this.blame(
+          key,
+          "invalid_reference",
+          this.scratch.entity("task", blocker) ? "Die blockierende Aufgabe ist gelöscht." : "Die blockierende Aufgabe existiert nicht.",
+        );
+        return;
+      }
+      if (this.waitsFor(blocker, t.id)) {
+        this.blame(
+          key,
+          "cycle",
+          `„${strValue(other, "title") ?? ""}“ wartet selbst (direkt oder über andere Aufgaben) auf diese Aufgabe. Zwei Aufgaben können sich nicht gegenseitig blockieren.`,
+        );
+        return;
+      }
+    }
+  }
+
+  /** Whether live task `from` waits for `target` along `blocked_by`, through live tasks only. */
+  private waitsFor(from: string, target: string): boolean {
+    const seen = new Set([from]);
+    const stack = [from];
+    while (stack.length > 0) {
+      const e = this.scratch.live("task", stack.pop()!);
+      if (!e) continue;
+      for (const next of blockedBy(e)) {
+        if (next === target) return true;
+        if (!seen.has(next)) {
+          seen.add(next);
+          stack.push(next);
+        }
+      }
+    }
+    return false;
   }
 
   private inCycle(id: string): boolean {

@@ -4,9 +4,10 @@
 //!
 //! Views are computed from the materialized state: the effective location
 //! with resolved names, derived timestamps (`created_at`, `updated_at`,
-//! `status_changed_at` from HLCs, RFC 3339 UTC) and subtask progress.
+//! `status_changed_at` from HLCs, RFC 3339 UTC), subtask progress and the
+//! blocking relations in both directions.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
 use zunder_core::ids::Id;
@@ -114,6 +115,10 @@ pub struct TaskView {
     pub status_changed_at: String,
     /// Direct, live subtasks: `done` of `total` (dropped ones excluded).
     pub progress: Progress,
+    /// Live tasks this one waits for (`blocked_by`, deleted ones left out).
+    pub blocked_by: Vec<TaskLinkView>,
+    /// Live tasks waiting for this one (the reverse of their `blocked_by`).
+    pub blocks: Vec<TaskLinkView>,
     /// Subtask tree (only from `get_task`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subtasks: Option<Vec<TaskView>>,
@@ -121,6 +126,32 @@ pub struct TaskView {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub comments: Option<Vec<CommentView>>,
 }
+
+/// Another task named in a relation (`blocked_by`, `blocks`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TaskLinkView {
+    pub id: Id,
+    #[serde(rename = "ref")]
+    pub reference: Option<String>,
+    pub title: String,
+    pub status: TaskStatus,
+}
+
+impl TaskLinkView {
+    fn of(state: &State, id: Id) -> Option<Self> {
+        let task = state.task(id).filter(|t| !t.deleted)?;
+        Some(TaskLinkView {
+            id,
+            reference: task.reference,
+            title: task.title,
+            status: task.status,
+        })
+    }
+}
+
+/// The reverse of `blocked_by` (blocker → waiting tasks), see
+/// [`State::blocks_index`]. Computed once when building many views.
+pub type BlocksIndex = HashMap<Id, Vec<Id>>;
 
 /// A comment as returned by tools.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -187,12 +218,28 @@ impl TaskView {
     /// The view of a task (also tombstoned ones); `None` if unknown.
     /// `with_subtasks` adds the tree of live subtasks.
     pub fn build(state: &State, id: Id, now_ms: u64, with_subtasks: bool) -> Option<Self> {
+        Self::build_with(state, &state.blocks_index(), id, now_ms, with_subtasks)
+    }
+
+    /// Like [`TaskView::build`] with a precomputed [`BlocksIndex`].
+    pub fn build_with(
+        state: &State,
+        blocks: &BlocksIndex,
+        id: Id,
+        now_ms: u64,
+        with_subtasks: bool,
+    ) -> Option<Self> {
         let task = state.task(id)?;
         let location = state.effective_location(id).unwrap_or(task.location);
         let subtasks = with_subtasks.then(|| {
             let mut seen = HashSet::from([id]);
-            subtask_tree(state, id, now_ms, &mut seen)
+            subtask_tree(state, blocks, id, now_ms, &mut seen)
         });
+        let links = |ids: &[Id]| -> Vec<TaskLinkView> {
+            ids.iter()
+                .filter_map(|b| TaskLinkView::of(state, *b))
+                .collect()
+        };
         Some(TaskView {
             id,
             location: LocationView::of(state, location),
@@ -207,6 +254,8 @@ impl TaskView {
             updated_at: hlc_time(state.updated_at(EntityKind::Task, id)),
             status_changed_at: hlc_time(state.status_changed_at(id)),
             progress: state.progress(id),
+            blocked_by: links(&state.blockers(id)),
+            blocks: links(blocks.get(&id).map_or(&[], Vec::as_slice)),
             subtasks,
             comments: None,
             title: task.title,
@@ -229,7 +278,13 @@ impl TaskView {
     }
 }
 
-fn subtask_tree(state: &State, id: Id, now_ms: u64, seen: &mut HashSet<Id>) -> Vec<TaskView> {
+fn subtask_tree(
+    state: &State,
+    blocks: &BlocksIndex,
+    id: Id,
+    now_ms: u64,
+    seen: &mut HashSet<Id>,
+) -> Vec<TaskView> {
     let mut out = Vec::new();
     // Creation order (IDs are random since CUID2).
     let mut children = state.children(id);
@@ -241,8 +296,8 @@ fn subtask_tree(state: &State, id: Id, now_ms: u64, seen: &mut HashSet<Id>) -> V
         if !seen.insert(child) {
             continue;
         }
-        if let Some(mut view) = TaskView::build(state, child, now_ms, false) {
-            view.subtasks = Some(subtask_tree(state, child, now_ms, seen));
+        if let Some(mut view) = TaskView::build_with(state, blocks, child, now_ms, false) {
+            view.subtasks = Some(subtask_tree(state, blocks, child, now_ms, seen));
             out.push(view);
         }
     }

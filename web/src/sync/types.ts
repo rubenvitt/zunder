@@ -75,6 +75,7 @@ export const TASK_FIELDS = [
   "clickup_id",
   "rank",
   "undated_ack",
+  "blocked_by",
   "ref",
   "deleted",
 ] as const;
@@ -146,6 +147,8 @@ export interface Task extends EntityMeta {
   rank: string | null;
   /** When the task was marked as deliberately undated ("bewusst undatiert"). */
   undated_ack: string | null;
+  /** IDs of the tasks this one waits for, as stored (may name deleted tasks, which no longer block). */
+  blocked_by: string[];
   /** Reference such as `ZUN-42`, assigned by the server (never by a client). */
   ref: string | null;
   /** HLC of the winning status op, or created_hlc when the status was never set. */
