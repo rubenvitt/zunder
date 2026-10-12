@@ -7,6 +7,7 @@ import { hlcWallMs } from "../sync/hlc";
 import { PHOENIX_ROLES, TASK_STATUSES, TASK_TYPES, type HistoryEntry, type JsonValue, type Link, type Task, type TaskStatus, type TaskType } from "../sync/types";
 import { FIELD_LABELS, locationLabel, PHOENIX_LABELS, sourceLabel, STATUS_LABELS, TYPE_LABELS } from "../labels";
 import { addComment, createTask, deleteComment, deleteTask, dependentsCount, flame, moveTask, setParent, setStatus, updateComment, updateTask } from "../state/actions";
+import { detailBack, NARROW_LAYOUT } from "../state/back";
 import { api, commentsOf, data, now, pendingCount, taskIndex } from "../state/store";
 import { copyTaskId, copyText, detailWide, pickLocation, pickTask, selectedId, setDetailId, setDetailWide, setDetailWidth, setSelectedId } from "../state/ui";
 import { TextField } from "./Fields";
@@ -38,6 +39,7 @@ export function TaskDetail(props: { id: string }) {
     // Opening moves the focus into the panel (on phones it covers the list).
     previous = document.activeElement;
     if (!aside?.contains(document.activeElement)) focusPanel();
+    onCleanup(edgeSwipeBack(aside!));
   });
   onCleanup(() => {
     // Closing returns it to the selected row, unless it already went elsewhere (e.g. the palette).
@@ -62,6 +64,94 @@ export function TaskDetail(props: { id: string }) {
       </Show>
     </aside>
   );
+}
+
+const EDGE = 28;
+const SETTLE_MS = 180;
+
+/**
+ * Phones: swiping right from the left edge goes back, to the parent task or out
+ * of the detail (as on iOS; the app's webview has no native back gesture). The
+ * panel follows the finger and reveals the list behind it. Touch events rather
+ * than pointer events: only they can keep the browser from scrolling.
+ */
+function edgeSwipeBack(panel: HTMLElement): () => void {
+  let start: { x: number; y: number; time: number } | null = null;
+  let dragging = false;
+  let dx = 0;
+
+  const settle = (transform: string) => {
+    panel.style.transition = "";
+    panel.style.transform = transform;
+  };
+  const onStart = (e: TouchEvent) => {
+    start = null;
+    if (e.touches.length !== 1 || !window.matchMedia(NARROW_LAYOUT).matches) return;
+    const touch = e.touches[0]!;
+    if (touch.clientX - panel.getBoundingClientRect().left > EDGE) return;
+    start = { x: touch.clientX, y: touch.clientY, time: e.timeStamp };
+    dragging = false;
+  };
+  const onMove = (e: TouchEvent) => {
+    const touch = e.touches[0];
+    if (!start || !touch) return;
+    const deltaX = touch.clientX - start.x;
+    const deltaY = touch.clientY - start.y;
+    if (!dragging) {
+      if (Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) return;
+      // Up, down or to the left: scrolling, not back.
+      if (deltaX <= Math.abs(deltaY)) {
+        start = null;
+        return;
+      }
+      dragging = true;
+      panel.classList.add("swiping-back");
+      panel.style.transition = "none";
+    }
+    e.preventDefault();
+    dx = Math.max(0, deltaX);
+    panel.style.transform = `translateX(${dx}px)`;
+  };
+  const onEnd = (e: TouchEvent) => {
+    const began = start;
+    start = null;
+    if (!began || !dragging) return;
+    dragging = false;
+    const speed = dx / Math.max(1, e.timeStamp - began.time);
+    const back = e.type === "touchend" && (dx > panel.clientWidth * 0.35 || (dx > 40 && speed > 0.5));
+    dx = 0;
+    if (!back) {
+      settle("");
+      setTimeout(() => panel.classList.remove("swiping-back"), SETTLE_MS);
+      return;
+    }
+    settle("translateX(100%)");
+    setTimeout(() => {
+      // Back to a parent task keeps the panel: put it in place without sliding once the parent is shown.
+      const restore = () => {
+        window.removeEventListener("popstate", restore);
+        clearTimeout(fallback);
+        panel.style.transition = "none";
+        panel.style.transform = "";
+        panel.classList.remove("swiping-back");
+        requestAnimationFrame(() => (panel.style.transition = ""));
+      };
+      window.addEventListener("popstate", restore);
+      const fallback = setTimeout(restore, 400);
+      detailBack();
+    }, SETTLE_MS);
+  };
+
+  panel.addEventListener("touchstart", onStart, { passive: true });
+  panel.addEventListener("touchmove", onMove, { passive: false });
+  panel.addEventListener("touchend", onEnd);
+  panel.addEventListener("touchcancel", onEnd);
+  return () => {
+    panel.removeEventListener("touchstart", onStart);
+    panel.removeEventListener("touchmove", onMove);
+    panel.removeEventListener("touchend", onEnd);
+    panel.removeEventListener("touchcancel", onEnd);
+  };
 }
 
 /** Drag the left edge to resize the panel (desktop). Double click resets. */
