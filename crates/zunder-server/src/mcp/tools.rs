@@ -755,12 +755,16 @@ async fn update_task(app: &App, source: Source, args: &Args) -> AppResult<Value>
         fields.push((ft::UNDATED_ACK, ack));
     }
     let blockers = args.task_links(ft::BLOCKED_BY)?;
+    let force = args.bool("force")?.unwrap_or(false);
     if fields.is_empty() && blockers.is_none() {
         return Err(invalid("Keine Änderung angegeben."));
     }
     let (id, warnings) = app
         .mutate_atomic(source, move |state, batch| {
             let id = target.resolve(state, false)?;
+            if !force {
+                refuse_close_with_open_subtasks(state, id, &fields)?;
+            }
             match blockers {
                 None => {}
                 Some(None) => fields.push((ft::BLOCKED_BY, Value::Null)),
@@ -777,6 +781,63 @@ async fn update_task(app: &App, source: Source, args: &Args) -> AppResult<Value>
         })
         .await?;
     task_result(app, id, &warnings)
+}
+
+/// Most open subtasks named in the `open_subtasks` refusal.
+const MAX_LISTED_SUBTASKS: usize = 10;
+
+/// Refuses closing a task (`done` or `dropped`) that still has open direct
+/// subtasks; the caller has to repeat the call with `force: true`.
+fn refuse_close_with_open_subtasks(
+    state: &State,
+    id: Id,
+    fields: &[(&'static str, Value)],
+) -> AppResult<()> {
+    let Some(status) = fields
+        .iter()
+        .find(|(k, _)| *k == ft::STATUS)
+        .and_then(|(_, v)| serde_json::from_value::<TaskStatus>(v.clone()).ok())
+    else {
+        return Ok(());
+    };
+    let task = state.task(id).expect("resolved task exists");
+    if !status.is_closed() || task.status == status {
+        return Ok(());
+    }
+    let open: Vec<zunder_core::Task> = state
+        .children(id)
+        .into_iter()
+        .filter_map(|c| state.task(c))
+        .filter(|t| !t.status.is_closed())
+        .collect();
+    if open.is_empty() {
+        return Ok(());
+    }
+    let mut names: Vec<String> = open
+        .iter()
+        .take(MAX_LISTED_SUBTASKS)
+        .map(|t| match &t.reference {
+            Some(r) => format!("{r} „{}“", t.title),
+            None => format!("„{}“ ({})", t.title, t.id),
+        })
+        .collect();
+    if open.len() > MAX_LISTED_SUBTASKS {
+        names.push(format!("und {} weitere", open.len() - MAX_LISTED_SUBTASKS));
+    }
+    let count = if open.len() == 1 {
+        "1 offene Unteraufgabe".to_owned()
+    } else {
+        format!("{} offene Unteraufgaben", open.len())
+    };
+    Err(AppError::BadRequest {
+        code: "open_subtasks",
+        message: format!(
+            "Warnung: Nicht geschlossen, die Aufgabe hat noch {count}: {}. Es wurde nichts \
+             geändert. Erst die Unteraufgaben erledigen oder verwerfen, oder update_task mit \
+             force: true erneut aufrufen, um trotzdem zu schließen.",
+            names.join(", ")
+        ),
+    })
 }
 
 async fn move_task(app: &App, source: Source, args: &Args) -> AppResult<Value> {

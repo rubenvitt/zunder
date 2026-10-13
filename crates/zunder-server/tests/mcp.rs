@@ -955,15 +955,65 @@ async fn decompose_is_atomic_and_builds_a_tree() {
     .await;
     assert_eq!(code, "invalid_arguments");
 
-    // done with open subtasks → warning, not rejection
+    // Closing with open subtasks is refused without force; nothing changes.
+    for status in ["done", "dropped"] {
+        let (code, message) = mcp_err(
+            &s,
+            &t,
+            "update_task",
+            json!({"task_id": parent, "status": status, "plan": "Fertig?"}),
+        )
+        .await;
+        assert_eq!(code, "open_subtasks");
+        assert!(message.contains("2 offene Unteraufgaben"), "{message}");
+        assert!(
+            message.contains("„HLC“") && message.contains("„Merge“"),
+            "{message}"
+        );
+        assert!(!message.contains("„Tests“"), "{message}");
+        assert!(message.contains("force: true"), "{message}");
+    }
+    let got = mcp_ok(&s, &t, "get_task", json!({"task_id": parent})).await;
+    assert_eq!(got["task"]["status"], "open");
+    assert_eq!(got["task"]["plan"], Value::Null);
+
+    // Other changes and non-closing statuses need no force.
+    mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": parent, "status": "in_progress"}),
+    )
+    .await;
+
+    // A second call with force closes it; the core still warns.
     let r = mcp_ok(
         &s,
         &t,
         "update_task",
-        json!({"task_id": parent, "status": "done"}),
+        json!({"task_id": parent, "status": "done", "force": true}),
     )
     .await;
+    assert_eq!(r["task"]["status"], "done");
     assert_eq!(r["warnings"][0]["code"], "open_subtasks");
+
+    // Without open subtasks no force is needed.
+    let (code, _) = mcp_err(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": parent, "force": "ja"}),
+    )
+    .await;
+    assert_eq!(code, "invalid_arguments");
+    let r = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": inbox, "status": "dropped"}),
+    )
+    .await;
+    assert_eq!(r["task"]["status"], "dropped");
 }
 
 /// Pushes a task that was closed `days_ago` days ago (client clock in the

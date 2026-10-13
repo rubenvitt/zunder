@@ -343,7 +343,7 @@
       "readOnlyHint": false,
       "title": "Aufgabe ändern"
     },
-    "description": "Ändert Felder einer Aufgabe (task_id oder clickup_id). Nur angegebene Felder ändern sich; null entfernt optionale Werte. Stelle und Elternaufgabe ändert move_task, Reservierungen claim_task/release_task. Für Zwischenstände und Notizen add_comment nutzen statt die Beschreibung zu überschreiben.",
+    "description": "Ändert Felder einer Aufgabe (task_id oder clickup_id). Nur angegebene Felder ändern sich; null entfernt optionale Werte. Stelle und Elternaufgabe ändert move_task, Reservierungen claim_task/release_task. Für Zwischenstände und Notizen add_comment nutzen statt die Beschreibung zu überschreiben. Schließen (status done oder dropped) einer Aufgabe mit offenen Unteraufgaben wird ohne force abgelehnt (Fehler open_subtasks, nichts wird geändert): erst die Unteraufgaben erledigen oder verwerfen, oder bewusst mit force: true erneut aufrufen.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -382,6 +382,10 @@
             "string",
             "null"
           ]
+        },
+        "force": {
+          "description": "Aufgabe trotz offener Unteraufgaben schließen (Standard false). Nur nach der Warnung open_subtasks und bewusst setzen.",
+          "type": "boolean"
         },
         "links": {
           "description": "Externe Links; ersetzt die ganze Liste.",
