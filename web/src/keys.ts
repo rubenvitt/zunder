@@ -1,5 +1,6 @@
 // Global keyboard map (contract section 5).
 
+import { isTauri } from "./platform/runtime";
 import { toggleDone } from "./state/actions";
 import { navigate, route, type Route } from "./state/router";
 import { data } from "./state/store";
@@ -83,6 +84,14 @@ export function installKeyboard(): () => void {
       return;
     }
     if (e.defaultPrevented || e.isComposing) return;
+    // ⌘, / Ctrl+,: settings, as everywhere on macOS. Works from text fields too, not over a dialog.
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key === ",") {
+      if (anyOverlayOpen()) return;
+      e.preventDefault();
+      // The Tauri app has no session settings; its settings page is the connection page.
+      navigate({ view: isTauri() ? "verbindung" : "einstellungen" });
+      return;
+    }
     // ⌘B / Ctrl+B: sidebar on/off. In the Markdown editor it stays "bold".
     if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "b") {
       const target = e.target instanceof HTMLElement ? e.target : null;

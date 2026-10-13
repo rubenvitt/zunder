@@ -128,3 +128,33 @@ test("⌘B / Strg+B blendet die Seitenleiste aus und wieder ein", async ({ page 
   await page.keyboard.press("ControlOrMeta+b");
   await expect(sidebar).toBeVisible();
 });
+
+test("⌘, / Strg+, öffnet die Einstellungen, auch aus einem Eingabefeld", async ({ page }) => {
+  await openApp(page, "#/heute");
+  await page.keyboard.press("ControlOrMeta+,");
+  await expect(page).toHaveURL(/#\/einstellungen$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Einstellungen" })).toBeVisible();
+
+  // Not over a dialog: the capture dialog stays and the view does not change.
+  await page.keyboard.press("g");
+  await page.keyboard.press("h");
+  await expect(page).toHaveURL(/#\/heute$/);
+  await page.keyboard.press("n");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+,");
+  await expect(dialog).toBeVisible();
+  await expect(page).toHaveURL(/#\/heute$/);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+
+  // From a text field (the palette would be an overlay, so a bare input stands in).
+  await page.locator("body").evaluate(() => {
+    const input = document.createElement("input");
+    input.id = "probe";
+    document.body.append(input);
+  });
+  await page.locator("#probe").focus();
+  await page.keyboard.press("ControlOrMeta+,");
+  await expect(page).toHaveURL(/#\/einstellungen$/);
+});
