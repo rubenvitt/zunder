@@ -871,6 +871,16 @@ html.resizing * {
 .tree-head h1 {
   font-size: 1.15rem;
 }
+/* Hidden tree (desktop): the tasks get the whole width; the head of the panel brings it back. */
+.view-split.tree-hidden {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+.view-split.tree-hidden .tree {
+  visibility: hidden;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+}
 .tree ul {
   list-style: none;
   margin: 0;
@@ -2745,6 +2755,14 @@ html.resizing * {
   }
   .view-split.has-selection .tree {
     display: none;
+  }
+  /* Phones fold the tree into the picker line anyway. */
+  .tree-toggle {
+    display: none;
+  }
+  .view-split.tree-hidden .tree {
+    visibility: visible;
+    padding: 0.75rem 0.6rem 1rem;
   }
   .view-split.has-selection.tree-open .tree {
     display: block;

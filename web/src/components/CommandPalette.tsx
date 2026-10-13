@@ -8,7 +8,7 @@ import { locationLabel, STATUS_LABELS } from "../labels";
 import { isTauri } from "../platform/runtime";
 import { navigate } from "../state/router";
 import { api, areaList, data, projectList, taskIndex } from "../state/store";
-import { setCaptureOpen, setDetailId, setHelpOpen, setPalette, setSelectedId, setStructureEdit, sidebarHidden, toast, toggleSidebar, type PaletteRequest } from "../state/ui";
+import { setCaptureOpen, setDetailId, setHelpOpen, setPalette, setSelectedId, setStructureEdit, sidebarHidden, toast, toggleSidebar, toggleTree, treeHidden, type PaletteRequest } from "../state/ui";
 import { Modal } from "./Modal";
 
 interface Item {
@@ -95,6 +95,7 @@ export function CommandPalette(props: { request: PaletteRequest }) {
       go("Neuer Bereich", () => setStructureEdit({ kind: "area" })),
       go("Neues Projekt", () => setStructureEdit({ kind: "project" })),
       go(sidebarHidden() ? "Seitenleiste einblenden" : "Seitenleiste ausblenden", toggleSidebar, "⌘B"),
+      go(treeHidden() ? "Bereiche einblenden" : "Bereiche ausblenden", toggleTree),
       go("Tastenkürzel anzeigen", () => setHelpOpen(true), "?"),
       ...account,
     ];

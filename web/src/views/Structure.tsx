@@ -11,7 +11,7 @@ import { createTask, updateProject } from "../state/actions";
 import { navigate, route } from "../state/router";
 import { areaList, data, projectList } from "../state/store";
 import { tasksAt } from "../state/selectors";
-import { registerList, setStructureEdit } from "../state/ui";
+import { registerList, setStructureEdit, toggleTree, treeHidden } from "../state/ui";
 
 export function StructureView() {
   const [showArchived, setShowArchived] = createSignal(false);
@@ -36,7 +36,7 @@ export function StructureView() {
   createEffect(on(current, () => setTreeOpen(false), { defer: true }));
 
   return (
-    <div class="view view-split" classList={{ "has-selection": !!current()?.id, "tree-open": treeOpen() }}>
+    <div class="view view-split" classList={{ "has-selection": !!current()?.id, "tree-open": treeOpen(), "tree-hidden": treeHidden() && !!current()?.id }}>
       <button class="tree-picker" aria-expanded={treeOpen()} onClick={() => setTreeOpen((o) => !o)}>
         <Icon name="folder" size={16} />
         <span>{selectionLabel()}</span>
@@ -45,9 +45,15 @@ export function StructureView() {
       <nav class="tree" aria-label="Bereiche und Projekte">
         <header class="tree-head">
           <h1>Bereiche</h1>
+          <span class="spacer" />
           <button class="btn btn-ghost btn-icon" title="Neuer Bereich" aria-label="Neuer Bereich" onClick={() => setStructureEdit({ kind: "area" })}>
             <Icon name="plus" />
           </button>
+          <Show when={current()?.id}>
+            <button class="btn btn-ghost btn-icon tree-toggle" title="Bereiche ausblenden" aria-label="Bereiche ausblenden" onClick={toggleTree}>
+              <Icon name="left" />
+            </button>
+          </Show>
         </header>
         <ul>
           <For each={areas()} fallback={<li class="empty">Noch keine Bereiche.</li>}>
@@ -121,6 +127,17 @@ export function StructureView() {
   );
 }
 
+/** Shown in the panel head while the tree is hidden, to bring it back. */
+function ShowTreeButton() {
+  return (
+    <Show when={treeHidden()}>
+      <button class="btn btn-ghost btn-icon tree-toggle" title="Bereiche einblenden" aria-label="Bereiche einblenden" onClick={toggleTree}>
+        <Icon name="right" />
+      </button>
+    </Show>
+  );
+}
+
 function AddTaskInline(props: { onAdd: (title: string) => void; label: string }) {
   const [title, setTitle] = createSignal("");
   return (
@@ -151,6 +168,7 @@ function AreaPanel(props: { area: Area }) {
   return (
     <>
       <header class="view-head">
+        <ShowTreeButton />
         <h1>{props.area.name}</h1>
         <Show when={props.area.state === "archived"}>
           <span class="chip">Archiviert</span>
@@ -196,6 +214,7 @@ function ProjectPanel(props: { project: Project }) {
   return (
     <>
       <header class="view-head">
+        <ShowTreeButton />
         <h1>{props.project.name}</h1>
         <span class="muted">{data.areas[props.project.area_id]?.name}</span>
         <Show when={dev()}>

@@ -434,3 +434,26 @@ test("Mobil: Tabs unten und großes Plus @mobile", async ({ page }) => {
   await page.getByRole("button", { name: "Erfassen" }).click();
   await expect(page.locator(".task-row", { hasText: "Mobil erfasst" })).toBeVisible();
 });
+
+test("Baum der Bereiche aus- und wieder einblenden", async ({ page }) => {
+  const s = suffix();
+  await openApp(page, "#/bereiche");
+  // Without a selection the tree is all there is: no button to hide it.
+  await expect(page.getByRole("button", { name: "Bereiche ausblenden" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Neuer Bereich" }).click();
+  await page.getByRole("dialog").getByLabel("Name", { exact: true }).fill(`Keller ${s}`);
+  await page.getByRole("dialog").getByRole("button", { name: "Speichern" }).click();
+  await expect(page.locator(".split-main h1")).toHaveText(`Keller ${s}`);
+
+  const tree = page.getByRole("navigation", { name: "Bereiche und Projekte" });
+  await expect(tree).toBeVisible();
+  await page.getByRole("button", { name: "Bereiche ausblenden" }).click();
+  await expect(tree).toBeHidden();
+  // Remembered across a reload.
+  await page.reload();
+  await expect(page.locator(".split-main h1")).toHaveText(`Keller ${s}`);
+  await expect(tree).toBeHidden();
+  await page.getByRole("button", { name: "Bereiche einblenden" }).click();
+  await expect(tree).toBeVisible();
+  await expect(page.getByRole("button", { name: "Bereiche einblenden" })).toHaveCount(0);
+});
