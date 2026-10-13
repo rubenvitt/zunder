@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { fireOf, isValidFire, shiftFire, formatDue, parseDue } from "../src/sync/dates";
 import {
   HIDE_CLOSED_AFTER_MS,
+  closedLast,
   compareTasks,
   isClaimActive,
   isFlameRunning,
@@ -75,6 +76,19 @@ describe("TaskIndex", () => {
     expect(index.progress("root")).toEqual({ done: 1, total: 2 });
     expect(index.progress("a")).toEqual({ done: 0, total: 1 });
     expect(progressOf([])).toEqual({ done: 0, total: 0 });
+  });
+
+  it("closedLast sinks done and dropped tasks, keeping rank order", () => {
+    const list = tasksFrom([
+      op("task", "p", "title", "P", 1),
+      op("task", "q", "title", "Q", 2),
+      op("task", "q", "status", "done", 3),
+      op("task", "r", "title", "R", 4),
+      op("task", "s", "title", "S", 5),
+      op("task", "s", "status", "dropped", 6),
+      op("task", "t", "title", "T", 7),
+    ]).sort(compareTasks);
+    expect(closedLast(list).map((t) => t.id)).toEqual(["p", "r", "t", "q", "s"]);
   });
 
   it("descendants and deletion propagate", () => {

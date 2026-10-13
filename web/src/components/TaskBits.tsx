@@ -3,7 +3,7 @@
 
 import { createSignal, For, Show } from "solid-js";
 import { formatDue, localDate, parseDue } from "../sync/dates";
-import { isClosed, isDevLocation } from "../sync/derived";
+import { closedLast, hasOpenChildren, isClosed, isDevLocation } from "../sync/derived";
 import type { Task } from "../sync/types";
 import { STATUS_LABELS } from "../labels";
 import { toggleDone } from "../state/actions";
@@ -71,10 +71,11 @@ function openTask(id: string) {
 
 /**
  * Subtasks of a task, nested and collapsible: check off, open, copy the reference.
+ * Done and dropped subtasks sink to the bottom of each level.
  * `compact` is the variant inside list rows and board cards.
  */
 export function SubtaskTree(props: { parentId: string; compact?: boolean; depth?: number }) {
-  const children = () => taskIndex().childrenOf(props.parentId);
+  const children = () => closedLast(taskIndex().childrenOf(props.parentId));
   return (
     <ul class="subtree" classList={{ compact: !!props.compact }} role={props.depth ? "group" : "tree"} aria-label={props.depth ? undefined : "Unteraufgaben"}>
       <For each={children()}>{(child) => <SubtaskNode task={child} compact={props.compact} depth={props.depth ?? 0} />}</For>
@@ -85,7 +86,8 @@ export function SubtaskTree(props: { parentId: string; compact?: boolean; depth?
 function SubtaskNode(props: { task: Task; compact?: boolean; depth: number }) {
   const children = () => taskIndex().childrenOf(props.task.id);
   const progress = () => taskIndex().progress(props.task.id);
-  const [open, setOpen] = createSignal(!props.compact);
+  // Compact trees unfold only the branches that still have open work.
+  const [open, setOpen] = createSignal(!props.compact || hasOpenChildren(children()));
   return (
     <li class="subtask" data-task-id={props.task.id} role="treeitem" aria-expanded={children().length > 0 ? open() : undefined}>
       <div class="subtask-row" classList={{ closed: isClosed(props.task.status) }}>
