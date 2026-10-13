@@ -2628,6 +2628,21 @@ html.resizing * {
   body {
     font-size: 15.5px;
   }
+  /* Filter chips stay one row and scroll sideways instead of pushing the board down. */
+  .filter-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    padding-right: 1.5rem;
+    mask-image: linear-gradient(to right, #000 calc(100% - 1.5rem), transparent);
+  }
+  .filter-chips::-webkit-scrollbar {
+    display: none;
+  }
+  .filter-chips > * {
+    flex: none;
+  }
   /* iOS zooms into fields below 16px. */
   .field,
   .prop-input,

@@ -16,6 +16,12 @@ import { api, areaList, data, now, projectList, taskIndex } from "../state/store
 import { devProjectIds, devTasks, phoenixTasks } from "../state/selectors";
 import { copyText, devProjectFilter, registerList, setDevProjectFilter, setStructureEdit, toast } from "../state/ui";
 
+/** A remembered filter may sit off-screen in the sideways-scrolling chip row (mobile). */
+function revealPressed(row: HTMLElement) {
+  const chip = row.querySelector<HTMLElement>('[data-project-id][aria-pressed="true"]');
+  if (chip && row.scrollWidth > row.clientWidth) row.scrollLeft = chip.offsetLeft - row.offsetLeft - 8;
+}
+
 export function DevView() {
   const projects = createMemo(() => projectList().filter((p) => devProjectIds().has(p.id)));
   const all = createMemo(() => devTasks().filter((t) => t.status !== "dropped"));
@@ -52,7 +58,7 @@ export function DevView() {
           </EmptyState>
         }>
         <Show when={projects().length > 1}>
-          <div class="project-chips" role="group" aria-label="Projekte filtern">
+          <div class="project-chips filter-chips" role="group" aria-label="Projekte filtern" ref={(el) => onMount(() => revealPressed(el))}>
             <button class="chip chip-button chip-filter" aria-pressed={selected().size === 0} onClick={() => setDevProjectFilter([])}>
               Alle
             </button>
