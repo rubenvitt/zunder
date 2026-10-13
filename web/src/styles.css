@@ -492,6 +492,15 @@ input[type="checkbox"] {
   border-color: var(--border-strong);
   background: var(--surface-2);
 }
+.chip-filter[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+.chip-filter[aria-pressed="true"] .muted {
+  color: inherit;
+  opacity: 0.75;
+}
 .chip-accent {
   background: var(--accent-soft);
   color: var(--accent-fg);
@@ -2618,6 +2627,21 @@ html.resizing * {
   html,
   body {
     font-size: 15.5px;
+  }
+  /* Filter chips stay one row and scroll sideways instead of pushing the board down. */
+  .filter-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    padding-right: 1.5rem;
+    mask-image: linear-gradient(to right, #000 calc(100% - 1.5rem), transparent);
+  }
+  .filter-chips::-webkit-scrollbar {
+    display: none;
+  }
+  .filter-chips > * {
+    flex: none;
   }
   /* iOS zooms into fields below 16px. */
   .field,

@@ -111,3 +111,26 @@ test("Mobil: Wischen vom linken Rand schließt das Detail, Schließen hinterläs
   await expect.poll(() => page.evaluate(() => history.state)).toBeNull();
   expect(new URL(page.url()).hash).toBe("#/lose");
 });
+
+test("Mobil: viele Dev-Projekte bleiben eine wischbare Chip-Zeile @mobile", async ({ page }) => {
+  const s = suffix();
+  const seeder = new Seeder();
+  const area = seeder.area(`Arbeit ${s}`);
+  const projects = Array.from({ length: 8 }, (_, i) => seeder.project(`Projekt ${i} ${s}`, area, { kind: "dev" }));
+  seeder.task(`Letzte Karte ${s}`, { location: { kind: "project", id: projects[7]! } });
+  await seeder.push(page);
+  await openApp(page, "#/dev");
+
+  const chips = page.getByRole("group", { name: "Projekte filtern" });
+  const last = chips.locator(`[data-project-id="${projects[7]}"]`);
+  // One row: the group is no taller than a chip, the page does not scroll sideways.
+  const [group, chip] = await Promise.all([chips.boundingBox(), last.boundingBox()]);
+  expect(group!.height).toBeLessThan(chip!.height * 1.5);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  await last.tap();
+  await expect(last).toHaveAttribute("aria-pressed", "true");
+  // After a reload the remembered chip is scrolled into view.
+  await page.reload();
+  await expect(last).toBeInViewport({ ratio: 0.9 });
+});

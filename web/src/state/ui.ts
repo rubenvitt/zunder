@@ -163,3 +163,14 @@ export function setDetailWidth(width: number): void {
   setDetailWidthSignal(clamped);
   store("zunder.detailWidth", String(clamped));
 }
+
+// Dev view: project filter chips, remembered per device. Empty means all projects.
+const [devProjectFilter, setDevProjectFilterSignal] = createSignal<string[]>(
+  (stored("zunder.devProjectFilter") ?? "").split(",").filter(Boolean),
+);
+export { devProjectFilter };
+
+export function setDevProjectFilter(ids: string[]): void {
+  setDevProjectFilterSignal(ids);
+  store("zunder.devProjectFilter", ids.join(","));
+}

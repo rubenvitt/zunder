@@ -94,6 +94,39 @@ test("Umsortieren zwischen Rängen des ClickUp-Imports", async ({ page }) => {
     .toBe(true);
 });
 
+test("Dev-Sicht filtert nach Projekten per Chip", async ({ page }) => {
+  const s = suffix();
+  const seeder = new Seeder();
+  const area = seeder.area(`Arbeit ${s}`);
+  const app = seeder.project(`App ${s}`, area, { kind: "dev" });
+  const api = seeder.project(`Api ${s}`, area, { kind: "dev" });
+  seeder.task(`App-Karte ${s}`, { location: { kind: "project", id: app } });
+  seeder.task(`Api-Karte ${s}`, { location: { kind: "project", id: api } });
+  await seeder.push(page);
+  await openApp(page, "#/dev");
+
+  const chips = page.getByRole("group", { name: "Projekte filtern" });
+  const all = chips.getByRole("button", { name: "Alle" });
+  const appChip = chips.locator(`[data-project-id="${app}"]`);
+  await expect(all).toHaveAttribute("aria-pressed", "true");
+  await expect(card(page, `App-Karte ${s}`)).toBeVisible();
+  await expect(card(page, `Api-Karte ${s}`)).toBeVisible();
+
+  await appChip.click();
+  await expect(appChip).toHaveAttribute("aria-pressed", "true");
+  await expect(all).toHaveAttribute("aria-pressed", "false");
+  await expect(card(page, `App-Karte ${s}`)).toBeVisible();
+  await expect(card(page, `Api-Karte ${s}`)).toHaveCount(0);
+
+  // Remembered across reloads.
+  await page.reload();
+  await expect(card(page, `App-Karte ${s}`)).toBeVisible();
+  await expect(card(page, `Api-Karte ${s}`)).toHaveCount(0);
+
+  await chips.getByRole("button", { name: "Alle" }).click();
+  await expect(card(page, `Api-Karte ${s}`)).toBeVisible();
+});
+
 test("Board-Karte: verschachtelte Unteraufgaben, erledigte unten", async ({ page }) => {
   const s = suffix();
   const seeder = new Seeder();

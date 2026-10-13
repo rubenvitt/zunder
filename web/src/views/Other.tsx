@@ -12,12 +12,38 @@ import { isFlameRunning } from "../sync/derived";
 import type { ApiToken, CreatedIntakeChannel, CreatedToken, Device, IntakeChannel, OAuthClient, Task } from "../sync/types";
 import { flame } from "../state/actions";
 import { navigate, route } from "../state/router";
-import { api, areaList, data, now, projectList } from "../state/store";
+import { api, areaList, data, now, projectList, taskIndex } from "../state/store";
 import { devProjectIds, devTasks, phoenixTasks } from "../state/selectors";
-import { copyText, registerList, setStructureEdit, toast } from "../state/ui";
+import { copyText, devProjectFilter, registerList, setDevProjectFilter, setStructureEdit, toast } from "../state/ui";
+
+/** A remembered filter may sit off-screen in the sideways-scrolling chip row (mobile). */
+function revealPressed(row: HTMLElement) {
+  const chip = row.querySelector<HTMLElement>('[data-project-id][aria-pressed="true"]');
+  if (chip && row.scrollWidth > row.clientWidth) row.scrollLeft = chip.offsetLeft - row.offsetLeft - 8;
+}
 
 export function DevView() {
-  const tasks = createMemo(() => devTasks().filter((t) => t.status !== "dropped"));
+  const projects = createMemo(() => projectList().filter((p) => devProjectIds().has(p.id)));
+  const all = createMemo(() => devTasks().filter((t) => t.status !== "dropped"));
+  const projectOf = (t: Task) => {
+    const loc = taskIndex().location(t);
+    return loc.kind === "project" ? loc.id : "";
+  };
+  // Filter ids of projects that are no longer dev projects are ignored, not dropped.
+  const selected = createMemo(() => new Set(devProjectFilter().filter((id) => devProjectIds().has(id))));
+  const counts = createMemo(() => {
+    const out = new Map<string, number>();
+    for (const t of all()) out.set(projectOf(t), (out.get(projectOf(t)) ?? 0) + 1);
+    return out;
+  });
+  const tasks = createMemo(() => (selected().size === 0 ? all() : all().filter((t) => selected().has(projectOf(t)))));
+  function toggle(id: string) {
+    const next = new Set(selected());
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    // Every project picked is the same as no filter.
+    setDevProjectFilter(next.size === projects().length ? [] : [...next]);
+  }
   return (
     <div class="view view-wide">
       <header class="view-head">
@@ -31,6 +57,21 @@ export function DevView() {
             </button>
           </EmptyState>
         }>
+        <Show when={projects().length > 1}>
+          <div class="project-chips filter-chips" role="group" aria-label="Projekte filtern" ref={(el) => onMount(() => revealPressed(el))}>
+            <button class="chip chip-button chip-filter" aria-pressed={selected().size === 0} onClick={() => setDevProjectFilter([])}>
+              Alle
+            </button>
+            <For each={projects()}>
+              {(p) => (
+                <button class="chip chip-button chip-filter" aria-pressed={selected().has(p.id)} data-project-id={p.id} onClick={() => toggle(p.id)}>
+                  {p.name}
+                  <span class="chip-count muted">{counts().get(p.id) ?? 0}</span>
+                </button>
+              )}
+            </For>
+          </div>
+        </Show>
         <Board tasks={tasks()} dev devDetails label="Dev-Board" />
       </Show>
     </div>
