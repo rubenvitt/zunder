@@ -82,6 +82,11 @@ export function hasOpenChildren(children: readonly Task[]): boolean {
   return children.some((c) => !c.deleted && !isClosed(c.status));
 }
 
+/** Open tasks first, then done and dropped ones; rank order is kept within each group. */
+export function closedLast(tasks: readonly Task[]): Task[] {
+  return [...tasks.filter((t) => !isClosed(t.status)), ...tasks.filter((t) => isClosed(t.status))];
+}
+
 export function sortKey(task: Task): string {
   return task.rank ?? defaultRank(createdMs(task));
 }
