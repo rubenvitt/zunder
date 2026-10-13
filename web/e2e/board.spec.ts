@@ -154,3 +154,32 @@ test("Board-Karte: verschachtelte Unteraufgaben, erledigte unten", async ({ page
   await branch.getByRole("button", { name: "Unteraufgaben aufklappen" }).click();
   await expect(title(`Enkel fertig ${s}`)).toBeVisible();
 });
+
+test("Board-Karte: mit erledigten Unteraufgaben direkt abschließen", async ({ page }) => {
+  const s = suffix();
+  const seeder = new Seeder();
+  const area = seeder.area(`Arbeit ${s}`);
+  const project = seeder.project(`Abschluss ${s}`, area, { kind: "dev", repo: "example/app" });
+  const epic = seeder.task(`Sammelaufgabe ${s}`, { location: { kind: "project", id: project }, status: "review" });
+  seeder.task(`Schon fertig ${s}`, { parent_id: epic, status: "done" });
+  seeder.task(`Verworfen ${s}`, { parent_id: epic, status: "dropped" });
+  seeder.task(`Noch offen ${s}`, { parent_id: epic });
+  await seeder.push(page);
+  await openApp(page, `#/bereiche/project/${project}`);
+
+  const c = card(page, `Sammelaufgabe ${s}`);
+  const close = c.getByRole("button", { name: "Abschließen" });
+  await expect(close).toHaveCount(0);
+
+  // Ticking off the last open subtask on the card offers closing the task itself.
+  await c.locator(".subtask-chip").click();
+  await c.locator(".subtask-row", { hasText: `Noch offen ${s}` }).getByRole("button", { name: "Erledigt" }).click();
+  await expect(close).toBeVisible();
+  await close.click();
+
+  const done = page.locator('.board-column[data-status="done"]');
+  await expect(done.locator(".card", { hasText: `Sammelaufgabe ${s}` })).toBeVisible();
+  await expect.poll(async () => (await entityFields(page, "task", epic)).status).toBe("done");
+  await expect(page.locator(".toast", { hasText: "noch offen" })).toHaveCount(0);
+  await expect(close).toHaveCount(0);
+});
