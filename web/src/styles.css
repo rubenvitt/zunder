@@ -1568,6 +1568,17 @@ html.resizing * {
   font-weight: 600;
   text-decoration: none;
 }
+.card-subtasks-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.card-close {
+  min-height: 1.5rem;
+  padding: 0 0.5rem;
+  font-size: 0.74rem;
+}
 .card-subtasks {
   margin: 0.1rem -0.35rem -0.2rem;
   padding-top: 0.25rem;

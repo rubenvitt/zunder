@@ -1,12 +1,12 @@
 // Status board with HTML5 drag & drop and keyboard moves (h/l, j/k, Shift+H/L/J/K).
 
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
-import { compareTasks, isClaimActive } from "../sync/derived";
+import { compareTasks, hasOpenChildren, isClaimActive, isClosed } from "../sync/derived";
 import type { Task, TaskStatus } from "../sync/types";
 import { boardStatuses, STATUS_LABELS } from "../labels";
-import { placeTask, warnIfOpenChildren } from "../state/actions";
+import { placeTask, setStatus, shorten, warnIfOpenChildren } from "../state/actions";
 import { data, now, taskIndex } from "../state/store";
-import { registerList, selectedId, setActiveBoard, setDetailId, setSelectedId } from "../state/ui";
+import { registerList, selectedId, setActiveBoard, setDetailId, setSelectedId, toast } from "../state/ui";
 import { Icon } from "./Icon";
 import { RefButton, SubtaskToggle, SubtaskTree } from "./TaskBits";
 import { TaskMeta } from "./TaskRow";
@@ -174,6 +174,12 @@ function Card(props: {
     const loc = taskIndex().location(props.task);
     return loc.kind === "project" ? data.projects[loc.id] : undefined;
   };
+  // Every subtask done or dropped while the task itself is still open: closing is one click away.
+  const readyToClose = () => {
+    if (isClosed(props.task.status)) return false;
+    const children = taskIndex().childrenOf(props.task.id);
+    return children.length > 0 && !hasOpenChildren(children);
+  };
   return (
     <li
       ref={(el) => {
@@ -200,9 +206,27 @@ function Card(props: {
       </span>
       <span class="task-title">{props.task.title}</span>
       <TaskMeta task={props.task} />
-      <Show when={taskIndex().progress(props.task.id).total > 0}>
+      <Show when={taskIndex().progress(props.task.id).total > 0 || readyToClose()}>
         <span class="card-subtasks-bar">
-          <SubtaskToggle task={props.task} open={subtasksOpen()} onToggle={() => setSubtasksOpen((o) => !o)} />
+          <Show when={taskIndex().progress(props.task.id).total > 0}>
+            <SubtaskToggle task={props.task} open={subtasksOpen()} onToggle={() => setSubtasksOpen((o) => !o)} />
+          </Show>
+          <Show when={readyToClose()}>
+            <button
+              type="button"
+              class="btn btn-small card-close"
+              title="Alle Unteraufgaben sind erledigt"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (setStatus(props.task.id, "done")) toast(`„${shorten(props.task.title)}“ → ${STATUS_LABELS.done}`);
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              draggable={false}
+            >
+              <Icon name="check" size={12} />
+              Abschließen
+            </button>
+          </Show>
         </span>
       </Show>
       <Show when={subtasksOpen()}>
