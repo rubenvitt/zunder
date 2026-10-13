@@ -492,6 +492,15 @@ input[type="checkbox"] {
   border-color: var(--border-strong);
   background: var(--surface-2);
 }
+.chip-filter[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+.chip-filter[aria-pressed="true"] .muted {
+  color: inherit;
+  opacity: 0.75;
+}
 .chip-accent {
   background: var(--accent-soft);
   color: var(--accent-fg);
