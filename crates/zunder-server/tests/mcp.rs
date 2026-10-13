@@ -1711,3 +1711,51 @@ async fn blocked_by_in_both_directions() {
     let r = mcp_ok(&s, &t, "get_task", json!({"task_id": "UMZ-1"})).await;
     assert_eq!(r["task"]["blocks"], json!([]));
 }
+
+#[tokio::test]
+async fn status_follows_blockers() {
+    let (s, t) = setup().await;
+    let first = create(&s, &t, json!({"title": "Angebot einholen"})).await;
+    let second = create(&s, &t, json!({"title": "Kartons kaufen"})).await;
+
+    // A task with open blockers starts blocked; the server writes the status.
+    let r = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Vertrag", "blocked_by": [first, second]}),
+    )
+    .await;
+    assert_eq!(r["task"]["status"], "blocked");
+    let contract = r["task"]["id"].as_str().unwrap().to_owned();
+    let r = mcp_ok(&s, &t, "get_task_history", json!({"task_id": contract})).await;
+    let last = r["entries"].as_array().unwrap().last().unwrap().clone();
+    assert_eq!(last["field"], "status");
+    assert_eq!(last["value"], "blocked");
+    assert_eq!(last["source"], "server");
+
+    // Resolving one blocker is not enough, the last one opens it.
+    mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": first, "status": "done"}),
+    )
+    .await;
+    let r = mcp_ok(&s, &t, "get_task", json!({"task_id": contract})).await;
+    assert_eq!(r["task"]["status"], "blocked");
+    mcp_ok(&s, &t, "delete_task", json!({"task_id": second})).await;
+    let r = mcp_ok(&s, &t, "get_task", json!({"task_id": contract})).await;
+    assert_eq!(r["task"]["status"], "open");
+
+    // Reopening a blocker blocks it again.
+    mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": first, "status": "open"}),
+    )
+    .await;
+    let r = mcp_ok(&s, &t, "get_task", json!({"task_id": contract})).await;
+    assert_eq!(r["task"]["status"], "blocked");
+}
