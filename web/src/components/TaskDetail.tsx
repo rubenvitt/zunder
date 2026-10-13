@@ -8,13 +8,15 @@ import { PHOENIX_ROLES, TASK_STATUSES, TASK_TYPES, type HistoryEntry, type JsonV
 import { FIELD_LABELS, locationLabel, PHOENIX_LABELS, sourceLabel, STATUS_LABELS, TYPE_LABELS } from "../labels";
 import { addComment, createTask, deleteComment, deleteTask, dependentsCount, flame, moveTask, setParent, setStatus, updateComment, updateTask } from "../state/actions";
 import { detailBack, NARROW_LAYOUT } from "../state/back";
+import { appConfig } from "../state/desktop";
+import { isTauri } from "../platform/runtime";
 import { api, commentsOf, data, now, pendingCount, taskIndex } from "../state/store";
 import { copyTaskId, copyText, detailWide, pickLocation, pickTask, selectedId, setDetailId, setDetailWide, setDetailWidth, setSelectedId } from "../state/ui";
 import { TextField } from "./Fields";
 import { Icon, type IconName } from "./Icon";
 import { MarkdownField } from "./MarkdownField";
 import { CheckButton, ProgressBar, SubtaskTree } from "./TaskBits";
-import { Dependencies } from "./TaskLinks";
+import { Dependencies, taskHref } from "./TaskLinks";
 
 /** Only http(s) and mailto links become clickable; anything else (javascript:, data: …) is shown as text. */
 export function safeHref(url: string): string | undefined {
@@ -517,9 +519,9 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
           <section class="detail-section detail-meta">
             <span>Erstellt {hlcLabel(t().created_hlc)}</span>
             <span>Geändert {hlcLabel(t().updated_hlc)}</span>
-            <a href={`#/aufgabe/${t().ref ?? t().id}`} title="Dauerhafter Link zu dieser Aufgabe (z. B. für den Vault)">
-              Link
-            </a>
+            <button class="link-button" title="Dauerhaften Link zu dieser Aufgabe kopieren (z. B. für den Vault)" onClick={() => copyText(taskUrl(t()), "Link kopiert")}>
+              Link kopieren
+            </button>
             <Show when={t().ref}>
               <button class="link-button" title="ID der Aufgabe kopieren" onClick={() => copyTaskId({ id: t().id, ref: null })}>
                 ID kopieren
@@ -574,6 +576,15 @@ function Prop(props: { icon: IconName; label: string; children: JSX.Element }) {
       <div class="prop-control">{props.children}</div>
     </div>
   );
+}
+
+/**
+ * Full, permanent address of a task (by reference if it has one). In the app the
+ * webview's own origin is useless outside it, so the link points to the server.
+ */
+function taskUrl(task: Task): string {
+  const server = isTauri() ? appConfig()?.server_url?.replace(/\/+$/, "") : null;
+  return `${server ? `${server}/` : `${location.origin}${location.pathname}`}${taskHref(task)}`;
 }
 
 /** German relative label for the wall time of an HLC. */

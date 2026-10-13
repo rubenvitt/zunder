@@ -186,7 +186,8 @@ test("Erledigt mit offenen Unteraufgaben zeigt genau einen Hinweis", async ({ pa
   await expect(page.locator(".toast-warning")).toHaveCount(1);
 });
 
-test("#/aufgabe/<id> öffnet die Aufgabe über ihrer Sicht", async ({ page }) => {
+test("#/aufgabe/<id> öffnet die Aufgabe über ihrer Sicht", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const s = suffix();
   const seeder = new Seeder();
   const id = seeder.task(`Verlinkt ${s}`, { location: { kind: "loose" } });
@@ -194,7 +195,8 @@ test("#/aufgabe/<id> öffnet die Aufgabe über ihrer Sicht", async ({ page }) =>
   await openApp(page, `#/aufgabe/${id}`);
   await expect(page.locator(".view-head h1")).toHaveText("Lose");
   await expect(detail(page).getByLabel("Titel", { exact: true })).toHaveValue(`Verlinkt ${s}`);
-  await expect(detail(page).getByRole("link", { name: "Link" })).toHaveAttribute("href", `#/aufgabe/${id}`);
+  await detail(page).getByRole("button", { name: "Link kopieren" }).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(new URL(`/#/aufgabe/${id}`, page.url()).href);
 
   await page.goto("/#/aufgabe/01900000-0000-7000-8000-00000000dead");
   await expect(page.locator(".toast-error", { hasText: "Aufgabe nicht gefunden" })).toBeVisible();
