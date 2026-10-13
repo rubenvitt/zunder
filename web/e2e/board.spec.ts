@@ -126,3 +126,31 @@ test("Dev-Sicht filtert nach Projekten per Chip", async ({ page }) => {
   await chips.getByRole("button", { name: "Alle" }).click();
   await expect(card(page, `Api-Karte ${s}`)).toBeVisible();
 });
+
+test("Board-Karte: verschachtelte Unteraufgaben, erledigte unten", async ({ page }) => {
+  const s = suffix();
+  const seeder = new Seeder();
+  const area = seeder.area(`Arbeit ${s}`);
+  const project = seeder.project(`Epics ${s}`, area, { view: "board" });
+  const epic = seeder.task(`Epic ${s}`, { location: { kind: "project", id: project } });
+  seeder.task(`Erledigt zuerst ${s}`, { parent_id: epic, status: "done" });
+  const open = seeder.task(`Offen danach ${s}`, { parent_id: epic });
+  seeder.task(`Enkel offen ${s}`, { parent_id: open });
+  const finished = seeder.task(`Fertiger Zweig ${s}`, { parent_id: epic, status: "done" });
+  seeder.task(`Enkel fertig ${s}`, { parent_id: finished, status: "done" });
+  await seeder.push(page);
+  await openApp(page, `#/bereiche/project/${project}`);
+
+  const c = card(page, `Epic ${s}`);
+  await c.locator(".subtask-chip").click();
+  const top = c.locator(".card-subtasks > .subtree > .subtask > .subtask-row .subtask-title");
+  await expect(top).toHaveText([`Offen danach ${s}`, `Erledigt zuerst ${s}`, `Fertiger Zweig ${s}`]);
+
+  // A branch with open work is unfolded, a finished one stays folded until asked.
+  const title = (text: string) => c.locator(".subtask-title", { hasText: text });
+  await expect(title(`Enkel offen ${s}`)).toBeVisible();
+  await expect(title(`Enkel fertig ${s}`)).toHaveCount(0);
+  const branch = c.locator(".subtask-row", { hasText: `Fertiger Zweig ${s}` });
+  await branch.getByRole("button", { name: "Unteraufgaben aufklappen" }).click();
+  await expect(title(`Enkel fertig ${s}`)).toBeVisible();
+});
