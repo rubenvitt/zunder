@@ -147,6 +147,16 @@ export function toggleSidebar(): void {
   store("zunder.sidebarHidden", hidden ? "1" : "0");
 }
 
+// Bereiche view (desktop): the tree of areas and projects can be hidden as well, remembered per device.
+const [treeHidden, setTreeHiddenSignal] = createSignal(stored("zunder.treeHidden") === "1");
+export { treeHidden };
+
+export function toggleTree(): void {
+  const hidden = !treeHidden();
+  setTreeHiddenSignal(hidden);
+  store("zunder.treeHidden", hidden ? "1" : "0");
+}
+
 export const DETAIL_MIN_WIDTH = 380;
 const [detailWide, setDetailWideSignal] = createSignal(stored("zunder.detailWide") === "1");
 const [detailWidth, setDetailWidthSignal] = createSignal(Number(stored("zunder.detailWidth")) || 560);
