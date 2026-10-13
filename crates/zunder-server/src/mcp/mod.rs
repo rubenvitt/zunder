@@ -60,6 +60,8 @@ loose (bewusst ohne Zuordnung), area oder project. Unteraufgaben (parent_id, bel
 immer an der Stelle ihrer Wurzelaufgabe. Status (englische Codes): open, in_progress, review \
 (nur Dev-Projekte), blocked, done, dropped. Typen: aufgabe; bug und feature nur in Dev-Projekten. \
 Ein Epic ist einfach eine Aufgabe mit Unteraufgaben (progress zeigt erledigt/gesamt). \
+Eine Aufgabe mit offenen Unteraufgaben schließt update_task (done/dropped) nur mit force: true; \
+ohne force kommt die Warnung open_subtasks und nichts wird geändert. \
 Abhängigkeiten: blocked_by nennt die Aufgaben, die vorher erledigt sein müssen; blocks zeigt die \
 Gegenrichtung (abgeleitet). Der Server setzt den Status danach: Eine offene Aufgabe, die einen \
 noch nicht erledigten Blocker bekommt, wird blocked; ist der letzte Blocker erledigt, verworfen, \

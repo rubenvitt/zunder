@@ -386,11 +386,20 @@ pub fn definitions() -> Vec<ToolDef> {
             description: "Ändert Felder einer Aufgabe (task_id oder clickup_id). Nur angegebene \
                 Felder ändern sich; null entfernt optionale Werte. Stelle und Elternaufgabe ändert \
                 move_task, Reservierungen claim_task/release_task. Für Zwischenstände und Notizen \
-                add_comment nutzen statt die Beschreibung zu überschreiben.",
+                add_comment nutzen statt die Beschreibung zu überschreiben. Schließen (status done \
+                oder dropped) einer Aufgabe mit offenen Unteraufgaben wird ohne force abgelehnt \
+                (Fehler open_subtasks, nichts wird geändert): erst die Unteraufgaben erledigen \
+                oder verwerfen, oder bewusst mit force: true erneut aufrufen.",
             input_schema: object(
                 with(
                     with(task_ref(), vec![("title", string("Neuer Titel."))]),
-                    task_fields(true),
+                    with(
+                        task_fields(true),
+                        vec![(
+                            "force",
+                            boolean("Aufgabe trotz offener Unteraufgaben schließen (Standard false). Nur nach der Warnung open_subtasks und bewusst setzen."),
+                        )],
+                    ),
                 ),
                 &[],
             ),
