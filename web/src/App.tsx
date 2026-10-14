@@ -318,18 +318,15 @@ function SyncIndicator() {
   return isTauri() ? <DesktopSyncIndicator /> : <BrowserSyncIndicator />;
 }
 
+/** Shown only when something is wrong: offline, with or without pending changes. */
 function BrowserSyncIndicator() {
-  const label = () => {
-    if (syncStatus() === "offline") return pendingCount() > 0 ? `Offline · ${pendingCount()} ausstehend` : "Offline";
-    if (pendingCount() > 0) return "Synchronisiert …";
-    return "Synchron";
-  };
+  const label = () => (pendingCount() > 0 ? `Offline · ${pendingCount()} ausstehend` : "Offline");
   return (
-    <span class="sync" classList={{ offline: syncStatus() === "offline", pending: pendingCount() > 0 }} data-sync={syncStatus()} title={label()}>
-      <Show when={syncStatus() === "offline"} fallback={<span class="sync-dot" />}>
+    <Show when={syncStatus() === "offline"}>
+      <span class="sync" data-sync={syncStatus()} title={label()}>
         <Icon name="offline" size={14} />
-      </Show>
-      <span class="sync-label">{label()}</span>
-    </span>
+        <span class="sync-label">{label()}</span>
+      </span>
+    </Show>
   );
 }

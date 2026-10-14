@@ -801,22 +801,8 @@ html.resizing * {
   align-items: center;
   gap: 0.45rem;
   font-size: 0.78rem;
-  color: var(--muted);
-  padding: 0.4rem 0.6rem;
-}
-.sync-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--success);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 18%, transparent);
-}
-.sync.pending .sync-dot {
-  background: var(--warning);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 20%, transparent);
-}
-.sync.offline {
   color: var(--danger);
+  padding: 0.4rem 0.6rem;
 }
 
 .topbar,
