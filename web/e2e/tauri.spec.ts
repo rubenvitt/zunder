@@ -312,7 +312,8 @@ test("App: Änderungen gehen an den lokalen Speicher, Sync-Ereignisse aktualisie
   const applied = await page.evaluate(() => window.__ZUNDER_FAKE_APP__.calls.filter((c) => c.cmd === "local_apply").flatMap((c) => c.args.ops as { hlc: string }[]));
   expect(applied.length).toBeGreaterThan(0);
   expect(applied.every((o) => o.hlc.endsWith(":app-0a1b2c3d4e5f"))).toBe(true);
-  await expect(page.locator(".sidebar .sync")).toContainText("Synchronisiert");
+  // Pending changes while online are no problem: no sync indicator.
+  await expect(page.locator(".sidebar .sync")).toHaveCount(0);
 
   // The app's background sync pulled a rename: zunder://changed → reload.
   await page.evaluate(() => {
@@ -324,7 +325,7 @@ test("App: Änderungen gehen an den lokalen Speicher, Sync-Ereignisse aktualisie
     fake.emit("zunder://sync", { ok: true, report: { pushed: 2, rejected: [], warnings: [], pulled: 1, cursor: 99, pending: 0, changed: true } });
   });
   await expect(row(page, "Auf einem anderen Gerät umbenannt")).toBeVisible();
-  await expect(page.locator(".sidebar .sync .sync-label")).toHaveText("Synchron");
+  await expect(page.locator(".sidebar .sync")).toHaveCount(0);
 
   // A rejected op reported by the app's sync shows up as a toast.
   await page.evaluate(() =>

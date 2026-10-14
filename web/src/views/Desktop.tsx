@@ -74,7 +74,7 @@ export function DesktopApp(props: { shell: Component; onReady: () => void }) {
   );
 }
 
-/** Status of the app's background sync with the server; links to the settings. */
+/** Problems with the app's background sync (offline, rejected token, …); links to the settings. Hidden while all is well. */
 export function DesktopSyncIndicator() {
   const status = () => desktopSync();
   const label = () => {
@@ -86,20 +86,17 @@ export function DesktopSyncIndicator() {
         return "Token abgelehnt";
       case "unconfigured":
         return "Nicht verbunden";
-      case "error":
-        return "Sync-Fehler";
       default:
-        return pending > 0 ? "Synchronisiert …" : "Synchron";
+        return "Sync-Fehler";
     }
   };
-  const problem = () => status().state !== "ok";
   return (
-    <a href="#/verbindung" class="sync" classList={{ offline: problem(), pending: pendingCount() > 0 }} data-sync={status().state} title={status().message ?? label()}>
-      <Show when={problem()} fallback={<span class="sync-dot" />}>
+    <Show when={status().state !== "ok"}>
+      <a href="#/verbindung" class="sync" data-sync={status().state} title={status().message ?? label()}>
         <Icon name="offline" size={14} />
-      </Show>
-      <span class="sync-label">{label()}</span>
-    </a>
+        <span class="sync-label">{label()}</span>
+      </a>
+    </Show>
   );
 }
 
