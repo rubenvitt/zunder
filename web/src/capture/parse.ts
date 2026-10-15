@@ -7,7 +7,8 @@
 // Unresolved tags stay in the title. Rhythms ("jeden Freitag", "alle 2 Wochen",
 // "monatlich am 15.", "jeden Monatsletzten" …, contract 5.1) set `recurrence` and,
 // without a date, the first due date of the series. Unsupported rhythm-like phrases
-// ("jeden ersten Montag") stay in the title whole and set nothing.
+// ("jeden ersten Montag", "jeden 1. Werktag", "jeden 1. Mai") stay in the title whole
+// and set nothing.
 
 import { describeRecurrence } from "../labels";
 import { addDays, isValidCalendarDate, localDate, startOfDay, toRfc3339Local } from "../sync/dates";
@@ -262,11 +263,50 @@ function ordinalList(words: readonly string[], start: number): { count: number; 
   }
 }
 
-/** End of an unsupported phrase whose ordinals end at `end`: a following weekday list or unit belongs to it. */
+/** Month names and their abbreviations ("Mai", "Dez."): after "1." they make a day of the year, not of the month. */
+const MONTH_NAMES = new Set([
+  ...["januar", "jänner", "jaenner", "februar", "märz", "maerz", "april", "mai", "juni", "juli", "august", "september", "oktober", "november", "dezember"],
+  ...["jan", "feb", "mär", "maer", "mrz", "apr", "jun", "jul", "aug", "sep", "sept", "okt", "nov", "dez"],
+]);
+
+/** A month number after a day ("jeden 1. 5."). */
+const MONTH_NUMBER = /^(0?[1-9]|1[0-2])\.$/;
+
+/**
+ * End of an unsupported phrase whose ordinals end at `end`: a following weekday list,
+ * unit, month name or month number belongs to it.
+ */
 function unsupportedEnd(words: readonly string[], end: number): number {
   const days = weekdayList(words, end, WEEKDAYS);
   if (days) return days.end;
-  return ORDINAL_UNITS.has(wordAt(words, end)) ? end + 1 : end;
+  const w = wordAt(words, end);
+  return ORDINAL_UNITS.has(w) || MONTH_NAMES.has(w) || MONTH_NUMBER.test(w) ? end + 1 : end;
+}
+
+/**
+ * End of a fixed day of the month at word `k` ("15.", "1. des Monats", "1. Tag des
+ * Monats"); null when a weekday, unit, month name or month number follows the day
+ * ("1. Werktag", "1. Mai"), which makes the phrase unsupported.
+ */
+function monthDayEnd(words: readonly string[], k: number): number | null {
+  const w = (j: number) => wordAt(words, j);
+  if (w(k + 1) === "des" && w(k + 2) === "monats") return k + 3;
+  if (w(k + 1) === "tag" && w(k + 2) === "des" && w(k + 3) === "monats") return k + 4;
+  return unsupportedEnd(words, k + 1) === k + 1 ? k + 1 : null;
+}
+
+/**
+ * Start of an ordinal ("ersten", "1.") that continues a weekday list ending at `end`
+ * with a comma or "und" ("jeden Montag und ersten Freitag"), else null.
+ */
+function ordinalAfterList(words: readonly string[], end: number): number | null {
+  const isOrdinal = (k: number) => {
+    const w = wordAt(words, k);
+    return ORDINAL_WORDS.has(w) || NUMERIC_ORDINAL.test(w);
+  };
+  if (/,$/.test(words[end - 1]!) && isOrdinal(end)) return end;
+  if (wordAt(words, end) === "und" && isOrdinal(end + 1)) return end + 1;
+  return null;
 }
 
 /** A list of weekdays joined by commas or "und", starting at `start`. */
@@ -366,12 +406,22 @@ function matchRhythmBase(words: readonly string[], i: number): RhythmMatch | nul
     return list ? unsupported(rel(unsupportedEnd(words, list.end))) : null;
   };
 
+  /**
+   * Weekly on a weekday list; an ordinal continuing the list ("jeden Montag und ersten
+   * Freitag") makes the whole phrase unsupported.
+   */
+  const weeklyOn = (every: number, list: { days: number[]; end: number }): RhythmMatch => {
+    const ordinal = ordinalAfterList(words, list.end);
+    if (ordinal !== null) return unsupportedFrom(ordinal)!;
+    return weekly(every, list.days, rel(list.end));
+  };
+
   /** "wöchentlich"/"jede Woche"/"alle n Wochen" optionally followed by "montags …" or "am Montag …". */
-  const weekWithDays = (every: number, end: number): RecurrenceHit => {
+  const weekWithDays = (every: number, end: number): RhythmMatch => {
     const adverbs = weekdayList(words, end, WEEKDAY_ADVERBS);
-    if (adverbs) return weekly(every, adverbs.days, rel(adverbs.end));
+    if (adverbs) return weeklyOn(every, adverbs);
     const named = word(end) === "am" ? weekdayList(words, end + 1, WEEKDAYS) : null;
-    if (named) return weekly(every, named.days, rel(named.end));
+    if (named) return weeklyOn(every, named);
     return weekly(every, null, rel(end));
   };
 
@@ -386,7 +436,8 @@ function matchRhythmBase(words: readonly string[], i: number): RhythmMatch | nul
     const list = ordinalList(words, end + 1);
     if (!list) return monthly(every, undefined, rel(end));
     const day = NUMERIC_ORDINAL.test(target) ? Number(target.slice(0, -1)) : 0;
-    if (list.count === 1 && day >= 1 && day <= 31 && !weekdayList(words, list.end, WEEKDAYS)) return monthly(every, day, rel(end + 2));
+    const dayEnd = list.count === 1 ? monthDayEnd(words, end + 1) : null;
+    if (day >= 1 && day <= 31 && dayEnd !== null) return monthly(every, day, rel(dayEnd));
     return unsupported(rel(unsupportedEnd(words, list.end)));
   };
 
@@ -457,30 +508,33 @@ function matchRhythmBase(words: readonly string[], i: number): RhythmMatch | nul
         if (word(i + 2) === "tag" && word(i + 3) === "des" && word(i + 4) === "monats") return monthly(1, "last", 5);
       }
       const named = weekdayList(words, i + 1, WEEKDAYS);
-      if (named) return weekly(1, named.days, rel(named.end));
-      const nth = everyNth();
+      if (named) return weeklyOn(1, named);
+      // "jeden 2. Tag" is every 2 days, "jeden 2. Tag des Monats" day 2 of the month.
+      const dayOfMonth = word(i + 2) === "tag" && word(i + 3) === "des" && word(i + 4) === "monats";
+      const nth = dayOfMonth ? null : everyNth();
       if (nth) return nth;
       // A single "jeden 12.10." (yearly) or "jeden 15." (monthly); lists, ordinals in
-      // words and "jeden 1. Montag" are unsupported.
+      // words, "jeden 1. Montag", "jeden 1. Werktag" and "jeden 1. Mai" are unsupported.
       const list = ordinalList(words, i + 1);
       if (!list) return null;
-      if (list.count === 1 && !weekdayList(words, list.end, WEEKDAYS)) {
+      if (list.count === 1) {
         const dm = DAY_MONTH.exec(next);
         if (dm) {
           const day = Number(dm[1]);
           const month = Number(dm[2]);
           // 2000 is a leap year: 29.02. is a valid day of February.
-          if (isValidCalendarDate(2000, month, day)) return yearlyOn(1, day, month, 2);
+          if (isValidCalendarDate(2000, month, day) && unsupportedEnd(words, i + 2) === i + 2) return yearlyOn(1, day, month, 2);
         } else if (NUMERIC_ORDINAL.test(next)) {
           const day = Number(next.slice(0, -1));
-          if (day >= 1 && day <= 31) return monthly(1, day, 2);
+          const dayEnd = monthDayEnd(words, i + 1);
+          if (day >= 1 && day <= 31 && dayEnd !== null) return monthly(1, day, rel(dayEnd));
         }
       }
       return unsupported(rel(unsupportedEnd(words, list.end)));
     }
     default: {
       const adverbs = weekdayList(words, i, WEEKDAY_ADVERBS);
-      return adverbs ? weekly(1, adverbs.days, rel(adverbs.end)) : null;
+      return adverbs ? weeklyOn(1, adverbs) : null;
     }
   }
 }

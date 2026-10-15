@@ -369,6 +369,12 @@ describe("quick capture recurrence shorthand: fixed days, ordinals, punctuation"
     ["jeden 3. Monat am 15.", month(3, 15), "2026-10-15", "Alle 3 Monate am 15."],
     ["jedes 2. Jahr am 1.3.", { every: 2, unit: "year", day: 1, from: "due" }, "2027-03-01", "Alle 2 Jahre am 01.03."],
     ["monatlich am 15. nach Erledigung", { every: 1, unit: "month", day: 15, from: "done" }, "2026-10-15", "Monatlich am 15. nach Erledigung"],
+    // "des Monats" after a fixed day belongs to the rhythm; "Tag des Monats" is a day, not every n days.
+    ["jeden 1. des Monats", month(1, 1), "2026-11-01", "Monatlich am 1."],
+    ["jeden 1. Tag des Monats", month(1, 1), "2026-11-01", "Monatlich am 1."],
+    ["jeden 15. Tag des Monats.", month(1, 15), "2026-10-15", "Monatlich am 15."],
+    ["monatlich am 15. des Monats", month(1, 15), "2026-10-15", "Monatlich am 15."],
+    ["alle 2 Monate am 20. Tag des Monats", month(2, 20), "2026-10-20", "Alle 2 Monate am 20."],
   ])("%s → rhythm, first due date and label", (shorthand, recurrence, due, label) => {
     const r = parse(`Gießen ${shorthand}`);
     expect(r.title).toBe("Gießen");
@@ -442,6 +448,29 @@ describe("quick capture recurrence shorthand: fixed days, ordinals, punctuation"
     "Fest jährlich am ersten Sonntag",
     "Fest jeden 12.10. und 15.04.",
     "Jeden letzten Cent sparen",
+    // A unit, month name or month number after "<d>." is no fixed day of the month.
+    "Lohn jeden 1. Werktag",
+    "Lohn jeden 1. Werktag des Monats",
+    "Lohn monatlich am 2. Werktag",
+    "Lohn jeden Monat am 1. Werktag",
+    "Bericht jeden 2. Arbeitstag",
+    "Putzen jeden 1. Wochenende",
+    "Steuer jeden 1. Quartal",
+    "Miete monatlich am 1. Tag",
+    "Miete jeden 32. Tag des Monats",
+    "Fest jeden 1. Mai",
+    "Fest jeden 24. Dezember",
+    "Fest jeden 24. Dez.",
+    "Fest jeden 1. 5.",
+    "Fest monatlich am 1. Mai",
+    "Fest jährlich am 1. Mai",
+    "Fest jeden 12.10. Montag",
+    // An ordinal continuing a weekday list.
+    "Treffen jeden Montag und ersten Freitag",
+    "Treffen jeden Montag und letzten Freitag",
+    "Treffen jeden Montag, 1. Freitag",
+    "Treffen wöchentlich am Montag und ersten Freitag",
+    "Treffen montags und ersten Freitag",
   ])("leaves unsupported rhythm-like phrases whole in the title, without a due date: %s", (input) => {
     for (const r of [parse(input), parseNoRhythm(input)]) {
       expect(r.title).toBe(input);
