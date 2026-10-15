@@ -4,7 +4,7 @@ import { createMemo, onMount, Show } from "solid-js";
 import { EmptyState } from "../components/EmptyState";
 import { TaskList } from "../components/TaskList";
 import type { Task } from "../sync/types";
-import { moveTask, setStatus, shorten } from "../state/actions";
+import { dropTask, moveTask, shorten } from "../state/actions";
 import { inboxTasks, tasksAt, todayGroups } from "../state/selectors";
 import { activeList, pickLocation, registerList, selectedId, setCaptureOpen, setSelectedId, toast } from "../state/ui";
 import { now } from "../state/store";
@@ -80,8 +80,8 @@ export const inboxActions = {
     if (moveTask(task.id, { kind: "loose" })) toast(`„${shorten(task.title)}“ ist jetzt lose.`);
   },
   drop(task: Task) {
-    selectNextAfter(task.id);
-    if (setStatus(task.id, "dropped")) toast(`„${shorten(task.title)}“ verworfen.`);
+    // A recurring task asks first (only this instance or the whole series).
+    dropTask(task.id, () => selectNextAfter(task.id));
   },
 };
 

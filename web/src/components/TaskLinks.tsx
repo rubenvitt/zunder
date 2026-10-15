@@ -9,7 +9,7 @@ import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { formatDue } from "../sync/dates";
 import { isClosed } from "../sync/derived";
 import type { Task } from "../sync/types";
-import { locationLabel, STATUS_LABELS, TYPE_LABELS } from "../labels";
+import { describeRecurrence, locationLabel, STATUS_LABELS, TYPE_LABELS } from "../labels";
 import { updateTask } from "../state/actions";
 import { now, taskIndex } from "../state/store";
 import { openTask, pickTask } from "../state/ui";
@@ -190,6 +190,14 @@ function TaskCardBody(props: { task: Task; onOpen: () => void }) {
             <Icon name="calendar" size={12} />
             {formatDue(props.task.due, new Date(now()))}
           </span>
+        </Show>
+        <Show when={props.task.recurrence}>
+          {(r) => (
+            <span class="task-card-recurring">
+              <Icon name="repeat" size={12} />
+              {describeRecurrence(r())}
+            </span>
+          )}
         </Show>
         <Show when={progress().total > 0}>
           <span>

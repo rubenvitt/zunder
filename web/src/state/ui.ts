@@ -116,8 +116,19 @@ export type StructureEdit =
 
 export const [structureEdit, setStructureEdit] = createSignal<StructureEdit | null>(null);
 
+/**
+ * Dropping a recurring task asks first (contract 5.1): only this instance (the next one
+ * follows) or the whole series. `before` runs right before the status is written.
+ */
+export interface DropRequest {
+  taskId: string;
+  before?: () => void;
+}
+
+export const [dropRequest, setDropRequest] = createSignal<DropRequest | null>(null);
+
 export function anyOverlayOpen(): boolean {
-  return captureOpen() || helpOpen() || palette() !== null || structureEdit() !== null;
+  return captureOpen() || helpOpen() || palette() !== null || structureEdit() !== null || dropRequest() !== null;
 }
 
 // ---- Detail panel layout (per device, remembered) -----------------------

@@ -67,3 +67,62 @@ export function parseRecurrence(v: JsonValue | undefined): Recurrence | null {
   const r = check(v);
   return "ok" in r ? r.ok : null;
 }
+
+// ---- Editing (detail panel) ------------------------------------------------------
+// Each helper returns a fresh recurrence with only the keys that apply: an optional
+// key is present with a value or absent (contract 2.4: `null` or `undefined` would be invalid).
+
+/** The recurrence as the JSON value written in one operation. */
+export function recurrenceValue(r: Recurrence): JsonValue {
+  const out: { [key: string]: JsonValue } = { every: r.every, unit: r.unit };
+  if (r.weekdays && r.weekdays.length > 0) out.weekdays = [...r.weekdays];
+  if (r.day !== undefined) out.day = r.day;
+  out.from = r.from;
+  return out;
+}
+
+function build(every: number, unit: Recurrence["unit"], from: Recurrence["from"], weekdays?: WeekdayCode[], day?: number | "last"): Recurrence {
+  const out: Recurrence = { every, unit, from };
+  if (unit === "week" && weekdays && weekdays.length > 0) out.weekdays = weekdays;
+  if (unit === "month" && day !== undefined) out.day = day;
+  return out;
+}
+
+/** Another unit; weekdays (weeks only) and day (months only) that no longer fit are dropped. */
+export function withUnit(r: Recurrence, unit: Recurrence["unit"]): Recurrence {
+  return build(r.every, unit, r.from, r.weekdays, r.day);
+}
+
+export function withEvery(r: Recurrence, every: number): Recurrence {
+  return build(every, r.unit, r.from, r.weekdays, r.day);
+}
+
+export function withFrom(r: Recurrence, from: Recurrence["from"]): Recurrence {
+  return build(r.every, r.unit, from, r.weekdays, r.day);
+}
+
+/** Fixed day of the month (`undefined`: the day of the due date or completion). */
+export function withDay(r: Recurrence, day: number | "last" | undefined): Recurrence {
+  return build(r.every, r.unit, r.from, r.weekdays, day);
+}
+
+/** Switches a weekday on or off, keeping Monday-to-Sunday order; none left = no `weekdays`. */
+export function toggleWeekday(r: Recurrence, day: WeekdayCode): Recurrence {
+  const current = new Set(r.weekdays ?? []);
+  if (current.has(day)) current.delete(day);
+  else current.add(day);
+  return build(r.every, r.unit, r.from, WEEKDAY_CODES.filter((d) => current.has(d)));
+}
+
+/** Same rhythm (weekdays compared as a set). */
+export function sameRecurrence(a: Recurrence, b: Recurrence): boolean {
+  const days = (r: Recurrence) => WEEKDAY_CODES.filter((d) => r.weekdays?.includes(d)).join(",");
+  return a.every === b.every && a.unit === b.unit && a.from === b.from && a.day === b.day && days(a) === days(b);
+}
+
+/** Weekday of a local date "YYYY-MM-DD" (the date part of a due value is enough). */
+export function weekdayOf(date: string): WeekdayCode {
+  const [y, m, d] = date.slice(0, 10).split("-").map(Number);
+  // getDay: 0 = Sunday.
+  return WEEKDAY_CODES[(new Date(y!, m! - 1, d!).getDay() + 6) % 7]!;
+}

@@ -1,7 +1,7 @@
 // User intents → sync engine changes. Every mutation goes through engine.change,
 // which validates client-side, applies optimistically and queues the push.
 
-import { hasOpenChildren, isClosed, sortKey } from "../sync/derived";
+import { hasOpenChildren, isClosed, isRecurring, sortKey } from "../sync/derived";
 import type { Change } from "../sync/engine";
 import { rankBetween } from "../sync/rank";
 import type { EntityKind, JsonValue, Location, ProjectKind, Task, TaskStatus } from "../sync/types";
@@ -9,7 +9,8 @@ import { deleteCascade as cascadeTargets } from "../sync/validate";
 import { newId } from "../sync/ids";
 import { STATUS_LABELS } from "../labels";
 import { api, data, getEngine, taskIndex } from "./store";
-import { toast } from "./ui";
+import { expectNextInstance } from "./series";
+import { setDropRequest, toast } from "./ui";
 
 function apply(changes: Change[]): boolean {
   const issues = getEngine().change(changes);
@@ -54,9 +55,46 @@ export function updateTask(id: string, fields: Record<string, JsonValue>): boole
 export function setStatus(id: string, status: TaskStatus): boolean {
   const task = data.tasks[id];
   if (!task || task.status === status) return true;
+  const completes = isClosed(status) && !isClosed(task.status);
+  const before = { ...task };
   const ok = updateTask(id, { status });
   if (ok && status === "done") warnIfOpenChildren(id);
+  if (ok && completes) expectNextInstance(before);
   return ok;
+}
+
+/**
+ * Drops a task. A recurring one asks first whether only this instance (the server
+ * creates the next) or the whole series ends; `before` runs right before the status is
+ * written (e.g. to move the selection on). Returns false when nothing was written (yet).
+ */
+export function dropTask(id: string, before?: () => void): boolean {
+  const task = data.tasks[id];
+  if (!task || task.status === "dropped") return false;
+  if (isRecurring(task)) {
+    setDropRequest({ taskId: id, before });
+    return false;
+  }
+  before?.();
+  if (!setStatus(id, "dropped")) return false;
+  toast(`„${shorten(task.title)}“ verworfen.`);
+  return true;
+}
+
+/** "Nur diese verwerfen": the series goes on with the next instance. */
+export function dropInstance(id: string): boolean {
+  const task = data.tasks[id];
+  if (!task || !setStatus(id, "dropped")) return false;
+  toast("Verworfen, die nächste Instanz folgt.");
+  return true;
+}
+
+/** "Serie beenden": drops the task and removes its rhythm in one action, no next instance. */
+export function endSeries(id: string): boolean {
+  const task = data.tasks[id];
+  if (!task || !updateTask(id, { status: "dropped", recurrence: null })) return false;
+  toast(`„${shorten(task.title)}“ verworfen, Serie beendet.`);
+  return true;
 }
 
 /** The "done with open subtasks" hint (contract 2.5: a warning, not a refusal). */
