@@ -202,12 +202,16 @@ fn recurrence(nullable: bool) -> Value {
                 "description": "Nur bei unit week: Wochentage (mo, tu, we, th, fr, sa, su).",
             },
             "day": {
-                "type": ["integer", "string"],
+                "oneOf": [
+                    {"type": "integer", "minimum": 1, "maximum": 31},
+                    {"type": "string", "const": "last"},
+                ],
                 "description": "Nur bei unit month und year: Tag des Monats 1–31 (in kürzeren \
-                    Monaten der letzte) oder \"last\" (immer der Monatsletzte); bei year im Monat \
-                    der Fälligkeit (bzw. der Erledigung bei from done), etwa day 28 für jeden \
-                    28.02. oder \"last\" für jeden Februarletzten. Fehlt er, gilt der Tag der \
-                    Fälligkeit (bzw. der Erledigung).",
+                    Monaten der letzte) oder \"last\" (immer der Monatsletzte). Bei year gilt er \
+                    im Monat des Ankers: bei from due im Monat der Fälligkeit (etwa day 28 für \
+                    jeden 28.02. oder \"last\" für jeden Februarletzten), bei from done im Monat \
+                    der Erledigung. Fehlt er, gilt bei from due der Tag der Fälligkeit, bei from \
+                    done der Tag der Erledigung.",
             },
         },
         "required": ["every", "unit", "from"],

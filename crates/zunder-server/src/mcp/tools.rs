@@ -866,11 +866,15 @@ fn refuse_invalid_recurrence(
     if !recurring {
         return Ok(());
     }
-    let has_due = match fields.iter().find(|(k, _)| *k == ft::DUE) {
-        Some((_, v)) => !v.is_null(),
+    let due = fields.iter().find(|(k, _)| *k == ft::DUE).map(|(_, v)| v);
+    let has_due = match due {
+        Some(v) => !v.is_null(),
         None => current.is_some_and(|t| t.due.is_some()),
     };
-    let message = if !has_due && given.is_some() {
+    let message = if !has_due && given.is_some() && current.is_some() && due.is_some() {
+        "Ohne Fälligkeit endet die Serie: Um due zu entfernen, recurrence: null mitsenden; \
+         um den Rhythmus zu behalten, due behalten (weglassen oder ein Datum setzen)."
+    } else if !has_due && given.is_some() {
         "Ein Rhythmus (recurrence) braucht eine Fälligkeit: due im selben Aufruf mitgeben \
          oder vorher setzen. Ab ihr rechnet der Server die nächste Instanz."
     } else if !has_due {

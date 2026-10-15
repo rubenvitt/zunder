@@ -93,7 +93,7 @@ Das persönliche Produktivitätssystem (Wochenzyklen „Feuer“, Deep-Work-Blö
 
 Nachträglich (2026-10-15) ins MVP geholt, Anlass: Serien wie „Odoo absenden und Stunden bestätigen“ an jedem Monatsletzten. Ein Rhythmus ist ein Feld der Aufgabe, keine eigene Entität und keine RRULE.
 
-- **Form:** alle *n* Tage, Wochen, Monate oder Jahre. Wöchentlich optional an bestimmten Wochentagen, monatlich und jährlich optional an einem festen Tag des Monats oder am Monatsletzten (jährlich im Monat der Fälligkeit), sonst am Tag der Fälligkeit.
+- **Form:** alle *n* Tage, Wochen, Monate oder Jahre. Wöchentlich optional an bestimmten Wochentagen, monatlich und jährlich optional an einem festen Tag des Monats oder am Monatsletzten (jährlich im Monat des Ankers), sonst am Tag des Ankers: ab Fälligkeit der Tag der Fälligkeit, ab Erledigung der Tag der Erledigung.
 - **Anker:** ab Fälligkeit (fester Kalender: jeden Monatsletzten, auch wenn man am 3. erledigt) oder ab Erledigung (n Einheiten nach dem Abschluss, z. B. „Filter wechseln, 3 Monate nach dem letzten Wechsel“).
 - Ein Rhythmus braucht eine Fälligkeit und geht nur an Aufgaben ohne Elternaufgabe.
 - **Ablauf:** Es gibt immer nur die aktuelle Instanz. Wird sie erledigt oder verworfen, legt der Server die nächste als neue Aufgabe an (gleicher Titel, gleiche Stelle, neue Kennung, neue Fälligkeit), auch wenn ein Gerät offline angelegt und abgehakt hat. Wer die Serie beenden will, entfernt den Rhythmus; beim Verwerfen fragt die Oberfläche deshalb, ob nur diese Instanz oder die Serie enden soll.

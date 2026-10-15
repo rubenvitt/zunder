@@ -11,7 +11,9 @@ use zunder_core::model::fields;
 use zunder_core::{Clock, Due, EntityKind, Location, NewTask, NodeId, Task, TaskStatus};
 use zunder_server::calendar::FeedScope;
 
-use common::{api_token, client_clock, mcp_err, mcp_ok, ops, Auth, TestServer, BOOTSTRAP};
+use common::{
+    api_token, client_clock, mcp_err, mcp_ok, mcp_post, ops, Auth, TestServer, BOOTSTRAP,
+};
 
 const BOOT: Auth<'static> = Auth::Bearer(BOOTSTRAP);
 
@@ -703,6 +705,31 @@ async fn mcp_explains_invalid_recurrences() {
     .await;
     assert_eq!(code, "invalid_value");
     assert!(message.contains("recurrence: null"), "{message}");
+    // Sending a recurrence along with due: null does not ask for due "in the
+    // same call": without a due date the series ends.
+    let plain = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Einmalig", "due": "2099-01-31"}),
+    )
+    .await;
+    for id in [&recurring["task"]["id"], &plain["task"]["id"]] {
+        let (code, message) = mcp_err(
+            &s,
+            &t,
+            "update_task",
+            json!({"task_id": id, "due": null, "recurrence": month_end()}),
+        )
+        .await;
+        assert_eq!(code, "invalid_value");
+        assert!(
+            message.contains("endet die Serie")
+                && message.contains("recurrence: null")
+                && !message.contains("mitgeben"),
+            "{message}"
+        );
+    }
     // recurrence_prev is the server's.
     let (code, _) = mcp_err(
         &s,
@@ -747,4 +774,138 @@ async fn mcp_filters_recurring_tasks() {
     assert_eq!(titles(&r), ["Einmalig"]);
     let (code, _) = mcp_err(&s, &t, "filter_tasks", json!({"recurring": "ja"})).await;
     assert_eq!(code, "invalid_arguments");
+}
+
+/// The server's local date, as the follow-up rules see it.
+fn local_today() -> chrono::NaiveDate {
+    chrono::Local::now().date_naive()
+}
+
+/// Creates a task with `recurrence` due `due`, completes it over MCP and
+/// returns the next instance with the due dates `rule` gives for the local
+/// dates before and after the call (equal unless it straddles midnight).
+async fn complete_relative(
+    s: &TestServer,
+    t: &str,
+    recurrence: &Value,
+    due: chrono::NaiveDate,
+    rule: impl Fn(chrono::NaiveDate) -> chrono::NaiveDate,
+) -> (Value, [String; 2]) {
+    let created = mcp_ok(
+        s,
+        t,
+        "create_task",
+        json!({"title": "Serie", "due": due.to_string(), "recurrence": recurrence}),
+    )
+    .await;
+    let before = local_today();
+    let done = mcp_ok(
+        s,
+        t,
+        "update_task",
+        json!({"task_id": created["task"]["id"], "status": "done"}),
+    )
+    .await;
+    let after = local_today();
+    let next = done["next_task"].clone();
+    assert_eq!(next["recurrence_prev"], created["task"]["id"]);
+    (next, [rule(before).to_string(), rule(after).to_string()])
+}
+
+fn assert_due_in(next: &Value, expected: &[String; 2]) {
+    let due = next["due"].as_str().unwrap_or_default().to_owned();
+    assert!(expected.contains(&due), "due {due}, expected {expected:?}");
+}
+
+#[tokio::test]
+async fn mcp_missed_dates_are_skipped_but_the_next_is_not_before_today() {
+    let s = TestServer::new().await;
+    let t = api_token(&s, "claude").await;
+    let days = |n: i64| chrono::Duration::days(n);
+
+    // Weekly, ten days overdue: the date three days ago is skipped, exactly
+    // one instance follows four days from now.
+    let weekly = json!({"every": 1, "unit": "week", "from": "due"});
+    let (next, expected) = complete_relative(&s, &t, &weekly, local_today() - days(10), |today| {
+        today + days(4)
+    })
+    .await;
+    assert_due_in(&next, &expected);
+    assert_eq!(next["recurrence"], weekly);
+
+    // Daily, three days overdue: today itself is the next date.
+    let daily = json!({"every": 1, "unit": "day", "from": "due"});
+    let (next, expected) =
+        complete_relative(&s, &t, &daily, local_today() - days(3), |today| today).await;
+    assert_due_in(&next, &expected);
+}
+
+#[tokio::test]
+async fn mcp_done_anchor_counts_from_the_completion() {
+    let s = TestServer::new().await;
+    let t = api_token(&s, "claude").await;
+    let days = |n: i64| chrono::Duration::days(n);
+
+    // Three days after the completion, not after the old due date.
+    let every_three = json!({"every": 3, "unit": "day", "from": "done"});
+    let (next, expected) =
+        complete_relative(&s, &t, &every_three, local_today() - days(10), |today| {
+            today + days(3)
+        })
+        .await;
+    assert_due_in(&next, &expected);
+
+    // Monthly without day: the day of the completion (not of the old due
+    // date) one month later, clamped to the month's length; the series keeps
+    // its recurrence without a fixed day.
+    let monthly = json!({"every": 1, "unit": "month", "from": "done"});
+    let (next, expected) = complete_relative(&s, &t, &monthly, local_today() - days(40), |today| {
+        today.checked_add_months(chrono::Months::new(1)).unwrap()
+    })
+    .await;
+    assert_due_in(&next, &expected);
+    assert_eq!(next["recurrence"], monthly);
+}
+
+#[tokio::test]
+async fn mcp_schema_describes_the_recurrence_precisely() {
+    let s = TestServer::new().await;
+    let t = api_token(&s, "claude").await;
+    let r = mcp_post(
+        &s,
+        &t,
+        json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}),
+    )
+    .await;
+    let tools = r.json()["result"]["tools"].clone();
+    for name in ["create_task", "update_task"] {
+        let tool = tools
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == name)
+            .unwrap();
+        let props = &tool["inputSchema"]["properties"]["recurrence"]["properties"];
+        assert_eq!(
+            props["day"]["oneOf"],
+            json!([
+                {"type": "integer", "minimum": 1, "maximum": 31},
+                {"type": "string", "const": "last"},
+            ]),
+            "{name}"
+        );
+        let day = props["day"]["description"].as_str().unwrap();
+        assert!(
+            day.contains("bei from due der Tag der Fälligkeit")
+                && day.contains("bei from done der Tag der Erledigung"),
+            "{name}: {day}"
+        );
+        let weekdays = &props["weekdays"];
+        assert_eq!(
+            weekdays["items"]["enum"],
+            json!(["mo", "tu", "we", "th", "fr", "sa", "su"])
+        );
+        assert_eq!(weekdays["minItems"], 1);
+        assert_eq!(weekdays["uniqueItems"], true);
+    }
 }
