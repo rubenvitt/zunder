@@ -20,10 +20,16 @@
 //!   February stays on the last day of February.
 //!
 //! Only the server creates follow-up instances; clients never compute them.
+//! Which tasks a push completed and what their next instance carries:
+//! [`CompletionsBefore`].
 
 use time::{Date, Duration, Month, OffsetDateTime, PrimitiveDateTime, UtcOffset};
 
 use crate::model::{Due, MonthDay, Recurrence, RecurrenceFrom, RecurrenceUnit};
+
+mod follow;
+
+pub use follow::{CompletionsBefore, FollowUp, FollowUps};
 
 /// A time zone as far as the calendar needs it: the UTC offset in effect at
 /// an instant. Closures `Fn(OffsetDateTime) -> UtcOffset` are zones, too.

@@ -32,7 +32,7 @@ Alle Einstellungen kommen aus `ZUNDER_*`-Umgebungsvariablen (Tabelle im Vertrag)
 | `timing` | Client der Timing-Web-API hinter dem Trait `TimingApi` |
 | `backup` | nächtliches `VACUUM INTO` nach `data/backups/`, 14 Stück |
 
-Alles, was Daten liest oder ändert, läuft über `App`. Schreibzugriffe sind serialisiert: eine Schreibverbindung hinter einem Mutex, ausgeführt in `spawn_blocking`. Validierung (`zunder_core::validate_push`), Speichern von Operationen und materialisierten Entitäten in einer Transaktion und das Anwenden auf den Zustand im Speicher passieren unter dieser Sperre. Danach geht der neue Cursor per Broadcast an die SSE-Verbindungen.
+Alles, was Daten liest oder ändert, läuft über `App`. Schreibzugriffe sind serialisiert: eine Schreibverbindung hinter einem Mutex, ausgeführt in `spawn_blocking`. Validierung (`zunder_core::validate_push`), Speichern von Operationen und materialisierten Entitäten in einer Transaktion und das Anwenden auf den Zustand im Speicher passieren unter dieser Sperre. Danach geht der neue Cursor per Broadcast an die SSE-Verbindungen. Anschließend wendet der Server unter derselben Sperre seine Folgeregeln als eigene Pushs mit Quelle `server` an (Vertrag 3.1): Kennungen, „Status folgt Abhängigkeiten“ und Folgeinstanzen wiederkehrender Aufgaben; für jeden dieser Pushs laufen die Regeln erneut (eine neue Instanz bekommt so ihre Kennung).
 
 ## MCP
 
