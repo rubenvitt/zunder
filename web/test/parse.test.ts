@@ -471,6 +471,34 @@ describe("quick capture recurrence shorthand: fixed days, ordinals, punctuation"
     "Treffen jeden Montag, 1. Freitag",
     "Treffen wöchentlich am Montag und ersten Freitag",
     "Treffen montags und ersten Freitag",
+    // What follows the unit of an unsupported phrase belongs to it, as after a supported one.
+    "Kehrwoche jede zweite Woche montags",
+    "Kehrwoche jede zweite Woche montags und donnerstags",
+    "Kehrwoche jede zweite Woche am Montag",
+    "Kehrwoche jede zweite Woche am Montag und ersten Freitag",
+    "Kehrwoche jede zweite Woche nach Erledigung",
+    "Fest jedes zweite Jahr am 12.10.",
+    "Fest jedes zweite Jahr am 12.10.2027",
+    "Miete jeden zweiten Monat am 20.10.",
+    "Miete jeden zweiten Monat am 15.",
+    "Miete jeden zweiten Monat am 1. Werktag",
+    "Miete jeden zweiten Monat zum Monatsende",
+    "Lohn jeden 1. Werktag am 3.11.",
+    "Gießen jeden zweiten Tag am Montag",
+    // Numbers in words after "alle".
+    "Kehrwoche alle zwei Wochen",
+    "Kehrwoche alle zwei Wochen am Montag",
+    "Kehrwoche alle zwei Wochen freitags",
+    "Kehrwoche alle drei Wochen montags und donnerstags nach Erledigung",
+    "Gießen alle paar Tage",
+    "Miete alle zwei Monate am 20.10.",
+    "Fest alle zwei Jahre am 12.10.",
+    // An ordinal after "am" in a weekly rhythm.
+    "Treffen wöchentlich am ersten Montag",
+    "Treffen jede Woche am letzten Freitag",
+    "Treffen alle 2 Wochen am ersten Montag",
+    "Treffen jede 2. Woche am 1. Montag",
+    "Treffen wöchentlich am 15.",
   ])("leaves unsupported rhythm-like phrases whole in the title, without a due date: %s", (input) => {
     for (const r of [parse(input), parseNoRhythm(input)]) {
       expect(r.title).toBe(input);
@@ -489,5 +517,26 @@ describe("quick capture recurrence shorthand: fixed days, ordinals, punctuation"
     // A rhythm before it still counts; the phrase stays in the title.
     r = parse("Gießen täglich jeden ersten Montag");
     expect(r).toMatchObject({ title: "Gießen jeden ersten Montag", due: "2026-10-11", recurrence: { every: 1, unit: "day", from: "due" } });
+    // A time after the weekdays of an unsupported phrase is not part of it.
+    r = parse("Kehrwoche jede zweite Woche freitags um 9 Uhr");
+    expect(r).toMatchObject({ title: "Kehrwoche jede zweite Woche freitags", due: "2026-10-12T09:00:00+02:00", recurrence: null });
+  });
+
+  it("a full date after a weekly rhythm stays the due date", () => {
+    expect(parse("Treffen wöchentlich am 20.10.")).toMatchObject({ title: "Treffen", due: "2026-10-20", recurrence: { every: 1, unit: "week", from: "due" } });
+  });
+
+  it("a date in another month than a fixed yearly day stays the due date, the rhythm keeps no day", () => {
+    for (const input of ["Feier jährlich am 29.02. morgen", "Feier jeden 29.02. morgen"]) {
+      const r = parse(input);
+      expect(r).toMatchObject({ title: "Feier", due: "2026-10-12", recurrence: { every: 1, unit: "year", from: "due" } });
+      expect(r.recurrence).not.toHaveProperty("day");
+      expect(r.tokens.find((t) => t.kind === "recurrence")?.label).toBe("Jährlich");
+    }
+    const r = parse("Feier jährlich am 29.02. 20.03.2027 9:00");
+    expect(r).toMatchObject({ due: "2027-03-20T09:00:00+01:00", recurrence: { every: 1, unit: "year", from: "due" } });
+    expect(r.recurrence).not.toHaveProperty("day");
+    // A date in the same month keeps the day.
+    expect(parse("Feier jährlich am 12.10. 20.10.").recurrence).toEqual({ every: 1, unit: "year", day: 12, from: "due" });
   });
 });
