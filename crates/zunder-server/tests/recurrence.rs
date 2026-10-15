@@ -357,6 +357,84 @@ async fn instances_in_keyed_projects_get_the_next_reference() {
     assert!(touched.contains(&id.to_string().as_str()), "{log}");
 }
 
+/// Log output of the whole test binary (the server logs from blocking
+/// threads, so the subscriber is global); tests look for their own IDs.
+fn captured_logs() -> String {
+    use std::sync::{Arc, Mutex, OnceLock};
+
+    #[derive(Clone)]
+    struct Sink(Arc<Mutex<Vec<u8>>>);
+    impl std::io::Write for Sink {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    static LOGS: OnceLock<Arc<Mutex<Vec<u8>>>> = OnceLock::new();
+    let logs = LOGS.get_or_init(|| {
+        let logs = Arc::new(Mutex::new(Vec::new()));
+        let sink = Sink(logs.clone());
+        let subscriber = tracing_subscriber::fmt()
+            .with_ansi(false)
+            .with_writer(move || sink.clone())
+            .finish();
+        tracing::subscriber::set_global_default(subscriber).unwrap();
+        logs
+    });
+    String::from_utf8_lossy(&logs.lock().unwrap()).into_owned()
+}
+
+/// Log lines announcing a next instance of the series of `predecessor`.
+fn announced_instances(predecessor: Id) -> Vec<String> {
+    captured_logs()
+        .lines()
+        .filter(|l| {
+            l.contains("next instance of a recurring task")
+                && l.contains(&format!("predecessor={predecessor}"))
+        })
+        .map(str::to_owned)
+        .collect()
+}
+
+#[tokio::test]
+async fn next_instance_is_logged_only_once_it_is_stored() {
+    captured_logs();
+    let s = TestServer::new().await;
+    let mut clock = client_clock();
+    let id = recurring(&s, &mut clock, "Odoo absenden", Location::Inbox).await;
+
+    // Storing the server's own push fails (the client's push goes through).
+    let db = rusqlite::Connection::open(s.dir.path().join("data/zunder.db")).unwrap();
+    db.execute_batch(
+        "CREATE TRIGGER fail_server_ops BEFORE INSERT ON ops WHEN NEW.source = 'server'
+         BEGIN SELECT RAISE(ABORT, 'disk full'); END;",
+    )
+    .unwrap();
+    set_status(&s, &mut clock, id, TaskStatus::Done).await;
+    assert!(successors(&s, id).is_empty());
+    assert_eq!(announced_instances(id), Vec::<String>::new());
+    assert!(
+        captured_logs().contains("creating next instances of recurring tasks failed"),
+        "the failure is logged"
+    );
+
+    // Once storing works again, reopening and completing creates and logs it.
+    db.execute_batch("DROP TRIGGER fail_server_ops;").unwrap();
+    set_status(&s, &mut clock, id, TaskStatus::Open).await;
+    set_status(&s, &mut clock, id, TaskStatus::Done).await;
+    let next = only_successor(&s, id);
+    let logged = announced_instances(id);
+    assert_eq!(logged.len(), 1, "{logged:?}");
+    assert!(
+        logged[0].contains(&format!("task_id={}", next.id)),
+        "{logged:?}"
+    );
+}
+
 // ----- MCP (contract 4.1) ---------------------------------------------------------------
 
 /// Every Friday, anchored at the due date.
