@@ -124,17 +124,40 @@ test("Eigener Rhythmus: Intervall, Wochentage, Monatstag und Anker", async ({ pa
   await expect.poll(recurrence).toEqual({ every: 2, unit: "month", day: "last", from: "done" });
   await expect(editor).toContainText("Alle 2 Monate am Monatsletzten nach Erledigung");
 
-  // Years keep the day and name it in the month of the due date.
+  // Years keep the day; after completion it lies in the month of the completion, so no month.
   await editor.getByLabel("Einheit").selectOption("year");
   await expect.poll(recurrence).toEqual({ every: 2, unit: "year", day: "last", from: "done" });
-  await editor.getByLabel("Tag im Monat").selectOption({ label: "am 04.01." });
+  await editor.getByLabel("Tag im Monat").selectOption({ label: "am 4." });
   await expect.poll(recurrence).toEqual({ every: 2, unit: "year", day: 4, from: "done" });
-  await expect(editor).toContainText("Alle 2 Jahre am 04.01. nach Erledigung");
+  await expect(editor).toContainText("Alle 2 Jahre am 4. nach Erledigung");
+  // From the due date the day is named in its month (January: 31 days).
+  await editor.getByLabel("Anker").selectOption({ label: "ab Fälligkeit" });
+  await expect.poll(recurrence).toEqual({ every: 2, unit: "year", day: 4, from: "due" });
+  await expect(editor).toContainText("Alle 2 Jahre am 04.01.");
+  await expect(editor.getByLabel("Tag im Monat").locator("option")).toHaveCount(33);
 
   await detail(page).getByRole("combobox", { name: "Wiederholen" }).selectOption({ label: "Nicht wiederholen" });
   await expect.poll(recurrence).toBeNull();
   await expect(editor).toHaveCount(0);
   await expect(row(page, title).locator(".chip-recurring")).toHaveCount(0);
+});
+
+test("Jährlicher Tag: nur Tage des Fälligkeitsmonats, ein größerer gespeicherter bleibt wählbar", async ({ page }) => {
+  const s = suffix();
+  const title = `Jahresfrist ${s}`;
+  const seeder = new Seeder();
+  seeder.task(title, { location: { kind: "loose" }, due: `${YEAR}-02-10`, recurrence: { every: 1, unit: "year", day: 31, from: "due" } });
+  await seeder.push(page);
+  await openApp(page, "#/lose");
+  await row(page, title).locator(".task-main").click();
+  await detail(page).getByRole("button", { name: "Anpassen" }).click();
+  const editor = detail(page).getByRole("group", { name: "Rhythmus anpassen" });
+  const day = editor.getByLabel("Tag im Monat");
+  // February: 1–29 with the month, the stored 31 without, plus "Tag der Fälligkeit" and "Monatsletzten".
+  await expect(day.locator("option")).toHaveCount(32);
+  await expect(day.locator("option:checked")).toHaveText("am 31.");
+  await expect(day.locator("option", { hasText: "am 30.02." })).toHaveCount(0);
+  await expect(editor).toContainText("Jährlich am 29.02.");
 });
 
 test("Verwerfen fragt: nur diese Instanz oder die ganze Serie", async ({ page }) => {

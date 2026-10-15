@@ -8,19 +8,22 @@ import { RECURRENCE_FROMS, RECURRENCE_UNITS, WEEKDAY_CODES, type Recurrence, typ
 import {
   describeRecurrence,
   matchPreset,
+  monthMaxDays,
   RECURRENCE_FROM_LABELS,
   RECURRENCE_UNIT_LABELS,
   recurrencePresets,
   WEEKDAY_LABELS,
   WEEKDAY_NAMES,
+  yearlyDayLabel,
+  yearlyDayMonth,
 } from "../labels";
 import { updateTask } from "../state/actions";
-import { parseDue } from "../sync/dates";
 import { taskIndex } from "../state/store";
 import { taskHref } from "./TaskLinks";
 
 const CUSTOM = "custom";
-const MONTH_DAYS = Array.from({ length: 31 }, (_, i) => String(i + 1));
+/** Day numbers 1..n as option values. */
+const dayRange = (n: number) => Array.from({ length: n }, (_, i) => String(i + 1));
 const NONE = "";
 /** Default when "Benutzerdefiniert …" is chosen without a rhythm. */
 const CUSTOM_DEFAULT: Recurrence = { every: 1, unit: "week", from: "due" };
@@ -94,9 +97,20 @@ export function RecurrenceEditor(props: { task: Task; recurrence: Recurrence }) 
     if (Number.isInteger(n) && n >= 1 && n <= MAX_RECURRENCE_EVERY && n !== r().every) write(withEvery(r(), n));
   };
   const dayValue = () => (r().day === undefined ? "" : String(r().day));
-  // Yearly rhythms take the day in the month of the due date: "am 28.02.".
-  const dueMonth = () => (r().unit === "year" ? parseDue(props.task.due)?.date.slice(5, 7) : undefined);
-  const dayLabel = (d: string) => (dueMonth() ? `am ${d.padStart(2, "0")}.${dueMonth()}.` : `am ${d}.`);
+  // Yearly rhythms from the due date take the day in its month: "am 28.02.", only days that
+  // month has (February up to 29). A larger stored day stays selectable as "am 31.".
+  const dueMonth = () => yearlyDayMonth(r(), props.task.due);
+  const days = createMemo(() => {
+    const month = dueMonth();
+    if (!month) return dayRange(31);
+    const max = monthMaxDays(month);
+    const stored = r().day;
+    return typeof stored === "number" && stored > max ? [...dayRange(max), String(stored)] : dayRange(max);
+  });
+  const dayLabel = (d: string) => {
+    const month = dueMonth();
+    return month && Number(d) <= monthMaxDays(month) ? yearlyDayLabel(Number(d), month) : `am ${d}.`;
+  };
   return (
     <div class="recurrence-editor" role="group" aria-label="Rhythmus anpassen">
       <div class="recurrence-line">
@@ -156,7 +170,7 @@ export function RecurrenceEditor(props: { task: Task; recurrence: Recurrence }) 
             <option value="" selected={dayValue() === ""}>
               {r().from === "done" ? "am Tag der Erledigung" : "am Tag der Fälligkeit"}
             </option>
-            <For each={MONTH_DAYS}>
+            <For each={days()}>
               {(d) => (
                 <option value={d} selected={dayValue() === d}>
                   {dayLabel(d)}

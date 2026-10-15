@@ -101,7 +101,7 @@ export function withFrom(r: Recurrence, from: Recurrence["from"]): Recurrence {
   return build(r.every, r.unit, from, r.weekdays, r.day);
 }
 
-/** Fixed day of the month, for years in the month of the due date (`undefined`: the day of the due date or completion). */
+/** Fixed day of the month, for years in the month of the due date (from done: of the completion; `undefined`: the day of the due date or completion). */
 export function withDay(r: Recurrence, day: number | "last" | undefined): Recurrence {
   return build(r.every, r.unit, r.from, r.weekdays, day);
 }

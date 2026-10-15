@@ -39,7 +39,12 @@ describe("describeRecurrence (contract 5.1)", () => {
   it("names the day of a yearly rhythm with the month of the due date", () => {
     expect(describeRecurrence(r({ every: 1, unit: "year", day: 28, from: "due" }), "2027-02-28")).toBe("Jährlich am 28.02.");
     expect(describeRecurrence(r({ every: 1, unit: "year", day: 29, from: "due" }), "2027-02-28T09:00:00+01:00")).toBe("Jährlich am 29.02.");
-    expect(describeRecurrence(r({ every: 2, unit: "year", day: 5, from: "done" }), "2026-10-05")).toBe("Alle 2 Jahre am 05.10. nach Erledigung");
+    // From done the month of the completion counts: no month.
+    expect(describeRecurrence(r({ every: 2, unit: "year", day: 5, from: "done" }), "2026-10-05")).toBe("Alle 2 Jahre am 5. nach Erledigung");
+    // A day beyond the month's length is its last (February: 29, back in leap years).
+    expect(describeRecurrence(r({ every: 1, unit: "year", day: 31, from: "due" }), "2027-04-10")).toBe("Jährlich am 30.04.");
+    expect(describeRecurrence(r({ every: 1, unit: "year", day: 31, from: "due" }), "2027-02-10")).toBe("Jährlich am 29.02.");
+    expect(describeRecurrence(r({ every: 1, unit: "year", day: 31, from: "due" }), "2027-12-10")).toBe("Jährlich am 31.12.");
     expect(describeRecurrence(r({ every: 1, unit: "year", day: "last", from: "due" }), "2027-02-28")).toBe("Jährlich am Monatsletzten");
     // Without a due date only the day.
     expect(describeRecurrence(r({ every: 1, unit: "year", day: 28, from: "due" }))).toBe("Jährlich am 28.");

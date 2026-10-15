@@ -190,11 +190,30 @@ export function describeRecurrence(r: Recurrence, due?: string | null): string {
   const workdays = r.every === 1 && r.unit === "week" && days.join(",") === WORKDAYS;
   let text = workdays ? "Werktags" : r.every === 1 ? EVERY_ONE[r.unit] : `Alle ${r.every} ${RECURRENCE_UNIT_LABELS[r.unit].many}`;
   if (!workdays && days.length > 0) text += ` (${days.map((d) => WEEKDAY_LABELS[d]).join(", ")})`;
-  const month = r.unit === "year" ? parseDue(due ?? null)?.date.slice(5, 7) : undefined;
+  const month = yearlyDayMonth(r, due);
   if (r.day === "last") text += " am Monatsletzten";
-  else if (r.day !== undefined) text += month ? ` am ${String(r.day).padStart(2, "0")}.${month}.` : ` am ${r.day}.`;
+  else if (r.day !== undefined) text += month ? ` ${yearlyDayLabel(r.day, month)}` : ` am ${r.day}.`;
   if (r.from === "done") text += " nach Erledigung";
   return text;
+}
+
+/**
+ * Month ("02") in which a yearly rhythm takes its day, if the UI knows it: that of the due
+ * date for `from: "due"`. With `from: "done"` the server uses the month of the completion
+ * (contract 3.1), so the UI names no month.
+ */
+export function yearlyDayMonth(r: Recurrence, due?: string | null): string | undefined {
+  return r.unit === "year" && r.from === "due" ? parseDue(due ?? null)?.date.slice(5, 7) : undefined;
+}
+
+/** Days the month ("02") can have at most: February 29, since a 29 comes back in leap years. */
+export function monthMaxDays(month: string): number {
+  return [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][Number(month) - 1] ?? 31;
+}
+
+/** "am 28.02." for a yearly day; a day beyond the month's length is its last ("am 30.04." for 31). */
+export function yearlyDayLabel(day: number, month: string): string {
+  return `am ${String(Math.min(day, monthMaxDays(month))).padStart(2, "0")}.${month}.`;
 }
 
 export interface RecurrencePreset {
