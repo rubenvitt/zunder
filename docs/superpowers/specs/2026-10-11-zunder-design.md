@@ -93,13 +93,14 @@ Das persönliche Produktivitätssystem (Wochenzyklen „Feuer“, Deep-Work-Blö
 
 Nachträglich (2026-10-15) ins MVP geholt, Anlass: Serien wie „Odoo absenden und Stunden bestätigen“ an jedem Monatsletzten. Ein Rhythmus ist ein Feld der Aufgabe, keine eigene Entität und keine RRULE.
 
-- **Form:** alle *n* Tage, Wochen, Monate oder Jahre. Wöchentlich optional an bestimmten Wochentagen, monatlich und jährlich optional an einem festen Tag des Monats oder am Monatsletzten.
+- **Form:** alle *n* Tage, Wochen, Monate oder Jahre. Wöchentlich optional an bestimmten Wochentagen, monatlich optional an einem festen Tag des Monats oder am Monatsletzten; jährlich gilt der Tag der Fälligkeit.
 - **Anker:** ab Fälligkeit (fester Kalender: jeden Monatsletzten, auch wenn man am 3. erledigt) oder ab Erledigung (n Einheiten nach dem Abschluss, z. B. „Filter wechseln, 3 Monate nach dem letzten Wechsel“).
 - Ein Rhythmus braucht eine Fälligkeit und geht nur an Aufgaben ohne Elternaufgabe.
-- **Ablauf:** Es gibt immer nur die aktuelle Instanz. Wird sie erledigt oder verworfen, legt der Server die nächste als neue Aufgabe an (gleicher Titel, gleiche Stelle, neue Kennung, neue Fälligkeit). Wer die Serie beenden will, entfernt den Rhythmus.
+- **Ablauf:** Es gibt immer nur die aktuelle Instanz. Wird sie erledigt oder verworfen, legt der Server die nächste als neue Aufgabe an (gleicher Titel, gleiche Stelle, neue Kennung, neue Fälligkeit), auch wenn ein Gerät offline angelegt und abgehakt hat. Wer die Serie beenden will, entfernt den Rhythmus; beim Verwerfen fragt die Oberfläche deshalb, ob nur diese Instanz oder die Serie enden soll.
 - **Keine Lawine:** Wer eine Serie wochenlang liegen lässt, bekommt beim Abschluss nur eine nächste Instanz, und zwar am ersten Termin, der nicht vor heute liegt.
 - **Rückgängig:** Abschließen, wieder öffnen, erneut abschließen erzeugt keine zweite Instanz. Erst wenn die Folgeinstanz gelöscht ist, entsteht beim nächsten Abschluss wieder eine.
-- Kalenderregeln: Der 31. wird in kürzeren Monaten zum Monatsletzten, ohne dass die Serie wandert (31.01. → 28.02. → 31.03.); eine Uhrzeit bleibt über die Zeitumstellung dieselbe Ortszeit.
+- Kalenderregeln: Der 31. wird in kürzeren Monaten zum Monatsletzten, ohne dass die Serie wandert (31.01. → 28.02. → 31.03.); jährlich bleibt der Februarletzte der Februarletzte (29.02. → 28.02. → … → 29.02.); eine Uhrzeit bleibt über die Zeitumstellung dieselbe Ortszeit (Ausnahme: eine Uhrzeit in der übersprungenen Stunde rückt dauerhaft eine Stunde später).
+- Aufgaben, die in Zunder einen Rhythmus tragen, lässt ein erneuter ClickUp-Import in Ruhe.
 
 Die genauen Regeln stehen im Vertrag (2.4, 2.5, 3.1).
 
