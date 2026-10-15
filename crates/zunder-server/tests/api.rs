@@ -937,3 +937,82 @@ async fn healthcheck_against_a_real_listener() {
         .unwrap();
     assert!(zunder_server::healthcheck::check(closed).await.is_err());
 }
+
+#[tokio::test]
+async fn agent_log_lists_mcp_commits_newest_first() {
+    let s = TestServer::new().await;
+    let token = common::api_token(&s, "claude").await;
+    // Changes from the web UI and the sync API are not part of the log.
+    let (_, web_ops) = new_task_ops("Von Hand");
+    s.push(Auth::Web(&s.session().await), &web_ops).await;
+    s.push(BOOT, &new_task_ops("Per API").1).await;
+
+    let created = common::mcp_ok(&s, &token, "create_task", json!({"title": "Vom Agenten"})).await;
+    let task = created["task"]["id"].as_str().unwrap().to_owned();
+    // One commit per millisecond at most is told apart.
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    common::mcp_ok(
+        &s,
+        &token,
+        "update_task",
+        json!({"task_id": task, "status": "done"}),
+    )
+    .await;
+
+    let r = s.get("/api/agent-log", BOOT).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    let page = r.json();
+    assert_eq!(page["next_before"], Value::Null);
+    let actions = page["actions"].as_array().unwrap();
+    assert_eq!(actions.len(), 2, "{page}");
+    for action in actions {
+        assert_eq!(action["source"], "mcp:claude");
+        assert!(action["received_at"].as_str().unwrap().ends_with('Z'));
+        assert_eq!(action["changes"][0]["entity"], "task");
+        assert_eq!(action["changes"][0]["entity_id"], task.as_str());
+    }
+    let (update, create) = (&actions[0], &actions[1]);
+    assert!(update["seq"].as_i64() > create["seq"].as_i64());
+    assert_eq!(update["changes"][0]["created"], false);
+    assert!(update["changes"][0]["ops"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|op| op["field"] == "status" && op["value"] == "done"));
+    assert_eq!(create["changes"][0]["created"], true);
+    assert!(create["changes"][0]["ops"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|op| op["field"] == "title" && op["value"] == "Vom Agenten"));
+
+    // Paging never splits a commit: a limit of one operation still returns
+    // the whole creation.
+    let r = s.get("/api/agent-log?limit=1", BOOT).await.json();
+    assert_eq!(r["actions"].as_array().unwrap().len(), 1);
+    let before = r["next_before"].as_i64().unwrap();
+    let mut seen = 0;
+    let mut next = Some(before);
+    while let Some(before) = next {
+        let r = s
+            .get(&format!("/api/agent-log?limit=1&before={before}"), BOOT)
+            .await
+            .json();
+        for action in r["actions"].as_array().unwrap() {
+            assert_eq!(action["changes"][0]["created"], true);
+            assert_eq!(action["changes"][0]["ops"], create["changes"][0]["ops"]);
+            seen += 1;
+        }
+        next = r["next_before"].as_i64();
+    }
+    assert_eq!(seen, 1);
+
+    assert_eq!(
+        s.get("/api/agent-log?limit=0", BOOT).await.status,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        s.get("/api/agent-log", Auth::None).await.status,
+        StatusCode::UNAUTHORIZED
+    );
+}

@@ -2001,6 +2001,47 @@ html.resizing * {
   font-size: 0.8em;
 }
 
+/* ---- Agent log ----------------------------------------------------------------- */
+
+.agent-log {
+  list-style: none;
+  margin: 1rem 0;
+  padding: 0;
+  font-size: 0.9rem;
+}
+.agent-action {
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.agent-action-head {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  font-size: 0.84rem;
+}
+.agent-changes {
+  list-style: none;
+  margin: 0.3rem 0 0;
+  padding: 0;
+}
+.agent-changes li {
+  display: flex;
+  gap: 0.45rem;
+  align-items: baseline;
+  padding: 0.15rem 0;
+  overflow-wrap: anywhere;
+}
+.agent-changes li > :first-child {
+  flex: none;
+  color: var(--muted);
+  align-self: center;
+}
+.agent-details {
+  display: block;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
 /* ---- Comments ------------------------------------------------------------------ */
 
 .comment-list {

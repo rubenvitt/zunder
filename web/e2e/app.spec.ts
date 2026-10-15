@@ -457,3 +457,63 @@ test("Baum der Bereiche aus- und wieder einblenden", async ({ page }) => {
   await expect(tree).toBeVisible();
   await expect(page.getByRole("button", { name: "Bereiche einblenden" })).toHaveCount(0);
 });
+
+/** Creates a task as an agent would: real server via /mcp with an API token, mock via its test hook. */
+async function agentCreatesTask(page: Page, title: string): Promise<string> {
+  if (isMock) {
+    const id = newId();
+    const res = await page.request.post("/__test/ops", {
+      data: {
+        source: "mcp:e2e-agent",
+        ops: [
+          { op_id: newId(), entity: "task", entity_id: id, field: "title", value: title, hlc: `${String(Date.now()).padStart(13, "0")}:00000:agent` },
+          { op_id: newId(), entity: "task", entity_id: id, field: "location", value: { kind: "loose" }, hlc: `${String(Date.now()).padStart(13, "0")}:00001:agent` },
+        ],
+      },
+    });
+    expect(res.ok()).toBe(true);
+    return id;
+  }
+  const created = await page.request.post("/api/tokens", { data: { name: `e2e-agent-${suffix()}` }, headers: WEB_HEADERS });
+  expect(created.ok(), await created.text()).toBe(true);
+  const { id: tokenId, token } = (await created.json()) as { id: string; token: string };
+  try {
+    const res = await page.request.post("/mcp", {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json, text/event-stream" },
+      data: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "create_task", arguments: { title, location: { kind: "loose" } } } },
+    });
+    expect(res.ok(), await res.text()).toBe(true);
+    const body = (await res.json()) as { result: { isError: boolean; structuredContent: { task: { id: string } } } };
+    expect(body.result.isError).toBe(false);
+    return body.result.structuredContent.task.id;
+  } finally {
+    await page.request.delete(`/api/tokens/${tokenId}`, { headers: WEB_HEADERS });
+  }
+}
+
+test("KI-Protokoll zeigt, was Agenten angelegt haben, und ist nur über die Einstellungen erreichbar", async ({ page }) => {
+  const s = suffix();
+  const seeder = new Seeder();
+  seeder.task(`Von Hand ${s}`, { location: { kind: "loose" } });
+  await seeder.push(page);
+  await agentCreatesTask(page, `Vom Agenten ${s}`);
+
+  await openApp(page, "#/heute");
+  // Not part of the sidebar's views.
+  await expect(page.locator(".sidebar .nav").getByText("KI-Protokoll")).toHaveCount(0);
+  await openApp(page, "#/einstellungen");
+  await page.getByRole("link", { name: "Protokoll öffnen" }).click();
+  await expect(page).toHaveURL(/#\/ki-protokoll$/);
+  await expect(page.getByRole("heading", { name: "KI-Protokoll" })).toBeVisible();
+
+  const log = page.getByTestId("agent-log");
+  const entry = log.locator(".agent-action", { hasText: `Vom Agenten ${s}` });
+  await expect(entry).toContainText("Aufgabe");
+  await expect(entry).toContainText("angelegt");
+  await expect(entry).toContainText("Agent · e2e-agent");
+  await expect(log).not.toContainText(`Von Hand ${s}`);
+
+  // The name links to the task.
+  await entry.getByRole("link", { name: `„Vom Agenten ${s}“` }).click();
+  await expect(page.locator(".detail")).toBeVisible();
+});

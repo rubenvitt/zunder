@@ -16,6 +16,7 @@
 import { MemoryLocalStore } from "../sync/local-store";
 import { asFlameResult, HttpError, NetworkError, type ApiClient, type SubscriptionHandlers, type SyncTransport } from "../sync/transport";
 import type {
+  AgentLogPage,
   ApiToken,
   CalendarSettings,
   CreatedCalendarFeed,
@@ -361,6 +362,10 @@ export class TauriTransport implements SyncTransport, ApiClient {
 
   history(taskId: string): Promise<HistoryEntry[]> {
     return this.app.taskHistory(taskId);
+  }
+
+  agentLog(_before?: number): Promise<AgentLogPage> {
+    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
   }
 
   async flame(taskId: string, action: "start" | "stop"): Promise<FlameResult | null> {

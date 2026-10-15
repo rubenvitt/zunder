@@ -52,6 +52,9 @@ use crate::timing::{TimingApi, TimingClient, TimingProject};
 pub const SERVER_NODE: &str = "server";
 /// Default and maximum page size of `pull`.
 pub const DEFAULT_PULL_LIMIT: u32 = 1000;
+/// Default and maximum number of operations per page of the agent log.
+pub const DEFAULT_AGENT_LOG_LIMIT: u32 = 200;
+pub const MAX_AGENT_LOG_LIMIT: u32 = 1000;
 pub const MAX_PULL_LIMIT: u32 = 5000;
 /// Number of nightly backups to keep.
 pub const BACKUPS_TO_KEEP: usize = 14;
@@ -133,6 +136,38 @@ pub struct HistoryEntry {
     pub source: String,
     /// When the server received the operation (RFC 3339, UTC).
     pub received_at: String,
+}
+
+/// One commit of an agent (MCP tool call) in the agent log.
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentAction {
+    /// Largest `seq` of the commit.
+    pub seq: i64,
+    /// `mcp:<token-name>` or `mcp:oauth:<client>`.
+    pub source: String,
+    /// When the server received the commit (RFC 3339, UTC).
+    pub received_at: String,
+    /// Changed entities in log order.
+    pub changes: Vec<AgentChange>,
+}
+
+/// The operations of one commit on one entity.
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentChange {
+    pub entity: EntityKind,
+    pub entity_id: Id,
+    /// The commit created the entity (no older operation on it).
+    pub created: bool,
+    pub ops: Vec<Op>,
+}
+
+/// Response of `GET /api/agent-log`.
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentLogPage {
+    /// Newest first.
+    pub actions: Vec<AgentAction>,
+    /// `before` for the next page; `null` when there are no older actions.
+    pub next_before: Option<i64>,
 }
 
 /// An API token without its secret.
@@ -632,6 +667,72 @@ impl App {
                     received_at: format_ms(r.received_at),
                 })
                 .collect())
+        })
+        .await
+    }
+
+    /// What agents (MCP) changed, newest commit first: commits with
+    /// `seq < before`, about `limit` operations per page (clamped to
+    /// 1..=[`MAX_AGENT_LOG_LIMIT`]; a commit is never split).
+    pub async fn agent_log(&self, before: Option<i64>, limit: u32) -> AppResult<AgentLogPage> {
+        let limit = limit.clamp(1, MAX_AGENT_LOG_LIMIT);
+        self.blocking(move |inner| {
+            let conn = lock(&inner.reader);
+            let rows = db::ops_by_source_before(&conn, inner.owner_id, "mcp:", before, limit)?;
+            let full = rows.len() >= limit as usize;
+            let mut actions: Vec<AgentAction> = Vec::new();
+            // Oldest seq per action (rows come newest first).
+            let mut first_seqs: Vec<i64> = Vec::new();
+            // One commit = same source and same receive time (milliseconds).
+            let mut commit: Option<(String, i64)> = None;
+            for row in rows {
+                let key = (row.source.clone(), row.received_at);
+                if commit.as_ref() != Some(&key) {
+                    actions.push(AgentAction {
+                        seq: row.seq,
+                        source: row.source.clone(),
+                        received_at: format_ms(row.received_at),
+                        changes: Vec::new(),
+                    });
+                    first_seqs.push(row.seq);
+                    commit = Some(key);
+                }
+                *first_seqs.last_mut().expect("pushed with the action") = row.seq;
+                let action = actions.last_mut().expect("pushed above");
+                let op = row.op;
+                match action
+                    .changes
+                    .iter_mut()
+                    .find(|c| c.entity == op.entity && c.entity_id == op.entity_id)
+                {
+                    Some(change) => change.ops.push(op),
+                    None => action.changes.push(AgentChange {
+                        entity: op.entity,
+                        entity_id: op.entity_id,
+                        created: false,
+                        ops: vec![op],
+                    }),
+                }
+            }
+            for (action, first) in actions.iter_mut().zip(&first_seqs) {
+                // Back to log order.
+                action.changes.reverse();
+                for change in &mut action.changes {
+                    change.ops.reverse();
+                    change.created = !db::entity_has_ops_before(
+                        &conn,
+                        inner.owner_id,
+                        change.entity,
+                        change.entity_id,
+                        *first,
+                    )?;
+                }
+            }
+            let oldest = first_seqs.last().copied();
+            Ok(AgentLogPage {
+                actions,
+                next_before: if full { oldest } else { None },
+            })
         })
         .await
     }

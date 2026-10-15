@@ -551,11 +551,76 @@ pub fn entity_history(
         "SELECT seq, op_id, entity, entity_id, field, value_json, hlc, source, received_at
          FROM ops WHERE owner_id = ?1 AND entity_id = ?2 AND entity = ?3 ORDER BY seq",
     )?;
-    let mut rows = stmt.query(params![
+    let rows = stmt.query(params![
         owner.to_string(),
         entity_id.to_string(),
         entity.as_str()
     ])?;
+    history_rows(rows)
+}
+
+/// Operations whose source starts with `prefix` (e.g. `mcp:`), newest first,
+/// with `seq < before` (all when `None`), at most `limit`. Operations of the
+/// commit of the oldest returned row that did not fit are appended, so a
+/// commit (same source and `received_at`) is never split across pages.
+pub fn ops_by_source_before(
+    conn: &Connection,
+    owner: Uuid,
+    prefix: &str,
+    before: Option<i64>,
+    limit: u32,
+) -> anyhow::Result<Vec<HistoryRow>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT seq, op_id, entity, entity_id, field, value_json, hlc, source, received_at
+         FROM ops WHERE owner_id = ?1 AND seq < ?2 AND substr(source, 1, length(?3)) = ?3
+         ORDER BY seq DESC LIMIT ?4",
+    )?;
+    let before = before.unwrap_or(i64::MAX);
+    let mut out =
+        history_rows(stmt.query(params![owner.to_string(), before, prefix, i64::from(limit)])?)?;
+    if out.len() == limit as usize {
+        if let Some(last) = out.last() {
+            let mut rest = conn.prepare_cached(
+                "SELECT seq, op_id, entity, entity_id, field, value_json, hlc, source, received_at
+                 FROM ops WHERE owner_id = ?1 AND seq < ?2 AND source = ?3 AND received_at = ?4
+                 ORDER BY seq DESC",
+            )?;
+            let more = history_rows(rest.query(params![
+                owner.to_string(),
+                last.seq,
+                last.source,
+                last.received_at
+            ])?)?;
+            out.extend(more);
+        }
+    }
+    Ok(out)
+}
+
+/// Whether the entity has an operation older than `seq`.
+pub fn entity_has_ops_before(
+    conn: &Connection,
+    owner: Uuid,
+    entity: EntityKind,
+    entity_id: Id,
+    seq: i64,
+) -> anyhow::Result<bool> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT EXISTS (SELECT 1 FROM ops
+         WHERE owner_id = ?1 AND entity_id = ?2 AND entity = ?3 AND seq < ?4)",
+    )?;
+    Ok(stmt.query_row(
+        params![
+            owner.to_string(),
+            entity_id.to_string(),
+            entity.as_str(),
+            seq
+        ],
+        |r| r.get(0),
+    )?)
+}
+
+fn history_rows(mut rows: rusqlite::Rows<'_>) -> anyhow::Result<Vec<HistoryRow>> {
     let mut out = Vec::new();
     while let Some(row) = rows.next()? {
         out.push(HistoryRow {
