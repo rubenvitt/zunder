@@ -100,7 +100,8 @@ const FIELDS: Record<string, string[]> = {
   task: [
     "title", "description", "type", "status", "location", "parent_id", "due", "remind_at", "vault_links", "links",
     "phoenix", "claimed_by", "claim_expires_at", "plan", "branch", "pr_url", "timing_ref", "flame_started_at",
-    "flame_ended_at", "clickup_id", "rank", "undated_ack", "blocked_by", "ref", "deleted",
+    "flame_ended_at", "clickup_id", "rank", "undated_ack", "recurrence", "recurrence_prev", "blocked_by", "ref",
+    "deleted",
   ],
   comment: ["task_id", "body", "author", "deleted"],
 };
@@ -212,6 +213,9 @@ function checkOp(op: Op): [string, string] | null {
   }
   if (op.entity === "task" && op.field === "ref") {
     return ["invalid_value", "Die Kennung („ref“) vergibt der Server, sobald die Aufgabe in einem Projekt mit Schlüssel liegt."];
+  }
+  if (op.entity === "task" && op.field === "recurrence_prev") {
+    return ["invalid_value", "Die Vorgängerin in einer Serie („recurrence_prev“) setzt nur der Server, wenn er die nächste Instanz anlegt."];
   }
   if (op.value === null) {
     return REQUIRED[op.entity]!.includes(op.field) ? ["invalid_value", `Pflichtfeld „${op.field}“ kann nicht zurückgesetzt werden.`] : null;

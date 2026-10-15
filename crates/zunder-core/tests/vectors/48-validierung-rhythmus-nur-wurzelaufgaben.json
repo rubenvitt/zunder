@@ -1,0 +1,197 @@
+{
+  "name": "validierung-rhythmus-nur-wurzelaufgaben",
+  "description": "Nur Aufgaben ohne parent_id können wiederkehren: Rhythmus an einer Unteraufgabe und das Umhängen einer wiederkehrenden Aufgabe werden abgelehnt, mit recurrence: null im selben Push ist das Umhängen erlaubt; Unteraufgaben einer wiederkehrenden Aufgabe sind erlaubt.",
+  "kind": "validate",
+  "now_ms": 1760000101000,
+  "state": [
+    {
+      "op_id": "r048e0000000000000000001",
+      "entity": "task",
+      "entity_id": "r048c0000000000000000001",
+      "field": "title",
+      "value": "Monatsabschluss",
+      "hlc": "1760000000001:00000:seed"
+    },
+    {
+      "op_id": "r048e0000000000000000002",
+      "entity": "task",
+      "entity_id": "r048c0000000000000000001",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000000002:00000:seed"
+    },
+    {
+      "op_id": "r048e0000000000000000003",
+      "entity": "task",
+      "entity_id": "r048c0000000000000000001",
+      "field": "recurrence",
+      "value": {
+        "every": 1,
+        "unit": "month",
+        "day": "last",
+        "from": "due"
+      },
+      "hlc": "1760000000003:00000:seed"
+    },
+    {
+      "op_id": "r048e0000000000000000004",
+      "entity": "task",
+      "entity_id": "r048c0000000000000000002",
+      "field": "title",
+      "value": "Epic",
+      "hlc": "1760000000004:00000:seed"
+    },
+    {
+      "op_id": "r048e0000000000000000005",
+      "entity": "task",
+      "entity_id": "r048c0000000000000000003",
+      "field": "title",
+      "value": "Unteraufgabe",
+      "hlc": "1760000000005:00000:seed"
+    },
+    {
+      "op_id": "r048e0000000000000000006",
+      "entity": "task",
+      "entity_id": "r048c0000000000000000003",
+      "field": "parent_id",
+      "value": "r048c0000000000000000002",
+      "hlc": "1760000000006:00000:seed"
+    },
+    {
+      "op_id": "r048e0000000000000000007",
+      "entity": "task",
+      "entity_id": "r048c0000000000000000004",
+      "field": "title",
+      "value": "Wochenstatus",
+      "hlc": "1760000000007:00000:seed"
+    },
+    {
+      "op_id": "r048e0000000000000000008",
+      "entity": "task",
+      "entity_id": "r048c0000000000000000004",
+      "field": "due",
+      "value": "2026-10-19",
+      "hlc": "1760000000008:00000:seed"
+    },
+    {
+      "op_id": "r048e0000000000000000009",
+      "entity": "task",
+      "entity_id": "r048c0000000000000000004",
+      "field": "recurrence",
+      "value": {
+        "every": 1,
+        "unit": "week",
+        "weekdays": [
+          "mo"
+        ],
+        "from": "due"
+      },
+      "hlc": "1760000000009:00000:seed"
+    }
+  ],
+  "push": [
+    {
+      "op_id": "r048e0000000000000000010",
+      "entity": "task",
+      "entity_id": "r048c0000000000000000003",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000100001:00000:web-test"
+    },
+    {
+      "op_id": "r048e0000000000000000011",
+      "entity": "task",
+      "entity_id": "r048c0000000000000000003",
+      "field": "recurrence",
+      "value": {
+        "every": 1,
+        "unit": "month",
+        "day": "last",
+        "from": "due"
+      },
+      "hlc": "1760000100002:00000:web-test"
+    },
+    {
+      "op_id": "r048e0000000000000000012",
+      "entity": "task",
+      "entity_id": "r048c0000000000000000011",
+      "field": "title",
+      "value": "Neue Unteraufgabe",
+      "hlc": "1760000100003:00000:web-test"
+    },
+    {
+      "op_id": "r048e0000000000000000013",
+      "entity": "task",
+      "entity_id": "r048c0000000000000000011",
+      "field": "parent_id",
+      "value": "r048c0000000000000000002",
+      "hlc": "1760000100004:00000:web-test"
+    },
+    {
+      "op_id": "r048e0000000000000000014",
+      "entity": "task",
+      "entity_id": "r048c0000000000000000011",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000100005:00000:web-test"
+    },
+    {
+      "op_id": "r048e0000000000000000015",
+      "entity": "task",
+      "entity_id": "r048c0000000000000000011",
+      "field": "recurrence",
+      "value": {
+        "every": 1,
+        "unit": "month",
+        "day": "last",
+        "from": "due"
+      },
+      "hlc": "1760000100006:00000:web-test"
+    },
+    {
+      "op_id": "r048e0000000000000000016",
+      "entity": "task",
+      "entity_id": "r048c0000000000000000001",
+      "field": "parent_id",
+      "value": "r048c0000000000000000002",
+      "hlc": "1760000100007:00000:web-test"
+    },
+    {
+      "op_id": "r048e0000000000000000017",
+      "entity": "task",
+      "entity_id": "r048c0000000000000000004",
+      "field": "parent_id",
+      "value": "r048c0000000000000000002",
+      "hlc": "1760000100008:00000:web-test"
+    },
+    {
+      "op_id": "r048e0000000000000000018",
+      "entity": "task",
+      "entity_id": "r048c0000000000000000004",
+      "field": "recurrence",
+      "value": null,
+      "hlc": "1760000100009:00000:web-test"
+    },
+    {
+      "op_id": "r048e0000000000000000019",
+      "entity": "task",
+      "entity_id": "r048c0000000000000000012",
+      "field": "title",
+      "value": "Stunden prüfen",
+      "hlc": "1760000100010:00000:web-test"
+    },
+    {
+      "op_id": "r048e0000000000000000020",
+      "entity": "task",
+      "entity_id": "r048c0000000000000000012",
+      "field": "parent_id",
+      "value": "r048c0000000000000000001",
+      "hlc": "1760000100011:00000:web-test"
+    }
+  ],
+  "expected_rejected": {
+    "r048c0000000000000000003": "invalid_value",
+    "r048c0000000000000000011": "invalid_value",
+    "r048c0000000000000000001": "invalid_value"
+  }
+}

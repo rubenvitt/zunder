@@ -1,0 +1,638 @@
+{
+  "name": "validierung-rhythmus-werte",
+  "description": "Form von „recurrence“: every 1–999, unit day/week/month/year, from due/done, weekdays (nicht leer, verschieden, gültige Codes) nur bei week, day (1–31 oder last) nur bei month, keine weiteren Schlüssel, null für weekdays/day ist ungültig.",
+  "kind": "validate",
+  "now_ms": 1760000101000,
+  "state": [
+    {
+      "op_id": "r046e0000000000000000001",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000001",
+      "field": "title",
+      "value": "Bestand",
+      "hlc": "1760000000001:00000:seed"
+    },
+    {
+      "op_id": "r046e0000000000000000002",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000001",
+      "field": "due",
+      "value": "2026-10-30",
+      "hlc": "1760000000002:00000:seed"
+    }
+  ],
+  "push": [
+    {
+      "op_id": "r046e0000000000000000003",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000011",
+      "field": "title",
+      "value": "Rhythmus 11",
+      "hlc": "1760000100001:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000004",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000011",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000100002:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000005",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000011",
+      "field": "recurrence",
+      "value": {
+        "every": 0,
+        "unit": "day",
+        "from": "due"
+      },
+      "hlc": "1760000100003:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000006",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000012",
+      "field": "title",
+      "value": "Rhythmus 12",
+      "hlc": "1760000100004:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000007",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000012",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000100005:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000008",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000012",
+      "field": "recurrence",
+      "value": {
+        "every": 1000,
+        "unit": "day",
+        "from": "due"
+      },
+      "hlc": "1760000100006:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000009",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000013",
+      "field": "title",
+      "value": "Rhythmus 13",
+      "hlc": "1760000100007:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000010",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000013",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000100008:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000011",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000013",
+      "field": "recurrence",
+      "value": {
+        "every": 1,
+        "unit": "hour",
+        "from": "due"
+      },
+      "hlc": "1760000100009:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000012",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000014",
+      "field": "title",
+      "value": "Rhythmus 14",
+      "hlc": "1760000100010:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000013",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000014",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000100011:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000014",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000014",
+      "field": "recurrence",
+      "value": {
+        "every": 1,
+        "unit": "day"
+      },
+      "hlc": "1760000100012:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000015",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000015",
+      "field": "title",
+      "value": "Rhythmus 15",
+      "hlc": "1760000100013:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000016",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000015",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000100014:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000017",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000015",
+      "field": "recurrence",
+      "value": {
+        "every": 1,
+        "unit": "day",
+        "from": "due",
+        "until": "2027-01-01"
+      },
+      "hlc": "1760000100015:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000018",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000016",
+      "field": "title",
+      "value": "Rhythmus 16",
+      "hlc": "1760000100016:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000019",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000016",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000100017:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000020",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000016",
+      "field": "recurrence",
+      "value": {
+        "every": 1,
+        "unit": "week",
+        "weekdays": [],
+        "from": "due"
+      },
+      "hlc": "1760000100018:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000021",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000017",
+      "field": "title",
+      "value": "Rhythmus 17",
+      "hlc": "1760000100019:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000022",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000017",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000100020:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000023",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000017",
+      "field": "recurrence",
+      "value": {
+        "every": 1,
+        "unit": "week",
+        "weekdays": [
+          "mo",
+          "mo"
+        ],
+        "from": "due"
+      },
+      "hlc": "1760000100021:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000024",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000018",
+      "field": "title",
+      "value": "Rhythmus 18",
+      "hlc": "1760000100022:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000025",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000018",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000100023:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000026",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000018",
+      "field": "recurrence",
+      "value": {
+        "every": 1,
+        "unit": "week",
+        "weekdays": [
+          "montag"
+        ],
+        "from": "due"
+      },
+      "hlc": "1760000100024:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000027",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000019",
+      "field": "title",
+      "value": "Rhythmus 19",
+      "hlc": "1760000100025:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000028",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000019",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000100026:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000029",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000019",
+      "field": "recurrence",
+      "value": {
+        "every": 1,
+        "unit": "week",
+        "weekdays": null,
+        "from": "due"
+      },
+      "hlc": "1760000100027:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000030",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000020",
+      "field": "title",
+      "value": "Rhythmus 20",
+      "hlc": "1760000100028:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000031",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000020",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000100029:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000032",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000020",
+      "field": "recurrence",
+      "value": {
+        "every": 1,
+        "unit": "day",
+        "weekdays": [
+          "mo"
+        ],
+        "from": "due"
+      },
+      "hlc": "1760000100030:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000033",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000021",
+      "field": "title",
+      "value": "Rhythmus 21",
+      "hlc": "1760000100031:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000034",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000021",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000100032:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000035",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000021",
+      "field": "recurrence",
+      "value": {
+        "every": 1,
+        "unit": "month",
+        "day": 32,
+        "from": "due"
+      },
+      "hlc": "1760000100033:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000036",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000022",
+      "field": "title",
+      "value": "Rhythmus 22",
+      "hlc": "1760000100034:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000037",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000022",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000100035:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000038",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000022",
+      "field": "recurrence",
+      "value": {
+        "every": 1,
+        "unit": "month",
+        "day": "first",
+        "from": "due"
+      },
+      "hlc": "1760000100036:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000039",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000023",
+      "field": "title",
+      "value": "Rhythmus 23",
+      "hlc": "1760000100037:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000040",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000023",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000100038:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000041",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000023",
+      "field": "recurrence",
+      "value": {
+        "every": 1,
+        "unit": "month",
+        "day": 15,
+        "weekdays": [
+          "mo"
+        ],
+        "from": "due"
+      },
+      "hlc": "1760000100039:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000042",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000024",
+      "field": "title",
+      "value": "Rhythmus 24",
+      "hlc": "1760000100040:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000043",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000024",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000100041:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000044",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000024",
+      "field": "recurrence",
+      "value": {
+        "every": 1,
+        "unit": "year",
+        "day": 29,
+        "from": "due"
+      },
+      "hlc": "1760000100042:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000045",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000025",
+      "field": "title",
+      "value": "Rhythmus 25",
+      "hlc": "1760000100043:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000046",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000025",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000100044:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000047",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000025",
+      "field": "recurrence",
+      "value": {
+        "every": 1,
+        "unit": "week",
+        "day": "last",
+        "from": "done"
+      },
+      "hlc": "1760000100045:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000048",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000026",
+      "field": "title",
+      "value": "Rhythmus 26",
+      "hlc": "1760000100046:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000049",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000026",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000100047:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000050",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000026",
+      "field": "recurrence",
+      "value": {
+        "every": 1,
+        "unit": "month",
+        "day": "last",
+        "from": "due"
+      },
+      "hlc": "1760000100048:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000051",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000027",
+      "field": "title",
+      "value": "Rhythmus 27",
+      "hlc": "1760000100049:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000052",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000027",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000100050:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000053",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000027",
+      "field": "recurrence",
+      "value": {
+        "from": "done",
+        "weekdays": [
+          "th",
+          "mo"
+        ],
+        "unit": "week",
+        "every": 2
+      },
+      "hlc": "1760000100051:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000054",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000028",
+      "field": "title",
+      "value": "Rhythmus 28",
+      "hlc": "1760000100052:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000055",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000028",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000100053:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000056",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000028",
+      "field": "recurrence",
+      "value": {
+        "every": 3,
+        "unit": "month",
+        "day": 31,
+        "from": "done"
+      },
+      "hlc": "1760000100054:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000057",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000029",
+      "field": "title",
+      "value": "Rhythmus 29",
+      "hlc": "1760000100055:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000058",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000029",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000100056:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000059",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000029",
+      "field": "recurrence",
+      "value": {
+        "every": 999,
+        "unit": "year",
+        "from": "due"
+      },
+      "hlc": "1760000100057:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000060",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000030",
+      "field": "title",
+      "value": "Rhythmus 30",
+      "hlc": "1760000100058:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000061",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000030",
+      "field": "due",
+      "value": "2026-10-31",
+      "hlc": "1760000100059:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000062",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000030",
+      "field": "recurrence",
+      "value": {
+        "every": 1,
+        "unit": "day",
+        "from": "done"
+      },
+      "hlc": "1760000100060:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000063",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000001",
+      "field": "recurrence",
+      "value": "monatlich",
+      "hlc": "1760000100061:00000:web-test"
+    }
+  ],
+  "expected_rejected": {
+    "r046c0000000000000000011": "invalid_value",
+    "r046c0000000000000000012": "invalid_value",
+    "r046c0000000000000000013": "invalid_value",
+    "r046c0000000000000000014": "invalid_value",
+    "r046c0000000000000000015": "invalid_value",
+    "r046c0000000000000000016": "invalid_value",
+    "r046c0000000000000000017": "invalid_value",
+    "r046c0000000000000000018": "invalid_value",
+    "r046c0000000000000000019": "invalid_value",
+    "r046c0000000000000000020": "invalid_value",
+    "r046c0000000000000000021": "invalid_value",
+    "r046c0000000000000000022": "invalid_value",
+    "r046c0000000000000000023": "invalid_value",
+    "r046c0000000000000000024": "invalid_value",
+    "r046c0000000000000000025": "invalid_value",
+    "r046c0000000000000000001": "invalid_value"
+  }
+}

@@ -21,6 +21,7 @@ import {
   type Op,
 } from "./types";
 import { hlcWallMs } from "./hlc";
+import { recurrenceProblem } from "./recurrence";
 
 /** Rejection codes of the core (contract 2.5). */
 export type RejectCode =
@@ -147,6 +148,7 @@ type Shape =
   | "id_list"
   | "links"
   | "phoenix"
+  | "recurrence"
   | "repo"
   | "http_url"
   | "project_key"
@@ -189,6 +191,8 @@ const SHAPES: Record<EntityKind, Record<string, Shape>> = {
     clickup_id: "text",
     rank: "text",
     undated_ack: "timestamp",
+    recurrence: "recurrence",
+    recurrence_prev: "id",
     blocked_by: "id_list",
     ref: "task_ref",
     deleted: "bool",
@@ -203,6 +207,7 @@ const FIELD_LABELS: Record<string, string> = {
   remind_at: "Erinnerung",
   undated_ack: "Bewusst ohne Fälligkeit (Zeitpunkt)",
   blocked_by: "Blockiert durch (verschiedene Aufgaben-IDs)",
+  recurrence_prev: "Vorgängerin in der Serie (Aufgaben-ID)",
   links: "Links (absolute URL)",
   phoenix: "Phönix (Rolle und Feuer wie 2026-W45)",
   pr_url: "PR-Link (http(s)-URL)",
@@ -260,6 +265,8 @@ function shapeOk(shape: Shape, v: JsonValue): boolean {
         typeof v.fire === "string" &&
         isValidFire(v.fire)
       );
+    case "recurrence":
+      return recurrenceProblem(v) === null;
     case "repo":
       return typeof v === "string" && isValidRepo(v);
     case "http_url":
@@ -301,6 +308,10 @@ export function checkField(entity: EntityKind, field: string, value: JsonValue):
       return { code: "invalid_value", message: `${label(field)} darf höchstens ${TITLE_MAX} Zeichen lang sein.` };
     }
     return null;
+  }
+  if (shape === "recurrence") {
+    const problem = recurrenceProblem(value);
+    return problem === null ? null : { code: "invalid_value", message: problem };
   }
   if (!shapeOk(shape, value)) return { code: "invalid_value", message: `Ungültiger Wert für ${label(field)}.` };
   return null;
@@ -552,6 +563,9 @@ class Checker {
       if (tgt) this.brokenReference("task", t.id, refFields, tgt[0], tgt[1]);
     }
     if (this.changedAny("task", t.id, ["blocked_by"])) this.checkBlockedBy(t);
+    if (value(t, "recurrence") !== undefined && this.changedAny("task", t.id, ["recurrence", "due", "parent_id"])) {
+      this.checkRecurring(t);
+    }
 
     const type = taskType(t);
     const devType = type === "bug" || type === "feature";
@@ -645,6 +659,19 @@ class Checker {
     }
   }
 
+  /**
+   * A recurring task needs a due date and must be a root task (core: Checker::check_recurring).
+   * Sending `recurrence: null` along lifts both rules.
+   */
+  private checkRecurring(t: EntityState): void {
+    const key = keyOf("task", t.id);
+    if (value(t, "due") === undefined) {
+      this.blame(key, "invalid_value", "Eine wiederkehrende Aufgabe braucht eine Fälligkeit. Bitte zuerst den Rhythmus entfernen.");
+    } else if (value(t, "parent_id") !== undefined) {
+      this.blame(key, "invalid_value", "Nur Aufgaben ohne übergeordnete Aufgabe können wiederkehren.");
+    }
+  }
+
   /** Whether live task `from` waits for `target` along `blocked_by`, through live tasks only. */
   private waitsFor(from: string, target: string): boolean {
     const seen = new Set([from]);
@@ -714,6 +741,12 @@ function neighbourhood(scratch: View, changed: ReadonlyMap<Key, ReadonlySet<stri
   return [...out.values()];
 }
 
+/** Task fields only the server writes (core: Author::Server), with the reason shown to clients. */
+const SERVER_ONLY = new Map<string, string>([
+  ["ref", "Die Kennung („ref“) vergibt der Server, sobald die Aufgabe in einem Projekt mit Schlüssel liegt."],
+  ["recurrence_prev", "Die Vorgängerin in einer Serie („recurrence_prev“) setzt nur der Server, wenn er die nächste Instanz anlegt."],
+]);
+
 /**
  * Validates one commit (ops for one or more entities) against the current state
  * like zunder_core::validate_push: per-op checks first, then entity rules on the
@@ -738,9 +771,8 @@ export function validateOps(base: EntityStore, ops: readonly Op[], nowMs: number
       issue = { code: "future_hlc", message: "Der Zeitstempel liegt mehr als 24 Stunden in der Zukunft. Bitte die Uhr des Geräts prüfen." };
     }
     issue ??= checkField(op.entity, op.field, op.value);
-    if (!issue && op.entity === "task" && op.field === "ref") {
-      issue = { code: "invalid_value", message: "Die Kennung („ref“) vergibt der Server, sobald die Aufgabe in einem Projekt mit Schlüssel liegt." };
-    }
+    const serverOnly = op.entity === "task" ? SERVER_ONLY.get(op.field) : undefined;
+    if (!issue && serverOnly) issue = { code: "invalid_value", message: serverOnly };
     if (!issue) {
       const other = otherKinds(op.entity, op.entity_id)[0];
       if (other) {

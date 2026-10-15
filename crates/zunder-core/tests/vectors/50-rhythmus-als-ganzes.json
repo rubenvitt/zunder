@@ -1,0 +1,105 @@
+{
+  "name": "rhythmus-als-ganzes",
+  "description": "recurrence wird wie phoenix als ganzer Wert ersetzt (keine Mischung der Schlüssel zweier Stände); null beendet die Serie; recurrence_prev ist ein gewöhnliches Feld.",
+  "kind": "merge",
+  "ops": [
+    {
+      "op_id": "r050e0000000000000000001",
+      "entity": "task",
+      "entity_id": "r050c0000000000000000001",
+      "field": "title",
+      "value": "Wochenstatus",
+      "hlc": "1760000000000:00000:web-a"
+    },
+    {
+      "op_id": "r050e0000000000000000002",
+      "entity": "task",
+      "entity_id": "r050c0000000000000000001",
+      "field": "due",
+      "value": "2026-10-19",
+      "hlc": "1760000000000:00001:web-a"
+    },
+    {
+      "op_id": "r050e0000000000000000003",
+      "entity": "task",
+      "entity_id": "r050c0000000000000000001",
+      "field": "recurrence",
+      "value": {
+        "every": 1,
+        "unit": "week",
+        "weekdays": [
+          "mo",
+          "th"
+        ],
+        "from": "due"
+      },
+      "hlc": "1760000000100:00000:web-a"
+    },
+    {
+      "op_id": "r050e0000000000000000004",
+      "entity": "task",
+      "entity_id": "r050c0000000000000000001",
+      "field": "recurrence",
+      "value": {
+        "every": 1,
+        "unit": "month",
+        "day": "last",
+        "from": "done"
+      },
+      "hlc": "1760000000200:00000:web-b"
+    },
+    {
+      "op_id": "r050e0000000000000000005",
+      "entity": "task",
+      "entity_id": "r050c0000000000000000001",
+      "field": "recurrence_prev",
+      "value": "r050c0000000000000000002",
+      "hlc": "1760000000000:00002:server"
+    },
+    {
+      "op_id": "r050e0000000000000000006",
+      "entity": "task",
+      "entity_id": "r050c0000000000000000002",
+      "field": "title",
+      "value": "Serie beendet",
+      "hlc": "1760000000000:00000:web-a"
+    },
+    {
+      "op_id": "r050e0000000000000000007",
+      "entity": "task",
+      "entity_id": "r050c0000000000000000002",
+      "field": "recurrence",
+      "value": {
+        "every": 2,
+        "unit": "day",
+        "from": "due"
+      },
+      "hlc": "1760000000100:00000:web-a"
+    },
+    {
+      "op_id": "r050e0000000000000000008",
+      "entity": "task",
+      "entity_id": "r050c0000000000000000002",
+      "field": "recurrence",
+      "value": null,
+      "hlc": "1760000000300:00000:web-b"
+    }
+  ],
+  "expected": {
+    "task/r050c0000000000000000001": {
+      "title": "Wochenstatus",
+      "due": "2026-10-19",
+      "recurrence": {
+        "every": 1,
+        "unit": "month",
+        "day": "last",
+        "from": "done"
+      },
+      "recurrence_prev": "r050c0000000000000000002"
+    },
+    "task/r050c0000000000000000002": {
+      "title": "Serie beendet",
+      "recurrence": null
+    }
+  }
+}

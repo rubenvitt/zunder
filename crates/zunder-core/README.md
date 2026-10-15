@@ -11,9 +11,9 @@ Verbindlich ist der [Implementierungsvertrag](../../docs/superpowers/plans/2026-
 | `ids` | `Id` (CUID2, 24 Zeichen, `Copy`), `new_id()`, `deterministic_id()` / `clickup_entity_id()` (über UUIDv5 im festen `ZUNDER_NAMESPACE`), `Id::from_legacy` für alte UUIDs (beim Einlesen automatisch) |
 | `hlc` | `Hlc` mit Format `<13 Stellen wall_ms>:<5 Stellen counter>:<node>`, `NodeId`, `Clock::now(physical_ms)` und `Clock::receive(remote)` |
 | `op` | `Op` und `EntityKind` im Wire-Format, `upgrade_legacy_value` (alte UUIDs in ID-Feldern) |
-| `model` | Feldnamen (`fields::task::TITLE` …), Enums (`TaskType`, `TaskStatus`, `Location`, `Phoenix` …), typisierte Sichten `Area`, `Project`, `Task`, Wertvalidierung `validate_field_value` |
+| `model` | Feldnamen (`fields::task::TITLE` …), Enums und Werte (`TaskType`, `TaskStatus`, `Location`, `Phoenix`, `Recurrence` …), typisierte Sichten `Area`, `Project`, `Task`, Wertvalidierung `validate_field_value` |
 | `state` | `State`: LWW-Register je (Entität, Feld), abgeleitete Daten (`created_at`, `updated_at`, `status_changed_at`, wirksame Stelle, Unteraufgaben, Fortschritt, Sichtbarkeit), Snapshot-Export und -Import |
-| `validate` | `validate_push(state, ops, now_ms)` → `PushOutcome` mit `accepted`, `rejected`, `warnings` und den neu zu speichernden `new_ops`; `validate_push_as(…, Author::Server)` für Felder, die nur der Server schreibt (`ref`) |
+| `validate` | `validate_push(state, ops, now_ms)` → `PushOutcome` mit `accepted`, `rejected`, `warnings` und den neu zu speichernden `new_ops`; `validate_push_as(…, Author::Server)` für Felder, die nur der Server schreibt (`ref`, `recurrence_prev`) |
 | `numbering` | Projektschlüssel und Aufgabenkennungen (`ZUN-42`): `pending_refs`, `parse_ref`, `normalize_ref`, `State::task_by_ref` |
 | `builder` | `OpBatch` zum Erzeugen von Operationen: `create_area/project/task`, `set_*`, `move_task`, `delete_cascade` … |
 | `search` | Volltextsuche über Titel, Beschreibung, Plan und Namen; Groß-/Kleinschreibung egal, `ä` findet `a` und `ae` |

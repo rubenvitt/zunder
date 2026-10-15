@@ -165,7 +165,8 @@ pub enum Author {
     /// Clients, agents and tools: everything but the reserved fields.
     Client,
     /// The server's own bookkeeping (task references, see
-    /// [`crate::numbering`]).
+    /// [`crate::numbering`]; `recurrence_prev` of the next instance of a
+    /// series).
     Server,
 }
 
@@ -418,11 +419,19 @@ fn check_op(
     if let Err(e) = validate_field_value(op.entity, &op.field, &op.value) {
         return Some(Violation::new(e.code, e.message));
     }
-    if author == Author::Client && op.entity == EntityKind::Task && op.field == fields::task::REF {
-        return Some(Violation::new(
-            RejectCode::InvalidValue,
-            "Die Kennung („ref“) vergibt der Server, sobald die Aufgabe in einem Projekt mit Schlüssel liegt.",
-        ));
+    if author == Author::Client && op.entity == EntityKind::Task {
+        let reserved = match op.field.as_str() {
+            fields::task::REF => Some(
+                "Die Kennung („ref“) vergibt der Server, sobald die Aufgabe in einem Projekt mit Schlüssel liegt.",
+            ),
+            fields::task::RECURRENCE_PREV => Some(
+                "Die Vorgängerin in einer Serie („recurrence_prev“) setzt nur der Server, wenn er die nächste Instanz anlegt.",
+            ),
+            _ => None,
+        };
+        if let Some(message) = reserved {
+            return Some(Violation::new(RejectCode::InvalidValue, message));
+        }
     }
     let other_in_state = state.kinds_of(op.entity_id).find(|k| *k != op.entity);
     let ambiguous_in_push = other_in_state.is_none()
@@ -688,6 +697,11 @@ impl Checker<'_> {
         if self.changed_any(key, &[f::BLOCKED_BY]) {
             self.check_blocked_by(task);
         }
+        if task.value(f::RECURRENCE).is_some()
+            && self.changed_any(key, &[f::RECURRENCE, f::DUE, f::PARENT_ID])
+        {
+            self.check_recurring(task);
+        }
 
         let dev_only_type = task.task_type().is_dev_only();
         let dev_only_status = task.task_status().is_dev_only();
@@ -824,6 +838,27 @@ impl Checker<'_> {
                 );
                 return;
             }
+        }
+    }
+
+    /// A recurring task needs a due date and must be a root task. Checked
+    /// when the push sets the recurrence, the due date or the parent (or
+    /// restores the task); sending `recurrence: null` along lifts both rules.
+    fn check_recurring(&mut self, task: &Entity) {
+        use fields::task as f;
+        let key = (EntityKind::Task, task.id());
+        if task.value(f::DUE).is_none() {
+            self.blame(
+                key,
+                RejectCode::InvalidValue,
+                "Eine wiederkehrende Aufgabe braucht eine Fälligkeit. Bitte zuerst den Rhythmus entfernen.",
+            );
+        } else if task.value(f::PARENT_ID).is_some() {
+            self.blame(
+                key,
+                RejectCode::InvalidValue,
+                "Nur Aufgaben ohne übergeordnete Aufgabe können wiederkehren.",
+            );
         }
     }
 

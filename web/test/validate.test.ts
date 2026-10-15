@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mergeOps } from "../src/sync/merge";
 import { checkField, deleteCascade, validateOps } from "../src/sync/validate";
+import { toTask } from "../src/sync/model";
 import { op } from "./helpers";
 
 const id = (n: number) => `v${String(n).padStart(23, "0")}`;
@@ -146,6 +147,47 @@ describe("entity rules", () => {
 
   it("an id belongs to exactly one entity kind", () => {
     expect(codes(validateOps(base(), [op("task", A1, "title", "X", 100)]))).toEqual(["kind_mismatch"]);
+  });
+});
+
+describe("recurrence", () => {
+  const monthlyLast = { every: 1, unit: "month", day: "last", from: "due" };
+
+  it("names the violated rule of a malformed recurrence like the core", () => {
+    expect(checkField("task", "recurrence", monthlyLast)).toBeNull();
+    expect(checkField("task", "recurrence", null)).toBeNull();
+    expect(checkField("task", "recurrence", { every: 1, unit: "day", weekdays: ["mo"], from: "due" })?.message).toBe(
+      "Wochentage („weekdays“) gehen nur bei wöchentlichen Rhythmen.",
+    );
+    expect(checkField("task", "recurrence", { every: 1, unit: "year", day: 29, from: "due" })?.message).toContain("monatlichen");
+    expect(checkField("task", "recurrence", { every: 1000, unit: "day", from: "due" })?.message).toContain("1 bis 999");
+    expect(checkField("task", "recurrence", { every: 1, unit: "day", from: "due", until: "x" })?.message).toContain("„until“");
+    expect(checkField("task", "recurrence_prev", T1)).toBeNull();
+  });
+
+  it("needs a due date, a root task and leaves recurrence_prev to the server", () => {
+    const store = base();
+    const issues = validateOps(store, [op("task", T1, "recurrence", monthlyLast, 100)]);
+    expect(issues.map((i) => i.message)).toEqual(["Eine wiederkehrende Aufgabe braucht eine Fälligkeit. Bitte zuerst den Rhythmus entfernen."]);
+    expect(
+      codes(validateOps(store, [op("task", T1, "due", "2026-10-31", 100), op("task", T1, "recurrence", monthlyLast, 101), op("task", T1, "parent_id", BUG, 102)])),
+    ).toEqual(["invalid_value"]);
+    expect(codes(validateOps(store, [op("task", T1, "due", "2026-10-31", 100), op("task", T1, "recurrence", monthlyLast, 101)]))).toEqual([]);
+    expect(validateOps(store, [op("task", T1, "recurrence_prev", BUG, 100)])[0]!.message).toContain("nur der Server");
+  });
+
+  it("materializes the typed recurrence and drops malformed ones", () => {
+    const store = mergeOps([
+      op("task", T1, "title", "Odoo", 1),
+      op("task", T1, "recurrence", monthlyLast, 2),
+      op("task", T1, "recurrence_prev", BUG, 3),
+      op("task", NEW, "title", "Kaputt", 4),
+      op("task", NEW, "recurrence", { every: 1, unit: "month", day: 32, from: "due" }, 5),
+    ]);
+    const task = toTask(store.get("task", T1)!);
+    expect(task.recurrence).toEqual(monthlyLast);
+    expect(task.recurrence_prev).toBe(BUG);
+    expect(toTask(store.get("task", NEW)!).recurrence).toBeNull();
   });
 });
 

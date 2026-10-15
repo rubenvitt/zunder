@@ -81,6 +81,12 @@ pub mod fields {
         /// When the owner decided to leave the task without a due date on
         /// purpose ("bewusst undatiert"); unset = no decision.
         pub const UNDATED_ACK: &str = "undated_ack";
+        /// Recurrence of the task (see [`crate::model::Recurrence`]); unset =
+        /// not recurring.
+        pub const RECURRENCE: &str = "recurrence";
+        /// ID of the previous instance of the series. Written only by the
+        /// server when it creates the next instance; a soft reference.
+        pub const RECURRENCE_PREV: &str = "recurrence_prev";
         /// Tasks that have to be finished before this one (IDs). The reverse
         /// direction ("blocks") is derived, not stored.
         pub const BLOCKED_BY: &str = "blocked_by";
@@ -111,6 +117,8 @@ pub mod fields {
             CLICKUP_ID,
             RANK,
             UNDATED_ACK,
+            RECURRENCE,
+            RECURRENCE_PREV,
             BLOCKED_BY,
             REF,
             DELETED,
@@ -528,6 +536,233 @@ impl From<Phoenix> for Value {
     }
 }
 
+/// Highest `every` of a recurrence.
+pub const MAX_RECURRENCE_EVERY: u16 = 999;
+
+string_enum! {
+    /// Unit of a recurrence interval.
+    RecurrenceUnit, default = Day {
+        Day => "day", "Tag";
+        Week => "week", "Woche";
+        Month => "month", "Monat";
+        Year => "year", "Jahr";
+    }
+}
+
+string_enum! {
+    /// Anchor of a recurrence: the due date (fixed calendar) or the
+    /// completion (n units after it was finished).
+    RecurrenceFrom, default = Due {
+        Due => "due", "ab Fälligkeit";
+        Done => "done", "nach Erledigung";
+    }
+}
+
+string_enum! {
+    /// Day of the week in a weekly recurrence.
+    WeekdayCode, default = Mo {
+        Mo => "mo", "Mo";
+        Tu => "tu", "Di";
+        We => "we", "Mi";
+        Th => "th", "Do";
+        Fr => "fr", "Fr";
+        Sa => "sa", "Sa";
+        Su => "su", "So";
+    }
+}
+
+impl WeekdayCode {
+    /// The calendar weekday.
+    pub fn weekday(self) -> Weekday {
+        match self {
+            WeekdayCode::Mo => Weekday::Monday,
+            WeekdayCode::Tu => Weekday::Tuesday,
+            WeekdayCode::We => Weekday::Wednesday,
+            WeekdayCode::Th => Weekday::Thursday,
+            WeekdayCode::Fr => Weekday::Friday,
+            WeekdayCode::Sa => Weekday::Saturday,
+            WeekdayCode::Su => Weekday::Sunday,
+        }
+    }
+
+    /// The code of a calendar weekday.
+    pub fn of(weekday: Weekday) -> Self {
+        match weekday {
+            Weekday::Monday => WeekdayCode::Mo,
+            Weekday::Tuesday => WeekdayCode::Tu,
+            Weekday::Wednesday => WeekdayCode::We,
+            Weekday::Thursday => WeekdayCode::Th,
+            Weekday::Friday => WeekdayCode::Fr,
+            Weekday::Saturday => WeekdayCode::Sa,
+            Weekday::Sunday => WeekdayCode::Su,
+        }
+    }
+}
+
+/// Day of the month of a monthly recurrence: a fixed day (1–31; in shorter
+/// months the last day) or always the last day. Wire form: a number or
+/// `"last"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MonthDay {
+    Day(u8),
+    Last,
+}
+
+impl MonthDay {
+    fn parse(value: &Value) -> Option<Self> {
+        if value.as_str() == Some("last") {
+            return Some(MonthDay::Last);
+        }
+        value
+            .as_u64()
+            .filter(|d| (1..=31).contains(d))
+            .map(|d| MonthDay::Day(d as u8))
+    }
+}
+
+impl From<MonthDay> for Value {
+    fn from(d: MonthDay) -> Value {
+        match d {
+            MonthDay::Day(n) => Value::from(n),
+            MonthDay::Last => Value::from("last"),
+        }
+    }
+}
+
+impl Serialize for MonthDay {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            MonthDay::Day(n) => serializer.serialize_u8(*n),
+            MonthDay::Last => serializer.serialize_str("last"),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for MonthDay {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = Value::deserialize(deserializer)?;
+        MonthDay::parse(&value)
+            .ok_or_else(|| de::Error::custom(format!("invalid day of month {value}")))
+    }
+}
+
+/// Recurrence of a task (contract 2.4): every `every` units, optionally on
+/// given weekdays (weekly) or a given day (monthly), anchored at the due date
+/// or at the completion. Last-writer-wins as a whole, like [`Phoenix`].
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "Value")]
+pub struct Recurrence {
+    /// Interval in units, 1–[`MAX_RECURRENCE_EVERY`].
+    pub every: u16,
+    pub unit: RecurrenceUnit,
+    /// Only with [`RecurrenceUnit::Week`]: non-empty, distinct, in stored
+    /// order.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub weekdays: Option<Vec<WeekdayCode>>,
+    /// Only with [`RecurrenceUnit::Month`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub day: Option<MonthDay>,
+    pub from: RecurrenceFrom,
+}
+
+const RECURRENCE_KEYS: [&str; 5] = ["every", "unit", "weekdays", "day", "from"];
+
+impl Recurrence {
+    /// Strictly parses the wire form; the error is a German message naming
+    /// the violated rule.
+    pub fn parse(value: &Value) -> Result<Self, String> {
+        let Some(obj) = value.as_object() else {
+            return Err(
+                "„recurrence“ muss null oder ein Rhythmus {\"every\": 1–999, \"unit\": \
+                 \"day\"|\"week\"|\"month\"|\"year\", \"weekdays\"?: […], \"day\"?: 1–31|\"last\", \
+                 \"from\": \"due\"|\"done\"} sein."
+                    .to_owned(),
+            );
+        };
+        if let Some(key) = obj.keys().find(|k| !RECURRENCE_KEYS.contains(&k.as_str())) {
+            return Err(format!(
+                "Unbekannter Schlüssel „{key}“ im Rhythmus. Erlaubt: every, unit, weekdays, day, from."
+            ));
+        }
+        let every = obj
+            .get("every")
+            .and_then(Value::as_u64)
+            .filter(|n| (1..=u64::from(MAX_RECURRENCE_EVERY)).contains(n))
+            .ok_or_else(|| {
+                format!(
+                    "„every“ im Rhythmus muss eine ganze Zahl von 1 bis {MAX_RECURRENCE_EVERY} sein."
+                )
+            })? as u16;
+        let unit: RecurrenceUnit = obj
+            .get("unit")
+            .and_then(Value::as_str)
+            .and_then(|s| s.parse().ok())
+            .ok_or("„unit“ im Rhythmus muss day, week, month oder year sein.")?;
+        let from: RecurrenceFrom = obj
+            .get("from")
+            .and_then(Value::as_str)
+            .and_then(|s| s.parse().ok())
+            .ok_or(
+                "„from“ im Rhythmus muss due (ab Fälligkeit) oder done (nach Erledigung) sein.",
+            )?;
+        let weekdays = match obj.get("weekdays") {
+            None => None,
+            Some(v) => Some(parse_weekdays(v).ok_or(
+                "„weekdays“ im Rhythmus muss eine nicht leere Liste verschiedener Wochentage \
+                 aus mo, tu, we, th, fr, sa, su sein.",
+            )?),
+        };
+        let day = match obj.get("day") {
+            None => None,
+            Some(v) => Some(MonthDay::parse(v).ok_or(
+                "„day“ im Rhythmus muss eine ganze Zahl von 1 bis 31 oder \"last\" sein.",
+            )?),
+        };
+        if weekdays.is_some() && unit != RecurrenceUnit::Week {
+            return Err("Wochentage („weekdays“) gehen nur bei wöchentlichen Rhythmen.".to_owned());
+        }
+        if day.is_some() && unit != RecurrenceUnit::Month {
+            return Err(
+                "Ein fester Tag („day“) geht nur bei monatlichen Rhythmen (jährliche folgen dem Tag der Fälligkeit)."
+                    .to_owned(),
+            );
+        }
+        Ok(Self {
+            every,
+            unit,
+            weekdays,
+            day,
+            from,
+        })
+    }
+}
+
+fn parse_weekdays(value: &Value) -> Option<Vec<WeekdayCode>> {
+    let items = value.as_array().filter(|items| !items.is_empty())?;
+    let mut out: Vec<WeekdayCode> = Vec::with_capacity(items.len());
+    for item in items {
+        let code: WeekdayCode = item.as_str()?.parse().ok()?;
+        if out.contains(&code) {
+            return None;
+        }
+        out.push(code);
+    }
+    Some(out)
+}
+
+impl TryFrom<Value> for Recurrence {
+    type Error = String;
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        Recurrence::parse(&value)
+    }
+}
+
+impl From<Recurrence> for Value {
+    fn from(r: Recurrence) -> Value {
+        serde_json::to_value(r).expect("recurrence serializes")
+    }
+}
+
 /// External link of a task.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -598,6 +833,11 @@ pub struct Task {
     /// When the task was marked as deliberately undated.
     #[serde(with = "time::serde::rfc3339::option")]
     pub undated_ack: Option<OffsetDateTime>,
+    /// Recurrence; set = the task is recurring.
+    pub recurrence: Option<Recurrence>,
+    /// Previous instance of the series (set by the server; may name a
+    /// deleted task).
+    pub recurrence_prev: Option<Id>,
     /// IDs of the tasks this one waits for (as stored; may name deleted
     /// tasks, which no longer block).
     pub blocked_by: Vec<Id>,
@@ -652,6 +892,7 @@ enum Shape {
     IdList,
     Links,
     Phoenix,
+    Recurrence,
     Repo,
     HttpUrl,
     ProjectKey,
@@ -686,7 +927,7 @@ fn shape_of(kind: EntityKind, field: &str) -> Option<Shape> {
             t::TYPE => Shape::Enum(TaskType::codes),
             t::STATUS => Shape::Enum(TaskStatus::codes),
             t::LOCATION => Shape::Location,
-            t::PARENT_ID => Shape::Id,
+            t::PARENT_ID | t::RECURRENCE_PREV => Shape::Id,
             t::DUE => Shape::Due,
             t::REMIND_AT
             | t::CLAIM_EXPIRES_AT
@@ -697,6 +938,7 @@ fn shape_of(kind: EntityKind, field: &str) -> Option<Shape> {
             t::BLOCKED_BY => Shape::IdList,
             t::LINKS => Shape::Links,
             t::PHOENIX => Shape::Phoenix,
+            t::RECURRENCE => Shape::Recurrence,
             t::PR_URL => Shape::HttpUrl,
             t::REF => Shape::TaskRef,
             t::DESCRIPTION
@@ -881,6 +1123,9 @@ fn check_shape(shape: Shape, field: &str, value: &Value) -> Result<(), ValueErro
                      \"fire\":\"JJJJ-Www\"} mit gültiger ISO-Woche sein.",
                 )
             })?;
+        }
+        Shape::Recurrence => {
+            Recurrence::parse(value).map_err(ValueError::invalid)?;
         }
         Shape::Repo => {
             let s = text()?;
@@ -1255,6 +1500,103 @@ mod tests {
             json!({"role": "flamme", "fire": "2026-45"}),
         );
         bad(EntityKind::Task, "phoenix", json!({"role": "flamme"}));
+    }
+
+    #[test]
+    fn recurrences() {
+        let r = "recurrence";
+        for value in [
+            json!(null),
+            json!({"every": 1, "unit": "day", "from": "due"}),
+            json!({"from": "done", "unit": "year", "every": 999}),
+            json!({"every": 2, "unit": "week", "weekdays": ["th", "mo"], "from": "due"}),
+            json!({"every": 1, "unit": "week", "weekdays": ["mo", "tu", "we", "th", "fr", "sa", "su"], "from": "done"}),
+            json!({"every": 1, "unit": "month", "day": "last", "from": "due"}),
+            json!({"every": 3, "unit": "month", "day": 31, "from": "done"}),
+            json!({"every": 1, "unit": "month", "day": 1, "from": "due"}),
+        ] {
+            ok(EntityKind::Task, r, value);
+        }
+        for value in [
+            json!("monatlich"),
+            json!([]),
+            json!({}),
+            json!({"every": 0, "unit": "day", "from": "due"}),
+            json!({"every": 1000, "unit": "day", "from": "due"}),
+            json!({"every": -1, "unit": "day", "from": "due"}),
+            json!({"every": 1.5, "unit": "day", "from": "due"}),
+            json!({"every": "1", "unit": "day", "from": "due"}),
+            json!({"unit": "day", "from": "due"}),
+            json!({"every": 1, "unit": "hour", "from": "due"}),
+            json!({"every": 1, "from": "due"}),
+            json!({"every": 1, "unit": "day"}),
+            json!({"every": 1, "unit": "day", "from": "start"}),
+            json!({"every": 1, "unit": "day", "from": "due", "until": "2027-01-01"}),
+            json!({"every": 1, "unit": "week", "weekdays": [], "from": "due"}),
+            json!({"every": 1, "unit": "week", "weekdays": ["mo", "mo"], "from": "due"}),
+            json!({"every": 1, "unit": "week", "weekdays": ["montag"], "from": "due"}),
+            json!({"every": 1, "unit": "week", "weekdays": ["MO"], "from": "due"}),
+            json!({"every": 1, "unit": "week", "weekdays": "mo", "from": "due"}),
+            json!({"every": 1, "unit": "week", "weekdays": null, "from": "due"}),
+            json!({"every": 1, "unit": "day", "weekdays": ["mo"], "from": "due"}),
+            json!({"every": 1, "unit": "month", "weekdays": ["mo"], "from": "due"}),
+            json!({"every": 1, "unit": "month", "day": 0, "from": "due"}),
+            json!({"every": 1, "unit": "month", "day": 32, "from": "due"}),
+            json!({"every": 1, "unit": "month", "day": "first", "from": "due"}),
+            json!({"every": 1, "unit": "month", "day": "15", "from": "due"}),
+            json!({"every": 1, "unit": "month", "day": null, "from": "due"}),
+            json!({"every": 1, "unit": "month", "day": 15, "weekdays": ["mo"], "from": "due"}),
+            json!({"every": 1, "unit": "year", "day": 29, "from": "due"}),
+            json!({"every": 1, "unit": "week", "day": "last", "from": "due"}),
+        ] {
+            assert_eq!(
+                bad(EntityKind::Task, r, value.clone()),
+                RejectCode::InvalidValue,
+                "{value}"
+            );
+        }
+        let message = |value: Value| {
+            validate_field_value(EntityKind::Task, r, &value)
+                .unwrap_err()
+                .message
+        };
+        assert!(
+            message(json!({"every": 1, "unit": "day", "weekdays": ["mo"], "from": "due"}))
+                .contains("wöchentlich")
+        );
+        assert!(
+            message(json!({"every": 1, "unit": "year", "day": 1, "from": "due"}))
+                .contains("monatlich")
+        );
+        assert!(message(json!({"every": 1, "unit": "day", "from": "due", "x": 1})).contains("„x“"));
+        ok(EntityKind::Task, "recurrence_prev", json!(ID));
+        ok(EntityKind::Task, "recurrence_prev", json!(null));
+        bad(EntityKind::Task, "recurrence_prev", json!("ZUN-1"));
+    }
+
+    #[test]
+    fn recurrence_typed_view_round_trips() {
+        let wire = json!({"every": 2, "unit": "week", "weekdays": ["th", "mo"], "from": "due"});
+        let r: Recurrence = serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!(r.every, 2);
+        assert_eq!(r.unit, RecurrenceUnit::Week);
+        assert_eq!(r.weekdays, Some(vec![WeekdayCode::Th, WeekdayCode::Mo]));
+        assert_eq!(r.day, None);
+        assert_eq!(r.from, RecurrenceFrom::Due);
+        assert_eq!(Value::from(r), wire);
+        let wire = json!({"every": 1, "unit": "month", "day": "last", "from": "done"});
+        let r: Recurrence = serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!(r.day, Some(MonthDay::Last));
+        assert_eq!(Value::from(r), wire);
+        let r: Recurrence =
+            serde_json::from_value(json!({"every": 1, "unit": "month", "day": 31, "from": "due"}))
+                .unwrap();
+        assert_eq!(r.day, Some(MonthDay::Day(31)));
+        assert_eq!(Value::from(MonthDay::Day(31)), json!(31));
+        assert!(serde_json::from_value::<Recurrence>(json!({"every": 1, "unit": "day"})).is_err());
+        for code in WeekdayCode::ALL {
+            assert_eq!(WeekdayCode::of(code.weekday()), *code);
+        }
     }
 
     #[test]
