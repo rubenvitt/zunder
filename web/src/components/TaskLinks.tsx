@@ -195,7 +195,7 @@ function TaskCardBody(props: { task: Task; onOpen: () => void }) {
           {(r) => (
             <span class="task-card-recurring">
               <Icon name="repeat" size={12} />
-              {describeRecurrence(r())}
+              {describeRecurrence(r(), props.task.due)}
             </span>
           )}
         </Show>

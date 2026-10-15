@@ -36,6 +36,17 @@ describe("describeRecurrence (contract 5.1)", () => {
     expect(describeRecurrence(r({ every: 2, unit: "month", day: 15, from: "due" }))).toBe("Alle 2 Monate am 15.");
   });
 
+  it("names the day of a yearly rhythm with the month of the due date", () => {
+    expect(describeRecurrence(r({ every: 1, unit: "year", day: 28, from: "due" }), "2027-02-28")).toBe("Jährlich am 28.02.");
+    expect(describeRecurrence(r({ every: 1, unit: "year", day: 29, from: "due" }), "2027-02-28T09:00:00+01:00")).toBe("Jährlich am 29.02.");
+    expect(describeRecurrence(r({ every: 2, unit: "year", day: 5, from: "done" }), "2026-10-05")).toBe("Alle 2 Jahre am 05.10. nach Erledigung");
+    expect(describeRecurrence(r({ every: 1, unit: "year", day: "last", from: "due" }), "2027-02-28")).toBe("Jährlich am Monatsletzten");
+    // Without a due date only the day.
+    expect(describeRecurrence(r({ every: 1, unit: "year", day: 28, from: "due" }))).toBe("Jährlich am 28.");
+    // The due date does not change other units.
+    expect(describeRecurrence(r({ every: 1, unit: "month", day: 15, from: "due" }), "2027-02-15")).toBe("Monatlich am 15.");
+  });
+
   it("describes a recurrence in the change history", () => {
     expect(describeValue("recurrence", { every: 1, unit: "month", day: "last", from: "due" })).toBe("Monatlich am Monatsletzten");
     expect(describeValue("recurrence", null)).toBe("entfernt");
@@ -49,7 +60,8 @@ describe("editing a recurrence", () => {
   it("drops weekdays and day that do not fit the new unit", () => {
     expect(withUnit(weekly, "month")).toEqual({ every: 2, unit: "month", from: "due" });
     expect(withUnit(monthly, "week")).toEqual({ every: 1, unit: "week", from: "done" });
-    expect(withUnit(monthly, "year")).toEqual({ every: 1, unit: "year", from: "done" });
+    expect(withUnit(monthly, "year")).toEqual({ every: 1, unit: "year", day: "last", from: "done" });
+    expect(withUnit(withUnit(monthly, "year"), "month")).toEqual(monthly);
     expect(withUnit(weekly, "week")).toEqual(weekly);
     for (const v of [withUnit(weekly, "day"), withUnit(monthly, "day")]) expect(recurrenceProblem(recurrenceValue(v))).toBeNull();
   });
@@ -63,6 +75,8 @@ describe("editing a recurrence", () => {
 
   it("sets or clears the day, the interval and the anchor", () => {
     expect(withDay(monthly, 15)).toEqual({ every: 1, unit: "month", day: 15, from: "done" });
+    expect(withDay({ every: 1, unit: "year", from: "due" }, 28)).toEqual({ every: 1, unit: "year", day: 28, from: "due" });
+    expect(withDay({ every: 1, unit: "week", from: "due" }, 28)).toEqual({ every: 1, unit: "week", from: "due" });
     const cleared = withDay(monthly, undefined);
     expect(cleared).toEqual({ every: 1, unit: "month", from: "done" });
     expect("day" in cleared).toBe(false);

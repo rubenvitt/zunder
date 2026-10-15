@@ -647,8 +647,8 @@ impl<'de> Deserialize<'de> for MonthDay {
 }
 
 /// Recurrence of a task (contract 2.4): every `every` units, optionally on
-/// given weekdays (weekly) or a given day (monthly), anchored at the due date
-/// or at the completion. Last-writer-wins as a whole, like [`Phoenix`].
+/// given weekdays (weekly) or a given day of the month (monthly, yearly),
+/// anchored at the due date or at the completion. Last-writer-wins as a whole, like [`Phoenix`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "Value")]
 pub struct Recurrence {
@@ -659,7 +659,8 @@ pub struct Recurrence {
     /// order.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub weekdays: Option<Vec<WeekdayCode>>,
-    /// Only with [`RecurrenceUnit::Month`].
+    /// Only with [`RecurrenceUnit::Month`] and [`RecurrenceUnit::Year`]
+    /// (yearly: in the month of the due date).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub day: Option<MonthDay>,
     pub from: RecurrenceFrom,
@@ -721,9 +722,9 @@ impl Recurrence {
         if weekdays.is_some() && unit != RecurrenceUnit::Week {
             return Err("Wochentage („weekdays“) gehen nur bei wöchentlichen Rhythmen.".to_owned());
         }
-        if day.is_some() && unit != RecurrenceUnit::Month {
+        if day.is_some() && !matches!(unit, RecurrenceUnit::Month | RecurrenceUnit::Year) {
             return Err(
-                "Ein fester Tag („day“) geht nur bei monatlichen Rhythmen (jährliche folgen dem Tag der Fälligkeit)."
+                "Ein fester Tag („day“) geht nur bei monatlichen und jährlichen Rhythmen (bei jährlichen im Monat der Fälligkeit)."
                     .to_owned(),
             );
         }
@@ -1514,6 +1515,8 @@ mod tests {
             json!({"every": 1, "unit": "month", "day": "last", "from": "due"}),
             json!({"every": 3, "unit": "month", "day": 31, "from": "done"}),
             json!({"every": 1, "unit": "month", "day": 1, "from": "due"}),
+            json!({"every": 1, "unit": "year", "day": 28, "from": "due"}),
+            json!({"every": 2, "unit": "year", "day": "last", "from": "done"}),
         ] {
             ok(EntityKind::Task, r, value);
         }
@@ -1546,8 +1549,10 @@ mod tests {
             json!({"every": 1, "unit": "month", "day": "15", "from": "due"}),
             json!({"every": 1, "unit": "month", "day": null, "from": "due"}),
             json!({"every": 1, "unit": "month", "day": 15, "weekdays": ["mo"], "from": "due"}),
-            json!({"every": 1, "unit": "year", "day": 29, "from": "due"}),
+            json!({"every": 1, "unit": "day", "day": 29, "from": "due"}),
             json!({"every": 1, "unit": "week", "day": "last", "from": "due"}),
+            json!({"every": 1, "unit": "year", "day": 0, "from": "due"}),
+            json!({"every": 1, "unit": "year", "weekdays": ["mo"], "from": "due"}),
         ] {
             assert_eq!(
                 bad(EntityKind::Task, r, value.clone()),
@@ -1565,8 +1570,8 @@ mod tests {
                 .contains("wöchentlich")
         );
         assert!(
-            message(json!({"every": 1, "unit": "year", "day": 1, "from": "due"}))
-                .contains("monatlich")
+            message(json!({"every": 1, "unit": "week", "day": 1, "from": "due"}))
+                .contains("monatlichen und jährlichen")
         );
         assert!(message(json!({"every": 1, "unit": "day", "from": "due", "x": 1})).contains("„x“"));
         ok(EntityKind::Task, "recurrence_prev", json!(ID));

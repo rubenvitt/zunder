@@ -159,7 +159,12 @@ describe("recurrence", () => {
     expect(checkField("task", "recurrence", { every: 1, unit: "day", weekdays: ["mo"], from: "due" })?.message).toBe(
       "Wochentage („weekdays“) gehen nur bei wöchentlichen Rhythmen.",
     );
-    expect(checkField("task", "recurrence", { every: 1, unit: "year", day: 29, from: "due" })?.message).toContain("monatlichen");
+    expect(checkField("task", "recurrence", { every: 1, unit: "week", day: 29, from: "due" })?.message).toBe(
+      "Ein fester Tag („day“) geht nur bei monatlichen und jährlichen Rhythmen (bei jährlichen im Monat der Fälligkeit).",
+    );
+    expect(checkField("task", "recurrence", { every: 1, unit: "year", day: 28, from: "due" })).toBeNull();
+    expect(checkField("task", "recurrence", { every: 1, unit: "year", day: "last", from: "done" })).toBeNull();
+    expect(checkField("task", "recurrence", { every: 1, unit: "year", day: 32, from: "due" })?.message).toContain("„day“");
     expect(checkField("task", "recurrence", { every: 1000, unit: "day", from: "due" })?.message).toContain("1 bis 999");
     expect(checkField("task", "recurrence", { every: 1, unit: "day", from: "due", until: "x" })?.message).toContain("„until“");
     expect(checkField("task", "recurrence_prev", T1)).toBeNull();

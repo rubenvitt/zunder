@@ -14,10 +14,11 @@
 //! - `from: "done"` counts from the local completion date and never adjusts
 //!   to today.
 //! - A day of the month beyond the month's length gives its last day; the
-//!   configured day (`day`, or for monthly series without it the day of D0,
-//!   which the server then writes into the new instance's recurrence) keeps
-//!   the series from drifting. A yearly series starting on the last day of
-//!   February stays on the last day of February.
+//!   configured day (`day`, or for monthly and yearly series without it the
+//!   day of D0, which the server then writes into the new instance's
+//!   recurrence) keeps the series from drifting. Yearly series use the month
+//!   of D0: a 28.02. stays a 28.02., a 29.02. falls on the 28.02. in common
+//!   years and comes back in leap years, `"last"` is the February last.
 //!
 //! Only the server creates follow-up instances; clients never compute them.
 //! Which tasks a push completed and what their next instance carries:
@@ -63,8 +64,9 @@ pub struct NextOccurrence {
     /// New reminder, if the predecessor had one: moved by as many calendar
     /// days as the due date, at the same local time.
     pub remind_at: Option<OffsetDateTime>,
-    /// Recurrence of the new instance: unchanged, except that a monthly
-    /// `from: "due"` series without `day` gets the day of the old due date.
+    /// Recurrence of the new instance: unchanged, except that a monthly or
+    /// yearly `from: "due"` series without `day` gets the day of the old due
+    /// date.
     pub recurrence: Recurrence,
 }
 
@@ -106,12 +108,16 @@ pub fn next_occurrence(
     })
 }
 
-/// The recurrence a new instance carries: a monthly `from: "due"` series
-/// without `day` gets the day of D0, so it does not drift (31.01. → 28.02.
-/// → 31.03.). Everything else stays as it is.
+/// The recurrence a new instance carries: a monthly or yearly `from: "due"`
+/// series without `day` gets the day of D0, so it does not drift (31.01. →
+/// 28.02. → 31.03.; yearly 29.02. → 28.02. → 29.02. in the next leap year,
+/// while a 28.02. stays a 28.02.). Everything else stays as it is.
 pub fn series_recurrence(recurrence: &Recurrence, d0: Date) -> Recurrence {
     let mut out = recurrence.clone();
-    if out.from == RecurrenceFrom::Due && out.unit == RecurrenceUnit::Month && out.day.is_none() {
+    if out.from == RecurrenceFrom::Due
+        && matches!(out.unit, RecurrenceUnit::Month | RecurrenceUnit::Year)
+        && out.day.is_none()
+    {
         out.day = Some(MonthDay::Day(d0.day()));
     }
     out
@@ -165,23 +171,13 @@ fn next_from_due(r: &Recurrence, d0: Date, today: Date) -> Option<Date> {
                 }
             }
         },
-        RecurrenceUnit::Month => {
+        RecurrenceUnit::Month | RecurrenceUnit::Year => {
+            let step = months_per_step(r);
             let day = r.day.unwrap_or(MonthDay::Day(d0.day()));
             let months = month_index(lower) - month_index(d0);
-            let mut k = div_ceil(months, every).max(0);
+            let mut k = div_ceil(months, step).max(0);
             loop {
-                let candidate = day_in_month(month_index(d0) + k * every, day)?;
-                if candidate >= lower {
-                    return Some(candidate);
-                }
-                k += 1;
-            }
-        }
-        RecurrenceUnit::Year => {
-            let years = i64::from(lower.year()) - i64::from(d0.year());
-            let mut k = div_ceil(years, every).max(1);
-            loop {
-                let candidate = same_day_in_year(d0, i64::from(d0.year()) + k * every)?;
+                let candidate = day_in_month(month_index(d0) + k * step, day)?;
                 if candidate >= lower {
                     return Some(candidate);
                 }
@@ -215,27 +211,21 @@ fn next_from_done(r: &Recurrence, done: Date) -> Option<Date> {
                 }
             }
         }
-        RecurrenceUnit::Month => {
+        RecurrenceUnit::Month | RecurrenceUnit::Year => {
             let day = r.day.unwrap_or(MonthDay::Day(done.day()));
-            day_in_month(month_index(done) + every, day)
-        }
-        RecurrenceUnit::Year => {
-            day_in_month(month_index(done) + 12 * every, MonthDay::Day(done.day()))
+            day_in_month(month_index(done) + months_per_step(r), day)
         }
     }
 }
 
-/// The month and day of `d0` in `year`; a day beyond the month's length
-/// gives its last day, and the last day of February stays the last day of
-/// February (29.02. ↔ 28.02.).
-fn same_day_in_year(d0: Date, year: i64) -> Option<Date> {
-    let feb_last = d0.month() == Month::February && d0.day() == d0.month().length(d0.year());
-    let day = if feb_last {
-        MonthDay::Last
+/// Months between two dates of a monthly or yearly series.
+fn months_per_step(r: &Recurrence) -> i64 {
+    let every = i64::from(r.every);
+    if r.unit == RecurrenceUnit::Year {
+        12 * every
     } else {
-        MonthDay::Day(d0.day())
-    };
-    day_in_month(year * 12 + i64::from(u8::from(d0.month())) - 1, day)
+        every
+    }
 }
 
 /// The day `day` in the month with index `year · 12 + month − 1`, clamped

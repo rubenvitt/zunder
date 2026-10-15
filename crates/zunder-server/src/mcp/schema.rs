@@ -203,9 +203,11 @@ fn recurrence(nullable: bool) -> Value {
             },
             "day": {
                 "type": ["integer", "string"],
-                "description": "Nur bei unit month: Tag des Monats 1–31 (in kürzeren Monaten der \
-                    letzte) oder \"last\" (immer der Monatsletzte). Fehlt er, gilt der Tag der \
-                    Fälligkeit.",
+                "description": "Nur bei unit month und year: Tag des Monats 1–31 (in kürzeren \
+                    Monaten der letzte) oder \"last\" (immer der Monatsletzte); bei year im Monat \
+                    der Fälligkeit (bzw. der Erledigung bei from done), etwa day 28 für jeden \
+                    28.02. oder \"last\" für jeden Februarletzten. Fehlt er, gilt der Tag der \
+                    Fälligkeit (bzw. der Erledigung).",
             },
         },
         "required": ["every", "unit", "from"],

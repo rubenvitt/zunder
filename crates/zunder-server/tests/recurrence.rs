@@ -430,6 +430,82 @@ async fn mcp_weekly_task_names_its_next_instance() {
 }
 
 #[tokio::test]
+async fn mcp_yearly_series_keeps_its_day_across_leap_years() {
+    let s = TestServer::new().await;
+    let t = api_token(&s, "claude").await;
+    let yearly = json!({"every": 1, "unit": "year", "from": "due"});
+    // A deadline on 28.02. stays on 28.02., also in the leap year 2104; the
+    // server writes the day into the next instance.
+    let created = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Frist", "due": "2103-02-28", "recurrence": yearly}),
+    )
+    .await;
+    let done = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": created["task"]["id"], "status": "done"}),
+    )
+    .await;
+    let next = &done["next_task"];
+    assert_eq!(next["due"], "2104-02-28");
+    assert_eq!(
+        next["recurrence"],
+        json!({"every": 1, "unit": "year", "day": 28, "from": "due"})
+    );
+
+    // 29.02. falls on 28.02. in common years and comes back in leap years.
+    let created = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Schalttag", "due": "2104-02-29", "recurrence": yearly}),
+    )
+    .await;
+    let mut id = created["task"]["id"].clone();
+    let mut dues = Vec::new();
+    for _ in 0..4 {
+        let done = mcp_ok(
+            &s,
+            &t,
+            "update_task",
+            json!({"task_id": id, "status": "done"}),
+        )
+        .await;
+        dues.push(done["next_task"]["due"].clone());
+        id = done["next_task"]["id"].clone();
+    }
+    assert_eq!(
+        dues,
+        ["2105-02-28", "2106-02-28", "2107-02-28", "2108-02-29"]
+    );
+
+    // "last" with a day set explicitly is the February last.
+    let created = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({
+            "title": "Februarletzter",
+            "due": "2103-02-28",
+            "recurrence": {"every": 1, "unit": "year", "day": "last", "from": "due"},
+        }),
+    )
+    .await;
+    let done = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": created["task"]["id"], "status": "done"}),
+    )
+    .await;
+    assert_eq!(done["next_task"]["due"], "2104-02-29");
+}
+
+#[tokio::test]
 async fn mcp_month_end_series_continues_on_the_last_day() {
     let s = TestServer::new().await;
     let t = api_token(&s, "claude").await;
@@ -590,8 +666,8 @@ async fn mcp_explains_invalid_recurrences() {
             "Wochentage",
         ),
         (
-            json!({"every": 1, "unit": "year", "day": "last", "from": "due"}),
-            "monatlichen",
+            json!({"every": 1, "unit": "week", "day": "last", "from": "due"}),
+            "monatlichen und jährlichen",
         ),
         (
             json!({"every": 1, "unit": "month", "day": 32, "from": "due"}),

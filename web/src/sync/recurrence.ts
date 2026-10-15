@@ -50,8 +50,8 @@ function check(v: JsonValue | undefined): Result {
     out.day = d;
   }
   if (out.weekdays && out.unit !== "week") return { error: "Wochentage („weekdays“) gehen nur bei wöchentlichen Rhythmen." };
-  if (out.day !== undefined && out.unit !== "month") {
-    return { error: "Ein fester Tag („day“) geht nur bei monatlichen Rhythmen (jährliche folgen dem Tag der Fälligkeit)." };
+  if (out.day !== undefined && out.unit !== "month" && out.unit !== "year") {
+    return { error: "Ein fester Tag („day“) geht nur bei monatlichen und jährlichen Rhythmen (bei jährlichen im Monat der Fälligkeit)." };
   }
   return { ok: out };
 }
@@ -84,11 +84,11 @@ export function recurrenceValue(r: Recurrence): JsonValue {
 function build(every: number, unit: Recurrence["unit"], from: Recurrence["from"], weekdays?: WeekdayCode[], day?: number | "last"): Recurrence {
   const out: Recurrence = { every, unit, from };
   if (unit === "week" && weekdays && weekdays.length > 0) out.weekdays = weekdays;
-  if (unit === "month" && day !== undefined) out.day = day;
+  if ((unit === "month" || unit === "year") && day !== undefined) out.day = day;
   return out;
 }
 
-/** Another unit; weekdays (weeks only) and day (months only) that no longer fit are dropped. */
+/** Another unit; weekdays (weeks only) and day (months and years only) that no longer fit are dropped. */
 export function withUnit(r: Recurrence, unit: Recurrence["unit"]): Recurrence {
   return build(r.every, unit, r.from, r.weekdays, r.day);
 }
@@ -101,7 +101,7 @@ export function withFrom(r: Recurrence, from: Recurrence["from"]): Recurrence {
   return build(r.every, r.unit, from, r.weekdays, r.day);
 }
 
-/** Fixed day of the month (`undefined`: the day of the due date or completion). */
+/** Fixed day of the month, for years in the month of the due date (`undefined`: the day of the due date or completion). */
 export function withDay(r: Recurrence, day: number | "last" | undefined): Recurrence {
   return build(r.every, r.unit, r.from, r.weekdays, day);
 }

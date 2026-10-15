@@ -294,7 +294,7 @@
           "description": "Rhythmus einer wiederkehrenden Aufgabe; braucht due und geht nur an Aufgaben ohne parent_id. Beispiele: jeden Freitag {\"every\":1,\"unit\":\"week\",\"weekdays\":[\"fr\"],\"from\":\"due\"}, jeden Monatsletzten {\"every\":1,\"unit\":\"month\",\"day\":\"last\",\"from\":\"due\"}, 3 Monate nach Erledigung {\"every\":3,\"unit\":\"month\",\"from\":\"done\"}. Wird die Aufgabe erledigt oder verworfen, legt der Server die nächste Instanz an (mit neuer Fälligkeit, ohne Unteraufgaben und Kommentare).",
           "properties": {
             "day": {
-              "description": "Nur bei unit month: Tag des Monats 1–31 (in kürzeren Monaten der letzte) oder \"last\" (immer der Monatsletzte). Fehlt er, gilt der Tag der Fälligkeit.",
+              "description": "Nur bei unit month und year: Tag des Monats 1–31 (in kürzeren Monaten der letzte) oder \"last\" (immer der Monatsletzte); bei year im Monat der Fälligkeit (bzw. der Erledigung bei from done), etwa day 28 für jeden 28.02. oder \"last\" für jeden Februarletzten. Fehlt er, gilt der Tag der Fälligkeit (bzw. der Erledigung).",
               "type": [
                 "integer",
                 "string"
@@ -517,7 +517,7 @@
           "description": "Rhythmus einer wiederkehrenden Aufgabe; braucht due und geht nur an Aufgaben ohne parent_id. Beispiele: jeden Freitag {\"every\":1,\"unit\":\"week\",\"weekdays\":[\"fr\"],\"from\":\"due\"}, jeden Monatsletzten {\"every\":1,\"unit\":\"month\",\"day\":\"last\",\"from\":\"due\"}, 3 Monate nach Erledigung {\"every\":3,\"unit\":\"month\",\"from\":\"done\"}. Wird die Aufgabe erledigt oder verworfen, legt der Server die nächste Instanz an (mit neuer Fälligkeit, ohne Unteraufgaben und Kommentare). null beendet die Serie.",
           "properties": {
             "day": {
-              "description": "Nur bei unit month: Tag des Monats 1–31 (in kürzeren Monaten der letzte) oder \"last\" (immer der Monatsletzte). Fehlt er, gilt der Tag der Fälligkeit.",
+              "description": "Nur bei unit month und year: Tag des Monats 1–31 (in kürzeren Monaten der letzte) oder \"last\" (immer der Monatsletzte); bei year im Monat der Fälligkeit (bzw. der Erledigung bei from done), etwa day 28 für jeden 28.02. oder \"last\" für jeden Februarletzten. Fehlt er, gilt der Tag der Fälligkeit (bzw. der Erledigung).",
               "type": [
                 "integer",
                 "string"

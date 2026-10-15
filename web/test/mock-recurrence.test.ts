@@ -36,12 +36,26 @@ describe("from due", () => {
     expect(next({ every: 1, unit: "week", from: "due" }, "2026-10-12", at(2026, 10, 12))?.due).toBe("2026-10-19");
   });
 
-  it("keeps the last day of February in yearly series", () => {
+  /** Follows a series n times, each instance completed on its due date. */
+  const chain = (r: MockRecurrence, due: string, n: number) => {
+    const out: string[] = [];
+    for (let i = 0; i < n; i++) {
+      const [y, m, d] = due.split("-").map(Number);
+      const result = next(r, due, at(y!, m!, d!))!;
+      out.push(result.due);
+      ({ due, recurrence: r } = result);
+    }
+    return out;
+  };
+
+  it("keeps the day of yearly series without drift and writes it into the series", () => {
     const yearly: MockRecurrence = { every: 1, unit: "year", from: "due" };
-    expect(next(yearly, "2028-02-29", at(2028, 2, 29))?.due).toBe("2029-02-28");
-    expect(next(yearly, "2031-02-28", at(2031, 2, 28))?.due).toBe("2032-02-29");
-    expect(next(yearly, "2026-10-12", at(2026, 10, 12))?.due).toBe("2027-10-12");
-    expect(next(yearly, "2026-10-12", at(2026, 10, 12))?.recurrence).toEqual(yearly);
+    expect(chain(yearly, "2027-02-28", 8)).toEqual(["2028", "2029", "2030", "2031", "2032", "2033", "2034", "2035"].map((y) => `${y}-02-28`));
+    expect(chain(yearly, "2028-02-29", 4)).toEqual(["2029-02-28", "2030-02-28", "2031-02-28", "2032-02-29"]);
+    expect(next(yearly, "2026-10-12", at(2026, 10, 12))).toMatchObject({ due: "2027-10-12", recurrence: { ...yearly, day: 12 } });
+    expect(chain({ every: 1, unit: "year", day: "last", from: "due" }, "2027-02-28", 2)).toEqual(["2028-02-29", "2029-02-28"]);
+    // k = 0: the configured day of D0's own month.
+    expect(next({ every: 1, unit: "year", day: 20, from: "due" }, "2026-03-10", at(2026, 3, 10))?.due).toBe("2026-03-20");
   });
 });
 
@@ -53,6 +67,8 @@ describe("from done", () => {
     expect(next({ every: 1, unit: "week", weekdays: ["mo", "th"], from: "done" }, "2026-01-01", at(2026, 10, 14))?.due).toBe("2026-10-19");
     expect(next({ every: 2, unit: "day", from: "done" }, "2026-01-01", at(2026, 10, 14))?.due).toBe("2026-10-16");
     expect(next({ every: 1, unit: "year", from: "done" }, "2026-01-01", at(2028, 2, 29))?.due).toBe("2029-02-28");
+    expect(next({ every: 1, unit: "year", day: "last", from: "done" }, "2026-01-01", at(2027, 2, 10))?.due).toBe("2028-02-29");
+    expect(next({ every: 1, unit: "year", from: "done" }, "2026-01-01", at(2027, 2, 10))?.recurrence).toEqual({ every: 1, unit: "year", from: "done" });
   });
 });
 

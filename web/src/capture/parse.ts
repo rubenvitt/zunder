@@ -260,10 +260,10 @@ function simple(every: number, unit: "day" | "year", consumed: number): Recurren
   return { recurrence: { every, unit, from: "due" }, consumed, first: sameDay };
 }
 
-/** "jeden 12.10.": yearly on that date (29.02. falls on 28.02. in common years). */
+/** "jeden 12.10.": yearly on that day (29.02. falls on 28.02. in common years and comes back in leap years). */
 function yearlyOn(day: number, month: number, consumed: number): RecurrenceHit {
   return {
-    recurrence: { every: 1, unit: "year", from: "due" },
+    recurrence: { every: 1, unit: "year", day, from: "due" },
     consumed,
     first: (from) => {
       const date = clampedDate(from.getFullYear(), month - 1, day);
@@ -466,6 +466,9 @@ export function parseCapture(input: string, now: Date, structure: CaptureStructu
   } else if (rhythm) {
     due = localDate(first(today));
   }
+
+  // A yearly day names the month of the due date ("Jährlich am 28.02.").
+  if (rhythm) for (const t of tokens) if (t.kind === "recurrence") t.label = describeRecurrence(rhythm.recurrence, due);
 
   const location: Location | null = project ? { kind: "project", id: project.id } : area ? { kind: "area", id: area.id } : null;
   const title = words.filter((_, i) => keep[i]).join(" ") || input.trim();

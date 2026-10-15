@@ -131,7 +131,7 @@ export function QuickCapture() {
               {(r) => (
                 <span class="chip chip-accent capture-recurrence">
                   <Icon name="repeat" size={12} />
-                  {describeRecurrence(r())}
+                  {describeRecurrence(r(), parsed().due)}
                   <button type="button" class="chip-clear" title="Rhythmus entfernen (Wörter bleiben im Titel)" aria-label="Rhythmus entfernen" onClick={dismissRhythm}>
                     <Icon name="x" size={10} />
                   </button>

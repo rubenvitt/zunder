@@ -15,6 +15,7 @@ import {
   WEEKDAY_NAMES,
 } from "../labels";
 import { updateTask } from "../state/actions";
+import { parseDue } from "../sync/dates";
 import { taskIndex } from "../state/store";
 import { taskHref } from "./TaskLinks";
 
@@ -66,7 +67,9 @@ export function RecurrenceField(props: { task: Task; editorOpen: boolean; onTogg
             </option>
           )}
         </For>
-        <option value={CUSTOM} selected={selected() === CUSTOM}>{props.task.recurrence && !preset() ? describeRecurrence(props.task.recurrence) : "Benutzerdefiniert …"}</option>
+        <option value={CUSTOM} selected={selected() === CUSTOM}>
+          {props.task.recurrence && !preset() ? describeRecurrence(props.task.recurrence, props.task.due) : "Benutzerdefiniert …"}
+        </option>
       </select>
       <Show when={!props.task.due}>
         <span class="muted small">Erst eine Fälligkeit setzen</span>
@@ -80,7 +83,7 @@ export function RecurrenceField(props: { task: Task; editorOpen: boolean; onTogg
   );
 }
 
-/** Interval, unit, weekdays (weeks), day of the month (months) and anchor of a rhythm. */
+/** Interval, unit, weekdays (weeks), day of the month (months, years) and anchor of a rhythm. */
 export function RecurrenceEditor(props: { task: Task; recurrence: Recurrence }) {
   const r = () => props.recurrence;
   const write = (next: Recurrence) => updateTask(props.task.id, { recurrence: recurrenceValue(next) });
@@ -91,6 +94,9 @@ export function RecurrenceEditor(props: { task: Task; recurrence: Recurrence }) 
     if (Number.isInteger(n) && n >= 1 && n <= MAX_RECURRENCE_EVERY && n !== r().every) write(withEvery(r(), n));
   };
   const dayValue = () => (r().day === undefined ? "" : String(r().day));
+  // Yearly rhythms take the day in the month of the due date: "am 28.02.".
+  const dueMonth = () => (r().unit === "year" ? parseDue(props.task.due)?.date.slice(5, 7) : undefined);
+  const dayLabel = (d: string) => (dueMonth() ? `am ${d.padStart(2, "0")}.${dueMonth()}.` : `am ${d}.`);
   return (
     <div class="recurrence-editor" role="group" aria-label="Rhythmus anpassen">
       <div class="recurrence-line">
@@ -137,7 +143,7 @@ export function RecurrenceEditor(props: { task: Task; recurrence: Recurrence }) 
           </For>
         </div>
       </Show>
-      <Show when={r().unit === "month"}>
+      <Show when={r().unit === "month" || r().unit === "year"}>
         <div class="recurrence-line">
           <select
             class="prop-select"
@@ -153,7 +159,7 @@ export function RecurrenceEditor(props: { task: Task; recurrence: Recurrence }) 
             <For each={MONTH_DAYS}>
               {(d) => (
                 <option value={d} selected={dayValue() === d}>
-                  am {d}.
+                  {dayLabel(d)}
                 </option>
               )}
             </For>
@@ -164,7 +170,7 @@ export function RecurrenceEditor(props: { task: Task; recurrence: Recurrence }) 
         </div>
       </Show>
       <p class="recurrence-summary muted small">
-        {describeRecurrence(r())}. Wer die Aufgabe erledigt oder verwirft, bekommt die nächste Instanz.
+        {describeRecurrence(r(), props.task.due)}. Wer die Aufgabe erledigt oder verwirft, bekommt die nächste Instanz.
       </p>
     </div>
   );

@@ -87,19 +87,13 @@ function fromDue(r: MockRecurrence, d0: Days, today: Days): Days | null {
         for (const o of offsets) if (week + o >= lower) return week + o;
       }
     }
-    case "month": {
-      const day = r.day ?? civil(d0)[2];
-      for (let k = Math.max(0, ceilDiv(monthIndex(lower) - monthIndex(d0), r.every)); ; k++) {
-        const candidate = dayInMonth(monthIndex(d0) + k * r.every, day);
-        if (candidate === null || candidate >= lower) return candidate;
-      }
-    }
+    case "month":
     case "year": {
-      const [y0, m0, dd0] = civil(d0);
-      // The last day of February stays the last day of February.
-      const febLast = m0 === 2 && dd0 === new Date(Date.UTC(y0, 2, 0)).getUTCDate();
-      for (let k = Math.max(1, ceilDiv(civil(lower)[0] - y0, r.every)); ; k++) {
-        const candidate = dayInMonth((y0 + k * r.every) * 12 + m0 - 1, febLast ? "last" : dd0);
+      // Years use the month of D0: a 28.02. stays a 28.02., a 29.02. comes back in leap years.
+      const months = r.unit === "year" ? 12 * r.every : r.every;
+      const day = r.day ?? civil(d0)[2];
+      for (let k = Math.max(0, ceilDiv(monthIndex(lower) - monthIndex(d0), months)); ; k++) {
+        const candidate = dayInMonth(monthIndex(d0) + k * months, day);
         if (candidate === null || candidate >= lower) return candidate;
       }
     }
@@ -118,7 +112,7 @@ function fromDone(r: MockRecurrence, done: Days): Days | null {
     case "month":
       return dayInMonth(monthIndex(done) + r.every, r.day ?? civil(done)[2]);
     case "year":
-      return dayInMonth(monthIndex(done) + 12 * r.every, civil(done)[2]);
+      return dayInMonth(monthIndex(done) + 12 * r.every, r.day ?? civil(done)[2]);
   }
 }
 
@@ -144,6 +138,6 @@ export function nextOccurrence(r: MockRecurrence, due: string, remindAt: string 
     }
   }
   const recurrence: MockRecurrence = { ...r };
-  if (r.from === "due" && r.unit === "month" && r.day === undefined) recurrence.day = civil(d0)[2];
+  if (r.from === "due" && (r.unit === "month" || r.unit === "year") && r.day === undefined) recurrence.day = civil(d0)[2];
   return { due: dueAt ? rfc3339Local(atLocal(date, dueAt)) : isoDate(date), remind_at: remind, recurrence };
 }

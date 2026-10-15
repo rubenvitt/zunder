@@ -124,6 +124,13 @@ test("Eigener Rhythmus: Intervall, Wochentage, Monatstag und Anker", async ({ pa
   await expect.poll(recurrence).toEqual({ every: 2, unit: "month", day: "last", from: "done" });
   await expect(editor).toContainText("Alle 2 Monate am Monatsletzten nach Erledigung");
 
+  // Years keep the day and name it in the month of the due date.
+  await editor.getByLabel("Einheit").selectOption("year");
+  await expect.poll(recurrence).toEqual({ every: 2, unit: "year", day: "last", from: "done" });
+  await editor.getByLabel("Tag im Monat").selectOption({ label: "am 04.01." });
+  await expect.poll(recurrence).toEqual({ every: 2, unit: "year", day: 4, from: "done" });
+  await expect(editor).toContainText("Alle 2 Jahre am 04.01. nach Erledigung");
+
   await detail(page).getByRole("combobox", { name: "Wiederholen" }).selectOption({ label: "Nicht wiederholen" });
   await expect.poll(recurrence).toBeNull();
   await expect(editor).toHaveCount(0);

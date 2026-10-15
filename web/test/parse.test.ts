@@ -149,6 +149,7 @@ describe("quick capture recurrence shorthand", () => {
     expect(r.recurrence).toEqual({ every: 1, unit: "month", day: "last", from: "due" });
     expect(r.location).toEqual({ kind: "area", id: "area-arbeit" });
     expect(r.tokens).toContainEqual({ kind: "recurrence", text: "jeden Monatsletzten", label: "Monatlich am Monatsletzten" });
+    expect(parse("Frist jeden 28.02.").tokens).toContainEqual({ kind: "recurrence", text: "jeden 28.02.", label: "Jährlich am 28.02." });
   });
 
   it.each<[string, Recurrence, string]>([
@@ -179,9 +180,10 @@ describe("quick capture recurrence shorthand", () => {
     ["jeden 15.", { every: 1, unit: "month", day: 15, from: "due" }, "2026-10-15"],
     ["jeden 11.", { every: 1, unit: "month", day: 11, from: "due" }, "2026-10-11"],
     ["jeden 5.", { every: 1, unit: "month", day: 5, from: "due" }, "2026-11-05"],
-    ["jeden 12.10.", { every: 1, unit: "year", from: "due" }, "2026-10-12"],
-    ["jeden 1.3.", { every: 1, unit: "year", from: "due" }, "2027-03-01"],
-    ["jeden 29.02.", { every: 1, unit: "year", from: "due" }, "2027-02-28"],
+    ["jeden 12.10.", { every: 1, unit: "year", day: 12, from: "due" }, "2026-10-12"],
+    ["jeden 1.3.", { every: 1, unit: "year", day: 1, from: "due" }, "2027-03-01"],
+    ["jeden 28.02.", { every: 1, unit: "year", day: 28, from: "due" }, "2027-02-28"],
+    ["jeden 29.02.", { every: 1, unit: "year", day: 29, from: "due" }, "2027-02-28"],
     ["jeden Monatsletzten", { every: 1, unit: "month", day: "last", from: "due" }, "2026-10-31"],
     ["jeden letzten des Monats", { every: 1, unit: "month", day: "last", from: "due" }, "2026-10-31"],
     ["jeden letzten Tag des Monats", { every: 1, unit: "month", day: "last", from: "due" }, "2026-10-31"],

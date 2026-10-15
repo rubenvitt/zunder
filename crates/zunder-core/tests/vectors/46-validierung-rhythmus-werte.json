@@ -1,6 +1,6 @@
 {
   "name": "validierung-rhythmus-werte",
-  "description": "Form von „recurrence“: every 1–999, unit day/week/month/year, from due/done, weekdays (nicht leer, verschieden, gültige Codes) nur bei week, day (1–31 oder last) nur bei month, keine weiteren Schlüssel, null für weekdays/day ist ungültig.",
+  "description": "Form von „recurrence“: every 1–999, unit day/week/month/year, from due/done, weekdays (nicht leer, verschieden, gültige Codes) nur bei week, day (1–31 oder last) nur bei month und year, keine weiteren Schlüssel, null für weekdays/day ist ungültig.",
   "kind": "validate",
   "now_ms": 1760000101000,
   "state": [
@@ -427,7 +427,7 @@
       "field": "recurrence",
       "value": {
         "every": 1,
-        "unit": "year",
+        "unit": "day",
         "day": 29,
         "from": "due"
       },
@@ -615,6 +615,64 @@
       "field": "recurrence",
       "value": "monatlich",
       "hlc": "1760000100061:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000064",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000031",
+      "field": "title",
+      "value": "Rhythmus 31",
+      "hlc": "1760000100062:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000065",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000031",
+      "field": "due",
+      "value": "2026-02-28",
+      "hlc": "1760000100063:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000066",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000031",
+      "field": "recurrence",
+      "value": {
+        "every": 1,
+        "unit": "year",
+        "day": 28,
+        "from": "due"
+      },
+      "hlc": "1760000100064:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000067",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000032",
+      "field": "title",
+      "value": "Rhythmus 32",
+      "hlc": "1760000100065:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000068",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000032",
+      "field": "due",
+      "value": "2026-02-28",
+      "hlc": "1760000100066:00000:web-test"
+    },
+    {
+      "op_id": "r046e0000000000000000069",
+      "entity": "task",
+      "entity_id": "r046c0000000000000000032",
+      "field": "recurrence",
+      "value": {
+        "every": 2,
+        "unit": "year",
+        "day": "last",
+        "from": "done"
+      },
+      "hlc": "1760000100067:00000:web-test"
     }
   ],
   "expected_rejected": {

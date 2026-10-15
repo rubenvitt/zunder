@@ -183,15 +183,16 @@ const WORKDAYS = "mo,tu,we,th,fr";
 
 /**
  * A rhythm in words: "Täglich", "Alle 3 Monate nach Erledigung", "Wöchentlich (Mo, Do)",
- * "Werktags", "Monatlich am Monatsletzten" …
+ * "Werktags", "Monatlich am Monatsletzten", "Jährlich am 28.02." (the month of `due`) …
  */
-export function describeRecurrence(r: Recurrence): string {
+export function describeRecurrence(r: Recurrence, due?: string | null): string {
   const days = WEEKDAY_CODES.filter((d) => r.weekdays?.includes(d));
   const workdays = r.every === 1 && r.unit === "week" && days.join(",") === WORKDAYS;
   let text = workdays ? "Werktags" : r.every === 1 ? EVERY_ONE[r.unit] : `Alle ${r.every} ${RECURRENCE_UNIT_LABELS[r.unit].many}`;
   if (!workdays && days.length > 0) text += ` (${days.map((d) => WEEKDAY_LABELS[d]).join(", ")})`;
+  const month = r.unit === "year" ? parseDue(due ?? null)?.date.slice(5, 7) : undefined;
   if (r.day === "last") text += " am Monatsletzten";
-  else if (r.day !== undefined) text += ` am ${r.day}.`;
+  else if (r.day !== undefined) text += month ? ` am ${String(r.day).padStart(2, "0")}.${month}.` : ` am ${r.day}.`;
   if (r.from === "done") text += " nach Erledigung";
   return text;
 }

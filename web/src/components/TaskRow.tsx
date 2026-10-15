@@ -61,7 +61,7 @@ export function TaskMeta(props: { task: Task; showLocation?: boolean; showRef?: 
       <DueChip task={props.task} />
       <Show when={props.task.recurrence}>
         {(r) => (
-          <span class="chip chip-recurring" title={`Wiederkehrend: ${describeRecurrence(r())}`} aria-label={`Wiederkehrend: ${describeRecurrence(r())}`} role="img">
+          <span class="chip chip-recurring" title={`Wiederkehrend: ${describeRecurrence(r(), props.task.due)}`} aria-label={`Wiederkehrend: ${describeRecurrence(r(), props.task.due)}`} role="img">
             <Icon name="repeat" size={12} />
           </span>
         )}

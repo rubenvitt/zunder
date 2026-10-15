@@ -53,6 +53,13 @@ fn monthly(every: u16, day: Option<MonthDay>, from: RecurrenceFrom) -> Recurrenc
     }
 }
 
+fn yearly(every: u16, day: Option<MonthDay>, from: RecurrenceFrom) -> Recurrence {
+    Recurrence {
+        day,
+        ..rec(every, RecurrenceUnit::Year, from)
+    }
+}
+
 fn weekly(every: u16, weekdays: &[WeekdayCode], from: RecurrenceFrom) -> Recurrence {
     Recurrence {
         weekdays: Some(weekdays.to_vec()),
@@ -144,7 +151,9 @@ fn present_day_and_other_units_keep_the_recurrence_unchanged() {
         monthly(1, Some(MonthDay::Day(15)), FromDue),
         monthly(1, Some(MonthDay::Last), FromDue),
         monthly(1, None, FromDone),
-        rec(1, RecurrenceUnit::Year, FromDue),
+        yearly(1, Some(MonthDay::Day(31)), FromDue),
+        yearly(1, Some(MonthDay::Last), FromDue),
+        yearly(1, None, FromDone),
         rec(2, RecurrenceUnit::Day, FromDue),
         weekly(1, &[Mo, Th], FromDue),
     ];
@@ -186,43 +195,96 @@ fn month_last_from_a_due_in_mid_month_snaps_to_that_months_end() {
     assert_eq!(on_time(&r, date!(2026 - 10 - 15)), date!(2026 - 10 - 31));
 }
 
-// --- 29 February --------------------------------------------------------
+// --- 28 and 29 February -------------------------------------------------
 
 #[test]
-fn yearly_february_29_stays_february_last() {
+fn yearly_february_28_stays_february_28_over_eight_years() {
+    // Contract 3.1: no drift onto the 29th in leap years, wherever the series
+    // starts (common year or leap year).
     let r = rec(1, RecurrenceUnit::Year, FromDue);
     assert_eq!(
-        chain(&r, date!(2028 - 02 - 29), 4),
+        chain(&r, date!(2027 - 02 - 28), 8),
         [
+            date!(2028 - 02 - 28),
             date!(2029 - 02 - 28),
             date!(2030 - 02 - 28),
             date!(2031 - 02 - 28),
-            date!(2032 - 02 - 29)
+            date!(2032 - 02 - 28),
+            date!(2033 - 02 - 28),
+            date!(2034 - 02 - 28),
+            date!(2035 - 02 - 28)
         ]
     );
-}
-
-#[test]
-fn yearly_february_28_of_a_common_year_moves_to_the_29th_in_leap_years() {
-    let r = rec(1, RecurrenceUnit::Year, FromDue);
-    assert_eq!(on_time(&r, date!(2027 - 02 - 28)), date!(2028 - 02 - 29));
-    assert_eq!(on_time(&r, date!(2028 - 02 - 28)), date!(2029 - 02 - 28));
-}
-
-#[test]
-fn yearly_february_28_of_a_leap_year_becomes_february_last_after_one_year() {
-    // 28.02.2025 is the last day of February, so from then on the series
-    // follows the February last (the side effect accepted in 3.1).
-    let r = rec(1, RecurrenceUnit::Year, FromDue);
     assert_eq!(
-        chain(&r, date!(2024 - 02 - 28), 4),
+        chain(&r, date!(2024 - 02 - 28), 8),
         [
             date!(2025 - 02 - 28),
             date!(2026 - 02 - 28),
             date!(2027 - 02 - 28),
-            date!(2028 - 02 - 29)
+            date!(2028 - 02 - 28),
+            date!(2029 - 02 - 28),
+            date!(2030 - 02 - 28),
+            date!(2031 - 02 - 28),
+            date!(2032 - 02 - 28)
         ]
     );
+}
+
+#[test]
+fn yearly_february_29_falls_on_the_28th_and_comes_back_in_leap_years() {
+    let r = rec(1, RecurrenceUnit::Year, FromDue);
+    assert_eq!(
+        chain(&r, date!(2028 - 02 - 29), 8),
+        [
+            date!(2029 - 02 - 28),
+            date!(2030 - 02 - 28),
+            date!(2031 - 02 - 28),
+            date!(2032 - 02 - 29),
+            date!(2033 - 02 - 28),
+            date!(2034 - 02 - 28),
+            date!(2035 - 02 - 28),
+            date!(2036 - 02 - 29)
+        ]
+    );
+}
+
+#[test]
+fn yearly_without_day_writes_the_day_of_the_old_due() {
+    // Stored series from before `day` was allowed for years ({unit: year}
+    // without day) keep working: the server takes the day of D0 and writes
+    // it into the next instance.
+    let r = rec(1, RecurrenceUnit::Year, FromDue);
+    let d0 = date!(2028 - 02 - 29);
+    let next = next_occurrence(&r, Due::Date(d0), None, at_noon(d0), d0, &UTC).unwrap();
+    assert_eq!(next.due, Due::Date(date!(2029 - 02 - 28)));
+    assert_eq!(next.recurrence, yearly(1, Some(MonthDay::Day(29)), FromDue));
+    let d0 = date!(2027 - 02 - 28);
+    let next = next_occurrence(&r, Due::Date(d0), None, at_noon(d0), d0, &UTC).unwrap();
+    assert_eq!(next.due, Due::Date(date!(2028 - 02 - 28)));
+    assert_eq!(next.recurrence.day, Some(MonthDay::Day(28)));
+}
+
+#[test]
+fn yearly_last_is_the_february_last() {
+    let r = yearly(1, Some(MonthDay::Last), FromDue);
+    assert_eq!(
+        chain(&r, date!(2027 - 02 - 28), 3),
+        [
+            date!(2028 - 02 - 29),
+            date!(2029 - 02 - 28),
+            date!(2030 - 02 - 28)
+        ]
+    );
+}
+
+#[test]
+fn yearly_day_applies_in_the_month_of_the_old_due() {
+    let r = yearly(2, Some(MonthDay::Day(31)), FromDue);
+    assert_eq!(on_time(&r, date!(2026 - 04 - 30)), date!(2028 - 04 - 30));
+    // k = 0 counts as with months: the 20th of D0's own month lies after D0.
+    let r = yearly(1, Some(MonthDay::Day(20)), FromDue);
+    assert_eq!(on_time(&r, date!(2026 - 03 - 10)), date!(2026 - 03 - 20));
+    assert_eq!(on_time(&r, date!(2026 - 03 - 20)), date!(2027 - 03 - 20));
 }
 
 #[test]
@@ -238,6 +300,22 @@ fn monthly_february_29_without_day_writes_29() {
     let next = next_occurrence(&r, Due::Date(d0), None, at_noon(d0), d0, &UTC).unwrap();
     assert_eq!(next.due, Due::Date(date!(2028 - 03 - 29)));
     assert_eq!(next.recurrence.day, Some(MonthDay::Day(29)));
+}
+
+#[test]
+fn yearly_from_done_with_day_uses_the_month_of_the_completion() {
+    let r = yearly(1, Some(MonthDay::Last), FromDone);
+    let d0 = date!(2026 - 06 - 01);
+    let done = date!(2027 - 02 - 10);
+    assert_eq!(
+        next_due_date(&r, d0, done, done),
+        Some(date!(2028 - 02 - 29))
+    );
+    // Nothing is written for `from: "done"`.
+    let r = rec(1, RecurrenceUnit::Year, FromDone);
+    let next = next_occurrence(&r, Due::Date(d0), None, at_noon(done), done, &UTC).unwrap();
+    assert_eq!(next.due, Due::Date(date!(2028 - 02 - 10)));
+    assert_eq!(next.recurrence, r);
 }
 
 #[test]
@@ -823,7 +901,7 @@ mod props {
             (1u16..=10).prop_map(move |e| rec(e, RecurrenceUnit::Week, from)),
             (1u16..=10, weekday_set()).prop_map(move |(e, w)| weekly(e, &w, from)),
             (1u16..=24, month_day()).prop_map(move |(e, d)| monthly(e, d, from)),
-            (1u16..=8).prop_map(move |e| rec(e, RecurrenceUnit::Year, from)),
+            (1u16..=8, month_day()).prop_map(move |(e, d)| yearly(e, d, from)),
         ]
     }
 
@@ -837,6 +915,15 @@ mod props {
 
     fn is_last_of_month(d: Date) -> bool {
         d.day() == d.month().length(d.year())
+    }
+
+    /// Does `x` fall on the configured day (`day`, without it the day of
+    /// `anchor`), clamped to the length of its month?
+    fn day_ok(day: Option<MonthDay>, anchor: Date, x: Date) -> bool {
+        match day.unwrap_or(MonthDay::Day(anchor.day())) {
+            MonthDay::Last => is_last_of_month(x),
+            MonthDay::Day(d) => x.day() == d.min(x.month().length(x.year())),
+        }
     }
 
     /// Independent oracle: is `x` a date of the fixed-calendar series of
@@ -858,20 +945,11 @@ mod props {
             },
             RecurrenceUnit::Month => {
                 let months = month_index(x) - month_index(d0);
-                let day_ok = match r.day.unwrap_or(MonthDay::Day(d0.day())) {
-                    MonthDay::Last => is_last_of_month(x),
-                    MonthDay::Day(d) => x.day() == d.min(x.month().length(x.year())),
-                };
-                months % every == 0 && day_ok
+                months % every == 0 && day_ok(r.day, d0, x)
             }
             RecurrenceUnit::Year => {
                 let years = i64::from(x.year() - d0.year());
-                let day_ok = if d0.month() == Month::February && is_last_of_month(d0) {
-                    x.month() == Month::February && is_last_of_month(x)
-                } else {
-                    x.month() == d0.month() && x.day() == d0.day().min(x.month().length(x.year()))
-                };
-                years % every == 0 && day_ok
+                x.month() == d0.month() && years % every == 0 && day_ok(r.day, d0, x)
             }
         }
     }
@@ -934,28 +1012,28 @@ mod props {
             }
         }
 
-        /// A yearly series completed on time keeps its month and day: a
-        /// 29.02. comes back in every leap year, any other day stays put
-        /// (a 28.02. turns into the February last in its first common year
-        /// and from then on stays it, see the example test).
+        /// A yearly series completed on time keeps its month and hits the
+        /// configured day (without `day` the day it started on) in every
+        /// `every`-th year: a 28.02. stays a 28.02., a 29.02. comes back in
+        /// every leap year.
         #[test]
-        fn yearly_series_do_not_drift(every in 1u16..=4, start in any_date()) {
-            let r = rec(every, RecurrenceUnit::Year, FromDue);
+        fn yearly_series_do_not_drift(
+            every in 1u16..=4,
+            day in month_day(),
+            start in any_date(),
+        ) {
+            let r = yearly(every, day, FromDue);
             let mut prev = start;
-            for d in chain(&r, start, 12) {
-                prop_assert_eq!(d.year() - prev.year(), i32::from(every));
+            for (i, d) in chain(&r, start, 12).into_iter().enumerate() {
                 prop_assert_eq!(d.month(), start.month());
-                if prev.month() == Month::February && is_last_of_month(prev) {
-                    prop_assert!(is_last_of_month(d));
+                let step = d.year() - prev.year();
+                // Only the first step may stay in D0's own year (k = 0).
+                if i == 0 && step == 0 {
+                    prop_assert!(d > start);
                 } else {
-                    prop_assert_eq!(d.day(), start.day().min(d.month().length(d.year())));
+                    prop_assert_eq!(step, i32::from(every));
                 }
-                if start.month() == Month::February && start.day() == 29 {
-                    prop_assert!(is_last_of_month(d));
-                }
-                if start.month() != Month::February || start.day() < 28 {
-                    prop_assert_eq!(d.day(), start.day().min(d.month().length(d.year())));
-                }
+                prop_assert!(day_ok(day, start, d), "{d} misses the day");
                 prev = d;
             }
         }
@@ -987,16 +1065,11 @@ mod props {
                 }
                 (RecurrenceUnit::Month, _, day) => {
                     prop_assert_eq!(month_index(next) - month_index(done), every);
-                    match day.unwrap_or(MonthDay::Day(done.day())) {
-                        MonthDay::Last => prop_assert!(is_last_of_month(next)),
-                        MonthDay::Day(n) => {
-                            prop_assert_eq!(next.day(), n.min(next.month().length(next.year())))
-                        }
-                    }
+                    prop_assert!(day_ok(day, done, next));
                 }
-                (RecurrenceUnit::Year, _, _) => {
+                (RecurrenceUnit::Year, _, day) => {
                     prop_assert_eq!(month_index(next) - month_index(done), 12 * every);
-                    prop_assert_eq!(next.day(), done.day().min(next.month().length(next.year())));
+                    prop_assert!(day_ok(day, done, next));
                 }
             }
         }

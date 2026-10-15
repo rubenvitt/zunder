@@ -96,7 +96,7 @@ export function DropSeriesDialog(props: { request: DropRequest }) {
       <Show when={task()}>
         {(t) => (
           <p>
-            „{t().title}“ wiederholt sich ({t().recurrence ? describeRecurrence(t().recurrence!) : "Rhythmus"}). Nur diese Instanz verwerfen, dann folgt
+            „{t().title}“ wiederholt sich ({t().recurrence ? describeRecurrence(t().recurrence!, t().due) : "Rhythmus"}). Nur diese Instanz verwerfen, dann folgt
             die nächste, oder die ganze Serie beenden?
           </p>
         )}
