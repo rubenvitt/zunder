@@ -475,6 +475,47 @@ mod tests {
         assert!(got[0].title.ends_with('…'));
     }
 
+    #[test]
+    fn a_completed_instance_hands_its_reminders_to_the_follow_up() {
+        // The app never computes follow-ups; the server's instance arrives
+        // with the pull and is an ordinary open task with remind_at and due.
+        let mut w = World::new();
+        let rhythm = json!({"every": 1, "unit": "day", "from": "due"});
+        let first = w.task("Tabletten nehmen");
+        w.set(first, f::DUE, json!(rfc3339(NOW + 60 * MIN)));
+        w.set(first, f::REMIND_AT, json!(rfc3339(NOW + 30 * MIN)));
+        w.set(first, f::RECURRENCE, rhythm.clone());
+        let scheduled = plan_schedule(&[], &upcoming_reminders(&w.state, NOW, MAX_PENDING), NOW);
+        assert_eq!(scheduled.scheduled.len(), 2);
+
+        w.set(first, f::STATUS, json!(TaskStatus::Done));
+        let next = w.task("Tabletten nehmen");
+        w.set(next, f::DUE, json!(rfc3339(NOW + (24 * 60 + 60) * MIN)));
+        w.set(
+            next,
+            f::REMIND_AT,
+            json!(rfc3339(NOW + (24 * 60 + 30) * MIN)),
+        );
+        w.set(next, f::RECURRENCE, rhythm);
+        w.set(next, f::RECURRENCE_PREV, json!(first.as_str()));
+
+        let got = upcoming_reminders(&w.state, NOW, MAX_PENDING);
+        let keys: Vec<_> = got.iter().map(|r| (r.task_id, r.kind, r.at_ms)).collect();
+        assert_eq!(
+            keys,
+            vec![
+                (next, ReminderKind::Remind, NOW + (24 * 60 + 30) * MIN),
+                (next, ReminderKind::Due, NOW + (24 * 60 + 60) * MIN),
+            ]
+        );
+        // On mobile the completed instance's notifications are cancelled.
+        let plan = plan_schedule(&scheduled.scheduled, &got, NOW);
+        let mut cancelled: Vec<_> = scheduled.scheduled.iter().map(|s| s.id).collect();
+        cancelled.sort_unstable();
+        assert_eq!(plan.cancel, cancelled);
+        assert_eq!(plan.schedule.len(), 2);
+    }
+
     fn reminder(task: u128, kind: ReminderKind, at_ms: i64, title: &str) -> Reminder {
         Reminder {
             task_id: Id::parse(&format!("t{:023}", task)).unwrap(),

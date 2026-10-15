@@ -13,11 +13,20 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use serde_json::json;
+use time::macros::datetime;
 use zunder_core::hlc::system_time_ms;
+use zunder_core::ids::Id;
 use zunder_core::model::fields::task as f;
-use zunder_core::{Clock, EntityKind, Location, NewArea, NewTask, NodeId, Op, OpBatch, RejectCode};
+use zunder_core::{
+    Clock, Due, EntityKind, Location, NewArea, NewTask, NodeId, Op, OpBatch, Recurrence,
+    RejectCode, TaskStatus,
+};
+use zunder_local::reminders::ReminderKind;
 use zunder_local::sync::lock;
-use zunder_local::{login, ConfigUpdate, Error, FlameAction, LocalStore, Syncer};
+use zunder_local::{
+    login, upcoming_reminders, ConfigUpdate, Error, FlameAction, LocalStore, Syncer,
+};
 
 const TOKEN: &str = "zt_app-e2e-bootstrap-token-0123456789abcdef";
 
@@ -346,4 +355,122 @@ async fn login_yields_a_device_token_that_syncs() {
         "{:?}",
         failure.error
     );
+}
+
+/// Live tasks whose `recurrence_prev` names `prev` (the follow-up instances).
+fn follow_ups(store: &Mutex<LocalStore>, prev: Id) -> Vec<Id> {
+    lock(store)
+        .state()
+        .live_tasks()
+        .filter(|t| t.recurrence_prev == Some(prev))
+        .map(|t| t.id)
+        .collect()
+}
+
+#[tokio::test]
+#[ignore = "braucht ZUNDER_SERVER_BIN (gebautes zunder-server-Binary)"]
+async fn recurring_tasks_continue_through_the_real_server() {
+    // The server computes follow-ups in its process time zone (contract 3.1).
+    let server = start_server_with(&[("TZ", "Europe/Berlin")]).await;
+    let dir = tempfile::tempdir().unwrap();
+    let phone = device(&dir, "phone", &server, TOKEN);
+    let laptop = device(&dir, "laptop", &server, TOKEN);
+    let syncer_phone = Syncer::new();
+    let syncer_laptop = Syncer::new();
+    let mut phone_ui = Ui::new("web-phone");
+    let mut laptop_ui = Ui::new("web-laptop");
+    let rhythm = json!({"every": 1, "unit": "month", "day": "last", "from": "due"});
+
+    // Offline on the phone: create the series and tick it off right away.
+    // Both land in one push (pending_batch), which still completes it.
+    let ((area, first), create) = phone_ui.ops(|b| {
+        let area = b.create_area(NewArea::new("Arbeit"));
+        let task = b.create_task(
+            NewTask::new("Odoo absenden und Stunden bestätigen").at(Location::Area { id: area }),
+        );
+        b.set_task(task, f::DUE, "2030-02-28T09:00:00+01:00");
+        b.set_task(task, f::REMIND_AT, "2030-02-27T18:00:00+01:00");
+        b.set_task(task, f::RECURRENCE, rhythm.clone());
+        (area, task)
+    });
+    apply(&phone, &create);
+    let (_, done) = phone_ui.ops(|b| {
+        b.set_status(first, TaskStatus::Done);
+    });
+    apply(&phone, &done);
+    let report = syncer_phone.sync(&phone, now()).await.unwrap();
+    assert_eq!(report.pushed, create.len() + done.len());
+    assert!(report.rejected.is_empty(), "{:?}", report.rejected);
+    assert!(report.changed);
+
+    // The follow-up came back with the same round's pull.
+    let next = match follow_ups(&phone, first)[..] {
+        [next] => next,
+        ref other => panic!("expected one follow-up, got {other:?}"),
+    };
+    {
+        let p = lock(&phone);
+        let t = p.state().task(next).unwrap();
+        assert_eq!(t.title, "Odoo absenden und Stunden bestätigen");
+        assert_eq!(t.status, TaskStatus::Open);
+        assert_eq!(t.location, Location::Area { id: area });
+        assert_eq!(t.recurrence, Some(Recurrence::parse(&rhythm).unwrap()));
+        // Last day of the next month, same local time across the switch
+        // to summer time (31.03.2030); the reminder keeps "the day before
+        // at 18:00".
+        assert_eq!(
+            t.due,
+            Some(Due::DateTime(datetime!(2030-03-31 09:00 +02:00)))
+        );
+        assert_eq!(t.remind_at, Some(datetime!(2030-03-30 18:00 +01:00)));
+        assert_eq!(p.state().task(first).unwrap().status, TaskStatus::Done);
+
+        // Reminders move to the new instance.
+        let reminders = upcoming_reminders(p.state(), now(), 64);
+        let keys: Vec<_> = reminders.iter().map(|r| (r.task_id, r.kind)).collect();
+        assert_eq!(
+            keys,
+            vec![(next, ReminderKind::Remind), (next, ReminderKind::Due)]
+        );
+        assert_eq!(reminders[0].body, "Erinnerung · Arbeit");
+    }
+
+    // The laptop gets the series with its snapshot. Reopening and
+    // completing the old instance again (one push) adds no second one.
+    syncer_laptop.sync(&laptop, now()).await.unwrap();
+    assert_eq!(lock(&laptop).state(), lock(&phone).state());
+    laptop_ui.see(&laptop);
+    let (_, reopen) = laptop_ui.ops(|b| {
+        b.set_status(first, TaskStatus::Open);
+    });
+    apply(&laptop, &reopen);
+    let (_, again) = laptop_ui.ops(|b| {
+        b.set_status(first, TaskStatus::Done);
+    });
+    apply(&laptop, &again);
+    let report = syncer_laptop.sync(&laptop, now()).await.unwrap();
+    assert!(report.rejected.is_empty(), "{:?}", report.rejected);
+    assert_eq!(follow_ups(&laptop, first), vec![next]);
+
+    // Local validation knows the series rules: no due date, no series.
+    phone_ui.see(&phone);
+    let (_, no_due) = phone_ui.ops(|b| {
+        b.set_task(next, f::DUE, serde_json::Value::Null);
+    });
+    let result = lock(&phone).apply_local(&no_due, now() as u64).unwrap();
+    assert_eq!(result.rejected.len(), 1);
+    assert_eq!(result.rejected[0].code, RejectCode::InvalidValue);
+
+    // Dropping with "end series" (recurrence: null in the same action)
+    // creates nothing further.
+    let (_, end) = phone_ui.ops(|b| {
+        b.set_status(next, TaskStatus::Dropped);
+        b.set_task(next, f::RECURRENCE, serde_json::Value::Null);
+    });
+    apply(&phone, &end);
+    let report = syncer_phone.sync(&phone, now()).await.unwrap();
+    assert!(report.rejected.is_empty(), "{:?}", report.rejected);
+    assert!(follow_ups(&phone, next).is_empty());
+    syncer_laptop.sync(&laptop, now()).await.unwrap();
+    assert_eq!(lock(&laptop).state(), lock(&phone).state());
 }
