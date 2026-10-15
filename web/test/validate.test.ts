@@ -173,7 +173,11 @@ describe("recurrence", () => {
   it("needs a due date, a root task and leaves recurrence_prev to the server", () => {
     const store = base();
     const issues = validateOps(store, [op("task", T1, "recurrence", monthlyLast, 100)]);
-    expect(issues.map((i) => i.message)).toEqual(["Eine wiederkehrende Aufgabe braucht eine Fälligkeit. Bitte zuerst den Rhythmus entfernen."]);
+    expect(issues.map((i) => i.message)).toEqual(["Ein Rhythmus braucht eine Fälligkeit. Bitte zusammen mit dem Rhythmus eine Fälligkeit setzen."]);
+    const recurring = mergeOps([op("task", T1, "title", "Miete", 1), op("task", T1, "due", "2026-10-31", 2), op("task", T1, "recurrence", monthlyLast, 3)]);
+    expect(validateOps(recurring, [op("task", T1, "due", null, 100)]).map((i) => i.message)).toEqual([
+      "Eine wiederkehrende Aufgabe braucht eine Fälligkeit. Bitte zuerst den Rhythmus entfernen.",
+    ]);
     expect(
       codes(validateOps(store, [op("task", T1, "due", "2026-10-31", 100), op("task", T1, "recurrence", monthlyLast, 101), op("task", T1, "parent_id", BUG, 102)])),
     ).toEqual(["invalid_value"]);
