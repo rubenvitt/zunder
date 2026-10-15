@@ -4,7 +4,8 @@
 import { hasOpenChildren, isClosed, isRecurring, sortKey } from "../sync/derived";
 import type { Change } from "../sync/engine";
 import { rankBetween } from "../sync/rank";
-import type { EntityKind, JsonValue, Location, ProjectKind, Task, TaskStatus } from "../sync/types";
+import { recurrenceValue } from "../sync/recurrence";
+import type { EntityKind, JsonValue, Location, ProjectKind, Recurrence, Task, TaskStatus } from "../sync/types";
 import { deleteCascade as cascadeTargets } from "../sync/validate";
 import { newId } from "../sync/ids";
 import { STATUS_LABELS } from "../labels";
@@ -33,6 +34,8 @@ export interface NewTask {
   remind_at?: string | null;
   status?: TaskStatus;
   rank?: string;
+  /** Only for root tasks with a due date (contract 2.5). */
+  recurrence?: Recurrence | null;
 }
 
 /** Creates a task (one push group); returns its id or null when refused. */
@@ -45,6 +48,7 @@ export function createTask(input: NewTask): string | null {
   if (input.remind_at) fields.remind_at = input.remind_at;
   if (input.status && input.status !== "open") fields.status = input.status;
   if (input.rank) fields.rank = input.rank;
+  if (input.recurrence) fields.recurrence = recurrenceValue(input.recurrence);
   return apply([{ entity: "task", id, fields }]) ? id : null;
 }
 
