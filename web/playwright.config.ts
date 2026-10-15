@@ -6,6 +6,12 @@ import { defineConfig, devices, type PlaywrightTestConfig } from "@playwright/te
 // ZUNDER_E2E_BACKEND=mock (default): Node mock server serving web/dist.
 // ZUNDER_E2E_BACKEND=real: the Rust server with dev auth and a temporary data dir.
 const backend = process.env.ZUNDER_E2E_BACKEND ?? "mock";
+
+// One time zone for everything: the browser (timezoneId), the server or mock that computes
+// follow-up instances in its process zone (contract 3.1), and the test workers that derive
+// expected dates and labels (they inherit TZ, Node picks the assignment up at once).
+const timeZone = "Europe/Berlin";
+process.env.TZ = timeZone;
 const port = Number(process.env.ZUNDER_E2E_PORT ?? (backend === "real" ? 18080 : 4173));
 const baseURL = `http://127.0.0.1:${port}`;
 
@@ -30,6 +36,7 @@ const webServer: PlaywrightTestConfig["webServer"] =
           ZUNDER_BIND: `127.0.0.1:${port}`,
           ZUNDER_PUBLIC_URL: baseURL,
           RUST_LOG: process.env.RUST_LOG ?? "error",
+          TZ: timeZone,
         },
       }
     : {
@@ -37,7 +44,7 @@ const webServer: PlaywrightTestConfig["webServer"] =
         url: `${baseURL}/healthz`,
         timeout: 30_000,
         reuseExistingServer: !process.env.CI,
-        env: { MOCK_PORT: String(port) },
+        env: { MOCK_PORT: String(port), TZ: timeZone },
       };
 
 export default defineConfig({
@@ -51,7 +58,7 @@ export default defineConfig({
     baseURL,
     trace: "retain-on-failure",
     locale: "de-DE",
-    timezoneId: "Europe/Berlin",
+    timezoneId: timeZone,
   },
   metadata: { backend },
   projects: [

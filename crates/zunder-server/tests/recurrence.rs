@@ -5,7 +5,7 @@
 mod common;
 
 use serde_json::{json, Value};
-use time::{Duration, OffsetDateTime};
+use time::OffsetDateTime;
 use zunder_core::ids::Id;
 use zunder_core::model::fields;
 use zunder_core::{Clock, Due, EntityKind, Location, NewTask, NodeId, Task, TaskStatus};
@@ -20,10 +20,6 @@ const BOOT: Auth<'static> = Auth::Bearer(BOOTSTRAP);
 /// Monthly on the last day; far in the future so "today" does not matter.
 fn month_end() -> Value {
     json!({"every": 1, "unit": "month", "day": "last", "from": "due"})
-}
-
-fn instant(s: &str) -> OffsetDateTime {
-    OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).unwrap()
 }
 
 /// Pushes `ops` with the bootstrap token and checks that all were accepted.
@@ -270,12 +266,23 @@ async fn subtasks_comments_phoenix_and_blockers_stay_behind() {
     assert_eq!(next.vault_links, ["Notizen/Plan.md"]);
 }
 
+/// The instant of a local date and time in the server's zone (`TZ` of the
+/// test process), so expectations hold in every zone.
+fn local_instant(y: i32, m: u32, d: u32, hour: u32, minute: u32) -> OffsetDateTime {
+    use chrono::TimeZone;
+    let local = chrono::Local
+        .with_ymd_and_hms(y, m, d, hour, minute, 0)
+        .single()
+        .expect("an unambiguous local time");
+    OffsetDateTime::from_unix_timestamp(local.timestamp()).unwrap()
+}
+
 #[tokio::test]
 async fn reminder_keeps_its_distance_to_the_due_time() {
     let s = TestServer::new().await;
     let mut clock = client_clock();
-    let due = instant("2099-01-31T17:00:00Z");
-    let remind = instant("2099-01-30T08:00:00Z");
+    let due = local_instant(2099, 1, 31, 17, 0);
+    let remind = local_instant(2099, 1, 30, 8, 0);
     let mut id = None;
     let create = ops(&mut clock, |b| {
         let t = b.create_task(NewTask {
@@ -290,17 +297,24 @@ async fn reminder_keeps_its_distance_to_the_due_time() {
     let id = id.unwrap();
     set_status(&s, &mut clock, id, TaskStatus::Done).await;
 
-    // 31.01. → 28.02.: 28 days later at the same local time (no daylight
-    // saving change between January and February in the test's zone).
+    // 31.01. → 28.02. at the same local time; the reminder stays "the day
+    // before at 08:00" (local dates, whatever the zone's offset).
     let next = only_successor(&s, id);
-    assert_eq!(next.due, Some(Due::DateTime(due + Duration::days(28))));
-    assert_eq!(next.remind_at, Some(remind + Duration::days(28)));
+    let next_due = local_instant(2099, 2, 28, 17, 0);
+    assert_eq!(next.due, Some(Due::DateTime(next_due)));
+    assert_eq!(next.remind_at, Some(local_instant(2099, 2, 27, 8, 0)));
 
     // The calendar feed shows the instance by itself.
     let feed = s.app.calendar_feed(FeedScope::All).await.unwrap();
     let unfolded = feed.replace("\r\n ", "");
     assert!(unfolded.contains(&format!("UID:{}", next.id)), "{feed}");
-    assert!(unfolded.contains("DTSTART:20990228T170000Z"), "{feed}");
+    let dtstart = next_due
+        .to_offset(time::UtcOffset::UTC)
+        .format(time::macros::format_description!(
+            "DTSTART:[year][month][day]T[hour][minute][second]Z"
+        ))
+        .unwrap();
+    assert!(unfolded.contains(&dtstart), "{feed}");
 }
 
 #[tokio::test]
