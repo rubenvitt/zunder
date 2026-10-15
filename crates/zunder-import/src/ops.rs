@@ -11,6 +11,7 @@ use crate::convert::{Desired, IMPORT_NODE};
 
 const STATUS_FIELD: &str = fields::task::STATUS;
 const TYPE_FIELD: &str = fields::task::TYPE;
+const RECURRENCE_FIELD: &str = fields::task::RECURRENCE;
 
 /// Upper bound for the serialized operations of one push. The server accepts
 /// request bodies up to 8 MiB; the rest is headroom for the envelope.
@@ -27,7 +28,7 @@ pub struct EntityOps {
 }
 
 /// Statistics of [`plan_ops`].
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DiffStats {
     /// Entities that do not exist in Zunder yet.
     pub created: usize,
@@ -37,6 +38,8 @@ pub struct DiffStats {
     pub unchanged: usize,
     /// Entities tombstoned in Zunder; left alone.
     pub deleted_in_zunder: usize,
+    /// Labels of tasks that carry a `recurrence` in Zunder; left alone.
+    pub recurring_in_zunder: Vec<String>,
 }
 
 /// A clock for the import node that is ahead of everything in `state`, so
@@ -61,7 +64,11 @@ pub fn import_clock(state: Option<&State>) -> Clock {
 /// - new entities get all their non-null fields,
 /// - existing entities only get fields whose value differs (`null` resets
 ///   a field the import owns),
-/// - entities tombstoned in Zunder are skipped (deleted on purpose).
+/// - entities tombstoned in Zunder are skipped (deleted on purpose),
+/// - tasks with a `recurrence` in Zunder are skipped entirely, completed
+///   instances included: the import owns `due`, `status` and `parent_id`,
+///   and ClickUp's values would break the series (a recurring task needs a
+///   `due`, and a completed instance must not reopen next to its follow-up).
 ///
 /// Push order: first the operations that only relax the dev rules on
 /// existing tasks (a `type` or `status` that is allowed everywhere, e.g.
@@ -91,6 +98,12 @@ pub fn plan_ops<'a>(
         let current = state.and_then(|s| s.entity(entity.kind, entity.id));
         if current.is_some_and(|e| e.is_deleted()) {
             stats.deleted_in_zunder += 1;
+            continue;
+        }
+        if entity.kind == EntityKind::Task
+            && current.is_some_and(|e| e.value(RECURRENCE_FIELD).is_some())
+        {
+            stats.recurring_in_zunder.push(entity.label.clone());
             continue;
         }
         let writes: Vec<(&str, &Value)> = entity
@@ -303,6 +316,79 @@ mod tests {
         let (groups, stats) = plan_ops([&d1b], Some(&state), &mut clock, 1_500);
         assert!(groups.is_empty());
         assert_eq!(stats.unchanged, 1);
+    }
+
+    #[test]
+    fn recurring_tasks_in_zunder_are_left_alone() {
+        // Imported once, then made recurring in Zunder and completed there.
+        let d1 = desired(
+            1,
+            &[
+                ("title", json!("Odoo absenden")),
+                ("location", json!({"kind": "inbox"})),
+                ("status", json!("open")),
+                ("due", json!("2026-10-31")),
+            ],
+        );
+        let d2 = desired(2, &[("title", json!("A"))]);
+        let mut clock = import_clock(None);
+        let (groups, _) = plan_ops([&d1, &d2], None, &mut clock, 1_000);
+        let mut state = State::from_ops(
+            &groups
+                .iter()
+                .flat_map(|g| g.ops.clone())
+                .collect::<Vec<_>>(),
+        );
+        let mut web = Clock::new(NodeId::new("web").unwrap());
+        let mut b = OpBatch::new(&mut web, 2_000);
+        b.set_task(
+            d1.id,
+            "recurrence",
+            json!({"every": 1, "unit": "month", "day": "last", "from": "due"}),
+        );
+        b.set_task(d1.id, "status", "done");
+        for op in b.ops() {
+            state.apply(op);
+        }
+
+        // ClickUp still has it open and without a due date: nothing of it
+        // is written, the other task is diffed as usual.
+        let d1b = desired(
+            1,
+            &[
+                ("title", json!("Odoo absenden (neu)")),
+                ("status", json!("open")),
+                ("due", json!(null)),
+            ],
+        );
+        let d2b = desired(2, &[("title", json!("B"))]);
+        let mut clock = import_clock(Some(&state));
+        let (groups, stats) = plan_ops([&d1b, &d2b], Some(&state), &mut clock, 3_000);
+        assert_eq!(stats.recurring_in_zunder, ["t1"]);
+        assert_eq!(stats.updated, 1);
+        assert_eq!(stats.unchanged, 0);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].id, d2.id);
+        let outcome = zunder_core::validate_push(&state, &groups[0].ops, 3_000);
+        assert!(outcome.rejected.is_empty(), "{:?}", outcome.rejected);
+
+        // Once the series is ended (`recurrence: null`), the import owns the
+        // task again.
+        let mut b = OpBatch::new(&mut web, 4_000);
+        b.set_task(d1.id, "recurrence", Value::Null);
+        for op in b.ops() {
+            state.apply(op);
+        }
+        let mut clock = import_clock(Some(&state));
+        let (groups, stats) = plan_ops([&d1b], Some(&state), &mut clock, 5_000);
+        assert!(stats.recurring_in_zunder.is_empty());
+        assert_eq!(stats.updated, 1);
+        let fields: Vec<&str> = groups
+            .iter()
+            .flat_map(|g| &g.ops)
+            .map(|o| o.field.as_str())
+            .collect();
+        assert_eq!(fields, ["status", "title", "due"]);
     }
 
     const DAY: u64 = 24 * 60 * 60 * 1000;

@@ -146,6 +146,7 @@ Aufgaben-IDs werden fest aus der ClickUp-ID abgeleitet, daher aktualisiert ein e
 - Alles andere, was in Zunder ergänzt wurde (Erinnerung, Phönix, Vault-Links, Plan …), bleibt unberührt.
 - Bereiche und Projekte der Zuordnung ohne `existing_id` schreibt jeder Lauf auf den Stand aus `mapping.toml` (Bereich: Name, Zustand; Projekt: Name, Bereich, Status, Art, Repo), auch wenn alle ihre Listen auf `skip` stehen. Was in Zunder seitdem geändert wurde und so bleiben soll, bekommt vorher `existing_id`.
 - In Zunder gelöschte Einträge bleiben gelöscht.
+- Aufgaben, die in Zunder einen Rhythmus haben (wiederkehrend, auch eine schon erledigte Instanz), fasst der Lauf gar nicht an; die Zusammenfassung listet sie unter „In Zunder wiederkehrend, übersprungen“. Sonst würde ClickUp Fälligkeit und Status überschreiben: Eine in ClickUp leere Fälligkeit ließe die Vorprüfung den ganzen Lauf ablehnen, und eine in Zunder erledigte Instanz würde neben ihrer Folgeinstanz wieder geöffnet. Einen Rhythmus daher erst setzen, wenn die Aufgabe in ClickUp nicht mehr gepflegt wird. Wird die Serie beendet (Rhythmus entfernt), gleicht der nächste Lauf die Aufgabe wieder mit ClickUp ab.
 
 ## Umstiegstag
 

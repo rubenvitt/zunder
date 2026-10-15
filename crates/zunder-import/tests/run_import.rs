@@ -306,6 +306,63 @@ async fn rerun_is_idempotent_and_updates_changes() {
 }
 
 #[tokio::test]
+async fn rerun_leaves_tasks_recurring_in_zunder_alone() {
+    let clickup = ClickUpMock::start().await;
+    let zunder = ZunderMock::start().await;
+    let mapping = mapping(&clickup).await;
+    import(&clickup, &zunder, &mapping, &opts(500))
+        .await
+        .unwrap();
+
+    // In Zunder the task becomes recurring and is completed (the mock does
+    // not create follow-up instances; that is the real server's job).
+    let windows = task_id("86a001");
+    let mut web = Clock::new(NodeId::new("web-test").unwrap());
+    let mut batch = OpBatch::new(&mut web, zunder_core::hlc::system_time_ms());
+    batch.set_task(
+        windows,
+        "recurrence",
+        json!({"every": 1, "unit": "month", "day": "last", "from": "due"}),
+    );
+    batch.set_task(windows, "status", "done");
+    zunder.apply(batch.ops());
+    let before = zunder.state().task(windows).unwrap();
+
+    // ClickUp still has it open, renamed and without a due date. Writing
+    // `due: null` would be rejected (recurring tasks need a due date) and
+    // `status: open` would reopen a completed instance.
+    clickup.edit_task("/list/9001001/task?page=0", "86a001", |t| {
+        t.insert("name".into(), json!("Fenster putzen (alle)"));
+        t.insert("due_date".into(), json!(null));
+    });
+    clickup.edit_task("/list/9001001/task?page=0", "86a002", |t| {
+        t.insert("name".into(), json!("Steuererklärung abgeben"));
+    });
+
+    let summary = import(&clickup, &zunder, &mapping, &opts(500))
+        .await
+        .unwrap();
+    assert!(summary.predicted_rejections.is_empty());
+    assert!(summary.rejected.is_empty(), "{:?}", summary.rejected);
+    assert_eq!(
+        summary.recurring_in_zunder,
+        ["Aufgabe „Fenster putzen (alle)“ (ClickUp 86a001)"]
+    );
+    assert_eq!(summary.entities_updated, 1);
+    let state = zunder.state();
+    assert_eq!(state.task(windows).unwrap(), before, "no field touched");
+    assert_eq!(
+        state.task(task_id("86a002")).unwrap().title,
+        "Steuererklärung abgeben"
+    );
+    let text = run::render_summary(&summary);
+    assert!(
+        text.contains("In Zunder wiederkehrend, übersprungen (1):\n  - Aufgabe „Fenster putzen (alle)“ (ClickUp 86a001)\n"),
+        "{text}"
+    );
+}
+
+#[tokio::test]
 async fn dry_run_writes_nothing() {
     let clickup = ClickUpMock::start().await;
     let zunder = ZunderMock::start().await;

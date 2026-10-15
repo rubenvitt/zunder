@@ -199,7 +199,7 @@ async fn import_cli_against_real_server() {
     }
 
     // Idempotent: a second run writes nothing.
-    let (ok, output) = run_cli(args).await;
+    let (ok, output) = run_cli(args.clone()).await;
     assert!(ok, "second run failed:\n{output}");
     let (cursor_after, _) = snapshot(&server, &token).await;
     assert_eq!(cursor_after, cursor, "second run must not write:\n{output}");
@@ -234,4 +234,51 @@ async fn import_cli_against_real_server() {
         history.as_array().unwrap().last().unwrap()["source"],
         "api:bootstrap"
     );
+
+    // Made recurring in Zunder and completed: the server writes the
+    // follow-up instance, and a later run leaves the completed instance
+    // alone even though ClickUp has it open and without a due date.
+    let windows = clickup_entity_id(EntityKind::Task, "86a001");
+    let hlc = zunder_core::hlc::system_time_ms();
+    let op = |field: &str, value: Value, n: u32| {
+        json!({
+            "op_id": zunder_core::ids::new_id().to_string(),
+            "entity": "task",
+            "entity_id": windows.to_string(),
+            "field": field,
+            "value": value,
+            "hlc": format!("{hlc:013}:{n:05}:e2e"),
+        })
+    };
+    let body = json!({"client_id": "e2e", "ops": [
+        op("recurrence", json!({"every": 1, "unit": "month", "day": "last", "from": "due"}), 0),
+        op("status", json!("done"), 1),
+    ]});
+    let res: Value = reqwest::Client::new()
+        .post(format!("{}/api/sync/push", server.url))
+        .bearer_auth(&token)
+        .json(&body)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(res["rejected"], json!([]), "{res}");
+    let (_, state) = snapshot(&server, &token).await;
+    let completed = state.task(windows).unwrap();
+    assert_eq!(state.live_tasks().count(), 18 + 1, "follow-up instance");
+
+    clickup.edit_task("/list/9001001/task?page=0", "86a001", |t| {
+        t.insert("due_date".into(), json!(null));
+    });
+    let (ok, output) = run_cli(args).await;
+    assert!(ok, "run with a recurring task failed:\n{output}");
+    assert!(
+        output.contains("In Zunder wiederkehrend, übersprungen (1):"),
+        "{output}"
+    );
+    let (_, state) = snapshot(&server, &token).await;
+    assert_eq!(state.task(windows).unwrap(), completed);
+    assert_eq!(state.live_tasks().count(), 18 + 1);
 }
