@@ -1,6 +1,6 @@
 // German UI labels for the English codes used on the wire.
 
-import type { AreaState, JsonValue, Location, PhoenixRole, ProjectKind, ProjectStatus, Recurrence, RecurrenceFrom, RecurrenceUnit, TaskStatus, TaskType, WeekdayCode } from "./sync/types";
+import type { AreaState, JsonValue, Location, PhoenixRole, ProjectKind, ProjectStatus, Recurrence, RecurrenceFrom, RecurrenceUnit, Task, TaskStatus, TaskType, WeekdayCode } from "./sync/types";
 import { WEEKDAY_CODES } from "./sync/types";
 import { formatDateLabel, parseDue } from "./sync/dates";
 import { parseRecurrence, sameRecurrence, weekdayOf } from "./sync/recurrence";
@@ -123,6 +123,29 @@ export function locationLabel(location: Location): string {
   }
 }
 
+/** A task named by a field value, with its label (deleted tasks keep theirs, unknown ones are „andere Aufgabe“). */
+export interface TaskRefLabel {
+  id: string;
+  task: Task | undefined;
+  label: string;
+}
+
+/**
+ * The tasks a field value names: `parent_id` (by title), `blocked_by` and
+ * `recurrence_prev` (by reference, else title). Null for other fields, null and `[]`.
+ */
+export function historyTaskRefs(field: string, value: JsonValue): TaskRefLabel[] | null {
+  let ids: string[];
+  if ((field === "parent_id" || field === "recurrence_prev") && typeof value === "string") ids = [value];
+  else if (field === "blocked_by" && Array.isArray(value) && value.length > 0) ids = value.map((id) => (typeof id === "string" ? id : ""));
+  else return null;
+  return ids.map((id) => {
+    const task = id ? data.tasks[id] : undefined;
+    const label = !task ? "andere Aufgabe" : field === "parent_id" ? task.title : (task.ref ?? `„${task.title}“`);
+    return { id, task, label };
+  });
+}
+
 /** A field value of an operation in words (change history, agent log). */
 export function describeValue(field: string, value: JsonValue): string {
   if (value === null) return "entfernt";
@@ -133,11 +156,9 @@ export function describeValue(field: string, value: JsonValue): string {
     if (kind === "inbox" || kind === "loose") return locationLabel({ kind });
     if ((kind === "area" || kind === "project") && typeof value.id === "string") return locationLabel({ kind, id: value.id });
   }
-  if (field === "parent_id" && typeof value === "string") return data.tasks[value]?.title ?? "andere Aufgabe";
-  if (field === "blocked_by" && Array.isArray(value)) {
-    if (value.length === 0) return "keine";
-    return value.map((id) => (typeof id === "string" && data.tasks[id] ? (data.tasks[id]!.ref ?? `„${data.tasks[id]!.title}“`) : "andere Aufgabe")).join(", ");
-  }
+  const refs = historyTaskRefs(field, value);
+  if (refs) return refs.map((r) => r.label).join(", ");
+  if (field === "blocked_by" && Array.isArray(value) && value.length === 0) return "keine";
   if (field === "deleted") return "ja";
   if (field === "recurrence") {
     const r = parseRecurrence(value);

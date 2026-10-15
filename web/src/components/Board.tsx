@@ -4,7 +4,7 @@ import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-j
 import { compareTasks, hasOpenChildren, isClaimActive, isClosed } from "../sync/derived";
 import type { Task, TaskStatus } from "../sync/types";
 import { boardStatuses, STATUS_LABELS } from "../labels";
-import { placeTask, setStatus, shorten, warnIfOpenChildren } from "../state/actions";
+import { placeTask, setStatus, shorten } from "../state/actions";
 import { data, now, taskIndex } from "../state/store";
 import { registerList, selectedId, setActiveBoard, setDetailId, setSelectedId, toast } from "../state/ui";
 import { Icon } from "./Icon";
@@ -50,8 +50,7 @@ export function Board(props: BoardProps) {
     const clamped = Math.max(0, Math.min(index, target.length));
     const before = target[clamped - 1] ?? null;
     const after = target[clamped] ?? null;
-    const statusChanged = task.status !== status;
-    if (placeTask(id, before, after, statusChanged ? { status } : {}) && statusChanged && status === "done") warnIfOpenChildren(id);
+    placeTask(id, before, after, status);
   }
 
   onMount(() => {
