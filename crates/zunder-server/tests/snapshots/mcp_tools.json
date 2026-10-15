@@ -99,6 +99,10 @@
           "description": "Nur Aufgaben in diesem Projekt.",
           "type": "string"
         },
+        "recurring": {
+          "description": "true: nur wiederkehrende Aufgaben (mit recurrence); false: nur einmalige.",
+          "type": "boolean"
+        },
         "reverse": {
           "description": "Sortierung umkehren (Standard false).",
           "type": "boolean"
@@ -180,7 +184,7 @@
       "readOnlyHint": false,
       "title": "Aufgabe anlegen"
     },
-    "description": "Legt eine Aufgabe an. Nur title ist Pflicht; ohne location landet sie in der Inbox. Mit parent_id entsteht eine Unteraufgabe (ihre Stelle ist die der Wurzelaufgabe).",
+    "description": "Legt eine Aufgabe an. Nur title ist Pflicht; ohne location landet sie in der Inbox. Mit parent_id entsteht eine Unteraufgabe (ihre Stelle ist die der Wurzelaufgabe). Mit recurrence (und due) wird sie wiederkehrend: Erledigen oder Verwerfen legt die nächste Instanz an.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -285,6 +289,67 @@
           "description": "URL des Pull Requests (http/https).",
           "type": "string"
         },
+        "recurrence": {
+          "additionalProperties": false,
+          "description": "Rhythmus einer wiederkehrenden Aufgabe; braucht due und geht nur an Aufgaben ohne parent_id. Beispiele: jeden Freitag {\"every\":1,\"unit\":\"week\",\"weekdays\":[\"fr\"],\"from\":\"due\"}, jeden Monatsletzten {\"every\":1,\"unit\":\"month\",\"day\":\"last\",\"from\":\"due\"}, 3 Monate nach Erledigung {\"every\":3,\"unit\":\"month\",\"from\":\"done\"}. Wird die Aufgabe erledigt oder verworfen, legt der Server die nächste Instanz an (mit neuer Fälligkeit, ohne Unteraufgaben und Kommentare).",
+          "properties": {
+            "day": {
+              "description": "Nur bei unit month: Tag des Monats 1–31 (in kürzeren Monaten der letzte) oder \"last\" (immer der Monatsletzte). Fehlt er, gilt der Tag der Fälligkeit.",
+              "type": [
+                "integer",
+                "string"
+              ]
+            },
+            "every": {
+              "description": "Abstand in Einheiten (1–999).",
+              "maximum": 999,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "from": {
+              "description": "Anker: due = fester Kalender ab der Fälligkeit (verpasste Termine werden übersprungen, die nächste Instanz liegt nicht vor heute); done = every Einheiten nach der Erledigung.",
+              "enum": [
+                "due",
+                "done"
+              ],
+              "type": "string"
+            },
+            "unit": {
+              "description": "Einheit: day, week, month oder year.",
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "year"
+              ],
+              "type": "string"
+            },
+            "weekdays": {
+              "description": "Nur bei unit week: Wochentage (mo, tu, we, th, fr, sa, su).",
+              "items": {
+                "enum": [
+                  "mo",
+                  "tu",
+                  "we",
+                  "th",
+                  "fr",
+                  "sa",
+                  "su"
+                ],
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "every",
+            "unit",
+            "from"
+          ],
+          "type": "object"
+        },
         "remind_at": {
           "description": "Erinnerung als RFC-3339-Zeitpunkt mit Offset.",
           "type": "string"
@@ -343,7 +408,7 @@
       "readOnlyHint": false,
       "title": "Aufgabe ändern"
     },
-    "description": "Ändert Felder einer Aufgabe (task_id oder clickup_id). Nur angegebene Felder ändern sich; null entfernt optionale Werte. Stelle und Elternaufgabe ändert move_task, Reservierungen claim_task/release_task. Für Zwischenstände und Notizen add_comment nutzen statt die Beschreibung zu überschreiben. Schließen (status done oder dropped) einer Aufgabe mit offenen Unteraufgaben wird ohne force abgelehnt (Fehler open_subtasks, nichts wird geändert): erst die Unteraufgaben erledigen oder verwerfen, oder bewusst mit force: true erneut aufrufen.",
+    "description": "Ändert Felder einer Aufgabe (task_id oder clickup_id). Nur angegebene Felder ändern sich; null entfernt optionale Werte. Stelle und Elternaufgabe ändert move_task, Reservierungen claim_task/release_task. Für Zwischenstände und Notizen add_comment nutzen statt die Beschreibung zu überschreiben. Schließen (status done oder dropped) einer Aufgabe mit offenen Unteraufgaben wird ohne force abgelehnt (Fehler open_subtasks, nichts wird geändert): erst die Unteraufgaben erledigen oder verwerfen, oder bewusst mit force: true erneut aufrufen. Wer eine wiederkehrende Aufgabe (recurrence) erledigt oder verwirft, schließt nur diese Instanz: Der Server legt die nächste an (neue Fälligkeit nach dem Rhythmus, gleiche Stelle, ohne Unteraufgaben und Kommentare) und nennt sie im Ergebnis unter next_task; die Serie endet mit recurrence: null.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -444,6 +509,70 @@
           "description": "URL des Pull Requests (http/https). null entfernt den Wert.",
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "recurrence": {
+          "additionalProperties": false,
+          "description": "Rhythmus einer wiederkehrenden Aufgabe; braucht due und geht nur an Aufgaben ohne parent_id. Beispiele: jeden Freitag {\"every\":1,\"unit\":\"week\",\"weekdays\":[\"fr\"],\"from\":\"due\"}, jeden Monatsletzten {\"every\":1,\"unit\":\"month\",\"day\":\"last\",\"from\":\"due\"}, 3 Monate nach Erledigung {\"every\":3,\"unit\":\"month\",\"from\":\"done\"}. Wird die Aufgabe erledigt oder verworfen, legt der Server die nächste Instanz an (mit neuer Fälligkeit, ohne Unteraufgaben und Kommentare). null beendet die Serie.",
+          "properties": {
+            "day": {
+              "description": "Nur bei unit month: Tag des Monats 1–31 (in kürzeren Monaten der letzte) oder \"last\" (immer der Monatsletzte). Fehlt er, gilt der Tag der Fälligkeit.",
+              "type": [
+                "integer",
+                "string"
+              ]
+            },
+            "every": {
+              "description": "Abstand in Einheiten (1–999).",
+              "maximum": 999,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "from": {
+              "description": "Anker: due = fester Kalender ab der Fälligkeit (verpasste Termine werden übersprungen, die nächste Instanz liegt nicht vor heute); done = every Einheiten nach der Erledigung.",
+              "enum": [
+                "due",
+                "done"
+              ],
+              "type": "string"
+            },
+            "unit": {
+              "description": "Einheit: day, week, month oder year.",
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "year"
+              ],
+              "type": "string"
+            },
+            "weekdays": {
+              "description": "Nur bei unit week: Wochentage (mo, tu, we, th, fr, sa, su).",
+              "items": {
+                "enum": [
+                  "mo",
+                  "tu",
+                  "we",
+                  "th",
+                  "fr",
+                  "sa",
+                  "su"
+                ],
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "every",
+            "unit",
+            "from"
+          ],
+          "type": [
+            "object",
             "null"
           ]
         },

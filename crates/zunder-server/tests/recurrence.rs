@@ -11,7 +11,7 @@ use zunder_core::model::fields;
 use zunder_core::{Clock, Due, EntityKind, Location, NewTask, NodeId, Task, TaskStatus};
 use zunder_server::calendar::FeedScope;
 
-use common::{api_token, client_clock, mcp_ok, ops, Auth, TestServer, BOOTSTRAP};
+use common::{api_token, client_clock, mcp_err, mcp_ok, ops, Auth, TestServer, BOOTSTRAP};
 
 const BOOT: Auth<'static> = Auth::Bearer(BOOTSTRAP);
 
@@ -353,4 +353,322 @@ async fn instances_in_keyed_projects_get_the_next_reference() {
         .collect();
     assert!(!touched.contains(&next.id.to_string().as_str()), "{log}");
     assert!(touched.contains(&id.to_string().as_str()), "{log}");
+}
+
+// ----- MCP (contract 4.1) ---------------------------------------------------------------
+
+/// Every Friday, anchored at the due date.
+fn every_friday() -> Value {
+    json!({"every": 1, "unit": "week", "weekdays": ["fr"], "from": "due"})
+}
+
+#[tokio::test]
+async fn mcp_weekly_task_names_its_next_instance() {
+    let s = TestServer::new().await;
+    let t = api_token(&s, "claude").await;
+    // 2099-01-02 is a Friday.
+    let created = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Odoo-Stunden abgeben", "due": "2099-01-02", "recurrence": every_friday()}),
+    )
+    .await;
+    let task = &created["task"];
+    assert_eq!(task["recurrence"], every_friday());
+    assert_eq!(task["recurrence_prev"], Value::Null);
+    let id = task["id"].as_str().unwrap().to_owned();
+
+    let done = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": id, "status": "done"}),
+    )
+    .await;
+    assert_eq!(done["task"]["status"], "done");
+    let next = &done["next_task"];
+    assert_eq!(next["title"], "Odoo-Stunden abgeben");
+    assert_eq!(next["status"], "open");
+    assert_eq!(next["due"], "2099-01-09", "the next Friday");
+    assert_eq!(next["recurrence"], every_friday());
+    assert_eq!(next["recurrence_prev"], id.as_str());
+    let next_id: Id = next["id"].as_str().unwrap().parse().unwrap();
+    assert_eq!(only_successor(&s, id.parse().unwrap()).id, next_id);
+
+    // get_task shows the series link.
+    let got = mcp_ok(&s, &t, "get_task", json!({"task_id": next_id.to_string()})).await;
+    assert_eq!(got["task"]["recurrence_prev"], id.as_str());
+    assert_eq!(got["task"]["recurrence"], every_friday());
+
+    // Completing again, or reopening and completing, names no new instance.
+    let again = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": id, "status": "done", "title": "Odoo-Stunden abgeben (KW 1)"}),
+    )
+    .await;
+    assert_eq!(again["next_task"], Value::Null);
+    let reopened = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": id, "status": "open"}),
+    )
+    .await;
+    assert_eq!(reopened["next_task"], Value::Null);
+    let redone = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": id, "status": "done"}),
+    )
+    .await;
+    assert_eq!(redone["next_task"], Value::Null);
+    assert_eq!(successors(&s, id.parse().unwrap()).len(), 1);
+}
+
+#[tokio::test]
+async fn mcp_month_end_series_continues_on_the_last_day() {
+    let s = TestServer::new().await;
+    let t = api_token(&s, "claude").await;
+    let area = mcp_ok(&s, &t, "create_area", json!({"name": "Arbeit"})).await;
+    let project = mcp_ok(
+        &s,
+        &t,
+        "create_project",
+        json!({"name": "Büro", "area_id": area["area"]["id"], "key": "BUE"}),
+    )
+    .await;
+    let project_id = project["project"]["id"].as_str().unwrap();
+    let created = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({
+            "title": "Odoo absenden und Stunden bestätigen",
+            "location": {"kind": "project", "id": project_id},
+            "due": "2099-01-31",
+            "recurrence": month_end(),
+        }),
+    )
+    .await;
+    assert_eq!(created["task"]["ref"], "BUE-1");
+
+    let done = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": "BUE-1", "status": "done"}),
+    )
+    .await;
+    let next = &done["next_task"];
+    assert_eq!(next["due"], "2099-02-28", "last day of the next month");
+    assert_eq!(next["ref"], "BUE-2");
+    assert_eq!(next["recurrence"], month_end());
+    assert_eq!(next["location"]["id"], project_id);
+
+    // Dropping continues the series as well: 28.02. → 31.03.
+    let dropped = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": "BUE-2", "status": "dropped"}),
+    )
+    .await;
+    assert_eq!(dropped["next_task"]["due"], "2099-03-31");
+    assert_eq!(dropped["next_task"]["ref"], "BUE-3");
+}
+
+#[tokio::test]
+async fn mcp_sets_and_ends_recurrence() {
+    let s = TestServer::new().await;
+    let t = api_token(&s, "claude").await;
+    let created = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Zeitung", "due": "2099-01-31"}),
+    )
+    .await;
+    assert_eq!(created["task"]["recurrence"], Value::Null);
+    let id = created["task"]["id"].as_str().unwrap().to_owned();
+
+    let set = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": id, "recurrence": month_end()}),
+    )
+    .await;
+    assert_eq!(set["task"]["recurrence"], month_end());
+    assert_eq!(set["next_task"], Value::Null, "nothing was completed");
+
+    // recurrence: null ends the series; due may go along with it.
+    let ended = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": id, "recurrence": null, "due": null}),
+    )
+    .await;
+    assert_eq!(ended["task"]["recurrence"], Value::Null);
+    assert_eq!(ended["task"]["due"], Value::Null);
+    let done = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": id, "status": "done"}),
+    )
+    .await;
+    assert_eq!(done["next_task"], Value::Null);
+    assert!(successors(&s, id.parse().unwrap()).is_empty());
+}
+
+#[tokio::test]
+async fn mcp_explains_invalid_recurrences() {
+    let s = TestServer::new().await;
+    let t = api_token(&s, "claude").await;
+
+    // Without a due date.
+    let (code, message) = mcp_err(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Odoo", "recurrence": month_end()}),
+    )
+    .await;
+    assert_eq!(code, "invalid_value");
+    assert!(
+        message.contains("Fälligkeit") && message.contains("due"),
+        "{message}"
+    );
+
+    // On a subtask.
+    let parent = mcp_ok(&s, &t, "create_task", json!({"title": "Eltern"})).await;
+    let parent_id = parent["task"]["id"].as_str().unwrap().to_owned();
+    let (code, message) = mcp_err(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Kind", "parent_id": parent_id, "due": "2099-01-31", "recurrence": month_end()}),
+    )
+    .await;
+    assert_eq!(code, "invalid_value");
+    assert!(message.contains("Unteraufgabe"), "{message}");
+    let child = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Kind", "parent_id": parent_id, "due": "2099-01-31"}),
+    )
+    .await;
+    let (code, message) = mcp_err(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": child["task"]["id"], "recurrence": month_end()}),
+    )
+    .await;
+    assert_eq!(code, "invalid_value");
+    assert!(message.contains("Unteraufgabe"), "{message}");
+
+    // Invalid shapes: the core names the violated rule.
+    for (bad, expected) in [
+        (json!({"every": 0, "unit": "day", "from": "due"}), "every"),
+        (
+            json!({"every": 1, "unit": "fortnight", "from": "due"}),
+            "unit",
+        ),
+        (
+            json!({"every": 1, "unit": "week", "from": "später"}),
+            "from",
+        ),
+        (
+            json!({"every": 1, "unit": "month", "weekdays": ["fr"], "from": "due"}),
+            "Wochentage",
+        ),
+        (
+            json!({"every": 1, "unit": "year", "day": "last", "from": "due"}),
+            "monatlichen",
+        ),
+        (
+            json!({"every": 1, "unit": "month", "day": 32, "from": "due"}),
+            "„day“",
+        ),
+        (json!("monatlich"), "recurrence"),
+    ] {
+        let (code, message) = mcp_err(
+            &s,
+            &t,
+            "create_task",
+            json!({"title": "X", "due": "2099-01-31", "recurrence": bad}),
+        )
+        .await;
+        assert_eq!(code, "invalid_value", "{bad}");
+        assert!(message.contains(expected), "{bad}: {message}");
+    }
+
+    // Removing the due date of a recurring task needs recurrence: null.
+    let recurring = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Miete", "due": "2099-01-31", "recurrence": month_end()}),
+    )
+    .await;
+    let (code, message) = mcp_err(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": recurring["task"]["id"], "due": null}),
+    )
+    .await;
+    assert_eq!(code, "invalid_value");
+    assert!(message.contains("recurrence: null"), "{message}");
+    // recurrence_prev is the server's.
+    let (code, _) = mcp_err(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": recurring["task"]["id"], "recurrence_prev": null}),
+    )
+    .await;
+    assert_eq!(code, "invalid_arguments");
+}
+
+#[tokio::test]
+async fn mcp_filters_recurring_tasks() {
+    let s = TestServer::new().await;
+    let t = api_token(&s, "claude").await;
+    mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Miete", "due": "2099-01-31", "recurrence": month_end()}),
+    )
+    .await;
+    mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Einmalig", "due": "2099-01-31"}),
+    )
+    .await;
+    let titles = |r: &Value| -> Vec<String> {
+        r["tasks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["title"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    let r = mcp_ok(&s, &t, "filter_tasks", json!({"recurring": true})).await;
+    assert_eq!(titles(&r), ["Miete"]);
+    assert_eq!(r["tasks"][0]["recurrence"], month_end());
+    let r = mcp_ok(&s, &t, "filter_tasks", json!({"recurring": false})).await;
+    assert_eq!(titles(&r), ["Einmalig"]);
+    let (code, _) = mcp_err(&s, &t, "filter_tasks", json!({"recurring": "ja"})).await;
+    assert_eq!(code, "invalid_arguments");
 }

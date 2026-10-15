@@ -77,6 +77,15 @@ Ergebnisse fest; Zwischenstände gehören als Kommentar an die Aufgabe (add_comm
 Beschreibung. Phönix: phoenix markiert Feuer-Schritte und Flammen einer ISO-Woche; \
 start_flame/stop_flame messen Deep-Work-Blöcke (mit Timing, falls angebunden). \
 Zeitangaben: due als JJJJ-MM-TT oder RFC 3339 mit Offset, remind_at als RFC 3339. \
+Wiederkehrende Aufgaben: recurrence ist der Rhythmus (every, unit day/week/month/year, \
+optional weekdays bei Wochen oder day 1–31/last bei Monaten, from due = fester Kalender oder \
+done = ab Erledigung), z. B. jeden Monatsletzten {\"every\":1,\"unit\":\"month\",\"day\":\"last\",\"from\":\"due\"}. \
+Er braucht due und geht nur an Aufgaben ohne parent_id. Wer eine wiederkehrende Aufgabe auf done \
+oder dropped setzt, schließt nur diese Instanz: Der Server legt die nächste mit neuer Fälligkeit an \
+(gleiche Stelle, ohne Unteraufgaben und Kommentare, recurrence_prev zeigt auf die Vorgängerin) und \
+update_task nennt sie unter next_task; verpasste Termine werden übersprungen. Eine neue Instanz \
+also nicht selbst anlegen. recurrence: null beendet die Serie; filter_tasks mit recurring: true \
+listet die wiederkehrenden Aufgaben. \
 Bewusst ohne Fälligkeit: undated_ack: true markiert eine Aufgabe als „bewusst undatiert“ \
 (Zeitpunkt der Entscheidung); filter_tasks mit has_due: false und undated_ack: false liefert die \
 noch nicht entschiedenen, undated_ack_weeks lässt alte Markierungen ablaufen. \

@@ -14,7 +14,7 @@ use zunder_core::ids::Id;
 use zunder_core::model::format_rfc3339;
 use zunder_core::{
     AreaState, Comment, Due, EntityKind, Link, Location, Phoenix, Progress, ProjectKind,
-    ProjectStatus, ProjectView as ProjectViewMode, State, Task, TaskStatus, TaskType,
+    ProjectStatus, ProjectView as ProjectViewMode, Recurrence, State, Task, TaskStatus, TaskType,
 };
 
 use crate::app::format_ms;
@@ -97,6 +97,10 @@ pub struct TaskView {
     pub links: Vec<Link>,
     pub vault_links: Vec<String>,
     pub phoenix: Option<Phoenix>,
+    /// Recurrence of the series (`null` for a one-off task).
+    pub recurrence: Option<Recurrence>,
+    /// The previous instance of the series (written by the server only).
+    pub recurrence_prev: Option<Id>,
     pub claimed_by: Option<String>,
     pub claim_expires_at: Option<String>,
     /// Whether the claim is still valid (`claimed_by` set and not expired).
@@ -267,6 +271,8 @@ impl TaskView {
             links: task.links,
             vault_links: task.vault_links,
             phoenix: task.phoenix,
+            recurrence: task.recurrence,
+            recurrence_prev: task.recurrence_prev,
             claimed_by: task.claimed_by,
             plan: task.plan,
             branch: task.branch,

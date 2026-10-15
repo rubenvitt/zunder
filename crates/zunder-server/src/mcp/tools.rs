@@ -12,8 +12,8 @@ use zunder_core::ids::Id;
 use zunder_core::model::fields::{area as fa, comment as fc, project as fp, task as ft};
 use zunder_core::search::search;
 use zunder_core::{
-    AreaState, Due, EntityKind, IsoWeek, Location, PhoenixRole, ProjectStatus, State, TaskStatus,
-    TaskType,
+    AreaState, Due, EntityKind, IsoWeek, Location, PhoenixRole, ProjectStatus, Recurrence, State,
+    TaskStatus, TaskType,
 };
 
 use super::args::Args;
@@ -37,6 +37,7 @@ const TASK_FIELDS: &[&str] = &[
     ft::LINKS,
     ft::VAULT_LINKS,
     ft::PHOENIX,
+    ft::RECURRENCE,
     ft::PLAN,
     ft::BRANCH,
     ft::PR_URL,
@@ -215,6 +216,8 @@ struct TaskFilter {
     undated_ack: Option<bool>,
     /// A mark older than this many weeks counts as expired.
     undated_ack_weeks: Option<u64>,
+    /// With (`true`) or without (`false`) a recurrence.
+    recurring: Option<bool>,
     order_by: OrderBy,
     reverse: bool,
     offset: usize,
@@ -335,6 +338,7 @@ impl TaskFilter {
             has_due: args.bool("has_due")?,
             undated_ack,
             undated_ack_weeks,
+            recurring: args.bool("recurring")?,
             order_by: args
                 .code("order_by", &ORDER_BY_CODES)?
                 .unwrap_or(OrderBy::Due),
@@ -422,6 +426,12 @@ impl TaskFilter {
             return false;
         }
         if self.has_due.is_some_and(|has| task.due.is_some() != has) {
+            return false;
+        }
+        if self
+            .recurring
+            .is_some_and(|recurring| task.recurrence.is_some() != recurring)
+        {
             return false;
         }
         if self
@@ -679,6 +689,7 @@ async fn create_task(app: &App, source: Source, args: &Args) -> AppResult<Value>
     let task_type = take(&mut fields, ft::TYPE).unwrap_or_else(|| TaskType::Aufgabe.into());
     let status = take(&mut fields, ft::STATUS).unwrap_or_else(|| TaskStatus::Open.into());
     let blockers = args.task_links(ft::BLOCKED_BY)?.flatten();
+    refuse_invalid_recurrence(&fields, None, parent.is_some())?;
     let (id, warnings) = app
         .mutate_atomic(source, move |state, batch| {
             let id = zunder_core::ids::new_id();
@@ -759,28 +770,122 @@ async fn update_task(app: &App, source: Source, args: &Args) -> AppResult<Value>
     if fields.is_empty() && blockers.is_none() {
         return Err(invalid("Keine Änderung angegeben."));
     }
-    let (id, warnings) = app
-        .mutate_atomic(source, move |state, batch| {
-            let id = target.resolve(state, false)?;
-            if !force {
-                refuse_close_with_open_subtasks(state, id, &fields)?;
-            }
-            match blockers {
-                None => {}
-                Some(None) => fields.push((ft::BLOCKED_BY, Value::Null)),
-                Some(Some(blockers)) => {
-                    fields.push((ft::BLOCKED_BY, blocked_by_value(state, &blockers)?))
-                }
-            }
-            for (field, value) in fields {
-                if changes(state, EntityKind::Task, id, field, &value) {
-                    batch.set_task(id, field, value);
-                }
-            }
-            Ok(id)
+    let closes = status_given(&fields).is_some_and(TaskStatus::is_closed);
+    let ((id, next_task), warnings) = app
+        .locked(move |locked| {
+            let ((id, watched), warnings) = locked.commit_atomic(
+                &source,
+                move |state, batch| {
+                    let id = target.resolve(state, false)?;
+                    let task = state.task(id).expect("resolved task exists");
+                    if !force {
+                        refuse_close_with_open_subtasks(state, &task, &fields)?;
+                    }
+                    refuse_invalid_recurrence(&fields, Some(&task), task.parent_id.is_some())?;
+                    // Instances that existed before, to tell the one this
+                    // call makes the server create (contract 3.1).
+                    let watched = (closes
+                        && (task.recurrence.is_some() || recurrence_given(&fields)))
+                    .then(|| successors(state, id));
+                    match blockers {
+                        None => {}
+                        Some(None) => fields.push((ft::BLOCKED_BY, Value::Null)),
+                        Some(Some(blockers)) => {
+                            fields.push((ft::BLOCKED_BY, blocked_by_value(state, &blockers)?))
+                        }
+                    }
+                    for (field, value) in fields {
+                        if changes(state, EntityKind::Task, id, field, &value) {
+                            batch.set_task(id, field, value);
+                        }
+                    }
+                    Ok((id, watched))
+                },
+                None,
+            )?;
+            // The follow-up rules ran within the commit, under the same lock.
+            let now = system_time_ms();
+            let next_task = watched.and_then(|before| {
+                locked.read(|state| {
+                    successors(state, id)
+                        .into_iter()
+                        .find(|n| !before.contains(n))
+                        .and_then(|n| TaskView::build(state, n, now, false))
+                })
+            });
+            Ok(((id, next_task), warnings))
         })
         .await?;
-    task_result(app, id, &warnings)
+    let mut result = task_result(app, id, &warnings)?;
+    result["next_task"] = to_json(&next_task)?;
+    Ok(result)
+}
+
+/// The status a call sets, if any.
+fn status_given(fields: &[(&'static str, Value)]) -> Option<TaskStatus> {
+    fields
+        .iter()
+        .find(|(k, _)| *k == ft::STATUS)
+        .and_then(|(_, v)| serde_json::from_value::<TaskStatus>(v.clone()).ok())
+}
+
+/// Whether a call sets a recurrence (not `null`).
+fn recurrence_given(fields: &[(&'static str, Value)]) -> bool {
+    fields
+        .iter()
+        .any(|(k, v)| *k == ft::RECURRENCE && !v.is_null())
+}
+
+/// Live tasks naming `id` as the previous instance of their series.
+fn successors(state: &State, id: Id) -> Vec<Id> {
+    state
+        .live_tasks()
+        .filter(|t| t.recurrence_prev == Some(id))
+        .map(|t| t.id)
+        .collect()
+}
+
+/// Refuses a recurring task without a due date, and a recurrence set on a
+/// subtask, with messages naming the tool parameters (the core refuses both
+/// as well, contract 2.5). `current` is the task before the call (`None`
+/// when creating). Shapes are left to the core, whose message names the
+/// violated rule.
+fn refuse_invalid_recurrence(
+    fields: &[(&'static str, Value)],
+    current: Option<&zunder_core::Task>,
+    subtask: bool,
+) -> AppResult<()> {
+    let given = fields
+        .iter()
+        .find(|(k, _)| *k == ft::RECURRENCE)
+        .map(|(_, v)| v);
+    let recurring = match given {
+        Some(v) => !v.is_null() && Recurrence::parse(v).is_ok(),
+        None => current.is_some_and(|t| t.recurrence.is_some()),
+    };
+    if !recurring {
+        return Ok(());
+    }
+    let has_due = match fields.iter().find(|(k, _)| *k == ft::DUE) {
+        Some((_, v)) => !v.is_null(),
+        None => current.is_some_and(|t| t.due.is_some()),
+    };
+    let message = if !has_due && given.is_some() {
+        "Ein Rhythmus (recurrence) braucht eine Fälligkeit: due im selben Aufruf mitgeben \
+         oder vorher setzen. Ab ihr rechnet der Server die nächste Instanz."
+    } else if !has_due {
+        "Die Aufgabe ist wiederkehrend und braucht deshalb eine Fälligkeit. Um due zu \
+         entfernen, im selben Aufruf recurrence: null setzen (beendet die Serie)."
+    } else if subtask && given.is_some() {
+        "Eine Unteraufgabe kann nicht wiederkehren, nur eine Aufgabe ohne parent_id. \
+         Erst mit move_task (parent_id: null) lösen oder den Rhythmus an die Wurzelaufgabe setzen."
+    } else {
+        return Ok(());
+    };
+    Err(AppError::BadRequest {
+        code: "invalid_value",
+        message: message.to_owned(),
+    })
 }
 
 /// Most open subtasks named in the `open_subtasks` refusal.
@@ -790,22 +895,17 @@ const MAX_LISTED_SUBTASKS: usize = 10;
 /// subtasks; the caller has to repeat the call with `force: true`.
 fn refuse_close_with_open_subtasks(
     state: &State,
-    id: Id,
+    task: &zunder_core::Task,
     fields: &[(&'static str, Value)],
 ) -> AppResult<()> {
-    let Some(status) = fields
-        .iter()
-        .find(|(k, _)| *k == ft::STATUS)
-        .and_then(|(_, v)| serde_json::from_value::<TaskStatus>(v.clone()).ok())
-    else {
+    let Some(status) = status_given(fields) else {
         return Ok(());
     };
-    let task = state.task(id).expect("resolved task exists");
     if !status.is_closed() || task.status == status {
         return Ok(());
     }
     let open: Vec<zunder_core::Task> = state
-        .children(id)
+        .children(task.id)
         .into_iter()
         .filter_map(|c| state.task(c))
         .filter(|t| !t.status.is_closed())
