@@ -55,6 +55,8 @@ Erfolgskriterien:
 | `vault_links` | Verweise auf Notizen im Obsidian-Vault |
 | `links` | externe Links |
 | `phoenix` | optional: Rolle (`feuer_schritt` oder `flamme`) und Feuer-Kennung (z. B. `2026-W45`) |
+| `recurrence` | optional: Rhythmus einer wiederkehrenden Aufgabe (alle n Tage, Wochen, Monate oder Jahre; ab Fälligkeit oder ab Erledigung), siehe „Rhythmen“ |
+| `recurrence_prev` | nur vom Server: die Vorgängerin in einer Serie |
 | `claimed_by`, `claim_expires_at` | Reservierung durch einen Agenten (Dev-Modus) |
 | `plan`, `branch`, `pr_url` | strukturierte Ergebnisse aus dem Dev-Modus |
 | `timing_ref` | Verknüpfung zum Timer in Timing (Abschnitt 6) |
@@ -87,11 +89,25 @@ Im Code heißen die Status englisch (`open`, `in_progress`, `review`, `blocked`,
 
 Das persönliche Produktivitätssystem (Wochenzyklen „Feuer“, Deep-Work-Blöcke „Flammen“) ist **kein Container**, sondern eine Markierung. Eine Aufgabe in jedem Bereich oder Projekt kann zugleich Feuer-Schritt oder Flamme sein. Die Phönix-Sicht filtert danach. Längere Zyklen, Ziele und Reviews bleiben im Vault und im Kalender.
 
+### Rhythmen (wiederkehrende Aufgaben)
+
+Nachträglich (2026-10-15) ins MVP geholt, Anlass: Serien wie „Odoo absenden und Stunden bestätigen“ an jedem Monatsletzten. Ein Rhythmus ist ein Feld der Aufgabe, keine eigene Entität und keine RRULE.
+
+- **Form:** alle *n* Tage, Wochen, Monate oder Jahre. Wöchentlich optional an bestimmten Wochentagen, monatlich und jährlich optional an einem festen Tag des Monats oder am Monatsletzten.
+- **Anker:** ab Fälligkeit (fester Kalender: jeden Monatsletzten, auch wenn man am 3. erledigt) oder ab Erledigung (n Einheiten nach dem Abschluss, z. B. „Filter wechseln, 3 Monate nach dem letzten Wechsel“).
+- Ein Rhythmus braucht eine Fälligkeit und geht nur an Aufgaben ohne Elternaufgabe.
+- **Ablauf:** Es gibt immer nur die aktuelle Instanz. Wird sie erledigt oder verworfen, legt der Server die nächste als neue Aufgabe an (gleicher Titel, gleiche Stelle, neue Kennung, neue Fälligkeit). Wer die Serie beenden will, entfernt den Rhythmus.
+- **Keine Lawine:** Wer eine Serie wochenlang liegen lässt, bekommt beim Abschluss nur eine nächste Instanz, und zwar am ersten Termin, der nicht vor heute liegt.
+- **Rückgängig:** Abschließen, wieder öffnen, erneut abschließen erzeugt keine zweite Instanz. Erst wenn die Folgeinstanz gelöscht ist, entsteht beim nächsten Abschluss wieder eine.
+- Kalenderregeln: Der 31. wird in kürzeren Monaten zum Monatsletzten, ohne dass die Serie wandert (31.01. → 28.02. → 31.03.); eine Uhrzeit bleibt über die Zeitumstellung dieselbe Ortszeit.
+
+Die genauen Regeln stehen im Vertrag (2.4, 2.5, 3.1).
+
 ### Bewusst nicht im Modell
 
 - ~~**Kommentare.** Stattdessen ein automatisches Änderungsprotokoll je Aufgabe.~~ Nachträglich (2026-10-12) doch aufgenommen: Agenten posten Zwischenstände als Kommentar, statt die Beschreibung zu überschreiben (Vertrag 2.4, Entität `comment`). Das Änderungsprotokoll bleibt.
 - Custom Fields, Prioritäten, Tags.
-- Wiederkehrende Aufgaben (nicht im MVP; das Modell verbaut sie nicht).
+- ~~Wiederkehrende Aufgaben (nicht im MVP; das Modell verbaut sie nicht).~~ Nachträglich (2026-10-15) doch aufgenommen: Feld `recurrence`, siehe „Rhythmen“ oben (Vertrag 2.4, 3.1).
 - Eigenes Zeittracking (übernimmt Timing, Abschnitt 6).
 
 ## 3. Architektur
@@ -173,7 +189,7 @@ Modi sind Sichten auf dieselben Daten, keine getrennten Apps.
 | **Phönix** | Aktuelles Feuer: Feuer-Schritte und Flammen über alle Bereiche, mit „Flamme starten“. |
 | **Suche** | Befehlspalette (⌘K) für Aufgaben, Projekte und Aktionen. |
 
-- **Schnellerfassung** überall per Tastenkürzel bzw. großem ＋ auf dem Handy. Ein Titel genügt, die Aufgabe landet in der Inbox. Optionale Kurzschreibweise: `Zahnarzt anrufen morgen 9:00 #gesundheit` setzt Erinnerung und Zuordnung.
+- **Schnellerfassung** überall per Tastenkürzel bzw. großem ＋ auf dem Handy. Ein Titel genügt, die Aufgabe landet in der Inbox. Optionale Kurzschreibweise: `Zahnarzt anrufen morgen 9:00 #gesundheit` setzt Erinnerung und Zuordnung, `Odoo absenden jeden Monatsletzten` einen Rhythmus.
 - **Aufgabendetail** als Seitenpanel, alles inline editierbar, Unteraufgaben als Baum, Änderungsprotokoll unten.
 - Mobil: Sichten als Tabs unten.
 - Desktop: vollständig per Tastatur bedienbar.
@@ -228,7 +244,7 @@ Einen Rückweg nach ClickUp gibt es nicht. Das Sicherheitsnetz sind das Roh-Back
 | Bis | Etappe | Ergebnis |
 |---|---|---|
 | ~25.10.2026 | **E1 Fundament** | Kern, Sync, Server, Login, MCP-Grundwerkzeuge, Import-Probelauf |
-| ~08.11.2026 | **E2 Oberfläche** | Web-UI mit allen Sichten, Timing-Brücke, MCP-Parität |
+| ~08.11.2026 | **E2 Oberfläche** | Web-UI mit allen Sichten, Timing-Brücke, MCP-Parität, Rhythmen (seit 2026-10-15 im MVP) |
 | ~22.11.2026 | **E3 Umstieg** | Skill-Branch, finaler Import, Umschalten, eine Woche Sicherheitsnetz |
 | danach | **E4 Apps** | Tauri Desktop + iOS/Android, offline-first, lokale Erinnerungen |
 
@@ -236,7 +252,7 @@ Einen Rückweg nach ClickUp gibt es nicht. Das Sicherheitsnetz sind das Roh-Back
 
 - Automatischer Vault-Abgleich (Stufe 2).
 - Automatische Einordnung von Inbox-Aufgaben in Projekte über ein System-One-Modell (z. B. Jev oder ein offener Nachbau): typisierte Frage „Zu welchem Projekt gehört das?“, Antwort ist ein Projekt oder „nichts Passendes“ mit Konfidenz. Hinter einer Schnittstelle, austauschbar.
-- Wiederkehrende Aufgaben.
+- ~~Wiederkehrende Aufgaben.~~ Ins MVP geholt (E2, Abschnitt 2 „Rhythmen“).
 
 ## 11. Entscheidungen und verworfene Alternativen
 
@@ -247,6 +263,7 @@ Einen Rückweg nach ClickUp gibt es nicht. Das Sicherheitsnetz sind das Roh-Back
 | SQLite | PostgreSQL | Ein Nutzer, triviale Backups, ein Container |
 | Ein Status-Workflow | Status je Liste wie in ClickUp | Fest verdrahtete Status-Namen waren eine Fehlerquelle in den Skills |
 | Kein eigenes Zeittracking | Zeittracking in Zunder | Doppelpflege mit Timing |
+| Rhythmus als Feld der Aufgabe; der Server legt beim Abschluss genau eine Folgeinstanz an (2026-10-15) | RRULE (RFC 5545), vorab angelegte Instanzen, Folgeinstanz im Client | Deckt die gebrauchten Rhythmen ab (Monatsletzter, Wochentage, n Einheiten nach Erledigung), ohne RRULE-Komplexität; nur der Server erzeugt, deshalb keine Doppel durch offline abschließende Clients; eine Instanz statt vieler hält Sichten und Suche sauber |
 | Geteilte Identität mit dem Vault | Vault führt die Struktur / Aufgaben als Markdown | Ordnerstruktur ändert sich regelmäßig; Markdown verträgt sich schlecht mit schneller Mobile-Erfassung |
 | Eigenbau | Bestehende Self-hosted-Tools | Bewusste Entscheidung: Modi, Phönix-Querschnitt, Vault-Identität und Dev-Modus mit MCP passen in kein fertiges Tool ohne ähnlichen Anpassungsaufwand |
 
