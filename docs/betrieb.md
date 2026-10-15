@@ -324,6 +324,10 @@ Die erste Version mit Schema 6 baut beim Start die Tabellen `ops` und `entities`
 
 Schema 7 legt nur die neuen Tabellen `intake_channels` und `intake_submissions` an; bestehende Daten bleiben unberührt. **Zurückrollen:** Eine ältere Version startet nicht mit Schema 7; dann das Backup von vor dem Update einspielen.
 
+### Rhythmen (wiederkehrende Aufgaben)
+
+Ohne Schema-Änderung: Die Felder `recurrence` und `recurrence_prev` sind gewöhnliche Felder im Oplog, Folgeinstanzen legt der Server beim Abschließen an (Zeitzone aus `TZ`, im Container `Europe/Berlin`). Eine **Release-Reihenfolge ist nicht nötig**: Ältere App-Versionen gleichen weiter ab und übernehmen Rhythmus und Folgeinstanzen unverändert, zeigen den Rhythmus aber nicht. Entfernt jemand dort die Fälligkeit einer wiederkehrenden Aufgabe oder hängt sie unter eine andere, lehnt erst der Server das ab, und die App nimmt die Änderung zurück (Meldung in der Sync-Anzeige). **Zurückrollen:** Eine ältere Server-Version liest die Daten, lehnt aber Pushs mit `recurrence` ab (`unknown_field`) und legt keine Folgeinstanzen mehr an.
+
 ## Fehlersuche
 
 | Symptom | Prüfen |
