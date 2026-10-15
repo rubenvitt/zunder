@@ -168,10 +168,10 @@ function applyToState(op: Op) {
   }
 }
 
-function append(op: Op, source: string) {
+function append(op: Op, source: string, receivedAt = new Date().toISOString()) {
   if (opIds.has(op.op_id)) return;
   opIds.add(op.op_id);
-  log.push({ seq: log.length + 1, op, source, received_at: new Date().toISOString() });
+  log.push({ seq: log.length + 1, op, source, received_at: receivedAt });
   applyToState(op);
   observe(op.hlc);
 }
@@ -313,7 +313,44 @@ function checkEntity(entity: EntityKind, id: string, pending: Map<string, Op[]>)
   return null;
 }
 
+/** GET /api/agent-log: MCP commits (same source and receive time), newest first, never split. */
+function agentLog(before: number, limit: number) {
+  const rows = log.filter((e) => e.source.startsWith("mcp:") && e.seq < before).reverse();
+  let taken = rows.slice(0, limit);
+  const last = taken[taken.length - 1];
+  if (taken.length === limit && last) {
+    taken = taken.concat(rows.slice(limit).filter((e) => e.source === last.source && e.received_at === last.received_at));
+  }
+  const actions: { seq: number; source: string; received_at: string; changes: { entity: EntityKind; entity_id: string; created: boolean; ops: Op[] }[]; first: number }[] = [];
+  for (const row of taken) {
+    let action = actions[actions.length - 1];
+    if (!action || action.source !== row.source || action.received_at !== row.received_at) {
+      action = { seq: row.seq, source: row.source, received_at: row.received_at, changes: [], first: row.seq };
+      actions.push(action);
+    }
+    action.first = row.seq;
+    let change = action.changes.find((c) => c.entity === row.op.entity && c.entity_id === row.op.entity_id);
+    if (!change) {
+      change = { entity: row.op.entity, entity_id: row.op.entity_id, created: false, ops: [] };
+      action.changes.push(change);
+    }
+    change.ops.unshift(row.op);
+  }
+  for (const action of actions) {
+    action.changes.reverse();
+    for (const change of action.changes) {
+      change.created = !log.some((e) => e.seq < action.first && e.op.entity === change.entity && e.op.entity_id === change.entity_id);
+    }
+  }
+  return {
+    actions: actions.map(({ first: _first, ...action }) => action),
+    next_before: taken.length >= limit && actions.length > 0 ? actions[actions.length - 1]!.first : null,
+  };
+}
+
 function push(ops: Op[], source: string) {
+  // One push is one commit: all its operations share the receive time (agent log).
+  const receivedAt = new Date().toISOString();
   const accepted: string[] = [];
   const rejected: Rejection[] = [];
   const warnings: { entity_id: string; code: string; message: string }[] = [];
@@ -360,7 +397,7 @@ function push(ops: Op[], source: string) {
       rejected.push({ op_id: op.op_id, code: reason[0], message: reason[1] });
       continue;
     }
-    if (groups.get(key(op.entity, op.entity_id))?.includes(op)) append(op, source);
+    if (groups.get(key(op.entity, op.entity_id))?.includes(op)) append(op, source, receivedAt);
     accepted.push(op.op_id);
   }
   for (const group of groups.values()) {
@@ -795,6 +832,15 @@ const server = createServer(async (req, res) => {
         if (!ID_RE.test(id)) return error(res, 400, "invalid_request", "Keine kanonische ID.");
         if (!state.has(key("task", id))) return error(res, 404, "not_found", "Aufgabe nicht gefunden.");
         return send(res, 200, log.filter((e) => e.op.entity === "task" && e.op.entity_id === id));
+      }
+
+      if (path === "/api/agent-log" && method === "GET") {
+        const beforeParam = url.searchParams.get("before");
+        const before = beforeParam === null ? Infinity : Number(beforeParam);
+        const limit = Math.min(Number(url.searchParams.get("limit") ?? 200), 1000);
+        if (!(before >= 1)) return error(res, 400, "invalid_request", "before muss mindestens 1 sein");
+        if (!Number.isInteger(limit) || limit < 1) return error(res, 400, "invalid_request", "limit muss mindestens 1 sein");
+        return send(res, 200, agentLog(before, limit));
       }
 
       m = /^\/api\/tasks\/([^/]+)\/flame\/(start|stop)$/.exec(path);

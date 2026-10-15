@@ -1,6 +1,6 @@
 // Server settings (browser session only): the Timing bridge for flames (stored
 // settings override the server's environment variables field by field) and the
-// calendar feed of flames and timed tasks.
+// calendar feed of flames and timed tasks, plus the link to the agent log.
 
 import { createMemo, createResource, createSignal, For, Show } from "solid-js";
 import { Icon } from "../components/Icon";
@@ -38,6 +38,13 @@ function ServerSettings() {
       <p class="muted">Einstellungen dieses Zunder-Servers. Sie gelten sofort und haben Vorrang vor den Umgebungsvariablen des Servers.</p>
       <TimingSection />
       <CalendarSection />
+      <section class="group settings-section" aria-label="KI-Protokoll">
+        <h2>KI-Protokoll</h2>
+        <p class="muted">Was Agenten über MCP (z. B. Claude) in Zunder geändert haben: angelegte, geänderte und gelöschte Aufgaben, Projekte, Bereiche und Kommentare.</p>
+        <a class="btn" href="#/ki-protokoll">
+          <Icon name="history" size={14} /> Protokoll öffnen
+        </a>
+      </section>
     </div>
   );
 }

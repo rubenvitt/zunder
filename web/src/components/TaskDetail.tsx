@@ -5,7 +5,7 @@ import { fireOf, formatDateLabel, formatInstant, fromDatetimeLocalInput, localDa
 import { hasOpenChildren, isClaimActive, isDevLocation, isFlameRunning } from "../sync/derived";
 import { hlcWallMs } from "../sync/hlc";
 import { PHOENIX_ROLES, TASK_STATUSES, TASK_TYPES, type HistoryEntry, type JsonValue, type Link, type Task, type TaskStatus, type TaskType } from "../sync/types";
-import { FIELD_LABELS, locationLabel, PHOENIX_LABELS, sourceLabel, STATUS_LABELS, TYPE_LABELS } from "../labels";
+import { describeValue, FIELD_LABELS, locationLabel, PHOENIX_LABELS, sourceLabel, STATUS_LABELS, TYPE_LABELS } from "../labels";
 import { addComment, createTask, deleteComment, deleteTask, dependentsCount, flame, moveTask, setParent, setStatus, updateComment, updateTask } from "../state/actions";
 import { detailBack, NARROW_LAYOUT } from "../state/back";
 import { appConfig } from "../state/desktop";
@@ -926,29 +926,6 @@ function Comments(props: { taskId: string }) {
       </form>
     </section>
   );
-}
-
-function describeValue(field: string, value: JsonValue): string {
-  if (value === null) return "entfernt";
-  if (field === "status" && typeof value === "string") return STATUS_LABELS[value as TaskStatus] ?? value;
-  if (field === "type" && typeof value === "string") return TYPE_LABELS[value as TaskType] ?? value;
-  if (field === "location" && value && typeof value === "object" && !Array.isArray(value)) {
-    const kind = value.kind;
-    if (kind === "inbox" || kind === "loose") return locationLabel({ kind });
-    if ((kind === "area" || kind === "project") && typeof value.id === "string") return locationLabel({ kind, id: value.id });
-  }
-  if (field === "parent_id" && typeof value === "string") return data.tasks[value]?.title ?? "andere Aufgabe";
-  if (field === "blocked_by" && Array.isArray(value)) {
-    if (value.length === 0) return "keine";
-    return value.map((id) => (typeof id === "string" && data.tasks[id] ? (data.tasks[id]!.ref ?? `„${data.tasks[id]!.title}“`) : "andere Aufgabe")).join(", ");
-  }
-  if (field === "deleted") return "ja";
-  if (field === "phoenix" && value && typeof value === "object" && !Array.isArray(value)) {
-    return `${PHOENIX_LABELS[value.role as keyof typeof PHOENIX_LABELS] ?? value.role} ${value.fire}`;
-  }
-  if (typeof value === "string") return value.length > 80 ? `„${value.slice(0, 79)}…“` : `„${value}“`;
-  if (Array.isArray(value)) return `${value.length} Einträge`;
-  return JSON.stringify(value);
 }
 
 const [historyOpen, setHistoryOpen] = createSignal(false);

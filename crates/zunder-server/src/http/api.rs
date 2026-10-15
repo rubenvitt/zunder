@@ -17,7 +17,9 @@ use tokio_stream::wrappers::BroadcastStream;
 use zunder_core::Op;
 
 use super::extract::{parse_id, parse_uuid, ApiJson, ApiQuery};
-use crate::app::{App, CreatedToken, HistoryEntry, PullPage, PushResult, Snapshot, TokenInfo};
+use crate::app::{
+    AgentLogPage, App, CreatedToken, HistoryEntry, PullPage, PushResult, Snapshot, TokenInfo,
+};
 use crate::auth::Principal;
 use crate::calendar::{CalendarSettings, CreatedCalendarFeed};
 use crate::error::{AppError, AppResult};
@@ -46,6 +48,7 @@ pub fn routes() -> Router<App> {
         .route("/sync/pull", get(pull))
         .route("/sync/events", get(events))
         .route("/tasks/{id}/history", get(history))
+        .route("/agent-log", get(agent_log))
         .route("/tasks/{id}/flame/start", post(flame_start))
         .route("/tasks/{id}/flame/stop", post(flame_stop))
         .route("/tokens", get(list_tokens).post(create_token))
@@ -331,6 +334,27 @@ async fn history(
 ) -> AppResult<Json<Vec<HistoryEntry>>> {
     let id = parse_id(&id)?;
     Ok(Json(app.task_history(id).await?))
+}
+
+#[derive(Debug, Deserialize)]
+struct AgentLogQuery {
+    before: Option<i64>,
+    limit: Option<u32>,
+}
+
+async fn agent_log(
+    State(app): State<App>,
+    _principal: Principal,
+    ApiQuery(q): ApiQuery<AgentLogQuery>,
+) -> AppResult<Json<AgentLogPage>> {
+    if q.before.is_some_and(|b| b < 1) {
+        return Err(AppError::bad_request("before muss mindestens 1 sein"));
+    }
+    if q.limit == Some(0) {
+        return Err(AppError::bad_request("limit muss mindestens 1 sein"));
+    }
+    let limit = q.limit.unwrap_or(crate::app::DEFAULT_AGENT_LOG_LIMIT);
+    Ok(Json(app.agent_log(q.before, limit).await?))
 }
 
 async fn flame_start(

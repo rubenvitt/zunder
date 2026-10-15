@@ -1,6 +1,6 @@
 // German UI labels for the English codes used on the wire.
 
-import type { AreaState, Location, PhoenixRole, ProjectKind, ProjectStatus, TaskStatus, TaskType } from "./sync/types";
+import type { AreaState, JsonValue, Location, PhoenixRole, ProjectKind, ProjectStatus, TaskStatus, TaskType } from "./sync/types";
 import { data } from "./state/store";
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
@@ -41,6 +41,7 @@ export const PHOENIX_LABELS: Record<PhoenixRole, string> = {
 
 export const FIELD_LABELS: Record<string, string> = {
   title: "Titel",
+  name: "Name",
   description: "Beschreibung",
   type: "Typ",
   status: "Status",
@@ -66,6 +67,12 @@ export const FIELD_LABELS: Record<string, string> = {
   ref: "Kennung",
   key: "Schlüssel",
   deleted: "Gelöscht",
+  area_id: "Bereich",
+  state: "Zustand",
+  kind: "Art",
+  repo: "Repository",
+  vault_path: "Vault-Pfad",
+  body: "Text",
 };
 
 /**
@@ -109,4 +116,28 @@ export function locationLabel(location: Location): string {
       return area ? `${area.name} › ${project.name}` : project.name;
     }
   }
+}
+
+/** A field value of an operation in words (change history, agent log). */
+export function describeValue(field: string, value: JsonValue): string {
+  if (value === null) return "entfernt";
+  if (field === "status" && typeof value === "string") return STATUS_LABELS[value as TaskStatus] ?? value;
+  if (field === "type" && typeof value === "string") return TYPE_LABELS[value as TaskType] ?? value;
+  if (field === "location" && value && typeof value === "object" && !Array.isArray(value)) {
+    const kind = value.kind;
+    if (kind === "inbox" || kind === "loose") return locationLabel({ kind });
+    if ((kind === "area" || kind === "project") && typeof value.id === "string") return locationLabel({ kind, id: value.id });
+  }
+  if (field === "parent_id" && typeof value === "string") return data.tasks[value]?.title ?? "andere Aufgabe";
+  if (field === "blocked_by" && Array.isArray(value)) {
+    if (value.length === 0) return "keine";
+    return value.map((id) => (typeof id === "string" && data.tasks[id] ? (data.tasks[id]!.ref ?? `„${data.tasks[id]!.title}“`) : "andere Aufgabe")).join(", ");
+  }
+  if (field === "deleted") return "ja";
+  if (field === "phoenix" && value && typeof value === "object" && !Array.isArray(value)) {
+    return `${PHOENIX_LABELS[value.role as keyof typeof PHOENIX_LABELS] ?? value.role} ${value.fire}`;
+  }
+  if (typeof value === "string") return value.length > 80 ? `„${value.slice(0, 79)}…“` : `„${value}“`;
+  if (Array.isArray(value)) return `${value.length} Einträge`;
+  return JSON.stringify(value);
 }

@@ -2,6 +2,7 @@
 // app provides the same interfaces backed by its commands (platform/tauri.ts).
 
 import type {
+  AgentLogPage,
   ApiToken,
   CalendarSettings,
   CreatedCalendarFeed,
@@ -77,6 +78,8 @@ export interface SyncTransport {
 export interface ApiClient {
   me(): Promise<Me>;
   history(taskId: string): Promise<HistoryEntry[]>;
+  /** What agents changed via MCP, newest first; `before` from the previous page. */
+  agentLog(before?: number): Promise<AgentLogPage>;
   /** Resolves with the server's answer (null when it has none). */
   flame(taskId: string, action: "start" | "stop"): Promise<FlameResult | null>;
   listTokens(): Promise<ApiToken[]>;
@@ -186,6 +189,13 @@ export class HttpTransport implements SyncTransport, ApiClient {
     return this.request<HistoryEntry[] | { entries: HistoryEntry[] }>("GET", `/api/tasks/${encodeURIComponent(taskId)}/history`).then(
       (data) => (Array.isArray(data) ? data : (data?.entries ?? [])),
     );
+  }
+
+  agentLog(before?: number): Promise<AgentLogPage> {
+    return this.request<AgentLogPage>("GET", before === undefined ? "/api/agent-log" : `/api/agent-log?before=${before}`).then((data) => ({
+      actions: Array.isArray(data?.actions) ? data.actions : [],
+      next_before: typeof data?.next_before === "number" ? data.next_before : null,
+    }));
   }
 
   async flame(taskId: string, action: "start" | "stop"): Promise<FlameResult | null> {

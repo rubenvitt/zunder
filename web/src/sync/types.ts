@@ -215,6 +215,33 @@ export interface PullResponse {
   has_more: boolean;
 }
 
+/** One commit of an agent (MCP tool call) in `GET /api/agent-log`. */
+export interface AgentAction {
+  /** Largest `seq` of the commit. */
+  seq: number;
+  /** mcp:<token> | mcp:oauth:<client> */
+  source: string;
+  /** RFC 3339 (UTC). */
+  received_at: string;
+  changes: AgentChange[];
+}
+
+/** The operations of one commit on one entity. */
+export interface AgentChange {
+  entity: EntityKind;
+  entity_id: string;
+  /** The commit created the entity. */
+  created: boolean;
+  ops: Op[];
+}
+
+export interface AgentLogPage {
+  /** Newest first. */
+  actions: AgentAction[];
+  /** `before` for older actions; null at the end. */
+  next_before: number | null;
+}
+
 export interface HistoryEntry {
   seq: number;
   op: Op;

@@ -21,7 +21,7 @@ Alle Einstellungen kommen aus `ZUNDER_*`-Umgebungsvariablen (Tabelle im Vertrag)
 | `config` | Umgebungsvariablen lesen und prüfen |
 | `settings` | Einstellungen aus der Web-UI (Timing-Token und -Projekt), die die Umgebungsvariablen Feld für Feld überschreiben |
 | `db` | SQLite (WAL, Fremdschlüssel, `busy_timeout`), eingebettete Migrationen über `user_version`, alle Abfragen |
-| `app` | Anwendungsdienst `App`: `push`, `mutate` (serverseitige Operationen), `snapshot`, `pull`, `task_history`, Tokens, Sitzungen, Backup |
+| `app` | Anwendungsdienst `App`: `push`, `mutate` (serverseitige Operationen), `snapshot`, `pull`, `task_history`, `agent_log`, Tokens, Sitzungen, Backup |
 | `auth` | Principal, Token- und Sitzungs-Hashes, CSRF-Regel, Middleware `require_auth`, OIDC (`auth::oidc`) |
 | `http` | Router: `/healthz`, `/auth/*`, `/api/*` (inkl. `/api/tasks/{id}/flame/start\|stop`), `/mcp`, `/intake/v1/tasks` (`http::intake`), statische Dateien mit SPA-Fallback |
 | `mcp` | MCP über Streamable HTTP: JSON-RPC 2.0 (`mcp`), Werkzeug-Schemas (`mcp::schema`), Werkzeuge (`mcp::tools`), Argumentprüfung (`mcp::args`) |

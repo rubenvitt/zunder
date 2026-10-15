@@ -18,6 +18,7 @@ import { Logo } from "./components/Logo";
 import { preloadEditor } from "./components/MarkdownField";
 import { InboxView, LooseView, TodayView } from "./views/Lists";
 import { DevView, LoginView, PhoenixView, TokensView } from "./views/Other";
+import { AgentLogView } from "./views/AgentLog";
 import { SettingsView } from "./views/Settings";
 import { StructureView } from "./views/Structure";
 
@@ -164,7 +165,7 @@ function Shell() {
                   <Icon name="key" size={16} />
                   <span>API-Tokens</span>
                 </a>
-                <a href="#/einstellungen" class="nav-item small" classList={{ active: active("einstellungen") }}>
+                <a href="#/einstellungen" class="nav-item small" classList={{ active: active("einstellungen") || active("ki-protokoll") }}>
                   <Icon name="settings" size={16} />
                   <span>Einstellungen</span>
                 </a>
@@ -236,6 +237,11 @@ function Shell() {
           </Match>
           <Match when={route().view === "einstellungen"}>
             <SettingsView />
+          </Match>
+          <Match when={route().view === "ki-protokoll"}>
+            <Show when={!desktop} fallback={<SettingsView />}>
+              <AgentLogView />
+            </Show>
           </Match>
           <Match when={route().view === "verbindung"}>
             <Show when={desktop} fallback={<TokensView />}>

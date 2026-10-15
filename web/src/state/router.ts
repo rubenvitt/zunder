@@ -14,6 +14,7 @@ export type Route =
   | { view: "phoenix"; fire?: string }
   | { view: "tokens" }
   | { view: "einstellungen" }
+  | { view: "ki-protokoll" }
   | { view: "verbindung" }
   | { view: "aufgabe"; id: string }
   | { view: "clickup"; id: string };
@@ -39,6 +40,8 @@ export function parseRoute(hash: string): Route {
       return { view: "tokens" };
     case "einstellungen":
       return { view: "einstellungen" };
+    case "ki-protokoll":
+      return { view: "ki-protokoll" };
     case "verbindung":
       return { view: "verbindung" };
     case "aufgabe":
