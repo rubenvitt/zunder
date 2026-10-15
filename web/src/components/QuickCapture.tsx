@@ -2,7 +2,7 @@ import { createMemo, createSignal, For, onMount, Show, untrack } from "solid-js"
 import { captureContext } from "../capture/context";
 import { parseCapture, slugify } from "../capture/parse";
 import { formatDue } from "../sync/dates";
-import { locationLabel } from "../labels";
+import { describeRecurrence, locationLabel } from "../labels";
 import { createTask } from "../state/actions";
 import { route } from "../state/router";
 import { areaList, data, now, projectList } from "../state/store";
@@ -27,9 +27,16 @@ export function QuickCapture() {
     areas: areaList().filter((a) => a.state === "active"),
     projects: projectList().filter((p) => p.status !== "completed"),
   }));
-  const parsed = createMemo(() => parseCapture(text(), new Date(now()), structure()));
+  // × on the rhythm chip keeps its words in the title until the field is emptied.
+  const [rhythmDismissed, setRhythmDismissed] = createSignal(false);
+  const parsed = createMemo(() => parseCapture(text(), new Date(now()), structure(), { recurrence: !rhythmDismissed() }));
   const target = () => parsed().location ?? preset() ?? { kind: "inbox" as const };
   const fromPreset = () => !parsed().location && preset() !== null;
+
+  function dismissRhythm() {
+    setRhythmDismissed(true);
+    input?.focus();
+  }
 
   function clearPreset() {
     setPreset(null);
@@ -59,7 +66,8 @@ export function QuickCapture() {
     if (!raw) return;
     const result = parsed();
     const location = target();
-    const id = createTask({ title: result.title, location, due: result.due, remind_at: result.remind_at });
+    // Quick capture only creates root tasks, so a rhythm is always allowed (contract 2.5).
+    const id = createTask({ title: result.title, location, due: result.due, remind_at: result.remind_at, recurrence: result.recurrence });
     if (!id) return;
     toast(`Erfasst in ${locationLabel(location)}.`);
     setText("");
@@ -83,7 +91,10 @@ export function QuickCapture() {
           placeholder="Neue Aufgabe … z. B. „Zahnarzt anrufen morgen 9:00 #gesundheit“"
           autocomplete="off"
           value={text()}
-          onInput={(e) => setText(e.currentTarget.value)}
+          onInput={(e) => {
+            setText(e.currentTarget.value);
+            if (!e.currentTarget.value.trim()) setRhythmDismissed(false);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Tab" && suggestions().length > 0) {
               e.preventDefault();
@@ -109,12 +120,23 @@ export function QuickCapture() {
               </button>
             </Show>
           </span>
-          <Show when={text().trim()} fallback={<span class="muted"><kbd>#</kbd> ordnet zu, „morgen 9:00“ setzt Fälligkeit. <kbd>Enter</kbd> speichert.</span>}>
+          <Show when={text().trim()} fallback={<span class="muted"><kbd>#</kbd> ordnet zu, „morgen 9:00“ setzt Fälligkeit, „jeden Freitag“ einen Rhythmus. <kbd>Enter</kbd> speichert.</span>}>
             <Show when={parsed().due}>
               <span class="chip chip-accent">
                 <Icon name="calendar" size={12} />
                 Fällig {formatDue(parsed().due, new Date(now()))}
               </span>
+            </Show>
+            <Show when={parsed().recurrence}>
+              {(r) => (
+                <span class="chip chip-accent capture-recurrence">
+                  <Icon name="repeat" size={12} />
+                  {describeRecurrence(r(), parsed().due)}
+                  <button type="button" class="chip-clear" title="Rhythmus entfernen (Wörter bleiben im Titel)" aria-label="Rhythmus entfernen" onClick={dismissRhythm}>
+                    <Icon name="x" size={10} />
+                  </button>
+                </span>
+              )}
             </Show>
             <Show when={parsed().remind_at}>
               <span class="chip">

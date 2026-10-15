@@ -115,6 +115,42 @@ test("Schnellerfassung mit Kurzschreibweise setzt Fälligkeit, Erinnerung und Be
   expect(fields.remind_at).toBe(fields.due);
 });
 
+test("Schnellerfassung mit Rhythmus legt eine wiederkehrende Aufgabe an, × lässt die Wörter im Titel", async ({ page }) => {
+  const s = suffix();
+  await openApp(page);
+
+  await page.keyboard.press("n");
+  const input = page.getByLabel("Titel der neuen Aufgabe");
+  // × removes the rhythm; its words stay in the title.
+  await input.fill(`Gießen ${s} täglich`);
+  const chip = page.locator(".capture-recurrence");
+  await expect(chip).toContainText("Täglich");
+  await chip.getByRole("button", { name: "Rhythmus entfernen" }).click();
+  await expect(chip).toHaveCount(0);
+  await expect(page.locator(".capture-title")).toHaveText(`Gießen ${s} täglich`);
+
+  // Emptying the field brings rhythms back.
+  await input.fill("");
+  await input.fill(`Odoo absenden ${s} jeden Monatsletzten`);
+  await expect(chip).toContainText("Monatlich am Monatsletzten");
+  await expect(page.locator(".capture-title")).toHaveText(`Odoo absenden ${s}`);
+  await page.keyboard.press("Enter");
+
+  await page.keyboard.press("g");
+  await page.keyboard.press("i");
+  const taskRow = row(page, `Odoo absenden ${s}`);
+  await expect(taskRow).toBeVisible();
+  await expect(taskRow.locator(".chip-recurring")).toHaveAttribute("title", "Wiederkehrend: Monatlich am Monatsletzten");
+  const id = await taskRow.getAttribute("data-task-id");
+  await expect
+    .poll(async () => entityFields(page, "task", id!))
+    .toMatchObject({ title: `Odoo absenden ${s}`, recurrence: { every: 1, unit: "month", day: "last", from: "due" } });
+  const due = String((await entityFields(page, "task", id!)).due);
+  const [y, m, d] = due.split("-").map(Number);
+  // The last day of the current month.
+  expect(d).toBe(new Date(y!, m!, 0).getDate());
+});
+
 test("Abgelehnte Operation wird zurückgerollt und gemeldet", async ({ page }) => {
   // A genuine core rejection: the client still shows an area that another client has
   // deleted meanwhile (pulls are held back), so its own validation lets the move pass

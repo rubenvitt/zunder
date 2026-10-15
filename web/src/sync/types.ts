@@ -25,6 +25,9 @@ export type ProjectView = "list" | "board";
 export type TaskType = "aufgabe" | "bug" | "feature";
 export type TaskStatus = "open" | "in_progress" | "review" | "blocked" | "done" | "dropped";
 export type PhoenixRole = "feuer_schritt" | "flamme";
+export type RecurrenceUnit = "day" | "week" | "month" | "year";
+export type RecurrenceFrom = "due" | "done";
+export type WeekdayCode = "mo" | "tu" | "we" | "th" | "fr" | "sa" | "su";
 
 export type Location =
   | { kind: "inbox" }
@@ -42,6 +45,20 @@ export interface Phoenix {
   fire: string;
 }
 
+/**
+ * Recurrence of a task (contract 2.4): every `every` units, optionally on given weekdays
+ * (weekly) or a given day of the month (monthly, yearly), anchored at the due date or the completion.
+ */
+export interface Recurrence {
+  every: number;
+  unit: RecurrenceUnit;
+  /** Only with unit "week": non-empty, distinct, in stored order. */
+  weekdays?: WeekdayCode[];
+  /** Only with unit "month" or "year" (yearly: in the month of the due date): 1–31 (shorter months: their last day) or "last". */
+  day?: number | "last";
+  from: RecurrenceFrom;
+}
+
 export const AREA_STATES: readonly AreaState[] = ["active", "archived"];
 export const PROJECT_STATUSES: readonly ProjectStatus[] = ["active", "paused", "completed"];
 export const PROJECT_KINDS: readonly ProjectKind[] = ["standard", "dev"];
@@ -49,6 +66,9 @@ export const PROJECT_VIEWS: readonly ProjectView[] = ["list", "board"];
 export const TASK_TYPES: readonly TaskType[] = ["aufgabe", "bug", "feature"];
 export const TASK_STATUSES: readonly TaskStatus[] = ["open", "in_progress", "review", "blocked", "done", "dropped"];
 export const PHOENIX_ROLES: readonly PhoenixRole[] = ["feuer_schritt", "flamme"];
+export const RECURRENCE_UNITS: readonly RecurrenceUnit[] = ["day", "week", "month", "year"];
+export const RECURRENCE_FROMS: readonly RecurrenceFrom[] = ["due", "done"];
+export const WEEKDAY_CODES: readonly WeekdayCode[] = ["mo", "tu", "we", "th", "fr", "sa", "su"];
 
 export const AREA_FIELDS = ["name", "state", "vault_path", "deleted"] as const;
 export const PROJECT_FIELDS = ["name", "area_id", "status", "kind", "repo", "description", "view", "key", "deleted"] as const;
@@ -75,6 +95,8 @@ export const TASK_FIELDS = [
   "clickup_id",
   "rank",
   "undated_ack",
+  "recurrence",
+  "recurrence_prev",
   "blocked_by",
   "ref",
   "deleted",
@@ -147,6 +169,10 @@ export interface Task extends EntityMeta {
   rank: string | null;
   /** When the task was marked as deliberately undated ("bewusst undatiert"). */
   undated_ack: string | null;
+  /** Set = the task is recurring. */
+  recurrence: Recurrence | null;
+  /** Previous instance of the series, written by the server only (may name a deleted task). */
+  recurrence_prev: string | null;
   /** IDs of the tasks this one waits for, as stored (may name deleted tasks, which no longer block). */
   blocked_by: string[];
   /** Reference such as `ZUN-42`, assigned by the server (never by a client). */

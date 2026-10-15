@@ -2,11 +2,11 @@
 
 import { createEffect, createResource, createSignal, For, on, onCleanup, onMount, Show, type JSX } from "solid-js";
 import { fireOf, formatDateLabel, formatInstant, fromDatetimeLocalInput, localDate, parseDue, toDatetimeLocalInput, toRfc3339Local } from "../sync/dates";
-import { hasOpenChildren, isClaimActive, isDevLocation, isFlameRunning } from "../sync/derived";
+import { hasOpenChildren, isClaimActive, isDevLocation, isFlameRunning, isRecurring } from "../sync/derived";
 import { hlcWallMs } from "../sync/hlc";
 import { PHOENIX_ROLES, TASK_STATUSES, TASK_TYPES, type HistoryEntry, type JsonValue, type Link, type Task, type TaskStatus, type TaskType } from "../sync/types";
 import { describeValue, FIELD_LABELS, locationLabel, PHOENIX_LABELS, sourceLabel, STATUS_LABELS, TYPE_LABELS } from "../labels";
-import { addComment, createTask, deleteComment, deleteTask, dependentsCount, flame, moveTask, setParent, setStatus, updateComment, updateTask } from "../state/actions";
+import { addComment, createTask, deleteComment, deleteTask, dependentsCount, dropTask, flame, moveTask, setParent, setStatus, updateComment, updateTask } from "../state/actions";
 import { detailBack, NARROW_LAYOUT } from "../state/back";
 import { appConfig } from "../state/desktop";
 import { isTauri } from "../platform/runtime";
@@ -16,6 +16,7 @@ import { TextField } from "./Fields";
 import { Icon, type IconName } from "./Icon";
 import { MarkdownField } from "./MarkdownField";
 import { CheckButton, ProgressBar, SubtaskTree } from "./TaskBits";
+import { RecurrenceEditor, RecurrenceField, SeriesLinks } from "./RecurrenceField";
 import { Dependencies, taskHref } from "./TaskLinks";
 
 /** Only http(s) and mailto links become clickable; anything else (javascript:, data: …) is shown as text. */
@@ -229,6 +230,7 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
   const showDev = () => dev() || !!(t().plan || t().branch || t().pr_url || t().claimed_by);
 
   const set = (fields: Record<string, JsonValue>) => updateTask(t().id, fields);
+  const [recurrenceOpen, setRecurrenceOpen] = createSignal(false);
 
   return (
     <div class="detail-body">
@@ -299,7 +301,12 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
                 aria-label="Status"
                 value={t().status}
                 onChange={(e) => {
-                  if (!setStatus(t().id, e.currentTarget.value as TaskStatus)) e.currentTarget.value = t().status;
+                  const status = e.currentTarget.value as TaskStatus;
+                  if (status === "dropped" && isRecurring(t())) {
+                    // Asks first: only this instance or the whole series (the dialog writes the status).
+                    e.currentTarget.value = t().status;
+                    dropTask(t().id);
+                  } else if (!setStatus(t().id, status)) e.currentTarget.value = t().status;
                 }}
               >
                 <For each={TASK_STATUSES.filter((s) => s !== "review" || dev() || t().status === "review")}>
@@ -331,6 +338,20 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
                 <UndatedAck task={t()} />
               </span>
             </Prop>
+
+            {/* Only root tasks can recur (contract 2.5). */}
+            <Show when={!t().parent_id}>
+              <Prop icon="repeat" label="Wiederholen">
+                <RecurrenceField task={t()} editorOpen={recurrenceOpen()} onToggleEditor={setRecurrenceOpen} />
+                <Show when={recurrenceOpen() && !!t().due && t().recurrence}>{(r) => <RecurrenceEditor task={t()} recurrence={r()} />}</Show>
+              </Prop>
+            </Show>
+
+            <Show when={index().previousInstance(t()) || index().nextInstance(t().id)}>
+              <Prop icon="history" label="Serie">
+                <SeriesLinks task={t()} />
+              </Prop>
+            </Show>
 
             <Prop icon="bell" label="Erinnerung">
               <DateSlot isSet={!!t().remind_at} label="Erinnerung setzen">
@@ -667,9 +688,15 @@ function DueEditor(props: { task: Task; autoOpen?: (el: HTMLInputElement) => voi
   const info = () => parseDue(props.task.due);
   // A due date supersedes the decision to leave the task undated.
   const setDue = (due: string) => updateTask(props.task.id, props.task.undated_ack ? { due, undated_ack: null } : { due });
+  // A recurring task needs its due date (contract 2.5): removing it ends the series, after asking.
+  const removeDue = () => {
+    if (!props.task.recurrence) return updateTask(props.task.id, { due: null });
+    if (!confirm("Ohne Fälligkeit endet die Serie.")) return false;
+    return updateTask(props.task.id, { due: null, recurrence: null });
+  };
   const commit = (date: string, time: string) => {
     if (!date) {
-      updateTask(props.task.id, { due: null });
+      if (!removeDue() && dateInput) dateInput.value = info()?.date ?? "";
       return;
     }
     if (!time) {
@@ -703,7 +730,7 @@ function DueEditor(props: { task: Task; autoOpen?: (el: HTMLInputElement) => voi
         onChange={(e) => commit(dateInput?.value ?? "", e.currentTarget.value)}
       />
       <Show when={props.task.due}>
-        <button class="btn btn-ghost btn-icon btn-xs" aria-label="Fälligkeit entfernen" onClick={() => updateTask(props.task.id, { due: null })}>
+        <button class="btn btn-ghost btn-icon btn-xs" aria-label="Fälligkeit entfernen" onClick={() => removeDue()}>
           <Icon name="x" size={14} />
         </button>
       </Show>

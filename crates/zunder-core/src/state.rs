@@ -305,6 +305,8 @@ impl Entity {
             undated_ack: self
                 .str_value(f::UNDATED_ACK)
                 .and_then(crate::model::parse_rfc3339),
+            recurrence: self.parsed(f::RECURRENCE),
+            recurrence_prev: self.id_value(f::RECURRENCE_PREV),
             blocked_by: self.blocked_by(),
             reference: self.string(f::REF),
             deleted: self.is_deleted(),

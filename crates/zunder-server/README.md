@@ -32,7 +32,7 @@ Alle Einstellungen kommen aus `ZUNDER_*`-Umgebungsvariablen (Tabelle im Vertrag)
 | `timing` | Client der Timing-Web-API hinter dem Trait `TimingApi` |
 | `backup` | nächtliches `VACUUM INTO` nach `data/backups/`, 14 Stück |
 
-Alles, was Daten liest oder ändert, läuft über `App`. Schreibzugriffe sind serialisiert: eine Schreibverbindung hinter einem Mutex, ausgeführt in `spawn_blocking`. Validierung (`zunder_core::validate_push`), Speichern von Operationen und materialisierten Entitäten in einer Transaktion und das Anwenden auf den Zustand im Speicher passieren unter dieser Sperre. Danach geht der neue Cursor per Broadcast an die SSE-Verbindungen.
+Alles, was Daten liest oder ändert, läuft über `App`. Schreibzugriffe sind serialisiert: eine Schreibverbindung hinter einem Mutex, ausgeführt in `spawn_blocking`. Validierung (`zunder_core::validate_push`), Speichern von Operationen und materialisierten Entitäten in einer Transaktion und das Anwenden auf den Zustand im Speicher passieren unter dieser Sperre. Danach geht der neue Cursor per Broadcast an die SSE-Verbindungen. Anschließend wendet der Server unter derselben Sperre seine Folgeregeln als eigene Pushs mit Quelle `server` an (Vertrag 3.1): Kennungen, „Status folgt Abhängigkeiten“ und Folgeinstanzen wiederkehrender Aufgaben; für jeden dieser Pushs laufen die Regeln erneut (eine neue Instanz bekommt so ihre Kennung).
 
 ## MCP
 
@@ -47,7 +47,7 @@ claude mcp add --transport http zunder https://zunder.example.org/mcp \
 
 Für andere Clients gilt dasselbe: URL `<ZUNDER_PUBLIC_URL>/mcp`, Header `Authorization: Bearer zt_…`. Schickt ein Client einen `Origin`-Header, muss er zu `ZUNDER_PUBLIC_URL` passen.
 
-Werkzeuge: `filter_tasks`, `get_task`, `create_task`, `update_task`, `move_task`, `delete_task`, `search`, `claim_task`, `release_task`, `decompose_task`, `list_structure`, `create_area`, `update_area`, `create_project`, `update_project`, `start_flame`, `stop_flame`, `get_task_history`. Jedes Werkzeug, das eine Aufgabe adressiert, nimmt `task_id` oder `clickup_id`. Ergebnisse enthalten `structuredContent` und denselben Inhalt als kompakten JSON-Text; Fehler kommen als Ergebnis mit `isError: true` und deutscher Meldung (Ablehnungen des Kerns mit dessen Code und Text). Jeder Aufruf ist atomar: Wird etwas abgelehnt, wird nichts gespeichert. Details und Parameter: Vertrag Abschnitt 4.1, Schemas in `tests/snapshots/mcp_tools.json`.
+Werkzeuge: `filter_tasks`, `get_task`, `create_task`, `update_task`, `move_task`, `delete_task`, `search`, `claim_task`, `release_task`, `decompose_task`, `list_structure`, `create_area`, `update_area`, `create_project`, `update_project`, `start_flame`, `stop_flame`, `get_task_history`. Jedes Werkzeug, das eine Aufgabe adressiert, nimmt `task_id` oder `clickup_id`. Ergebnisse enthalten `structuredContent` und denselben Inhalt als kompakten JSON-Text; Fehler kommen als Ergebnis mit `isError: true` und deutscher Meldung (Ablehnungen des Kerns mit dessen Code und Text). Jeder Aufruf ist atomar: Wird etwas abgelehnt, wird nichts gespeichert. Wiederkehrende Aufgaben setzen und beenden `create_task`/`update_task` über `recurrence`; schließt `update_task` eine solche Aufgabe ab, nennt das Ergebnis die vom Server angelegte Folgeinstanz unter `next_task`. Details und Parameter: Vertrag Abschnitt 4.1, Schemas in `tests/snapshots/mcp_tools.json`.
 
 Schnelltest mit curl:
 

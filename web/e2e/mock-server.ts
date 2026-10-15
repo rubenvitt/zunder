@@ -16,8 +16,9 @@
 // source/received_at, flame responses (409 without a running flame), token rules,
 // intake channels (management under /api/intake/channels, POST /intake/v1/tasks with
 // a zi_ token: idempotent per external_id, 409 for a dead or completed target, 429
-// after 30 tasks per hour), and a subset of the core validation with the core's
-// rejection codes.
+// after 30 tasks per hour), follow-up instances of recurring tasks after each push
+// (3.1, calendar in mock-recurrence.ts, time zone of the mock process), and a subset of
+// the core validation with the core's rejection codes.
 
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -25,6 +26,7 @@ import { dirname, extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
 import { createId } from "@paralleldrive/cuid2";
+import { nextOccurrence, type MockRecurrence } from "./mock-recurrence.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DIST = resolve(process.env.MOCK_DIST ?? join(here, "..", "dist"));
@@ -100,7 +102,8 @@ const FIELDS: Record<string, string[]> = {
   task: [
     "title", "description", "type", "status", "location", "parent_id", "due", "remind_at", "vault_links", "links",
     "phoenix", "claimed_by", "claim_expires_at", "plan", "branch", "pr_url", "timing_ref", "flame_started_at",
-    "flame_ended_at", "clickup_id", "rank", "undated_ack", "blocked_by", "ref", "deleted",
+    "flame_ended_at", "clickup_id", "rank", "undated_ack", "recurrence", "recurrence_prev", "blocked_by", "ref",
+    "deleted",
   ],
   comment: ["task_id", "body", "author", "deleted"],
 };
@@ -212,6 +215,9 @@ function checkOp(op: Op): [string, string] | null {
   }
   if (op.entity === "task" && op.field === "ref") {
     return ["invalid_value", "Die Kennung („ref“) vergibt der Server, sobald die Aufgabe in einem Projekt mit Schlüssel liegt."];
+  }
+  if (op.entity === "task" && op.field === "recurrence_prev") {
+    return ["invalid_value", "Die Vorgängerin in einer Serie („recurrence_prev“) setzt nur der Server, wenn er die nächste Instanz anlegt."];
   }
   if (op.value === null) {
     return REQUIRED[op.entity]!.includes(op.field) ? ["invalid_value", `Pflichtfeld „${op.field}“ kann nicht zurückgesetzt werden.`] : null;
@@ -391,6 +397,7 @@ function push(ops: Op[], source: string) {
       }
     }
   }
+  const completions = completionsBefore([...groups.values()].flat());
   for (const op of ops) {
     const reason = verdict.get(op.op_id);
     if (reason) {
@@ -414,9 +421,65 @@ function push(ops: Op[], source: string) {
   }
   if (groups.size > 0) {
     assignRefs();
+    if (followUps(completions) > 0) assignRefs();
     notify();
   }
   return { accepted, rejected, warnings, cursor: log.length };
+}
+
+const CLOSED = ["done", "dropped"];
+
+/**
+ * Tasks a push may complete (zunder_core::recurrence::CompletionsBefore): open before
+ * the push, or reopened by a newer status op in the push (created and checked off in one push).
+ */
+function completionsBefore(ops: Op[]): Set<string> {
+  const out = new Set<string>();
+  for (const op of ops) {
+    if (op.entity !== "task" || op.field !== "status" || out.has(op.entity_id)) continue;
+    const e = state.get(key("task", op.entity_id));
+    const status = e?.fields.status;
+    const openBefore = !!e && e.fields.deleted?.value !== true && !CLOSED.includes(String(status?.value ?? "open"));
+    const reopens = !CLOSED.includes(String(op.value)) && (!status || op.hlc > status.hlc || (op.hlc === status.hlc && op.op_id > status.op_id));
+    if (openBefore || reopens) out.add(op.entity_id);
+  }
+  return out;
+}
+
+/**
+ * Follow-up instances of the series whose current instance the push completed
+ * (contract 3.1, "Folgeinstanzen"), written with source `server`. Returns how many.
+ */
+function followUps(candidates: Set<string>): number {
+  let created = 0;
+  const successors = new Set(
+    [...state.values()]
+      .filter((e) => e.entity === "task" && e.fields.deleted?.value !== true && typeof e.fields.recurrence_prev?.value === "string")
+      .map((e) => String(e.fields.recurrence_prev!.value)),
+  );
+  for (const id of [...candidates].sort()) {
+    const e = state.get(key("task", id));
+    if (!e || e.fields.deleted?.value === true || successors.has(id)) continue;
+    const f = Object.fromEntries(Object.entries(e.fields).map(([k, v]) => [k, v.value])) as Record<string, Json>;
+    if (!CLOSED.includes(String(f.status)) || f.parent_id || !f.recurrence || typeof f.due !== "string") continue;
+    const completedMs = Number(e.fields.status!.hlc.slice(0, 13));
+    const next = nextOccurrence(f.recurrence as unknown as MockRecurrence, f.due, typeof f.remind_at === "string" ? f.remind_at : null, completedMs, Date.now());
+    if (!next) continue;
+    const fields: Record<string, Json> = {};
+    for (const k of ["title", "description", "type", "location"]) if (f[k] !== undefined && f[k] !== null) fields[k] = f[k]!;
+    for (const k of ["links", "vault_links"]) if (Array.isArray(f[k]) && (f[k] as Json[]).length > 0) fields[k] = f[k]!;
+    fields.due = next.due;
+    if (next.remind_at) fields.remind_at = next.remind_at;
+    fields.status = "open";
+    fields.recurrence = next.recurrence as unknown as Json;
+    fields.recurrence_prev = id;
+    const instance = createId();
+    for (const [field, value] of Object.entries(fields)) {
+      append({ op_id: createId(), entity: "task", entity_id: instance, field, value, hlc: serverHlc() }, "server");
+    }
+    created += 1;
+  }
+  return created;
 }
 
 /** Task references like the server (zunder_core::numbering): per key in creation order, never reused. */

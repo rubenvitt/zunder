@@ -1,7 +1,7 @@
 import { createEffect, createSignal, For, Show, type JSX } from "solid-js";
 import { isClosed, isClaimActive, isFlameRunning } from "../sync/derived";
 import type { Task } from "../sync/types";
-import { locationLabel, PHOENIX_LABELS, STATUS_LABELS, TYPE_LABELS } from "../labels";
+import { describeRecurrence, locationLabel, PHOENIX_LABELS, STATUS_LABELS, TYPE_LABELS } from "../labels";
 import { now, taskIndex } from "../state/store";
 import { Icon } from "./Icon";
 import { CheckButton, DueChip, RefButton, SubtaskToggle, SubtaskTree } from "./TaskBits";
@@ -59,6 +59,13 @@ export function TaskMeta(props: { task: Task; showLocation?: boolean; showRef?: 
         )}
       </Show>
       <DueChip task={props.task} />
+      <Show when={props.task.recurrence}>
+        {(r) => (
+          <span class="chip chip-recurring" title={`Wiederkehrend: ${describeRecurrence(r(), props.task.due)}`} aria-label={`Wiederkehrend: ${describeRecurrence(r(), props.task.due)}`} role="img">
+            <Icon name="repeat" size={12} />
+          </span>
+        )}
+      </Show>
       <Show when={props.showProgress && progress().total > 0}>
         <span class="chip chip-count" title="Unteraufgaben erledigt">
           {progress().done}/{progress().total}

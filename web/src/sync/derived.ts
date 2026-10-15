@@ -100,6 +100,19 @@ export function compareTasks(a: Task, b: Task): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
+/** Creation order: smallest HLC, then ID. */
+function byCreation(a: Task, b: Task): number {
+  return a.created_hlc < b.created_hlc ? -1 : a.created_hlc > b.created_hlc ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+/**
+ * Completing this task makes the server create the next instance (contract 3.1):
+ * a root task with a rhythm and a due date.
+ */
+export function isRecurring(task: Task): boolean {
+  return !!task.recurrence && !!task.due && !task.parent_id;
+}
+
 export function isFlameRunning(task: Task): boolean {
   if (!task.flame_started_at) return false;
   if (!task.flame_ended_at) return true;
@@ -137,6 +150,8 @@ export class TaskIndex {
   private readonly deleted = new Map<string, boolean>();
   private readonly refs = new Map<string, Task>();
   private readonly waiting = new Map<string, Task[]>();
+  /** Live tasks per `recurrence_prev`: the next instances of a series, oldest first. */
+  private readonly successors = new Map<string, Task[]>();
 
   constructor(tasks: Iterable<Task>) {
     for (const t of tasks) this.byId.set(t.id, t);
@@ -161,8 +176,14 @@ export class TaskIndex {
         if (!list) this.waiting.set(b, (list = []));
         list.push(t);
       }
+      if (t.recurrence_prev) {
+        let list = this.successors.get(t.recurrence_prev);
+        if (!list) this.successors.set(t.recurrence_prev, (list = []));
+        list.push(t);
+      }
     }
     for (const list of this.waiting.values()) list.sort(compareTasks);
+    for (const list of this.successors.values()) list.sort(byCreation);
   }
 
   private isLive(id: string): boolean {
@@ -187,6 +208,16 @@ export class TaskIndex {
   /** Live tasks waiting for this one (the reverse of their `blocked_by`), in rank order. */
   blockedBy(id: string): Task[] {
     return this.waiting.get(id) ?? [];
+  }
+
+  /** The next instance of a series: the live task naming this one in `recurrence_prev` (the first created of several). */
+  nextInstance(id: string): Task | undefined {
+    return this.successors.get(id)?.[0];
+  }
+
+  /** The previous instance of a series, while it lives. */
+  previousInstance(task: Task): Task | undefined {
+    return task.recurrence_prev && this.isLive(task.recurrence_prev) ? this.byId.get(task.recurrence_prev) : undefined;
   }
 
   readonly lookup: TaskLookup = (id) => this.byId.get(id);

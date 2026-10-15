@@ -10,6 +10,7 @@
 //! - [`validate`]: push validation with stable rejection codes
 //! - [`builder`]: ergonomic construction of operation batches
 //! - [`blocking`]: task status follows dependencies (`blocked_by`)
+//! - [`recurrence`]: due date and reminder of the next instance of a series
 //! - [`search`]: diacritic-tolerant full-text search
 
 pub mod blocking;
@@ -19,6 +20,7 @@ pub mod ids;
 pub mod model;
 pub mod numbering;
 pub mod op;
+pub mod recurrence;
 pub mod search;
 pub mod state;
 pub mod validate;
@@ -29,8 +31,9 @@ mod testutil;
 pub use builder::{NewArea, NewProject, NewTask, OpBatch};
 pub use hlc::{Clock, Hlc, NodeId};
 pub use model::{
-    Area, AreaState, Comment, Due, IsoWeek, Link, Location, Phoenix, PhoenixRole, Project,
-    ProjectKind, ProjectStatus, ProjectView, Task, TaskStatus, TaskType,
+    Area, AreaState, Comment, Due, IsoWeek, Link, Location, MonthDay, Phoenix, PhoenixRole,
+    Project, ProjectKind, ProjectStatus, ProjectView, Recurrence, RecurrenceFrom, RecurrenceUnit,
+    Task, TaskStatus, TaskType, WeekdayCode,
 };
 pub use op::{EntityKind, Op};
 pub use state::{Progress, SnapshotEntity, State};

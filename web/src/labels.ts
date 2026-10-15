@@ -1,6 +1,9 @@
 // German UI labels for the English codes used on the wire.
 
-import type { AreaState, JsonValue, Location, PhoenixRole, ProjectKind, ProjectStatus, TaskStatus, TaskType } from "./sync/types";
+import type { AreaState, JsonValue, Location, PhoenixRole, ProjectKind, ProjectStatus, Recurrence, RecurrenceFrom, RecurrenceUnit, TaskStatus, TaskType, WeekdayCode } from "./sync/types";
+import { WEEKDAY_CODES } from "./sync/types";
+import { formatDateLabel, parseDue } from "./sync/dates";
+import { parseRecurrence, sameRecurrence, weekdayOf } from "./sync/recurrence";
 import { data } from "./state/store";
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
@@ -63,6 +66,8 @@ export const FIELD_LABELS: Record<string, string> = {
   clickup_id: "ClickUp-ID",
   rank: "Reihenfolge",
   undated_ack: "Bewusst ohne Fälligkeit",
+  recurrence: "Rhythmus",
+  recurrence_prev: "Vorherige Instanz",
   blocked_by: "Blockiert durch",
   ref: "Kennung",
   key: "Schlüssel",
@@ -134,10 +139,112 @@ export function describeValue(field: string, value: JsonValue): string {
     return value.map((id) => (typeof id === "string" && data.tasks[id] ? (data.tasks[id]!.ref ?? `„${data.tasks[id]!.title}“`) : "andere Aufgabe")).join(", ");
   }
   if (field === "deleted") return "ja";
+  if (field === "recurrence") {
+    const r = parseRecurrence(value);
+    if (r) return describeRecurrence(r);
+  }
   if (field === "phoenix" && value && typeof value === "object" && !Array.isArray(value)) {
     return `${PHOENIX_LABELS[value.role as keyof typeof PHOENIX_LABELS] ?? value.role} ${value.fire}`;
   }
   if (typeof value === "string") return value.length > 80 ? `„${value.slice(0, 79)}…“` : `„${value}“`;
   if (Array.isArray(value)) return `${value.length} Einträge`;
   return JSON.stringify(value);
+}
+
+// ---- Recurrence (contract 5.1, "Rhythmen") ----------------------------------------
+
+export const WEEKDAY_LABELS: Record<WeekdayCode, string> = { mo: "Mo", tu: "Di", we: "Mi", th: "Do", fr: "Fr", sa: "Sa", su: "So" };
+
+export const WEEKDAY_NAMES: Record<WeekdayCode, string> = {
+  mo: "Montag",
+  tu: "Dienstag",
+  we: "Mittwoch",
+  th: "Donnerstag",
+  fr: "Freitag",
+  sa: "Samstag",
+  su: "Sonntag",
+};
+
+/** Unit as the editor names it ("alle 2 Wochen"). */
+export const RECURRENCE_UNIT_LABELS: Record<RecurrenceUnit, { one: string; many: string }> = {
+  day: { one: "Tag", many: "Tage" },
+  week: { one: "Woche", many: "Wochen" },
+  month: { one: "Monat", many: "Monate" },
+  year: { one: "Jahr", many: "Jahre" },
+};
+
+export const RECURRENCE_FROM_LABELS: Record<RecurrenceFrom, string> = {
+  due: "ab Fälligkeit",
+  done: "nach Erledigung",
+};
+
+const EVERY_ONE: Record<RecurrenceUnit, string> = { day: "Täglich", week: "Wöchentlich", month: "Monatlich", year: "Jährlich" };
+const WORKDAYS = "mo,tu,we,th,fr";
+
+/**
+ * A rhythm in words: "Täglich", "Alle 3 Monate nach Erledigung", "Wöchentlich (Mo, Do)",
+ * "Werktags", "Monatlich am Monatsletzten", "Jährlich am 28.02." (the month of `due`) …
+ */
+export function describeRecurrence(r: Recurrence, due?: string | null): string {
+  const days = WEEKDAY_CODES.filter((d) => r.weekdays?.includes(d));
+  const workdays = r.every === 1 && r.unit === "week" && days.join(",") === WORKDAYS;
+  let text = workdays ? "Werktags" : r.every === 1 ? EVERY_ONE[r.unit] : `Alle ${r.every} ${RECURRENCE_UNIT_LABELS[r.unit].many}`;
+  if (!workdays && days.length > 0) text += ` (${days.map((d) => WEEKDAY_LABELS[d]).join(", ")})`;
+  const month = yearlyDayMonth(r, due);
+  if (r.day === "last") text += " am Monatsletzten";
+  else if (r.day !== undefined) text += month ? ` ${yearlyDayLabel(r.day, month)}` : ` am ${r.day}.`;
+  if (r.from === "done") text += " nach Erledigung";
+  return text;
+}
+
+/**
+ * Month ("02") in which a yearly rhythm takes its day, if the UI knows it: that of the due
+ * date for `from: "due"`. With `from: "done"` the server uses the month of the completion
+ * (contract 3.1), so the UI names no month.
+ */
+export function yearlyDayMonth(r: Recurrence, due?: string | null): string | undefined {
+  return r.unit === "year" && r.from === "due" ? parseDue(due ?? null)?.date.slice(5, 7) : undefined;
+}
+
+/** Days the month ("02") can have at most: February 29, since a 29 comes back in leap years. */
+export function monthMaxDays(month: string): number {
+  return [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][Number(month) - 1] ?? 31;
+}
+
+/** "am 28.02." for a yearly day; a day beyond the month's length is its last ("am 30.04." for 31). */
+export function yearlyDayLabel(day: number, month: string): string {
+  return `am ${String(Math.min(day, monthMaxDays(month))).padStart(2, "0")}.${month}.`;
+}
+
+export interface RecurrencePreset {
+  label: string;
+  value: Recurrence;
+}
+
+/** Common rhythms offered in the detail; "weekly" falls on the weekday of the due date. */
+export function recurrencePresets(due: string | null): RecurrencePreset[] {
+  const date = parseDue(due)?.date;
+  const weekday = date ? weekdayOf(date) : null;
+  const out: RecurrencePreset[] = [{ label: "Täglich", value: { every: 1, unit: "day", from: "due" } }];
+  if (weekday) out.push({ label: `Wöchentlich am ${WEEKDAY_NAMES[weekday]}`, value: { every: 1, unit: "week", weekdays: [weekday], from: "due" } });
+  out.push(
+    { label: "Alle 2 Wochen", value: { every: 2, unit: "week", from: "due" } },
+    { label: "Monatlich", value: { every: 1, unit: "month", from: "due" } },
+    { label: "Monatlich am Monatsletzten", value: { every: 1, unit: "month", day: "last", from: "due" } },
+    { label: "Jährlich", value: { every: 1, unit: "year", from: "due" } },
+  );
+  return out;
+}
+
+export function matchPreset(presets: readonly RecurrencePreset[], r: Recurrence | null): RecurrencePreset | undefined {
+  return r ? presets.find((p) => sameRecurrence(p.value, r)) : undefined;
+}
+
+/** Toast once the server delivered the next instance of a series. */
+export function nextInstanceMessage(due: string | null, now: Date): string {
+  const info = parseDue(due);
+  if (!info) return "Nächste Instanz angelegt.";
+  const label = formatDateLabel(info.date, now);
+  const day = ["Heute", "Morgen", "Gestern"].includes(label) ? label.toLowerCase() : `am ${label}`;
+  return `Nächste Instanz ${day}${info.time ? ` um ${info.time}` : ""}`;
 }

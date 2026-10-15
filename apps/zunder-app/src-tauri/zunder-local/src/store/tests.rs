@@ -770,3 +770,89 @@ fn reminders_checked_at_is_stored() {
         Some(1_790_000_030_000)
     );
 }
+
+#[test]
+fn recurring_series_round_trips_and_follows_the_core_rules() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("zunder.db");
+    let mut web = Author::new("web-a");
+    let rhythm = json!({"every": 1, "unit": "month", "day": "last", "from": "due"});
+
+    // The app creates a recurring task and completes it; the server
+    // confirms and later sends the follow-up instance (source `server`).
+    let (first, mut ops) = web.create(|b| {
+        let id = b.create_task(NewTask::new("Odoo absenden und Stunden bestätigen"));
+        b.set_task(id, f::DUE, "2030-01-31T09:00:00+01:00");
+        b.set_task(id, f::RECURRENCE, rhythm.clone());
+        id
+    });
+    ops.extend(web.ops(|b| {
+        b.set_task(first, f::STATUS, "done");
+    }));
+    let mut server = Author::new("server");
+    server.receive(&ops);
+    let (next, follow_up) = server.create(|b| {
+        let id = b.create_task(NewTask::new("Odoo absenden und Stunden bestätigen"));
+        b.set_task(id, f::DUE, "2030-02-28T09:00:00+01:00");
+        b.set_task(id, f::RECURRENCE, rhythm.clone());
+        b.set_task(id, f::RECURRENCE_PREV, first.as_str());
+        id
+    });
+    {
+        let mut store = LocalStore::open(&path).unwrap();
+        let result = store.apply_local(&ops, now()).unwrap();
+        assert!(result.rejected.is_empty(), "{:?}", result.rejected);
+        store
+            .apply_push_response(&ops, &accept_all(&ops, 0))
+            .unwrap();
+        let mut log = ops.clone();
+        log.extend(follow_up.iter().cloned());
+        assert!(store.apply_pull_page(&page(&log, 1, false)).unwrap());
+    }
+
+    // Both fields survive a restart (entities table and op log).
+    let mut store = LocalStore::open(&path).unwrap();
+    for state in [store.state(), store.confirmed_state()] {
+        let task = state.task(next).unwrap();
+        assert_eq!(task.recurrence_prev, Some(first));
+        let day = task.recurrence.as_ref().and_then(|r| r.day);
+        assert_eq!(day, Some(zunder_core::MonthDay::Last));
+        assert_eq!(state.task(first).unwrap().recurrence, task.recurrence);
+    }
+    let snapshot = serde_json::to_value(store.snapshot()).unwrap();
+    let entity = snapshot["entities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["entity_id"] == next.as_str())
+        .unwrap();
+    assert_eq!(entity["fields"][f::RECURRENCE]["value"], rhythm);
+    assert_eq!(
+        entity["fields"][f::RECURRENCE_PREV]["value"],
+        first.as_str()
+    );
+
+    // Local validation applies the core's rules before anything is queued:
+    // the series needs its due date, recurrence_prev is the server's.
+    web.receive(&follow_up);
+    let without_due = web.ops(|b| {
+        b.set_task(next, f::DUE, serde_json::Value::Null);
+    });
+    let own_prev = web.ops(|b| {
+        b.set_task(next, f::RECURRENCE_PREV, serde_json::Value::Null);
+    });
+    for ops in [without_due, own_prev] {
+        let result = store.apply_local(&ops, now()).unwrap();
+        assert_eq!(result.rejected.len(), 1, "{:?}", result.rejected);
+        assert_eq!(result.rejected[0].code, RejectCode::InvalidValue);
+        assert_eq!(result.pending, 0);
+    }
+    // Ending the series together with the due date is fine.
+    let end = web.ops(|b| {
+        b.set_task(next, f::DUE, serde_json::Value::Null);
+        b.set_task(next, f::RECURRENCE, serde_json::Value::Null);
+    });
+    let result = store.apply_local(&end, now()).unwrap();
+    assert!(result.rejected.is_empty(), "{:?}", result.rejected);
+    assert!(store.state().task(next).unwrap().recurrence.is_none());
+}

@@ -49,6 +49,9 @@ test("Kaltstart unter 1 s und Interaktionen unter 100 ms", async ({ page }) => {
   }
   const target = `Messziel ${s}`;
   seeder.task(target, { location: { kind: "loose" } });
+  // A recurring task: checking it off also waits for the server's next instance.
+  const recurring = `Rhythmusziel ${s}`;
+  seeder.task(recurring, { location: { kind: "loose" }, due: `${new Date().getFullYear() + 1}-01-31`, recurrence: { every: 1, unit: "month", day: "last", from: "due" } });
   await seeder.push(page);
 
   // Cold start: navigation start → data rendered (performance mark set by the app).
@@ -64,6 +67,14 @@ test("Kaltstart unter 1 s und Interaktionen unter 100 ms", async ({ page }) => {
   const toggle = await measureKey(page, "x", `document.querySelector('[data-task-id="${id}"]')?.dataset.status === "done"`);
   console.log(`x (erledigt): ${toggle.toFixed(1)} ms`);
   expect(toggle).toBeLessThan(INTERACTION_BUDGET_MS);
+
+  // Interaction: check off a recurring task with x (the next instance arrives later, by pull).
+  await row(page, recurring).locator(".task-main").focus();
+  const recurringId = await row(page, recurring).getAttribute("data-task-id");
+  const toggleRecurring = await measureKey(page, "x", `document.querySelector('[data-task-id="${recurringId}"]')?.dataset.status === "done"`);
+  console.log(`x (wiederkehrend erledigt): ${toggleRecurring.toFixed(1)} ms`);
+  expect(toggleRecurring).toBeLessThan(INTERACTION_BUDGET_MS);
+  await expect(page.locator(".toast", { hasText: "Nächste Instanz" })).toBeVisible();
 
   // Interaction: open quick capture.
   const openCapture = await measureKey(page, "n", `!!document.querySelector('.capture-input')`);

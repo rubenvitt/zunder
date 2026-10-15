@@ -8,7 +8,8 @@
 
 use serde_json::{json, Map, Value};
 use zunder_core::{
-    AreaState, PhoenixRole, ProjectKind, ProjectStatus, ProjectView, TaskStatus, TaskType,
+    AreaState, PhoenixRole, ProjectKind, ProjectStatus, ProjectView, RecurrenceFrom,
+    RecurrenceUnit, TaskStatus, TaskType, WeekdayCode,
 };
 
 /// One tool.
@@ -162,6 +163,58 @@ fn phoenix() -> Value {
     })
 }
 
+fn recurrence(nullable: bool) -> Value {
+    json!({
+        "type": if nullable { json!(["object", "null"]) } else { json!("object") },
+        "description": format!(
+            "Rhythmus einer wiederkehrenden Aufgabe; braucht due und geht nur an Aufgaben ohne \
+             parent_id. Beispiele: jeden Freitag {{\"every\":1,\"unit\":\"week\",\"weekdays\":[\"fr\"],\"from\":\"due\"}}, \
+             jeden Monatsletzten {{\"every\":1,\"unit\":\"month\",\"day\":\"last\",\"from\":\"due\"}}, \
+             3 Monate nach Erledigung {{\"every\":3,\"unit\":\"month\",\"from\":\"done\"}}. \
+             Wird die Aufgabe erledigt oder verworfen, legt der Server die nächste Instanz an \
+             (mit neuer Fälligkeit, ohne Unteraufgaben und Kommentare).{}",
+            if nullable { " null beendet die Serie." } else { "" }
+        ),
+        "properties": {
+            "every": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 999,
+                "description": "Abstand in Einheiten (1–999).",
+            },
+            "unit": {
+                "type": "string",
+                "enum": RecurrenceUnit::codes(),
+                "description": "Einheit: day, week, month oder year.",
+            },
+            "from": {
+                "type": "string",
+                "enum": RecurrenceFrom::codes(),
+                "description": "Anker: due = fester Kalender ab der Fälligkeit (verpasste Termine \
+                    werden übersprungen, die nächste Instanz liegt nicht vor heute); done = every \
+                    Einheiten nach der Erledigung.",
+            },
+            "weekdays": {
+                "type": "array",
+                "items": {"type": "string", "enum": WeekdayCode::codes()},
+                "minItems": 1,
+                "uniqueItems": true,
+                "description": "Nur bei unit week: Wochentage (mo, tu, we, th, fr, sa, su).",
+            },
+            "day": {
+                "type": ["integer", "string"],
+                "description": "Nur bei unit month und year: Tag des Monats 1–31 (in kürzeren \
+                    Monaten der letzte) oder \"last\" (immer der Monatsletzte); bei year im Monat \
+                    der Fälligkeit (bzw. der Erledigung bei from done), etwa day 28 für jeden \
+                    28.02. oder \"last\" für jeden Februarletzten. Fehlt er, gilt der Tag der \
+                    Fälligkeit (bzw. der Erledigung).",
+            },
+        },
+        "required": ["every", "unit", "from"],
+        "additionalProperties": false,
+    })
+}
+
 fn object(properties: Vec<(&str, Value)>, required: &[&str]) -> Value {
     let mut props = Map::new();
     for (name, schema) in properties {
@@ -215,6 +268,7 @@ fn task_fields(nullable: bool) -> Vec<(&'static str, Value)> {
         ("links", links()),
         ("vault_links", vault_links()),
         ("phoenix", phoenix()),
+        ("recurrence", recurrence(nullable)),
         ("blocked_by", blocked_by(nullable)),
         ("plan", text("Plan (Markdown), z. B. aus dem Dev-Modus.")),
         ("branch", text("Git-Branch der Umsetzung.")),
@@ -318,6 +372,10 @@ pub fn definitions() -> Vec<ToolDef> {
                         boolean("true: nur Aufgaben, die als „bewusst undatiert“ markiert sind; false: nur unmarkierte. Für die Deadline-Prüfung: has_due false und undated_ack false."),
                     ),
                     (
+                        "recurring",
+                        boolean("true: nur wiederkehrende Aufgaben (mit recurrence); false: nur einmalige."),
+                    ),
+                    (
                         "undated_ack_weeks",
                         json!({
                             "type": "integer",
@@ -361,7 +419,9 @@ pub fn definitions() -> Vec<ToolDef> {
             name: "create_task",
             title: "Aufgabe anlegen",
             description: "Legt eine Aufgabe an. Nur title ist Pflicht; ohne location landet sie in \
-                der Inbox. Mit parent_id entsteht eine Unteraufgabe (ihre Stelle ist die der Wurzelaufgabe).",
+                der Inbox. Mit parent_id entsteht eine Unteraufgabe (ihre Stelle ist die der Wurzelaufgabe). \
+                Mit recurrence (und due) wird sie wiederkehrend: Erledigen oder Verwerfen legt die \
+                nächste Instanz an.",
             input_schema: object(
                 with(
                     vec![
@@ -389,7 +449,11 @@ pub fn definitions() -> Vec<ToolDef> {
                 add_comment nutzen statt die Beschreibung zu überschreiben. Schließen (status done \
                 oder dropped) einer Aufgabe mit offenen Unteraufgaben wird ohne force abgelehnt \
                 (Fehler open_subtasks, nichts wird geändert): erst die Unteraufgaben erledigen \
-                oder verwerfen, oder bewusst mit force: true erneut aufrufen.",
+                oder verwerfen, oder bewusst mit force: true erneut aufrufen. Wer eine \
+                wiederkehrende Aufgabe (recurrence) erledigt oder verwirft, schließt nur diese \
+                Instanz: Der Server legt die nächste an (neue Fälligkeit nach dem Rhythmus, gleiche \
+                Stelle, ohne Unteraufgaben und Kommentare) und nennt sie im Ergebnis unter \
+                next_task; die Serie endet mit recurrence: null.",
             input_schema: object(
                 with(
                     with(task_ref(), vec![("title", string("Neuer Titel."))]),

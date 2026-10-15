@@ -3,6 +3,7 @@
 // instead of crashing the UI.
 
 import type { EntityState } from "./merge";
+import { parseRecurrence } from "./recurrence";
 import {
   AREA_STATES,
   PHOENIX_ROLES,
@@ -133,6 +134,8 @@ export function toTask(e: EntityState): Task {
     clickup_id: str(value(e, "clickup_id")),
     rank: str(value(e, "rank")),
     undated_ack: str(value(e, "undated_ack")),
+    recurrence: parseRecurrence(value(e, "recurrence")),
+    recurrence_prev: str(value(e, "recurrence_prev")),
     blocked_by: stringArray(value(e, "blocked_by")),
     ref: str(value(e, "ref")),
     status_hlc: e.fields.status?.hlc ?? min,

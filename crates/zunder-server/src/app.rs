@@ -29,6 +29,7 @@ use zunder_core::hlc::system_time_ms;
 use zunder_core::ids::Id;
 use zunder_core::model::fields;
 use zunder_core::numbering::{pending_refs, Scope};
+use zunder_core::recurrence::{CompletionsBefore, LocalZone};
 use zunder_core::{
     validate_push_as, Author, Clock, EntityKind, NodeId, Op, OpBatch, Rejection, SnapshotEntity,
     State, Warning,
@@ -1277,17 +1278,18 @@ impl Inner {
                 now_ms(),
                 extra,
             )?;
-            let blocking = {
+            let (blocking, completions) = {
                 let mut mat = self
                     .materialized
                     .write()
                     .unwrap_or_else(PoisonError::into_inner);
                 let blocking = BlockingBefore::capture(&mat.state, &outcome.new_ops);
+                let completions = CompletionsBefore::capture(&mat.state, &outcome.new_ops);
                 for op in &outcome.new_ops {
                     mat.state.apply(op);
                 }
                 mat.cursor = cursor;
-                blocking
+                (blocking, completions)
             };
             if remote {
                 for op in &outcome.new_ops {
@@ -1304,6 +1306,11 @@ impl Inner {
             // Likewise: a failure leaves the status as the push set it.
             if let Err(e) = self.follow_blockers(conn, clock, &blocking) {
                 tracing::error!(error = %e, "updating blocked tasks failed");
+            }
+            // Likewise: the task stays closed; reopening and completing it
+            // again creates the instance (no catching up at startup).
+            if let Err(e) = self.follow_recurrence(conn, clock, &completions) {
+                tracing::error!(error = %e, "creating next instances of recurring tasks failed");
             }
         }
         Ok(PushResult {
@@ -1374,6 +1381,69 @@ impl Inner {
         self.persist(conn, clock, validated, &Source::Server, None, false, None)?;
         Ok(())
     }
+}
+
+impl Inner {
+    /// Creates the next instance of every series whose current instance the
+    /// push `before` was captured for completed (see
+    /// `zunder_core::recurrence`), as the server's own push. Must be called
+    /// with the writer lock held, right after that push.
+    fn follow_recurrence(
+        &self,
+        conn: &mut Connection,
+        clock: &mut Clock,
+        before: &CompletionsBefore,
+    ) -> AppResult<()> {
+        let now = system_time_ms();
+        let validated = {
+            let mat = self.read_materialized();
+            let follow_ups = before.follow_ups(&mat.state, local_today(), &ServerZone);
+            for id in &follow_ups.out_of_range {
+                tracing::error!(task_id = %id, "next instance of a recurring task lies beyond the year 9999, none created");
+            }
+            if follow_ups.instances.is_empty() {
+                return Ok(());
+            }
+            let mut batch = OpBatch::new(clock, now);
+            for instance in follow_ups.instances {
+                let predecessor = instance.predecessor;
+                let id = instance.write(&mut batch);
+                tracing::info!(task_id = %id, predecessor = %predecessor, "next instance of a recurring task");
+            }
+            Validated::by(&mat, batch.ops(), now, Author::Server)
+        };
+        for r in &validated.outcome.rejected {
+            tracing::error!(op_id = %r.op_id, code = r.code.as_str(), message = %r.message, "next instance of a recurring task rejected");
+        }
+        self.persist(conn, clock, validated, &Source::Server, None, false, None)?;
+        Ok(())
+    }
+}
+
+/// The server's time zone (`TZ`) for the calendar of recurring tasks.
+struct ServerZone;
+
+impl LocalZone for ServerZone {
+    fn offset_at(&self, instant: time::OffsetDateTime) -> time::UtcOffset {
+        use chrono::{Offset, TimeZone};
+        chrono::Local
+            .timestamp_opt(instant.unix_timestamp(), 0)
+            .single()
+            .and_then(|t| {
+                time::UtcOffset::from_whole_seconds(t.offset().fix().local_minus_utc()).ok()
+            })
+            .unwrap_or(time::UtcOffset::UTC)
+    }
+}
+
+/// Today's date in the server's time zone.
+fn local_today() -> time::Date {
+    use chrono::Datelike;
+    let today = chrono::Local::now().date_naive();
+    u16::try_from(today.ordinal())
+        .ok()
+        .and_then(|ordinal| time::Date::from_ordinal_date(today.year(), ordinal).ok())
+        .unwrap_or_else(|| time::OffsetDateTime::now_utc().date())
 }
 
 /// A push validated against the materialized state, with everything needed

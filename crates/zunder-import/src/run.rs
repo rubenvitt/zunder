@@ -49,6 +49,8 @@ pub struct RunSummary {
     pub entities_updated: usize,
     pub entities_unchanged: usize,
     pub entities_deleted_in_zunder: usize,
+    /// Tasks recurring in Zunder (labels); none of their fields is written.
+    pub recurring_in_zunder: Vec<String>,
     pub batches: usize,
     pub accepted: usize,
     /// Rejections predicted by the local check (same rules as the server).
@@ -156,7 +158,7 @@ pub async fn run(
              kürzen oder die Liste überspringen. Mit --keep-going werden sie ausgelassen.",
             summary.oversized.len(),
             ops::MAX_PUSH_BYTES / (1024 * 1024),
-            list_oversized(&summary.oversized)
+            list_labels(&summary.oversized)
         );
     }
     if !summary.predicted_rejections.is_empty() && !options.keep_going {
@@ -236,6 +238,7 @@ fn summary_from(stats: DiffStats) -> RunSummary {
         entities_updated: stats.updated,
         entities_unchanged: stats.unchanged,
         entities_deleted_in_zunder: stats.deleted_in_zunder,
+        recurring_in_zunder: stats.recurring_in_zunder,
         ..RunSummary::default()
     }
 }
@@ -294,18 +297,15 @@ pub fn list_rejections(rejected: &[Rejected]) -> String {
     out
 }
 
-fn list_oversized(oversized: &[String]) -> String {
-    let mut out = oversized
+fn list_labels(labels: &[String]) -> String {
+    let mut out = labels
         .iter()
         .take(MAX_LISTED)
         .map(|label| format!("  - {label}"))
         .collect::<Vec<_>>()
         .join("\n");
-    if oversized.len() > MAX_LISTED {
-        out.push_str(&format!(
-            "\n  … und {} weitere",
-            oversized.len() - MAX_LISTED
-        ));
+    if labels.len() > MAX_LISTED {
+        out.push_str(&format!("\n  … und {} weitere", labels.len() - MAX_LISTED));
     }
     out
 }
@@ -338,6 +338,13 @@ pub fn render_summary(s: &RunSummary) -> String {
         ));
     }
     out.push('\n');
+    if !s.recurring_in_zunder.is_empty() {
+        out.push_str(&format!(
+            "In Zunder wiederkehrend, übersprungen ({}):\n{}\n",
+            s.recurring_in_zunder.len(),
+            list_labels(&s.recurring_in_zunder)
+        ));
+    }
     if !s.oversized.is_empty() {
         out.push_str(&format!(
             "Zu groß für eine Anfrage, {}:\n{}\n",
@@ -346,7 +353,7 @@ pub fn render_summary(s: &RunSummary) -> String {
             } else {
                 "ausgelassen"
             },
-            list_oversized(&s.oversized)
+            list_labels(&s.oversized)
         ));
     }
     if s.dry_run && !s.predicted_rejections.is_empty() {

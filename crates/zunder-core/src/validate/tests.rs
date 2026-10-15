@@ -1232,3 +1232,173 @@ fn a_new_task_can_be_blocked_by_another_new_task() {
     });
     assert_accepted(&push(&state, &ops));
 }
+
+fn monthly_last() -> Value {
+    json!({"every": 1, "unit": "month", "day": "last", "from": "due"})
+}
+
+#[test]
+fn a_recurrence_needs_a_due_date() {
+    let (state, ids) = fixture();
+    // Without due: rejected, on a new and on an existing task.
+    let ops = batch(|b| {
+        let id = b.create_task(NewTask::new("Odoo absenden"));
+        b.set_task(id, "recurrence", monthly_last());
+    });
+    let outcome = push(&state, &ops);
+    assert_all_rejected(&outcome, &ops, RejectCode::InvalidValue);
+    assert!(outcome.rejected[0].message.contains("Fälligkeit"));
+    let ops = batch(|b| {
+        b.set_task(ids.inbox_task, "recurrence", monthly_last());
+    });
+    assert_all_rejected(&push(&state, &ops), &ops, RejectCode::InvalidValue);
+
+    // With due in the same push: accepted; typed view carries it.
+    let ops = batch(|b| {
+        b.set_task(ids.inbox_task, "due", "2026-10-31");
+        b.set_task(ids.inbox_task, "recurrence", monthly_last());
+    });
+    let outcome = push(&state, &ops);
+    assert_accepted(&outcome);
+    let state = applied(state, &outcome);
+    let task = state.task(ids.inbox_task).unwrap();
+    assert_eq!(
+        task.recurrence.map(Value::from),
+        Some(monthly_last()),
+        "typed view"
+    );
+    assert_eq!(task.recurrence_prev, None);
+
+    // Removing due of a recurring task is rejected …
+    let ops = batch(|b| {
+        b.set_task(ids.inbox_task, "due", Value::Null);
+    });
+    let outcome = push(&state, &ops);
+    assert_all_rejected(&outcome, &ops, RejectCode::InvalidValue);
+    assert!(outcome.rejected[0].message.contains("Rhythmus entfernen"));
+    // … unless the series ends in the same push.
+    let ops = batch(|b| {
+        b.set_task(ids.inbox_task, "due", Value::Null);
+        b.set_task(ids.inbox_task, "recurrence", Value::Null);
+    });
+    assert_accepted(&push(&state, &ops));
+    // Other changes and a new due date are fine.
+    let ops = batch(|b| {
+        b.set_task(
+            ids.inbox_task,
+            "title",
+            "Odoo absenden und Stunden bestätigen",
+        );
+        b.set_task(ids.inbox_task, "due", "2026-11-30T17:00:00+01:00");
+        b.set_task(ids.inbox_task, "status", "done");
+    });
+    assert_accepted(&push(&state, &ops));
+}
+
+#[test]
+fn only_root_tasks_can_recur() {
+    let (state, ids) = fixture();
+    let ops = batch(|b| {
+        b.set_task(ids.feature_child, "due", "2026-10-31");
+        b.set_task(ids.feature_child, "recurrence", monthly_last());
+    });
+    let outcome = push(&state, &ops);
+    assert_all_rejected(&outcome, &ops, RejectCode::InvalidValue);
+    assert!(outcome.rejected[0].message.contains("übergeordnete"));
+
+    // A recurring task may have subtasks …
+    let ops = batch(|b| {
+        b.set_task(ids.area_task, "due", "2026-10-31");
+        b.set_task(ids.area_task, "recurrence", monthly_last());
+        b.create_task(NewTask::subtask("Stunden prüfen", ids.area_task));
+    });
+    let outcome = push(&state, &ops);
+    assert_accepted(&outcome);
+    let state = applied(state, &outcome);
+    // … but must not become one.
+    let ops = batch(|b| {
+        b.set_task(ids.area_task, "parent_id", ids.standard_task.to_string());
+    });
+    let outcome = push(&state, &ops);
+    assert_all_rejected(&outcome, &ops, RejectCode::InvalidValue);
+    assert!(outcome.rejected[0].message.contains("übergeordnete"));
+    let ops = batch(|b| {
+        b.set_task(ids.area_task, "parent_id", ids.standard_task.to_string());
+        b.set_task(ids.area_task, "recurrence", Value::Null);
+    });
+    assert_accepted(&push(&state, &ops));
+}
+
+#[test]
+fn restoring_a_recurring_task_checks_the_rules_again() {
+    let (state, _) = fixture();
+    // An older inconsistency (recurrence without due, e.g. from a merge of
+    // concurrent edits) does not block unrelated changes …
+    let mut state = state;
+    state.apply(&op(
+        900_001,
+        T,
+        0,
+        "recurrence",
+        monthly_last(),
+        h(NOW - 1000, 0, "other"),
+    ));
+    let stray = uid(0);
+    state.apply(&op(
+        900_002,
+        T,
+        0,
+        "title",
+        json!("Ohne Fälligkeit"),
+        h(NOW - 1000, 1, "other"),
+    ));
+    let ops = batch(|b| {
+        b.set_task(stray, "title", "Umbenannt");
+    });
+    assert_accepted(&push(&state, &ops));
+    // … but restoring it applies them anew.
+    state.apply(&op(
+        900_003,
+        T,
+        0,
+        "deleted",
+        json!(true),
+        h(NOW - 1000, 2, "other"),
+    ));
+    let ops = batch(|b| {
+        b.set_task(stray, "deleted", false);
+    });
+    assert_all_rejected(&push(&state, &ops), &ops, RejectCode::InvalidValue);
+}
+
+#[test]
+fn recurrence_prev_is_written_by_the_server_only() {
+    let (state, ids) = fixture();
+    for value in [json!(ids.bug.to_string()), Value::Null] {
+        let ops = batch(|b| {
+            b.set_task(ids.inbox_task, "recurrence_prev", value.clone());
+        });
+        let outcome = push(&state, &ops);
+        assert_all_rejected(&outcome, &ops, RejectCode::InvalidValue);
+        assert!(outcome.rejected[0].message.contains("Server"));
+    }
+    // The server may point to any canonical ID, even a deleted or unknown
+    // task (soft reference).
+    let ops = batch(|b| {
+        let next = b.create_task(NewTask::new("Nächste Instanz"));
+        b.set_task(next, "recurrence_prev", uid(77).to_string());
+    });
+    let outcome = validate_push_as(&state, &ops, NOW, Author::Server);
+    assert_accepted(&outcome);
+    let next = ops[0].entity_id;
+    let state = applied(state, &outcome);
+    assert_eq!(state.task(next).unwrap().recurrence_prev, Some(uid(77)));
+    let ops = batch(|b| {
+        b.set_task(ids.inbox_task, "recurrence_prev", "kein-id");
+    });
+    assert_all_rejected(
+        &validate_push_as(&state, &ops, NOW, Author::Server),
+        &ops,
+        RejectCode::InvalidValue,
+    );
+}
