@@ -54,8 +54,10 @@ describe("from due", () => {
     expect(chain(yearly, "2028-02-29", 4)).toEqual(["2029-02-28", "2030-02-28", "2031-02-28", "2032-02-29"]);
     expect(next(yearly, "2026-10-12", at(2026, 10, 12))).toMatchObject({ due: "2027-10-12", recurrence: { ...yearly, day: 12 } });
     expect(chain({ every: 1, unit: "year", day: "last", from: "due" }, "2027-02-28", 2)).toEqual(["2028-02-29", "2029-02-28"]);
-    // k = 0: the configured day of D0's own month.
-    expect(next({ every: 1, unit: "year", day: 20, from: "due" }, "2026-03-10", at(2026, 3, 10))?.due).toBe("2026-03-20");
+    // Unlike months, at least a year: a moved instance waits a year and takes the series along.
+    expect(next({ every: 1, unit: "year", day: 20, from: "due" }, "2026-03-10", at(2026, 3, 10))?.due).toBe("2027-03-20");
+    expect(next({ every: 1, unit: "year", day: 31, from: "due" }, "2027-06-10", at(2027, 6, 10))?.due).toBe("2028-06-30");
+    expect(next({ every: 1, unit: "year", day: 28, from: "due" }, "2027-02-20", at(2027, 2, 20))?.due).toBe("2028-02-28");
   });
 });
 

@@ -89,10 +89,12 @@ function fromDue(r: MockRecurrence, d0: Days, today: Days): Days | null {
     }
     case "month":
     case "year": {
-      // Years use the month of D0: a 28.02. stays a 28.02., a 29.02. comes back in leap years.
+      // Years use the month of D0 and move on by at least a year: a 28.02. stays a 28.02.,
+      // a 29.02. comes back in leap years, a moved instance takes the series along.
       const months = r.unit === "year" ? 12 * r.every : r.every;
       const day = r.day ?? civil(d0)[2];
-      for (let k = Math.max(0, ceilDiv(monthIndex(lower) - monthIndex(d0), months)); ; k++) {
+      const minK = r.unit === "year" ? 1 : 0;
+      for (let k = Math.max(minK, ceilDiv(monthIndex(lower) - monthIndex(d0), months)); ; k++) {
         const candidate = dayInMonth(monthIndex(d0) + k * months, day);
         if (candidate === null || candidate >= lower) return candidate;
       }

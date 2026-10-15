@@ -281,10 +281,30 @@ fn yearly_last_is_the_february_last() {
 fn yearly_day_applies_in_the_month_of_the_old_due() {
     let r = yearly(2, Some(MonthDay::Day(31)), FromDue);
     assert_eq!(on_time(&r, date!(2026 - 04 - 30)), date!(2028 - 04 - 30));
-    // k = 0 counts as with months: the 20th of D0's own month lies after D0.
+    // Unlike months, k = 0 does not count: an instance moved before the
+    // configured day still waits a year.
     let r = yearly(1, Some(MonthDay::Day(20)), FromDue);
-    assert_eq!(on_time(&r, date!(2026 - 03 - 10)), date!(2026 - 03 - 20));
+    assert_eq!(on_time(&r, date!(2026 - 03 - 10)), date!(2027 - 03 - 20));
     assert_eq!(on_time(&r, date!(2026 - 03 - 20)), date!(2027 - 03 - 20));
+}
+
+#[test]
+fn moved_yearly_instance_waits_a_year_and_takes_the_series_along() {
+    // Yearly on 31.05., the instance moved to 10.06.2027 and then
+    // completed: the next one is a year later, in June (the month of the
+    // moved due date), not 30.06.2027.
+    let r = yearly(1, Some(MonthDay::Day(31)), FromDue);
+    assert_eq!(on_time(&r, date!(2027 - 06 - 10)), date!(2028 - 06 - 30));
+    // Moved forward within the month or into an earlier month.
+    let r = yearly(1, Some(MonthDay::Day(28)), FromDue);
+    assert_eq!(on_time(&r, date!(2027 - 03 - 05)), date!(2028 - 03 - 28));
+    assert_eq!(on_time(&r, date!(2027 - 02 - 20)), date!(2028 - 02 - 28));
+    // Completed late, after the date in D0's own year: still the next year.
+    let d0 = date!(2027 - 03 - 05);
+    assert_eq!(
+        next_due_date(&r, d0, date!(2027 - 04 - 01), date!(2027 - 04 - 01)),
+        Some(date!(2028 - 03 - 28))
+    );
 }
 
 #[test]
@@ -949,7 +969,7 @@ mod props {
             }
             RecurrenceUnit::Year => {
                 let years = i64::from(x.year() - d0.year());
-                x.month() == d0.month() && years % every == 0 && day_ok(r.day, d0, x)
+                x.month() == d0.month() && years > 0 && years % every == 0 && day_ok(r.day, d0, x)
             }
         }
     }
@@ -1026,13 +1046,7 @@ mod props {
             let mut prev = start;
             for (i, d) in chain(&r, start, 12).into_iter().enumerate() {
                 prop_assert_eq!(d.month(), start.month());
-                let step = d.year() - prev.year();
-                // Only the first step may stay in D0's own year (k = 0).
-                if i == 0 && step == 0 {
-                    prop_assert!(d > start);
-                } else {
-                    prop_assert_eq!(step, i32::from(every));
-                }
+                prop_assert_eq!(d.year() - prev.year(), i32::from(every), "step {}", i);
                 prop_assert!(day_ok(day, start, d), "{d} misses the day");
                 prev = d;
             }

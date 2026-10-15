@@ -17,8 +17,10 @@
 //!   configured day (`day`, or for monthly and yearly series without it the
 //!   day of D0, which the server then writes into the new instance's
 //!   recurrence) keeps the series from drifting. Yearly series use the month
-//!   of D0: a 28.02. stays a 28.02., a 29.02. falls on the 28.02. in common
-//!   years and comes back in leap years, `"last"` is the February last.
+//!   of D0 and at least one year: a 28.02. stays a 28.02., a 29.02. falls
+//!   on the 28.02. in common years and comes back in leap years, `"last"`
+//!   is the February last. An instance moved into another month takes the
+//!   series along.
 //!
 //! Only the server creates follow-up instances; clients never compute them.
 //! Which tasks a push completed and what their next instance carries:
@@ -175,7 +177,11 @@ fn next_from_due(r: &Recurrence, d0: Date, today: Date) -> Option<Date> {
             let step = months_per_step(r);
             let day = r.day.unwrap_or(MonthDay::Day(d0.day()));
             let months = month_index(lower) - month_index(d0);
-            let mut k = div_ceil(months, step).max(0);
+            // Months may stay in D0's own month (k = 0: the configured day
+            // lies later in it); years always move on by at least one step,
+            // also when D0 was moved off the configured day.
+            let min_k = i64::from(r.unit == RecurrenceUnit::Year);
+            let mut k = div_ceil(months, step).max(min_k);
             loop {
                 let candidate = day_in_month(month_index(d0) + k * step, day)?;
                 if candidate >= lower {
