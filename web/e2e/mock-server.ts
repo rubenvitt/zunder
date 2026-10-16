@@ -102,14 +102,16 @@ const FIELDS: Record<string, string[]> = {
   task: [
     "title", "description", "type", "status", "location", "parent_id", "due", "remind_at", "vault_links", "links",
     "phoenix", "claimed_by", "claim_expires_at", "plan", "branch", "pr_url", "timing_ref", "flame_started_at",
-    "flame_ended_at", "clickup_id", "rank", "undated_ack", "recurrence", "recurrence_prev", "blocked_by", "ref",
-    "deleted",
+    "flame_ended_at", "clickup_id", "rank", "undated_ack", "recurrence", "recurrence_prev", "blocked_by", "weight",
+    "for_whom", "deferrals", "ref", "deleted",
   ],
   comment: ["task_id", "body", "author", "deleted"],
 };
 const ENUMS: Record<string, string[]> = {
   "task.status": ["open", "in_progress", "review", "blocked", "done", "dropped"],
   "task.type": ["aufgabe", "bug", "feature"],
+  "task.weight": ["brand", "glut", "rauch", "asche"],
+  "task.for_whom": ["mich", "uns", "andere"],
   "project.status": ["active", "paused", "completed"],
   "project.kind": ["standard", "dev"],
   "project.view": ["list", "board"],
@@ -231,6 +233,9 @@ function checkOp(op: Op): [string, string] | null {
     return ["invalid_value", "Ungültiger Schlüssel."];
   }
   if (op.field === "deleted" && typeof op.value !== "boolean") return ["invalid_value", "„deleted“ muss true oder false sein."];
+  if (op.field === "deferrals" && !(Number.isInteger(op.value) && (op.value as number) >= 0 && (op.value as number) <= 9999)) {
+    return ["invalid_value", "„deferrals“ muss eine ganze Zahl von 0 bis 9999 sein."];
+  }
   if (op.field === "blocked_by") {
     const ids = Array.isArray(op.value) ? op.value.map(String) : null;
     if (!ids || !ids.every((v) => ID_RE.test(v)) || new Set(ids).size !== ids.length || ids.length > 100) {

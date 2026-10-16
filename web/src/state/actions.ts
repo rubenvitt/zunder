@@ -5,13 +5,15 @@ import { hasOpenChildren, isClosed, isRecurring, sortKey } from "../sync/derived
 import type { Change } from "../sync/engine";
 import { rankBetween } from "../sync/rank";
 import { recurrenceValue } from "../sync/recurrence";
-import type { EntityKind, JsonValue, Location, ProjectKind, Recurrence, Task, TaskStatus } from "../sync/types";
+import type { EntityKind, ForWhom, JsonValue, Location, ProjectKind, Recurrence, Task, TaskStatus, Weight } from "../sync/types";
 import { deleteCascade as cascadeTargets } from "../sync/validate";
 import { newId } from "../sync/ids";
 import { STATUS_LABELS } from "../labels";
-import { api, data, getEngine, taskIndex } from "./store";
+import { api, data, getEngine, now, taskIndex } from "./store";
 import { expectNextInstance } from "./series";
-import { setDropRequest, toast } from "./ui";
+import { setDeferRequest, setDetailId, setDropRequest, setSelectedId, toast } from "./ui";
+import { deferDay, deferFields, needsDecision, type DeferTarget } from "../sync/defer";
+import { formatDateLabel, localDate, toRfc3339Local } from "../sync/dates";
 
 function apply(changes: Change[]): boolean {
   const issues = getEngine().change(changes);
@@ -36,6 +38,8 @@ export interface NewTask {
   rank?: string;
   /** Only for root tasks with a due date (contract 2.5). */
   recurrence?: Recurrence | null;
+  weight?: Weight | null;
+  for_whom?: ForWhom | null;
 }
 
 /** Creates a task (one push group); returns its id or null when refused. */
@@ -49,6 +53,8 @@ export function createTask(input: NewTask): string | null {
   if (input.status && input.status !== "open") fields.status = input.status;
   if (input.rank) fields.rank = input.rank;
   if (input.recurrence) fields.recurrence = recurrenceValue(input.recurrence);
+  if (input.weight) fields.weight = input.weight;
+  if (input.for_whom) fields.for_whom = input.for_whom;
   return apply([{ entity: "task", id, fields }]) ? id : null;
 }
 
@@ -138,6 +144,69 @@ export function toggleDone(id: string): void {
 }
 
 /** Moves a task to a location; a subtask is detached from its parent. */
+// ---- "Heute nicht" (contract 5.1) --------------------------------------------
+
+/**
+ * Puts a task off to tomorrow or next week and counts. After two deferrals the next one is
+ * a decision: the dialog asks (drop, cut anew, let rest) instead of moving it once more.
+ * `before` runs right before the task leaves the current list. Returns whether it moved now.
+ */
+export function deferTask(id: string, target: DeferTarget, before?: () => void): boolean {
+  const task = data.tasks[id];
+  if (!task || isClosed(task.status)) return false;
+  if (needsDecision(task)) {
+    setDeferRequest({ taskId: id, target, before });
+    return false;
+  }
+  return writeDeferral(id, target, before);
+}
+
+/** "morgen", "Mo, 19.10." … for the middle of a sentence. */
+function dayPhrase(day: string, today: Date): string {
+  const label = formatDateLabel(day, today);
+  return /^(Heute|Morgen|Gestern)$/.test(label) ? label.toLowerCase() : label;
+}
+
+/** Writes one deferral without asking (also "Trotzdem verschieben" in the decision dialog). */
+export function writeDeferral(id: string, target: DeferTarget, before?: () => void): boolean {
+  const task = data.tasks[id];
+  if (!task) return false;
+  const today = new Date(now());
+  const day = deferDay(target, localDate(today));
+  const fields = deferFields(task, day);
+  if (!fields) {
+    toast(`„${shorten(task.title)}“ ist schon für ${dayPhrase(day, today)} oder später geplant.`);
+    return false;
+  }
+  before?.();
+  if (!updateTask(id, fields)) return false;
+  const when = `auf ${dayPhrase(day, today)}`;
+  const next = needsDecision({ deferrals: fields.deferrals as number }) ? " Beim nächsten Mal entscheidest du." : "";
+  toast(`„${shorten(task.title)}“ ${when} verschoben.${next}`);
+  return true;
+}
+
+/** Decision "Neu schneiden": the counter starts over, the task opens to sharpen or split it. */
+export function cutAnew(id: string): boolean {
+  if (!updateTask(id, { deferrals: null })) return false;
+  setSelectedId(id);
+  setDetailId(id);
+  toast("Neu schneiden: Titel schärfen oder in Unteraufgaben zerlegen. Der Zähler beginnt neu.");
+  return true;
+}
+
+/**
+ * Decision "Ruhen lassen": no date, no reminder, marked as deliberately undated, counter
+ * reset. Not for recurring tasks (a series needs its due date).
+ */
+export function letRest(id: string): boolean {
+  const task = data.tasks[id];
+  if (!task || isRecurring(task)) return false;
+  const ok = updateTask(id, { due: null, remind_at: null, undated_ack: toRfc3339Local(new Date(now())), deferrals: null });
+  if (ok) toast(`„${shorten(task.title)}“ ruht, ohne Datum. Die Deadline-Prüfung fragt erst später wieder.`);
+  return ok;
+}
+
 export function moveTask(id: string, location: Location): boolean {
   const task = data.tasks[id];
   if (!task) return false;

@@ -9,11 +9,12 @@
 // without a date, the first due date of the series. Unsupported rhythm-like phrases
 // ("jeden ersten Montag", "jeden 1. Werktag", "jeden 1. Mai", "alle zwei Wochen") stay in
 // the title whole, with what follows their unit ("jede zweite Woche montags"),
-// and set nothing.
+// and set nothing. "!brand", "!glut", "!rauch", "!asche" set the weight, "@mich", "@uns",
+// "@andere" whom the task is for (the first of each counts; others stay in the title).
 
-import { describeRecurrence } from "../labels";
+import { describeRecurrence, FOR_WHOM_LABELS, WEIGHT_LABELS } from "../labels";
 import { addDays, isValidCalendarDate, localDate, startOfDay, toRfc3339Local } from "../sync/dates";
-import { WEEKDAY_CODES, type Location, type Recurrence, type WeekdayCode } from "../sync/types";
+import { FOR_WHOMS, WEEKDAY_CODES, WEIGHTS, type ForWhom, type Location, type Recurrence, type WeekdayCode, type Weight } from "../sync/types";
 
 export interface CaptureTarget {
   id: string;
@@ -25,7 +26,7 @@ export interface CaptureStructure {
   projects: readonly CaptureTarget[];
 }
 
-export type CaptureTokenKind = "date" | "time" | "area" | "project" | "recurrence";
+export type CaptureTokenKind = "date" | "time" | "area" | "project" | "recurrence" | "weight" | "for_whom";
 
 export interface CaptureToken {
   kind: CaptureTokenKind;
@@ -43,6 +44,8 @@ export interface CaptureResult {
   location: Location | null;
   /** Rhythm of the new task; when set, `due` is set too. */
   recurrence: Recurrence | null;
+  weight: Weight | null;
+  for_whom: ForWhom | null;
   tokens: CaptureToken[];
   unknownTags: string[];
 }
@@ -611,11 +614,27 @@ export function parseCapture(input: string, now: Date, structure: CaptureStructu
   let project: CaptureTarget | null = null;
   let area: CaptureTarget | null = null;
   let rhythm: RecurrenceHit | null = null;
+  let weight: Weight | null = null;
+  let forWhom: ForWhom | null = null;
 
   for (let i = 0; i < words.length; i++) {
     if (!keep[i]) continue;
     const word = words[i]!;
     const lower = word.toLowerCase();
+
+    const code = lower.slice(1);
+    if (!weight && lower.startsWith("!") && (WEIGHTS as readonly string[]).includes(code)) {
+      weight = code as Weight;
+      keep[i] = false;
+      tokens.push({ kind: "weight", text: word, label: WEIGHT_LABELS[weight] });
+      continue;
+    }
+    if (!forWhom && lower.startsWith("@") && (FOR_WHOMS as readonly string[]).includes(code)) {
+      forWhom = code as ForWhom;
+      keep[i] = false;
+      tokens.push({ kind: "for_whom", text: word, label: FOR_WHOM_LABELS[forWhom] });
+      continue;
+    }
 
     if (word.startsWith("#") && word.length > 1) {
       const slug = slugify(word.slice(1));
@@ -706,5 +725,5 @@ export function parseCapture(input: string, now: Date, structure: CaptureStructu
 
   const location: Location | null = project ? { kind: "project", id: project.id } : area ? { kind: "area", id: area.id } : null;
   const title = words.filter((_, i) => keep[i]).join(" ") || input.trim();
-  return { title, due, remind_at: remindAt, location, recurrence, tokens, unknownTags };
+  return { title, due, remind_at: remindAt, location, recurrence, weight, for_whom: forWhom, tokens, unknownTags };
 }

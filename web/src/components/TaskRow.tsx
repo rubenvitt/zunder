@@ -1,8 +1,9 @@
 import { createEffect, createSignal, For, Show, type JSX } from "solid-js";
-import { isClosed, isClaimActive, isFlameRunning } from "../sync/derived";
+import { isClosed, isClaimActive, isDevLocation, isFlameRunning } from "../sync/derived";
+import { needsDecision } from "../sync/defer";
 import type { Task } from "../sync/types";
-import { describeRecurrence, locationLabel, PHOENIX_LABELS, STATUS_LABELS, TYPE_LABELS } from "../labels";
-import { now, taskIndex } from "../state/store";
+import { deferralsLabel, describeRecurrence, FOR_WHOM_HINTS, FOR_WHOM_LABELS, locationLabel, PHOENIX_LABELS, STATUS_LABELS, TYPE_LABELS, WEIGHT_HINTS, WEIGHT_LABELS } from "../labels";
+import { data, now, taskIndex } from "../state/store";
 import { Icon } from "./Icon";
 import { CheckButton, DueChip, RefButton, SubtaskToggle, SubtaskTree } from "./TaskBits";
 
@@ -33,6 +34,44 @@ export interface TaskRowProps {
 
 const SWIPE_THRESHOLD = 80;
 
+/**
+ * Weight, for whom and deferrals: the personal reading of a task. Dev projects leave them out
+ * (agents work there, not the owner).
+ */
+function PersonalChips(props: { task: Task }) {
+  const personal = () => !isDevLocation(taskIndex().location(props.task), (id) => data.projects[id]);
+  return (
+    <Show when={personal()}>
+      <Show when={props.task.weight}>
+        {(w) => (
+          <span class={`chip chip-weight chip-weight-${w()}`} title={`${WEIGHT_LABELS[w()]}: ${WEIGHT_HINTS[w()]}`}>
+            <span class="weight-dot" aria-hidden="true" />
+            {WEIGHT_LABELS[w()]}
+          </span>
+        )}
+      </Show>
+      <Show when={props.task.for_whom}>
+        {(f) => (
+          <span class={`chip chip-for chip-for-${f()}`} title={FOR_WHOM_HINTS[f()]}>
+            {FOR_WHOM_LABELS[f()]}
+          </span>
+        )}
+      </Show>
+      <Show when={props.task.deferrals > 0 && !isClosed(props.task.status)}>
+        <span
+          class="chip chip-deferred"
+          classList={{ "chip-decision": needsDecision(props.task) }}
+          title={needsDecision(props.task) ? `${deferralsLabel(props.task.deferrals)}: beim nächsten Mal entscheiden` : deferralsLabel(props.task.deferrals)}
+          aria-label={deferralsLabel(props.task.deferrals)}
+        >
+          <Icon name="history" size={12} />
+          {props.task.deferrals}
+        </span>
+      </Show>
+    </Show>
+  );
+}
+
 export function TaskMeta(props: { task: Task; showLocation?: boolean; showRef?: boolean; showProgress?: boolean }) {
   const progress = () => taskIndex().progress(props.task.id);
   return (
@@ -59,6 +98,7 @@ export function TaskMeta(props: { task: Task; showLocation?: boolean; showRef?: 
         )}
       </Show>
       <DueChip task={props.task} />
+      <PersonalChips task={props.task} />
       <Show when={props.task.recurrence}>
         {(r) => (
           <span class="chip chip-recurring" title={`Wiederkehrend: ${describeRecurrence(r(), props.task.due)}`} aria-label={`Wiederkehrend: ${describeRecurrence(r(), props.task.due)}`} role="img">

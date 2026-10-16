@@ -6,12 +6,15 @@ import type { EntityState } from "./merge";
 import { parseRecurrence } from "./recurrence";
 import {
   AREA_STATES,
+  FOR_WHOMS,
+  MAX_DEFERRALS,
   PHOENIX_ROLES,
   PROJECT_KINDS,
   PROJECT_STATUSES,
   PROJECT_VIEWS,
   TASK_STATUSES,
   TASK_TYPES,
+  WEIGHTS,
   type Area,
   type Comment,
   type Hlc,
@@ -33,6 +36,15 @@ function str(v: JsonValue | undefined): string | null {
 
 function oneOf<T extends string>(v: JsonValue | undefined, allowed: readonly T[], fallback: T): T {
   return typeof v === "string" && (allowed as readonly string[]).includes(v) ? (v as T) : fallback;
+}
+
+function optionalOneOf<T extends string>(v: JsonValue | undefined, allowed: readonly T[]): T | null {
+  return typeof v === "string" && (allowed as readonly string[]).includes(v) ? (v as T) : null;
+}
+
+/** A whole number from 0 to MAX_DEFERRALS; anything else counts as 0. */
+function count(v: JsonValue | undefined): number {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= MAX_DEFERRALS ? v : 0;
 }
 
 /** created = smallest HLC ever applied (contract 2.4), updated = largest field HLC. */
@@ -137,6 +149,9 @@ export function toTask(e: EntityState): Task {
     recurrence: parseRecurrence(value(e, "recurrence")),
     recurrence_prev: str(value(e, "recurrence_prev")),
     blocked_by: stringArray(value(e, "blocked_by")),
+    weight: optionalOneOf(value(e, "weight"), WEIGHTS),
+    for_whom: optionalOneOf(value(e, "for_whom"), FOR_WHOMS),
+    deferrals: count(value(e, "deferrals")),
     ref: str(value(e, "ref")),
     status_hlc: e.fields.status?.hlc ?? min,
   };

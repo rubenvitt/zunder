@@ -3,12 +3,25 @@
 import { createMemo, onMount, Show } from "solid-js";
 import { EmptyState } from "../components/EmptyState";
 import { TaskList } from "../components/TaskList";
+import type { DeferTarget } from "../sync/defer";
 import type { Task } from "../sync/types";
-import { dropTask, moveTask, shorten } from "../state/actions";
+import { deferTask, dropTask, moveTask, shorten } from "../state/actions";
 import { inboxTasks, tasksAt, todayGroups } from "../state/selectors";
 import { activeList, pickLocation, registerList, selectedId, setCaptureOpen, setSelectedId, toast } from "../state/ui";
 import { now } from "../state/store";
 import { locationLabel } from "../labels";
+
+/** "Heute nicht" from the Heute list (s: tomorrow, Shift+S: next week, swipe right). */
+export const todayActions = {
+  later(task: Task, target: DeferTarget = "tomorrow") {
+    deferTask(task.id, target, () => selectNextAfter(task.id));
+  },
+};
+
+// One row action keeps the titles wide; next week is Shift+S and in the detail.
+const todayRowActions = (task: Task) => [{ label: "Heute nicht", key: "s", run: () => todayActions.later(task) }];
+
+const todaySwipe = (task: Task) => ({ right: { label: "Heute nicht", run: () => todayActions.later(task) } });
 
 export function TodayView() {
   const groups = createMemo(todayGroups);
@@ -34,19 +47,19 @@ export function TodayView() {
       <Show when={groups().overdue.length > 0}>
         <section class="group">
           <h2 class="danger">Überfällig</h2>
-          <TaskList tasks={groups().overdue} showLocation label="Überfällig" />
+          <TaskList tasks={groups().overdue} showLocation label="Überfällig" actions={todayRowActions} swipe={todaySwipe} />
         </section>
       </Show>
       <Show when={groups().dueToday.length > 0}>
         <section class="group">
           <h2>Heute fällig</h2>
-          <TaskList tasks={groups().dueToday} showLocation label="Heute fällig" />
+          <TaskList tasks={groups().dueToday} showLocation label="Heute fällig" actions={todayRowActions} swipe={todaySwipe} />
         </section>
       </Show>
       <Show when={groups().reminders.length > 0}>
         <section class="group">
           <h2>Erinnerungen</h2>
-          <TaskList tasks={groups().reminders} showLocation label="Erinnerungen" />
+          <TaskList tasks={groups().reminders} showLocation label="Erinnerungen" actions={todayRowActions} swipe={todaySwipe} />
         </section>
       </Show>
       <Show when={nothing()}>

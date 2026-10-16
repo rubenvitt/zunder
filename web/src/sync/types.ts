@@ -25,6 +25,10 @@ export type ProjectView = "list" | "board";
 export type TaskType = "aufgabe" | "bug" | "feature";
 export type TaskStatus = "open" | "in_progress" | "review" | "blocked" | "done" | "dropped";
 export type PhoenixRole = "feuer_schritt" | "flamme";
+/** Weight for the owner after Covey's quadrants (core: model::Weight). */
+export type Weight = "brand" | "glut" | "rauch" | "asche";
+/** Whom a task is for (core: model::ForWhom). */
+export type ForWhom = "mich" | "uns" | "andere";
 export type RecurrenceUnit = "day" | "week" | "month" | "year";
 export type RecurrenceFrom = "due" | "done";
 export type WeekdayCode = "mo" | "tu" | "we" | "th" | "fr" | "sa" | "su";
@@ -66,6 +70,10 @@ export const PROJECT_VIEWS: readonly ProjectView[] = ["list", "board"];
 export const TASK_TYPES: readonly TaskType[] = ["aufgabe", "bug", "feature"];
 export const TASK_STATUSES: readonly TaskStatus[] = ["open", "in_progress", "review", "blocked", "done", "dropped"];
 export const PHOENIX_ROLES: readonly PhoenixRole[] = ["feuer_schritt", "flamme"];
+export const WEIGHTS: readonly Weight[] = ["brand", "glut", "rauch", "asche"];
+export const FOR_WHOMS: readonly ForWhom[] = ["mich", "uns", "andere"];
+/** Highest value of `deferrals` (core: model::MAX_DEFERRALS). */
+export const MAX_DEFERRALS = 9999;
 export const RECURRENCE_UNITS: readonly RecurrenceUnit[] = ["day", "week", "month", "year"];
 export const RECURRENCE_FROMS: readonly RecurrenceFrom[] = ["due", "done"];
 export const WEEKDAY_CODES: readonly WeekdayCode[] = ["mo", "tu", "we", "th", "fr", "sa", "su"];
@@ -98,6 +106,9 @@ export const TASK_FIELDS = [
   "recurrence",
   "recurrence_prev",
   "blocked_by",
+  "weight",
+  "for_whom",
+  "deferrals",
   "ref",
   "deleted",
 ] as const;
@@ -175,6 +186,12 @@ export interface Task extends EntityMeta {
   recurrence_prev: string | null;
   /** IDs of the tasks this one waits for, as stored (may name deleted tasks, which no longer block). */
   blocked_by: string[];
+  /** Weight for the owner; null = not weighed. */
+  weight: Weight | null;
+  /** Whom the task is for; null = not stated. */
+  for_whom: ForWhom | null;
+  /** How often the task was put off with "Heute nicht" (0 = never). */
+  deferrals: number;
   /** Reference such as `ZUN-42`, assigned by the server (never by a client). */
   ref: string | null;
   /** HLC of the winning status op, or created_hlc when the status was never set. */

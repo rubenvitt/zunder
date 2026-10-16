@@ -2,7 +2,7 @@ import { createMemo, createSignal, For, onMount, Show, untrack } from "solid-js"
 import { captureContext } from "../capture/context";
 import { parseCapture, slugify } from "../capture/parse";
 import { formatDue } from "../sync/dates";
-import { describeRecurrence, locationLabel } from "../labels";
+import { describeRecurrence, FOR_WHOM_HINTS, FOR_WHOM_LABELS, locationLabel, WEIGHT_HINTS, WEIGHT_LABELS } from "../labels";
 import { createTask } from "../state/actions";
 import { route } from "../state/router";
 import { areaList, data, now, projectList } from "../state/store";
@@ -67,7 +67,7 @@ export function QuickCapture() {
     const result = parsed();
     const location = target();
     // Quick capture only creates root tasks, so a rhythm is always allowed (contract 2.5).
-    const id = createTask({ title: result.title, location, due: result.due, remind_at: result.remind_at, recurrence: result.recurrence });
+    const id = createTask({ title: result.title, location, due: result.due, remind_at: result.remind_at, recurrence: result.recurrence, weight: result.weight, for_whom: result.for_whom });
     if (!id) return;
     toast(`Erfasst in ${locationLabel(location)}.`);
     setText("");
@@ -120,12 +120,27 @@ export function QuickCapture() {
               </button>
             </Show>
           </span>
-          <Show when={text().trim()} fallback={<span class="muted"><kbd>#</kbd> ordnet zu, „morgen 9:00“ setzt Fälligkeit, „jeden Freitag“ einen Rhythmus. <kbd>Enter</kbd> speichert.</span>}>
+          <Show when={text().trim()} fallback={<span class="muted"><kbd>#</kbd> ordnet zu, „morgen 9:00“ setzt Fälligkeit, „jeden Freitag“ einen Rhythmus, <kbd>!glut</kbd> das Gewicht, <kbd>@andere</kbd> für wen. <kbd>Enter</kbd> speichert.</span>}>
             <Show when={parsed().due}>
               <span class="chip chip-accent">
                 <Icon name="calendar" size={12} />
                 Fällig {formatDue(parsed().due, new Date(now()))}
               </span>
+            </Show>
+            <Show when={parsed().weight}>
+              {(w) => (
+                <span class={`chip chip-weight chip-weight-${w()}`} title={WEIGHT_HINTS[w()]}>
+                  <span class="weight-dot" aria-hidden="true" />
+                  {WEIGHT_LABELS[w()]}
+                </span>
+              )}
+            </Show>
+            <Show when={parsed().for_whom}>
+              {(f) => (
+                <span class={`chip chip-for chip-for-${f()}`} title={FOR_WHOM_HINTS[f()]}>
+                  {FOR_WHOM_LABELS[f()]}
+                </span>
+              )}
             </Show>
             <Show when={parsed().recurrence}>
               {(r) => (

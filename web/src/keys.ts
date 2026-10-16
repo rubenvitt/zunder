@@ -20,7 +20,7 @@ import {
   setSelectedId,
   toggleSidebar,
 } from "./state/ui";
-import { inboxActions } from "./views/Lists";
+import { inboxActions, todayActions } from "./views/Lists";
 import { toggleCurrentProjectView } from "./views/Structure";
 
 const GO: Record<string, Route> = {
@@ -210,6 +210,12 @@ export function installKeyboard(): () => void {
         if (key === "a") inboxActions.assign(task);
         else if (key === "l") inboxActions.loose(task);
         else inboxActions.drop(task);
+      }
+    } else if (!handled && route().view === "heute" && (key === "s" || key === "S")) {
+      const task = selectedTask();
+      if (task) {
+        handled = true;
+        todayActions.later(task, key === "s" ? "tomorrow" : "next_week");
       }
     } else if (!handled && board && key === "l") {
       board.moveSelection(1);
