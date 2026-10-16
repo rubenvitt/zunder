@@ -13,8 +13,9 @@ use serde::Serialize;
 use zunder_core::ids::Id;
 use zunder_core::model::format_rfc3339;
 use zunder_core::{
-    AreaState, Comment, Due, EntityKind, Link, Location, Phoenix, Progress, ProjectKind,
+    AreaState, Comment, Due, EntityKind, ForWhom, Link, Location, Phoenix, Progress, ProjectKind,
     ProjectStatus, ProjectView as ProjectViewMode, Recurrence, State, Task, TaskStatus, TaskType,
+    Weight,
 };
 
 use crate::app::format_ms;
@@ -97,6 +98,12 @@ pub struct TaskView {
     pub links: Vec<Link>,
     pub vault_links: Vec<String>,
     pub phoenix: Option<Phoenix>,
+    /// Weight for the owner (brand, glut, rauch, asche); `null` = not weighed.
+    pub weight: Option<Weight>,
+    /// Whom the task is for (mich, uns, andere); `null` = not stated.
+    pub for_whom: Option<ForWhom>,
+    /// How often the task was put off with "Heute nicht" (`defer_task`).
+    pub deferrals: u32,
     /// Recurrence of the series (`null` for a one-off task).
     pub recurrence: Option<Recurrence>,
     /// The previous instance of the series (written by the server only).
@@ -271,6 +278,9 @@ impl TaskView {
             links: task.links,
             vault_links: task.vault_links,
             phoenix: task.phoenix,
+            weight: task.weight,
+            for_whom: task.for_whom,
+            deferrals: task.deferrals,
             recurrence: task.recurrence,
             recurrence_prev: task.recurrence_prev,
             claimed_by: task.claimed_by,

@@ -7,9 +7,11 @@
 //! "`task_id` or `clickup_id`" is described in words and checked at runtime.
 
 use serde_json::{json, Map, Value};
+use zunder_core::defer::FREE_DEFERRALS;
+use zunder_core::model::MAX_DEFERRALS;
 use zunder_core::{
-    AreaState, PhoenixRole, ProjectKind, ProjectStatus, ProjectView, RecurrenceFrom,
-    RecurrenceUnit, TaskStatus, TaskType, WeekdayCode,
+    AreaState, ForWhom, PhoenixRole, ProjectKind, ProjectStatus, ProjectView, RecurrenceFrom,
+    RecurrenceUnit, TaskStatus, TaskType, WeekdayCode, Weight,
 };
 
 /// One tool.
@@ -241,6 +243,29 @@ const UNDATED_ACK: &str = "Bewusst ohne Fälligkeit: true markiert die Aufgabe j
     „bewusst undatiert“ (erneut true erneuert die Markierung), damit eine Deadline-Prüfung sie \
     überspringt; false entfernt die Markierung. Gespeichert wird der Zeitpunkt der Entscheidung.";
 
+const WEIGHT: &str = "Gewicht nach Covey (optional): brand = wichtig und dringlich (heute tun), \
+    glut = wichtig, nicht dringlich (einplanen, darf rutschen, nicht verlieren), rauch = dringlich \
+    nur fürs System oder für andere, selbst nicht wichtig (kurz halten, hinterfragen, abgeben), \
+    asche = weder noch (darf liegen bleiben, streichen ist in Ordnung).";
+const FOR_WHOM: &str = "Für wen (optional): mich = nur für einen selbst (still verschiebbar), \
+    uns = für die Partnerschaft oder den Haushalt (absprechen), andere = eine Zusage, auf die \
+    jemand wartet (wer verschiebt, sagt Bescheid).";
+
+/// An optional code, nullable for update_task.
+fn optional_code(codes: Vec<&'static str>, description: &str, nullable: bool) -> Value {
+    if nullable {
+        let mut all: Vec<Value> = codes.into_iter().map(Value::from).collect();
+        all.push(Value::Null);
+        json!({
+            "type": ["string", "null"],
+            "enum": all,
+            "description": format!("{description} null entfernt den Wert."),
+        })
+    } else {
+        enumeration(codes, description)
+    }
+}
+
 fn task_ref() -> Vec<(&'static str, Value)> {
     vec![
         (
@@ -272,6 +297,11 @@ fn task_fields(nullable: bool) -> Vec<(&'static str, Value)> {
         ("links", links()),
         ("vault_links", vault_links()),
         ("phoenix", phoenix()),
+        ("weight", optional_code(Weight::codes(), WEIGHT, nullable)),
+        (
+            "for_whom",
+            optional_code(ForWhom::codes(), FOR_WHOM, nullable),
+        ),
         ("recurrence", recurrence(nullable)),
         ("blocked_by", blocked_by(nullable)),
         ("plan", text("Plan (Markdown), z. B. aus dem Dev-Modus.")),
@@ -298,6 +328,16 @@ fn with(
     base.extend(more);
     base
 }
+
+const DEFER_TASK: &str = "Verschiebt eine Aufgabe auf später („Heute nicht“) und zählt mit \
+    (deferrals, Verschiebungs-Counter der Phönix-Progression). Eine Fälligkeit vor dem Zieltag \
+    rückt auf ihn (eine Uhrzeit bleibt), ebenso eine frühere Erinnerung; eine Aufgabe ganz ohne \
+    Datum bekommt den Zieltag als Fälligkeit. Liegt beides schon auf oder nach dem Zieltag, ändert \
+    sich nichts. Zweimal verschieben geht ohne Weiteres; der dritte Aufschub ist eine Entscheidung \
+    und wird ohne force abgelehnt (Fehler decision_due): den Nutzer fragen, ob die Aufgabe gestrichen \
+    (update_task status dropped), neu geschnitten (Titel oder Beschreibung schärfen oder \
+    decompose_task, dann deferrals 0) oder ruhen gelassen wird (due null, undated_ack true, \
+    deferrals 0).";
 
 /// All tools in a stable order.
 pub fn definitions() -> Vec<ToolDef> {
@@ -334,6 +374,30 @@ pub fn definitions() -> Vec<ToolDef> {
                     (
                         "phoenix_fire",
                         string("Nur Aufgaben dieses Feuers (ISO-Woche JJJJ-Www)."),
+                    ),
+                    (
+                        "weight",
+                        enum_list(Weight::codes(), "Nur Aufgaben mit diesem Gewicht (brand, glut, rauch, asche)."),
+                    ),
+                    (
+                        "has_weight",
+                        boolean("true: nur gewichtete Aufgaben; false: nur ungewichtete (zum Nachtragen)."),
+                    ),
+                    (
+                        "for_whom",
+                        enum_list(ForWhom::codes(), "Nur Aufgaben für diese Personen (mich, uns, andere)."),
+                    ),
+                    (
+                        "min_deferrals",
+                        json!({
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": MAX_DEFERRALS,
+                            "description": format!(
+                                "Nur Aufgaben, die mindestens so oft verschoben wurden. Ab {FREE_DEFERRALS} \
+                                 steht beim nächsten Aufschub eine Entscheidung an."
+                            ),
+                        }),
                     ),
                     (
                         "due_before",
@@ -463,10 +527,23 @@ pub fn definitions() -> Vec<ToolDef> {
                     with(task_ref(), vec![("title", string("Neuer Titel."))]),
                     with(
                         task_fields(true),
-                        vec![(
-                            "force",
-                            boolean("Aufgabe trotz offener Unteraufgaben schließen (Standard false). Nur nach der Warnung open_subtasks und bewusst setzen."),
-                        )],
+                        vec![
+                            (
+                                "deferrals",
+                                json!({
+                                    "type": ["integer", "null"],
+                                    "minimum": 0,
+                                    "maximum": MAX_DEFERRALS,
+                                    "description": "Zähler der Aufschübe (defer_task) setzen, etwa 0, \
+                                        nachdem entschieden ist, die Aufgabe neu zu schneiden oder \
+                                        ruhen zu lassen. null wie 0.",
+                                }),
+                            ),
+                            (
+                                "force",
+                                boolean("Aufgabe trotz offener Unteraufgaben schließen (Standard false). Nur nach der Warnung open_subtasks und bewusst setzen."),
+                            ),
+                        ],
                     ),
                 ),
                 &[],
@@ -474,6 +551,30 @@ pub fn definitions() -> Vec<ToolDef> {
             read_only: false,
             destructive: false,
             idempotent: true,
+        },
+        ToolDef {
+            name: "defer_task",
+            title: "Heute nicht",
+            description: DEFER_TASK,
+            input_schema: object(
+                with(
+                    task_ref(),
+                    vec![
+                        (
+                            "until",
+                            string("Wohin: tomorrow (Standard, morgen), next_week (Montag der nächsten Woche) oder ein Tag JJJJ-MM-TT nach heute."),
+                        ),
+                        (
+                            "force",
+                            boolean("Trotz anstehender Entscheidung verschieben (Standard false). Nur auf ausdrücklichen Wunsch des Nutzers."),
+                        ),
+                    ],
+                ),
+                &[],
+            ),
+            read_only: false,
+            destructive: false,
+            idempotent: false,
         },
         ToolDef {
             name: "move_task",

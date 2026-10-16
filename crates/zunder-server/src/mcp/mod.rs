@@ -90,6 +90,13 @@ listet die wiederkehrenden Aufgaben. \
 Bewusst ohne Fälligkeit: undated_ack: true markiert eine Aufgabe als „bewusst undatiert“ \
 (Zeitpunkt der Entscheidung); filter_tasks mit has_due: false und undated_ack: false liefert die \
 noch nicht entschiedenen, undated_ack_weeks lässt alte Markierungen ablaufen. \
+Einteilung (optional, vor allem außerhalb von Dev-Projekten): weight ist das Gewicht nach Covey \
+(brand = wichtig und dringlich, glut = wichtig, nicht dringlich, rauch = nur fürs System dringlich, \
+asche = weder noch), for_whom sagt, für wen (mich, uns, andere = Zusage an jemanden). Beides \
+setzen, wenn es aus dem Kontext klar ist, sonst weglassen; filter_tasks filtert danach. \
+„Heute nicht“: defer_task schiebt auf morgen, nächste Woche oder einen Tag und zählt mit \
+(deferrals). Der dritte Aufschub ist eine Entscheidung des Nutzers (Fehler decision_due): \
+streichen, neu schneiden oder ruhen lassen. \
 Abgelehnte Änderungen kommen mit deutscher Begründung zurück; nichts wird still verworfen.";
 
 /// The `/mcp` route (without state).

@@ -7,13 +7,15 @@ use std::sync::OnceLock;
 
 use serde_json::{json, Map, Value};
 use time::Date;
+use zunder_core::defer::{self, DeferTarget, FREE_DEFERRALS};
 use zunder_core::hlc::system_time_ms;
 use zunder_core::ids::Id;
 use zunder_core::model::fields::{area as fa, comment as fc, project as fp, task as ft};
+use zunder_core::model::{format_rfc3339, MAX_DEFERRALS};
 use zunder_core::search::search;
 use zunder_core::{
-    AreaState, Due, EntityKind, IsoWeek, Location, PhoenixRole, ProjectStatus, Recurrence, State,
-    TaskStatus, TaskType,
+    AreaState, Due, EntityKind, ForWhom, IsoWeek, Location, PhoenixRole, ProjectStatus, Recurrence,
+    State, TaskStatus, TaskType, Weight,
 };
 
 use super::args::Args;
@@ -37,6 +39,8 @@ const TASK_FIELDS: &[&str] = &[
     ft::LINKS,
     ft::VAULT_LINKS,
     ft::PHOENIX,
+    ft::WEIGHT,
+    ft::FOR_WHOM,
     ft::RECURRENCE,
     ft::PLAN,
     ft::BRANCH,
@@ -114,6 +118,7 @@ async fn dispatch(app: &App, source: Source, name: &str, args: &Args) -> AppResu
         "get_task" => get_task(app, args),
         "create_task" => create_task(app, source, args).await,
         "update_task" => update_task(app, source, args).await,
+        "defer_task" => defer_task(app, source, args).await,
         "move_task" => move_task(app, source, args).await,
         "delete_task" => delete_task(app, source, args).await,
         "search" => search_all(app, args).await,
@@ -216,6 +221,10 @@ struct TaskFilter {
     types: Option<Vec<TaskType>>,
     phoenix_role: Option<PhoenixRole>,
     phoenix_fire: Option<IsoWeek>,
+    weights: Option<Vec<Weight>>,
+    has_weight: Option<bool>,
+    for_whom: Option<Vec<ForWhom>>,
+    min_deferrals: Option<u32>,
     due_before: Option<Date>,
     due_after: Option<Date>,
     closed_after: Option<Due>,
@@ -338,6 +347,13 @@ impl TaskFilter {
             types: args.codes("type", &TaskType::codes())?,
             phoenix_role: args.code("phoenix_role", &PhoenixRole::codes())?,
             phoenix_fire,
+            weights: args.codes("weight", &Weight::codes())?,
+            has_weight: args.bool("has_weight")?,
+            for_whom: args.codes("for_whom", &ForWhom::codes())?,
+            min_deferrals: match args.value("min_deferrals") {
+                None => None,
+                Some(_) => Some(args.int("min_deferrals", 1, MAX_DEFERRALS, 1)? as u32),
+            },
             due_before: day(args, "due_before")?,
             due_after: day(args, "due_after")?,
             // A closing date only matches closed tasks, of any age.
@@ -438,6 +454,29 @@ impl TaskFilter {
             .phoenix_fire
             .is_some_and(|f| task.phoenix.is_none_or(|p| p.fire != f))
         {
+            return false;
+        }
+        if self
+            .weights
+            .as_ref()
+            .is_some_and(|w| task.weight.is_none_or(|t| !w.contains(&t)))
+        {
+            return false;
+        }
+        if self
+            .has_weight
+            .is_some_and(|has| task.weight.is_some() != has)
+        {
+            return false;
+        }
+        if self
+            .for_whom
+            .as_ref()
+            .is_some_and(|f| task.for_whom.is_none_or(|t| !f.contains(&t)))
+        {
+            return false;
+        }
+        if self.min_deferrals.is_some_and(|min| task.deferrals < min) {
             return false;
         }
         if self.has_due.is_some_and(|has| task.due.is_some() != has) {
@@ -780,6 +819,14 @@ async fn update_task(app: &App, source: Source, args: &Args) -> AppResult<Value>
     if let Some(ack) = undated_ack_value(args)? {
         fields.push((ft::UNDATED_ACK, ack));
     }
+    if let Some(count) = args.raw(ft::DEFERRALS) {
+        // 0 is stored as "never put off" (unset); the core checks the rest.
+        let value = match count.as_u64() {
+            Some(0) => Value::Null,
+            _ => count.clone(),
+        };
+        fields.push((ft::DEFERRALS, value));
+    }
     let blockers = args.task_links(ft::BLOCKED_BY)?;
     let force = args.bool("force")?.unwrap_or(false);
     if fields.is_empty() && blockers.is_none() {
@@ -833,6 +880,94 @@ async fn update_task(app: &App, source: Source, args: &Args) -> AppResult<Value>
         .await?;
     let mut result = task_result(app, id, &warnings)?;
     result["next_task"] = to_json(&next_task)?;
+    Ok(result)
+}
+
+/// Where `defer_task` puts the task (`until`, default tomorrow).
+fn defer_target(args: &Args) -> AppResult<DeferTarget> {
+    match args.str("until")? {
+        None | Some("tomorrow") => Ok(DeferTarget::Tomorrow),
+        Some("next_week") => Ok(DeferTarget::NextWeek),
+        Some(s) => match Due::parse(s) {
+            Some(Due::Date(day)) => Ok(DeferTarget::Day(day)),
+            _ => Err(invalid(
+                "„until“ muss tomorrow, next_week oder ein Tag JJJJ-MM-TT sein.",
+            )),
+        },
+    }
+}
+
+fn german_day(day: Date) -> String {
+    format!(
+        "{:02}.{:02}.{}",
+        day.day(),
+        u8::from(day.month()),
+        day.year()
+    )
+}
+
+/// "Heute nicht": puts a task off and counts (see [`zunder_core::defer`]).
+async fn defer_task(app: &App, source: Source, args: &Args) -> AppResult<Value> {
+    let target = args.task_ref()?;
+    let until = defer_target(args)?;
+    let force = args.bool("force")?.unwrap_or(false);
+    let today = local_day(system_time_ms())
+        .ok_or_else(|| AppError::Internal(anyhow::anyhow!("no local calendar day")))?;
+    let day = until
+        .day(today)
+        .ok_or_else(|| invalid("„until“ muss ein Tag nach heute sein."))?;
+    let (id, warnings) = app
+        .mutate_atomic(source, move |state, batch| {
+            let id = target.resolve(state, false)?;
+            let task = state.task(id).expect("resolved task exists");
+            if task.status.is_closed() {
+                return Err(AppError::BadRequest {
+                    code: "invalid_value",
+                    message: "Eine erledigte oder verworfene Aufgabe lässt sich nicht verschieben."
+                        .to_owned(),
+                });
+            }
+            if !force && defer::needs_decision(&task) {
+                return Err(AppError::BadRequest {
+                    code: "decision_due",
+                    message: format!(
+                        "Schon {}-mal verschoben: Der nächste Aufschub ist eine Entscheidung, \
+                         kein Klick. Es wurde nichts geändert. Den Nutzer fragen: streichen \
+                         (update_task status dropped), neu schneiden (Titel oder Beschreibung \
+                         schärfen oder decompose_task, dann deferrals 0) oder ruhen lassen \
+                         (update_task due null, undated_ack true, deferrals 0). Nur auf \
+                         ausdrücklichen Wunsch mit force: true trotzdem verschieben.",
+                        task.deferrals
+                    ),
+                });
+            }
+            let Some(plan) = defer::plan(&task, day) else {
+                return Err(AppError::BadRequest {
+                    code: "invalid_value",
+                    message: format!(
+                        "Nichts zu verschieben: Fälligkeit und Erinnerung liegen schon am {} \
+                         oder später.",
+                        german_day(day)
+                    ),
+                });
+            };
+            if let Some(due) = plan.due {
+                batch.set_task(id, ft::DUE, due);
+                if task.undated_ack.is_some() {
+                    batch.clear(EntityKind::Task, id, ft::UNDATED_ACK);
+                }
+            }
+            if let Some(remind_at) = plan.remind_at {
+                batch.set_task(id, ft::REMIND_AT, format_rfc3339(remind_at));
+            }
+            batch.set_task(id, ft::DEFERRALS, plan.deferrals);
+            Ok(id)
+        })
+        .await?;
+    let mut result = task_result(app, id, &warnings)?;
+    let deferrals = result["task"]["deferrals"].as_u64().unwrap_or(0);
+    // Tells the agent before the next call that it will need a decision.
+    result["decision_due_next"] = json!(deferrals >= u64::from(FREE_DEFERRALS));
     Ok(result)
 }
 
