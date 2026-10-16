@@ -163,9 +163,24 @@ fn present(args: &Args, keys: &[&'static str], keep_null: bool) -> Vec<(&'static
             } else {
                 args.value(k)
             };
-            v.map(|v| (*k, v.clone()))
+            v.map(|v| (*k, json_text_object(k, v)))
         })
         .collect()
+}
+
+/// A client whose tool list predates `recurrence` (MCP clients cache it for the whole
+/// conversation) sends the rhythm as JSON text. Such a text is read as the value it
+/// spells; anything else stays as given and the core rejects it with its usual message.
+fn json_text_object(key: &str, value: &Value) -> Value {
+    if key == ft::RECURRENCE {
+        if let Some(text) = value.as_str() {
+            if let Ok(parsed @ (Value::Object(_) | Value::Null)) = serde_json::from_str(text.trim())
+            {
+                return parsed;
+            }
+        }
+    }
+    value.clone()
 }
 
 fn live_area(state: &State, id: Id) -> AppResult<()> {
