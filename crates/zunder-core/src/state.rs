@@ -308,6 +308,9 @@ impl Entity {
             recurrence: self.parsed(f::RECURRENCE),
             recurrence_prev: self.id_value(f::RECURRENCE_PREV),
             blocked_by: self.blocked_by(),
+            weight: self.parsed(f::WEIGHT),
+            for_whom: self.parsed(f::FOR_WHOM),
+            deferrals: self.parsed(f::DEFERRALS).unwrap_or(0),
             reference: self.string(f::REF),
             deleted: self.is_deleted(),
         })

@@ -24,8 +24,8 @@ use time::OffsetDateTime;
 use crate::hlc::Clock;
 use crate::ids;
 use crate::model::{
-    fields, format_rfc3339, AreaState, Due, Link, Location, Phoenix, ProjectKind, ProjectStatus,
-    ProjectView, TaskStatus, TaskType,
+    fields, format_rfc3339, AreaState, Due, ForWhom, Link, Location, Phoenix, ProjectKind,
+    ProjectStatus, ProjectView, TaskStatus, TaskType, Weight,
 };
 use crate::op::{EntityKind, Op};
 use crate::state::State;
@@ -96,6 +96,8 @@ pub struct NewTask {
     pub vault_links: Vec<String>,
     pub links: Vec<Link>,
     pub phoenix: Option<Phoenix>,
+    pub weight: Option<Weight>,
+    pub for_whom: Option<ForWhom>,
     pub plan: Option<String>,
     pub branch: Option<String>,
     pub pr_url: Option<String>,
@@ -269,6 +271,12 @@ impl<'c> OpBatch<'c> {
         }
         if let Some(phoenix) = new.phoenix {
             self.set_task(id, f::PHOENIX, phoenix);
+        }
+        if let Some(weight) = new.weight {
+            self.set_task(id, f::WEIGHT, weight);
+        }
+        if let Some(for_whom) = new.for_whom {
+            self.set_task(id, f::FOR_WHOM, for_whom);
         }
         id
     }

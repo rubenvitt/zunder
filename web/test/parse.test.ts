@@ -29,6 +29,19 @@ describe("quick capture parser", () => {
     expect(r.tokens.map((t) => t.kind)).toEqual(["date", "time", "area"]);
   });
 
+  it("reads the weight (!glut) and whom it is for (@andere)", () => {
+    const r = parse("Steuer machen !Glut @mich morgen");
+    expect(r.title).toBe("Steuer machen");
+    expect(r.weight).toBe("glut");
+    expect(r.for_whom).toBe("mich");
+    expect(r.due).toBe("2026-10-12");
+    expect(r.tokens.map((t) => t.kind)).toEqual(["weight", "for_whom", "date"]);
+    // Only the first of each counts; unknown codes and a second one stay in the title.
+    const second = parse("Paket !rauch !brand @andere @uns !wichtig @team");
+    expect(second).toMatchObject({ title: "Paket !brand @uns !wichtig @team", weight: "rauch", for_whom: "andere" });
+    expect(parse("E-Mail an @andere!").for_whom).toBeNull();
+  });
+
   it("keeps a plain title untouched and lands in the inbox", () => {
     const r = parse("  Milch kaufen  ");
     expect(r).toMatchObject({ title: "Milch kaufen", due: null, remind_at: null, location: null, tokens: [] });

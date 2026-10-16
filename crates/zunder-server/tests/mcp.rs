@@ -329,6 +329,7 @@ async fn tool_schemas_match_snapshot() {
             "get_task",
             "create_task",
             "update_task",
+            "defer_task",
             "move_task",
             "delete_task",
             "search",
@@ -399,6 +400,9 @@ async fn create_get_update_with_history() {
         "links",
         "vault_links",
         "phoenix",
+        "weight",
+        "for_whom",
+        "deferrals",
         "claimed_by",
         "claim_expires_at",
         "plan",
@@ -1808,4 +1812,178 @@ async fn status_follows_blockers() {
     .await;
     let r = mcp_ok(&s, &t, "get_task", json!({"task_id": contract})).await;
     assert_eq!(r["task"]["status"], "blocked");
+}
+
+// ----- weight, for whom, "Heute nicht" ------------------------------------------------------
+
+#[tokio::test]
+async fn weight_and_for_whom_are_optional_and_filterable() {
+    let (s, t) = setup().await;
+    let plain = mcp_ok(&s, &t, "create_task", json!({"title": "Ohne Einteilung"})).await;
+    assert_eq!(plain["task"]["weight"], Value::Null);
+    assert_eq!(plain["task"]["for_whom"], Value::Null);
+    assert_eq!(plain["task"]["deferrals"], 0);
+    let tax = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Steuererklärung", "weight": "glut", "for_whom": "mich"}),
+    )
+    .await;
+    assert_eq!(tax["task"]["weight"], "glut");
+    assert_eq!(tax["task"]["for_whom"], "mich");
+    create(
+        &s,
+        &t,
+        json!({"title": "Paket für Mama", "weight": "rauch", "for_whom": "andere"}),
+    )
+    .await;
+
+    let f = |args: Value| {
+        let (s, t) = (&s, &t);
+        async move { titles(&mcp_ok(s, t, "filter_tasks", args).await) }
+    };
+    assert_eq!(f(json!({"weight": ["glut"]})).await, ["Steuererklärung"]);
+    assert_eq!(
+        f(json!({"weight": ["glut", "rauch"]})).await,
+        ["Steuererklärung", "Paket für Mama"]
+    );
+    assert_eq!(f(json!({"for_whom": ["andere"]})).await, ["Paket für Mama"]);
+    assert_eq!(f(json!({"has_weight": false})).await, ["Ohne Einteilung"]);
+    let (code, _) = mcp_err(&s, &t, "filter_tasks", json!({"weight": ["hoch"]})).await;
+    assert_eq!(code, "invalid_arguments");
+
+    // null removes the weighing again.
+    let id = tax["task"]["id"].as_str().unwrap();
+    let cleared = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": id, "weight": null, "for_whom": "uns"}),
+    )
+    .await;
+    assert_eq!(cleared["task"]["weight"], Value::Null);
+    assert_eq!(cleared["task"]["for_whom"], "uns");
+    let (code, message) = mcp_err(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": id, "weight": "wichtig"}),
+    )
+    .await;
+    assert_eq!(code, "invalid_value", "{message}");
+}
+
+/// Today in the server's time zone (the tests run with the process's `TZ`).
+fn local_today() -> chrono::NaiveDate {
+    chrono::Local::now().date_naive()
+}
+
+#[tokio::test]
+async fn defer_task_moves_counts_and_asks_for_a_decision() {
+    let (s, t) = setup().await;
+    let id = create(
+        &s,
+        &t,
+        json!({"title": "Keller aufräumen", "due": "2020-01-06", "undated_ack": true}),
+    )
+    .await;
+    let tomorrow = (local_today() + chrono::Days::new(1)).to_string();
+
+    let first = mcp_ok(&s, &t, "defer_task", json!({"task_id": id})).await;
+    assert_eq!(first["task"]["due"], tomorrow);
+    assert_eq!(first["task"]["deferrals"], 1);
+    assert_eq!(first["task"]["undated_ack"], Value::Null);
+    assert_eq!(first["decision_due_next"], false);
+
+    // Already tomorrow: nothing to put off, nothing counted.
+    let (code, _) = mcp_err(&s, &t, "defer_task", json!({"task_id": id})).await;
+    assert_eq!(code, "invalid_value");
+
+    let second = mcp_ok(
+        &s,
+        &t,
+        "defer_task",
+        json!({"task_id": id, "until": "next_week"}),
+    )
+    .await;
+    let monday =
+        chrono::NaiveDate::parse_from_str(second["task"]["due"].as_str().unwrap(), "%Y-%m-%d")
+            .unwrap();
+    assert_eq!(chrono::Datelike::weekday(&monday), chrono::Weekday::Mon);
+    assert!(monday > local_today() && monday <= local_today() + chrono::Days::new(7));
+    assert_eq!(second["task"]["deferrals"], 2);
+    assert_eq!(second["decision_due_next"], true);
+
+    // The third deferral is a decision: refused without force, nothing changes.
+    let later = (monday + chrono::Days::new(10)).to_string();
+    let (code, message) =
+        mcp_err(&s, &t, "defer_task", json!({"task_id": id, "until": later})).await;
+    assert_eq!(code, "decision_due");
+    assert!(message.contains("streichen"), "{message}");
+    let unchanged = mcp_ok(&s, &t, "get_task", json!({"task_id": id})).await;
+    assert_eq!(unchanged["task"]["deferrals"], 2);
+
+    let forced = mcp_ok(
+        &s,
+        &t,
+        "defer_task",
+        json!({"task_id": id, "until": later, "force": true}),
+    )
+    .await;
+    assert_eq!(forced["task"]["due"], later);
+    assert_eq!(forced["task"]["deferrals"], 3);
+    assert_eq!(
+        titles(&mcp_ok(&s, &t, "filter_tasks", json!({"min_deferrals": 3})).await),
+        ["Keller aufräumen"]
+    );
+
+    // Cut anew: the counter starts over.
+    let reset = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": id, "deferrals": 0}),
+    )
+    .await;
+    assert_eq!(reset["task"]["deferrals"], 0);
+}
+
+#[tokio::test]
+async fn defer_task_keeps_the_time_and_refuses_bad_targets() {
+    let (s, t) = setup().await;
+    let id = create(
+        &s,
+        &t,
+        json!({
+            "title": "Anrufen",
+            "due": "2020-03-02T18:30:00+01:00",
+            "remind_at": "2020-03-02T09:00:00+01:00",
+        }),
+    )
+    .await;
+    let day = (local_today() + chrono::Days::new(3)).to_string();
+    let r = mcp_ok(&s, &t, "defer_task", json!({"task_id": id, "until": day})).await;
+    assert_eq!(r["task"]["due"], format!("{day}T18:30:00+01:00"));
+    assert_eq!(r["task"]["remind_at"], format!("{day}T09:00:00+01:00"));
+
+    for until in [local_today().to_string(), "morgen".to_owned()] {
+        let (code, _) = mcp_err(&s, &t, "defer_task", json!({"task_id": id, "until": until})).await;
+        assert_eq!(code, "invalid_arguments", "{until}");
+    }
+    mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": id, "status": "done"}),
+    )
+    .await;
+    let (code, _) = mcp_err(
+        &s,
+        &t,
+        "defer_task",
+        json!({"task_id": id, "until": "next_week"}),
+    )
+    .await;
+    assert_eq!(code, "invalid_value");
 }

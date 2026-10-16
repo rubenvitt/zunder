@@ -1,8 +1,9 @@
 import { For, Show } from "solid-js";
-import { describeRecurrence } from "../labels";
-import { dropInstance, endSeries } from "../state/actions";
+import { deferralsLabel, describeRecurrence } from "../labels";
+import { cutAnew, dropTask, dropInstance, endSeries, letRest, writeDeferral } from "../state/actions";
 import { data } from "../state/store";
-import { dismissToast, setDropRequest, setHelpOpen, toasts, type DropRequest } from "../state/ui";
+import { isRecurring } from "../sync/derived";
+import { dismissToast, setDeferRequest, setDropRequest, setHelpOpen, toasts, type DeferRequest, type DropRequest } from "../state/ui";
 import { Icon } from "./Icon";
 import { Modal } from "./Modal";
 
@@ -34,6 +35,7 @@ const SHORTCUTS: [string, string][] = [
   ["y", "Kennung der Aufgabe (z. B. ZUN-42) kopieren, für Agenten"],
   ["Esc", "Panel oder Dialog schließen"],
   ["a / l / d", "Inbox: zuordnen / lose / verwerfen"],
+  ["s / Shift+S", "Heute: heute nicht, auf morgen / nächste Woche"],
   ["h / l bzw. ← / →", "Board: Spalte wechseln"],
   ["Shift+H / Shift+L", "Board: Karte in andere Spalte"],
   ["Shift+J / Shift+K", "Board: Karte nach unten / oben"],
@@ -111,6 +113,74 @@ export function DropSeriesDialog(props: { request: DropRequest }) {
         </button>
         <button class="btn btn-primary" autofocus onClick={() => run(dropInstance)}>
           Nur diese verwerfen
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * The third "Heute nicht" (contract 5.1, Verschiebungs-Counter of the Phönix-Progression): a
+ * task put off twice is not "not done yet" but a decision. Drop it, cut it anew (opens it, the
+ * counter starts over) or let it rest without a date; moving it once more stays possible but
+ * is the quiet option. Esc cancels.
+ */
+export function DeferDecisionDialog(props: { request: DeferRequest }) {
+  const task = () => data.tasks[props.request.taskId];
+  const close = () => setDeferRequest(null);
+  // Read the request before closing: the dialog (and its props) go away with it.
+  const run = (action: (request: DeferRequest) => unknown) => {
+    const request = props.request;
+    close();
+    action(request);
+  };
+  return (
+    <Modal label="Entscheiden statt verschieben" onClose={close} class="defer-decision">
+      <h2>Entscheiden statt verschieben</h2>
+      <Show when={task()}>
+        {(t) => (
+          <p>
+            „{t().title}“ ist schon {deferralsLabel(t().deferrals)}. Ein weiterer Aufschub ändert wenig: Was ist diese Aufgabe wirklich?
+          </p>
+        )}
+      </Show>
+      <div class="decision-options">
+        <button class="decision" onClick={() => run((r) => dropTask(r.taskId, r.before))}>
+          <Icon name="trash" size={18} />
+          <span>
+            <strong>Streichen</strong>
+            <small>Sie war eine Idee, keine Zusage.</small>
+          </span>
+        </button>
+        <button class="decision" autofocus onClick={() => run((r) => cutAnew(r.taskId))}>
+          <Icon name="pencil" size={18} />
+          <span>
+            <strong>Neu schneiden</strong>
+            <small>Kleiner oder klarer fassen, damit sie anfangbar wird. Der Zähler beginnt neu.</small>
+          </span>
+        </button>
+        <Show when={task() && !isRecurring(task()!)}>
+          <button class="decision" onClick={() =>
+            run((r) => {
+              r.before?.();
+              letRest(r.taskId);
+            })
+          }>
+            <Icon name="archive" size={18} />
+            <span>
+              <strong>Ruhen lassen</strong>
+              <small>Ohne Datum, bewusst undatiert. In der Aschezeit fragen, was sie eigentlich ist.</small>
+            </span>
+          </button>
+        </Show>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onClick={close}>
+          Abbrechen
+        </button>
+        <span class="spacer" />
+        <button class="btn btn-ghost" onClick={() => run((r) => writeDeferral(r.taskId, r.target, r.before))}>
+          Trotzdem verschieben
         </button>
       </div>
     </Modal>

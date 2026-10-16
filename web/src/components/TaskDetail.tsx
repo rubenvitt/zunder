@@ -2,11 +2,26 @@
 
 import { createEffect, createResource, createSignal, For, on, onCleanup, onMount, Show, type JSX } from "solid-js";
 import { fireOf, formatDateLabel, formatInstant, fromDatetimeLocalInput, localDate, parseDue, toDatetimeLocalInput, toRfc3339Local } from "../sync/dates";
-import { hasOpenChildren, isClaimActive, isDevLocation, isFlameRunning, isRecurring } from "../sync/derived";
+import { hasOpenChildren, isClaimActive, isClosed, isDevLocation, isFlameRunning, isRecurring } from "../sync/derived";
+import { needsDecision } from "../sync/defer";
 import { hlcWallMs } from "../sync/hlc";
-import { PHOENIX_ROLES, TASK_STATUSES, TASK_TYPES, type HistoryEntry, type JsonValue, type Link, type Task, type TaskStatus, type TaskType } from "../sync/types";
-import { describeValue, FIELD_LABELS, historyTaskRefs, locationLabel, PHOENIX_LABELS, sourceLabel, STATUS_LABELS, TYPE_LABELS } from "../labels";
-import { addComment, clearDue, createTask, deleteComment, deleteTask, dependentsCount, dropTask, flame, moveTask, setParent, setStatus, updateComment, updateTask } from "../state/actions";
+import { FOR_WHOMS, PHOENIX_ROLES, TASK_STATUSES, TASK_TYPES, WEIGHTS, type HistoryEntry, type JsonValue, type Link, type Task, type TaskStatus, type TaskType } from "../sync/types";
+import {
+  deferralsLabel,
+  describeValue,
+  FIELD_LABELS,
+  FOR_WHOM_HINTS,
+  FOR_WHOM_LABELS,
+  historyTaskRefs,
+  locationLabel,
+  PHOENIX_LABELS,
+  sourceLabel,
+  STATUS_LABELS,
+  TYPE_LABELS,
+  WEIGHT_HINTS,
+  WEIGHT_LABELS,
+} from "../labels";
+import { addComment, clearDue, createTask, deferTask, deleteComment, deleteTask, dependentsCount, dropTask, flame, moveTask, setParent, setStatus, updateComment, updateTask } from "../state/actions";
 import { detailBack, NARROW_LAYOUT } from "../state/back";
 import { appConfig } from "../state/desktop";
 import { isTauri } from "../platform/runtime";
@@ -228,6 +243,8 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
     return out;
   };
   const showDev = () => dev() || !!(t().plan || t().branch || t().pr_url || t().claimed_by);
+  // The personal reading (weight, for whom, "Heute nicht") belongs outside dev projects.
+  const personal = () => !dev();
 
   const set = (fields: Record<string, JsonValue>) => updateTask(t().id, fields);
   const [recurrenceOpen, setRecurrenceOpen] = createSignal(false);
@@ -330,6 +347,33 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
               </select>
             </Prop>
 
+            <Show when={personal() || t().weight}>
+              <Prop icon="target" label="Gewicht">
+                <Choice
+                  label="Gewicht"
+                  options={WEIGHTS}
+                  value={t().weight}
+                  optionLabel={(w) => WEIGHT_LABELS[w]}
+                  optionHint={(w) => WEIGHT_HINTS[w]}
+                  optionClass={(w) => `weight-option weight-option-${w}`}
+                  onChange={(weight) => set({ weight })}
+                />
+              </Prop>
+            </Show>
+
+            <Show when={personal() || t().for_whom}>
+              <Prop icon="user" label="Für wen">
+                <Choice
+                  label="Für wen"
+                  options={FOR_WHOMS}
+                  value={t().for_whom}
+                  optionLabel={(f) => FOR_WHOM_LABELS[f].replace("für ", "")}
+                  optionHint={(f) => FOR_WHOM_HINTS[f]}
+                  onChange={(for_whom) => set({ for_whom })}
+                />
+              </Prop>
+            </Show>
+
             <Prop icon="calendar" label="Fällig">
               <span class="prop-inline">
                 <DateSlot isSet={!!t().due} label="Fälligkeit setzen">
@@ -338,6 +382,25 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
                 <UndatedAck task={t()} />
               </span>
             </Prop>
+
+            <Show when={!isClosed(t().status) && (personal() || t().deferrals > 0)}>
+              <Prop icon="history" label="Heute nicht">
+                <span class="prop-inline defer-controls">
+                  <button class="btn btn-ghost btn-small" onClick={() => deferTask(t().id, "tomorrow")}>
+                    Morgen
+                  </button>
+                  <button class="btn btn-ghost btn-small" onClick={() => deferTask(t().id, "next_week")}>
+                    Nächste Woche
+                  </button>
+                  <Show when={t().deferrals > 0}>
+                    <span class="deferral-count" classList={{ "deferral-decision": needsDecision(t()) }}>
+                      {deferralsLabel(t().deferrals)}
+                      {needsDecision(t()) ? ", beim nächsten Mal entscheiden" : ""}
+                    </span>
+                  </Show>
+                </span>
+              </Prop>
+            </Show>
 
             {/* Only root tasks can recur (contract 2.5). */}
             <Show when={!t().parent_id}>
@@ -584,6 +647,39 @@ function RefCopy(props: { task: Task }) {
       <Icon name="copy" size={14} />
       <span class="task-id-text">{props.task.ref ?? "ID"}</span>
     </button>
+  );
+}
+
+/**
+ * One optional choice out of a few, as a segmented row: a click picks, a click on the picked
+ * option clears it (both fields are optional, contract 2.4).
+ */
+function Choice<T extends string>(props: {
+  label: string;
+  options: readonly T[];
+  value: T | null;
+  optionLabel: (v: T) => string;
+  optionHint: (v: T) => string;
+  optionClass?: (v: T) => string;
+  onChange: (v: T | null) => void;
+}) {
+  return (
+    <div class="segmented choice" role="group" aria-label={props.label}>
+      <For each={props.options}>
+        {(option) => (
+          <button
+            type="button"
+            class={props.optionClass?.(option) ?? ""}
+            classList={{ active: props.value === option }}
+            aria-pressed={props.value === option}
+            title={props.value === option ? `${props.optionHint(option)} (noch einmal klicken entfernt)` : props.optionHint(option)}
+            onClick={() => props.onChange(props.value === option ? null : option)}
+          >
+            {props.optionLabel(option)}
+          </button>
+        )}
+      </For>
+    </div>
   );
 }
 

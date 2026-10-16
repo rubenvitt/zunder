@@ -4,7 +4,7 @@
 
 import { hlcWallMs } from "./hlc";
 import { defaultRank } from "./rank";
-import type { Location, Project, Task, TaskStatus } from "./types";
+import type { Location, Project, Task, TaskStatus, Weight } from "./types";
 
 export const HIDE_CLOSED_AFTER_MS = 3 * 24 * 60 * 60 * 1000;
 const MAX_DEPTH = 256;
@@ -109,6 +109,11 @@ function byCreation(a: Task, b: Task): number {
  * Completing this task makes the server create the next instance (contract 3.1):
  * a root task with a rhythm and a due date.
  */
+/** Order of the weights in lists: what matters first, unweighed in the middle. */
+export function weightRank(weight: Weight | null): number {
+  return weight === "brand" ? 0 : weight === "glut" ? 1 : weight === null ? 2 : weight === "rauch" ? 3 : 4;
+}
+
 export function isRecurring(task: Task): boolean {
   return !!task.recurrence && !!task.due && !task.parent_id;
 }

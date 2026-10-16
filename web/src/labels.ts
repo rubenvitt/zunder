@@ -1,6 +1,6 @@
 // German UI labels for the English codes used on the wire.
 
-import type { AreaState, JsonValue, Location, PhoenixRole, ProjectKind, ProjectStatus, Recurrence, RecurrenceFrom, RecurrenceUnit, Task, TaskStatus, TaskType, WeekdayCode } from "./sync/types";
+import type { AreaState, ForWhom, JsonValue, Location, PhoenixRole, ProjectKind, ProjectStatus, Recurrence, RecurrenceFrom, RecurrenceUnit, Task, TaskStatus, TaskType, WeekdayCode, Weight } from "./sync/types";
 import { WEEKDAY_CODES } from "./sync/types";
 import { formatDateLabel, parseDue } from "./sync/dates";
 import { parseRecurrence, sameRecurrence, weekdayOf } from "./sync/recurrence";
@@ -42,6 +42,38 @@ export const PHOENIX_LABELS: Record<PhoenixRole, string> = {
   flamme: "Flamme",
 };
 
+/** Weight after Covey's quadrants, in Zunder's fire images. */
+export const WEIGHT_LABELS: Record<Weight, string> = {
+  brand: "Brand",
+  glut: "Glut",
+  rauch: "Rauch",
+  asche: "Asche",
+};
+
+/** What a weight means and what to do with it (tooltips, MCP wording alike). */
+export const WEIGHT_HINTS: Record<Weight, string> = {
+  brand: "Wichtig und dringlich: heute tun",
+  glut: "Wichtig, nicht dringlich: einplanen, darf rutschen, nicht verlieren",
+  rauch: "Dringlich nur fürs System: kurz halten, hinterfragen, abgeben",
+  asche: "Weder wichtig noch dringlich: darf liegen bleiben, streichen ist in Ordnung",
+};
+
+export const FOR_WHOM_LABELS: Record<ForWhom, string> = {
+  mich: "für mich",
+  uns: "für uns",
+  andere: "für andere",
+};
+
+export const FOR_WHOM_HINTS: Record<ForWhom, string> = {
+  mich: "Nur du merkst, ob es passiert: still verschiebbar",
+  uns: "Partnerschaft oder Haushalt: verschieben heißt absprechen",
+  andere: "Eine Zusage, auf die jemand wartet: wer verschiebt, sagt Bescheid",
+};
+
+export function deferralsLabel(count: number): string {
+  return count === 1 ? "einmal verschoben" : `${count}-mal verschoben`;
+}
+
 export const FIELD_LABELS: Record<string, string> = {
   title: "Titel",
   name: "Name",
@@ -69,6 +101,9 @@ export const FIELD_LABELS: Record<string, string> = {
   recurrence: "Rhythmus",
   recurrence_prev: "Vorherige Instanz",
   blocked_by: "Blockiert durch",
+  weight: "Gewicht",
+  for_whom: "Für wen",
+  deferrals: "Aufschübe",
   ref: "Kennung",
   key: "Schlüssel",
   deleted: "Gelöscht",
@@ -151,6 +186,8 @@ export function describeValue(field: string, value: JsonValue): string {
   if (value === null) return "entfernt";
   if (field === "status" && typeof value === "string") return STATUS_LABELS[value as TaskStatus] ?? value;
   if (field === "type" && typeof value === "string") return TYPE_LABELS[value as TaskType] ?? value;
+  if (field === "weight" && typeof value === "string") return WEIGHT_LABELS[value as Weight] ?? value;
+  if (field === "for_whom" && typeof value === "string") return FOR_WHOM_LABELS[value as ForWhom] ?? value;
   if (field === "location" && value && typeof value === "object" && !Array.isArray(value)) {
     const kind = value.kind;
     if (kind === "inbox" || kind === "loose") return locationLabel({ kind });

@@ -1,7 +1,7 @@
 // Task selections for the views. All functions are reactive (read the store).
 
 import { localDate, parseDue } from "../sync/dates";
-import { compareTasks, isClosed, isFlameRunning, statusChangedMs } from "../sync/derived";
+import { compareTasks, isClosed, isFlameRunning, statusChangedMs, weightRank } from "../sync/derived";
 import type { Location, Task } from "../sync/types";
 import { data, now, taskIndex } from "./store";
 
@@ -89,7 +89,9 @@ export function todayGroups(): TodayGroups {
       if (!Number.isNaN(at.getTime()) && localDate(at) === today) groups.reminders.push(t);
     }
   }
-  const byDue = (a: Task, b: Task) => (parseDue(a.due)?.at.getTime() ?? 0) - (parseDue(b.due)?.at.getTime() ?? 0) || compareTasks(a, b);
+  // What matters first (Brand, Glut, unweighed, Rauch, Asche), then by due time.
+  const byDue = (a: Task, b: Task) =>
+    weightRank(a.weight) - weightRank(b.weight) || (parseDue(a.due)?.at.getTime() ?? 0) - (parseDue(b.due)?.at.getTime() ?? 0) || compareTasks(a, b);
   groups.overdue.sort(byDue);
   groups.dueToday.sort(byDue);
   groups.reminders.sort((a, b) => Date.parse(a.remind_at!) - Date.parse(b.remind_at!));

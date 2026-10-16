@@ -90,6 +90,14 @@ pub mod fields {
         /// Tasks that have to be finished before this one (IDs). The reverse
         /// direction ("blocks") is derived, not stored.
         pub const BLOCKED_BY: &str = "blocked_by";
+        /// Weight of the task for the owner (Covey quadrant, see
+        /// [`crate::model::Weight`]); unset = not weighed.
+        pub const WEIGHT: &str = "weight";
+        /// Whom the task is for (see [`crate::model::ForWhom`]); unset = not
+        /// stated.
+        pub const FOR_WHOM: &str = "for_whom";
+        /// How often the task was put off with "Heute nicht"; unset = never.
+        pub const DEFERRALS: &str = "deferrals";
         /// Human-readable reference (`ZUN-42`). Assigned once by the server,
         /// never changed afterwards (see [`crate::numbering`]).
         pub const REF: &str = "ref";
@@ -120,6 +128,9 @@ pub mod fields {
             RECURRENCE,
             RECURRENCE_PREV,
             BLOCKED_BY,
+            WEIGHT,
+            FOR_WHOM,
+            DEFERRALS,
             REF,
             DELETED,
         ];
@@ -302,6 +313,30 @@ string_enum! {
         Flamme => "flamme", "Flamme";
     }
 }
+
+string_enum! {
+    /// Weight of a task for the owner, after Covey's quadrants: what matters
+    /// and what only feels urgent.
+    Weight, default = Glut {
+        Brand => "brand", "Brand";
+        Glut => "glut", "Glut";
+        Rauch => "rauch", "Rauch";
+        Asche => "asche", "Asche";
+    }
+}
+
+string_enum! {
+    /// Whom a task is for: only the owner, the partnership or household, or
+    /// others (a promise someone waits for).
+    ForWhom, default = Mich {
+        Mich => "mich", "für mich";
+        Uns => "uns", "für uns";
+        Andere => "andere", "für andere";
+    }
+}
+
+/// Highest value of a task's `deferrals`.
+pub const MAX_DEFERRALS: u64 = 9999;
 
 impl TaskType {
     /// Whether this type is only allowed in dev projects.
@@ -842,6 +877,12 @@ pub struct Task {
     /// IDs of the tasks this one waits for (as stored; may name deleted
     /// tasks, which no longer block).
     pub blocked_by: Vec<Id>,
+    /// Weight for the owner; `None` = not weighed.
+    pub weight: Option<Weight>,
+    /// Whom the task is for; `None` = not stated.
+    pub for_whom: Option<ForWhom>,
+    /// How often the task was put off ("Heute nicht").
+    pub deferrals: u32,
     /// Reference such as `ZUN-42`, once the server has assigned it.
     #[serde(rename = "ref")]
     pub reference: Option<String>,
@@ -883,6 +924,8 @@ enum Shape {
     /// Non-empty (after trimming) text without length limit.
     Body,
     Bool,
+    /// Whole number from 0 to [`MAX_DEFERRALS`].
+    Count,
     Enum(fn() -> Vec<&'static str>),
     Id,
     Location,
@@ -927,6 +970,9 @@ fn shape_of(kind: EntityKind, field: &str) -> Option<Shape> {
             t::TITLE => Shape::Title,
             t::TYPE => Shape::Enum(TaskType::codes),
             t::STATUS => Shape::Enum(TaskStatus::codes),
+            t::WEIGHT => Shape::Enum(Weight::codes),
+            t::FOR_WHOM => Shape::Enum(ForWhom::codes),
+            t::DEFERRALS => Shape::Count,
             t::LOCATION => Shape::Location,
             t::PARENT_ID | t::RECURRENCE_PREV => Shape::Id,
             t::DUE => Shape::Due,
@@ -1022,6 +1068,13 @@ fn check_shape(shape: Shape, field: &str, value: &Value) -> Result<(), ValueErro
             if !value.is_boolean() {
                 return Err(ValueError::invalid(format!(
                     "„{field}“ muss true oder false sein."
+                )));
+            }
+        }
+        Shape::Count => {
+            if !value.as_u64().is_some_and(|n| n <= MAX_DEFERRALS) {
+                return Err(ValueError::invalid(format!(
+                    "„{field}“ muss eine ganze Zahl von 0 bis {MAX_DEFERRALS} sein."
                 )));
             }
         }
@@ -1444,6 +1497,28 @@ mod tests {
         ok(EntityKind::Task, "undated_ack", json!(null));
         bad(EntityKind::Task, "undated_ack", json!("2026-10-12"));
         bad(EntityKind::Task, "undated_ack", json!(true));
+    }
+
+    #[test]
+    fn weight_for_whom_and_deferrals() {
+        for code in ["brand", "glut", "rauch", "asche"] {
+            ok(EntityKind::Task, "weight", json!(code));
+        }
+        ok(EntityKind::Task, "weight", json!(null));
+        bad(EntityKind::Task, "weight", json!("hoch"));
+        bad(EntityKind::Task, "weight", json!(1));
+        for code in ["mich", "uns", "andere"] {
+            ok(EntityKind::Task, "for_whom", json!(code));
+        }
+        bad(EntityKind::Task, "for_whom", json!("partner"));
+        ok(EntityKind::Task, "deferrals", json!(0));
+        ok(EntityKind::Task, "deferrals", json!(3));
+        ok(EntityKind::Task, "deferrals", json!(MAX_DEFERRALS));
+        ok(EntityKind::Task, "deferrals", json!(null));
+        bad(EntityKind::Task, "deferrals", json!(MAX_DEFERRALS + 1));
+        bad(EntityKind::Task, "deferrals", json!(-1));
+        bad(EntityKind::Task, "deferrals", json!(1.5));
+        bad(EntityKind::Task, "deferrals", json!("2"));
     }
 
     #[test]

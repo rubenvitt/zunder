@@ -180,14 +180,24 @@ fn task_view_serializes_with_contract_names() {
             json!("2026-10-12T08:00:00Z"),
             h(1, 3, "a"),
         ),
+        op(5, T, 4, "weight", json!("glut"), h(1, 4, "a")),
+        op(6, T, 4, "for_whom", json!("andere"), h(1, 5, "a")),
+        op(7, T, 4, "deferrals", json!(2), h(1, 6, "a")),
     ];
     let s = apply_all(&ops);
-    let v = serde_json::to_value(s.task(uid(4)).unwrap()).unwrap();
+    let task = s.task(uid(4)).unwrap();
+    assert_eq!(task.weight, Some(crate::Weight::Glut));
+    assert_eq!(task.for_whom, Some(crate::ForWhom::Andere));
+    assert_eq!(task.deferrals, 2);
+    let v = serde_json::to_value(task).unwrap();
     assert_eq!(v["type"], json!("aufgabe"));
     assert_eq!(v["location"], json!({"kind": "inbox"}));
     assert_eq!(v["phoenix"], json!({"role": "flamme", "fire": "2026-W45"}));
     assert_eq!(v["remind_at"], json!("2026-10-12T09:00:00+02:00"));
     assert_eq!(v["undated_ack"], json!("2026-10-12T08:00:00Z"));
+    assert_eq!(v["weight"], json!("glut"));
+    assert_eq!(v["for_whom"], json!("andere"));
+    assert_eq!(v["deferrals"], json!(2));
     assert_eq!(v["parent_id"], Value::Null);
 }
 

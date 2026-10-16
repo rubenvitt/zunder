@@ -236,6 +236,9 @@ async fn subtasks_comments_phoenix_and_blockers_stay_behind() {
             json!([{"url": "https://example.org", "title": "Beispiel"}]),
         );
         b.set_task(id, fields::task::VAULT_LINKS, json!(["Notizen/Plan.md"]));
+        b.set_task(id, fields::task::WEIGHT, "glut");
+        b.set_task(id, fields::task::FOR_WHOM, "uns");
+        b.set_task(id, fields::task::DEFERRALS, 2);
         blocker = Some(x);
         waiting = Some(w);
     });
@@ -259,7 +262,13 @@ async fn subtasks_comments_phoenix_and_blockers_stay_behind() {
     assert_eq!(next.phoenix, None);
     assert!(next.blocked_by.is_empty());
     assert_eq!(next.plan, None);
+    assert_eq!(
+        next.deferrals, 0,
+        "the deferrals belong to the closed instance"
+    );
     assert_eq!(waiting_blockers, [id], "waiting tasks keep their blocker");
+    assert_eq!(next.weight, Some(zunder_core::Weight::Glut));
+    assert_eq!(next.for_whom, Some(zunder_core::ForWhom::Uns));
     // Carried over.
     assert_eq!(next.description.as_deref(), Some("Beschreibung"));
     assert_eq!(next.links.len(), 1);

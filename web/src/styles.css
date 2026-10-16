@@ -3265,3 +3265,130 @@ a.sync {
 .prop:has(.recurrence-editor) .prop-label {
   min-height: 1.85rem;
 }
+
+/* ---- Weight, for whom, "Heute nicht" (contract 5.1) ------------------------------------ */
+
+/* Weight in Zunder's fire images: Brand burns, Glut glows, Rauch drifts, Asche lies still. */
+.chip-weight .weight-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+.chip-weight-brand {
+  color: var(--accent-fg);
+  background: var(--accent-soft);
+}
+.chip-weight-glut {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+.chip-weight-rauch {
+  color: var(--text-2);
+  background: var(--surface-2);
+}
+.chip-weight-rauch .weight-dot {
+  background: transparent;
+  border: 1.5px dashed currentColor;
+}
+.chip-weight-asche {
+  color: var(--muted);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.chip-weight-asche .weight-dot {
+  opacity: 0.45;
+}
+.chip-for {
+  color: var(--text-2);
+  background: var(--surface-2);
+}
+.chip-for-uns {
+  color: var(--violet);
+  background: var(--violet-soft);
+}
+.chip-for-andere {
+  color: var(--info);
+  background: var(--info-soft);
+}
+.chip-deferred {
+  color: var(--muted);
+  background: var(--surface-2);
+  padding: 0 0.4rem;
+}
+.chip-deferred.chip-decision {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+/* Detail: one optional choice out of a few; the picked weight takes its colour. */
+.segmented.choice {
+  flex-wrap: wrap;
+}
+.segmented.choice button.weight-option-brand.active {
+  color: var(--accent-fg);
+  background: var(--accent-soft);
+}
+.segmented.choice button.weight-option-glut.active {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+.segmented.choice button.weight-option-asche.active {
+  color: var(--muted);
+}
+.defer-controls {
+  flex-wrap: wrap;
+}
+.deferral-count {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+.deferral-count.deferral-decision {
+  color: var(--warning);
+}
+
+/* The third "Heute nicht": three ways out, moving it once more stays the quiet option. */
+.defer-decision {
+  width: min(520px, 100%);
+}
+.decision-options {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.decision {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem 0.9rem;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  cursor: pointer;
+}
+.decision:hover,
+.decision:focus-visible {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+.decision .icon {
+  margin-top: 0.1rem;
+  color: var(--accent-fg);
+  flex: none;
+}
+.decision span {
+  display: grid;
+  gap: 0.15rem;
+}
+.decision small {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.defer-decision .modal-actions {
+  flex-wrap: wrap;
+}

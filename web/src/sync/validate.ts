@@ -9,12 +9,15 @@ import { entityKey, EntityStore, wins, type EntityState } from "./merge";
 import {
   AREA_STATES,
   FIELDS_BY_ENTITY,
+  FOR_WHOMS,
+  MAX_DEFERRALS,
   PHOENIX_ROLES,
   PROJECT_KINDS,
   PROJECT_STATUSES,
   PROJECT_VIEWS,
   TASK_STATUSES,
   TASK_TYPES,
+  WEIGHTS,
   type EntityKind,
   type JsonValue,
   type Location,
@@ -140,6 +143,7 @@ type Shape =
   | "text"
   | "body"
   | "bool"
+  | "count"
   | "id"
   | "location"
   | "due"
@@ -194,6 +198,9 @@ const SHAPES: Record<EntityKind, Record<string, Shape>> = {
     recurrence: "recurrence",
     recurrence_prev: "id",
     blocked_by: "id_list",
+    weight: WEIGHTS,
+    for_whom: FOR_WHOMS,
+    deferrals: "count",
     ref: "task_ref",
     deleted: "bool",
   },
@@ -210,6 +217,9 @@ const FIELD_LABELS: Record<string, string> = {
   recurrence_prev: "Vorgängerin in der Serie (Aufgaben-ID)",
   links: "Links (absolute URL)",
   phoenix: "Phönix (Rolle und Feuer wie 2026-W45)",
+  weight: "Gewicht (brand, glut, rauch oder asche)",
+  for_whom: "Für wen (mich, uns oder andere)",
+  deferrals: `Aufschübe (ganze Zahl von 0 bis ${MAX_DEFERRALS})`,
   pr_url: "PR-Link (http(s)-URL)",
   repo: "Repository (owner/name)",
   key: "Schlüssel (Großbuchstaben und Ziffern, z. B. ZUN)",
@@ -232,6 +242,8 @@ function shapeOk(shape: Shape, v: JsonValue): boolean {
       return typeof v === "string";
     case "bool":
       return typeof v === "boolean";
+    case "count":
+      return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= MAX_DEFERRALS;
     case "id":
       return isCanonicalId(v);
     case "location":

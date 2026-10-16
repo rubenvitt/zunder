@@ -1,6 +1,7 @@
 // UI state shared across views: selection, overlays, toasts, picker requests.
 
 import { createSignal, getOwner, onCleanup, type Accessor } from "solid-js";
+import type { DeferTarget } from "../sync/defer";
 import type { Location, ProjectKind, Task } from "../sync/types";
 
 export type ToastKind = "info" | "warning" | "error";
@@ -127,8 +128,20 @@ export interface DropRequest {
 
 export const [dropRequest, setDropRequest] = createSignal<DropRequest | null>(null);
 
+/**
+ * "Heute nicht" once more after two deferrals: a decision instead of a click (contract 5.1).
+ * `before` runs right before a change that takes the task off the current list.
+ */
+export interface DeferRequest {
+  taskId: string;
+  target: DeferTarget;
+  before?: () => void;
+}
+
+export const [deferRequest, setDeferRequest] = createSignal<DeferRequest | null>(null);
+
 export function anyOverlayOpen(): boolean {
-  return captureOpen() || helpOpen() || palette() !== null || structureEdit() !== null || dropRequest() !== null;
+  return captureOpen() || helpOpen() || palette() !== null || structureEdit() !== null || dropRequest() !== null || deferRequest() !== null;
 }
 
 // ---- Detail panel layout (per device, remembered) -----------------------
