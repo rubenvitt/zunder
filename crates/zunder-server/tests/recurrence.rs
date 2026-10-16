@@ -696,6 +696,58 @@ async fn mcp_sets_and_ends_recurrence() {
     assert!(successors(&s, id.parse().unwrap()).is_empty());
 }
 
+/// Clients whose cached tool list predates `recurrence` send it as JSON text.
+#[tokio::test]
+async fn mcp_reads_recurrence_sent_as_json_text() {
+    let s = TestServer::new().await;
+    let t = api_token(&s, "claude").await;
+    let created = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Odoo", "due": "2099-01-31", "recurrence": month_end().to_string()}),
+    )
+    .await;
+    assert_eq!(created["task"]["recurrence"], month_end());
+    let id = created["task"]["id"].as_str().unwrap().to_owned();
+
+    let ended = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": id, "recurrence": " null "}),
+    )
+    .await;
+    assert_eq!(ended["task"]["recurrence"], Value::Null);
+
+    let set = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": id, "recurrence": format!(" {} ", month_end())}),
+    )
+    .await;
+    assert_eq!(set["task"]["recurrence"], month_end());
+
+    // Text that is not a rhythm object stays text and the core rejects it as before.
+    for bad in ["monatlich", "[1]", "{\"every\": 1"] {
+        let (code, message) = mcp_err(
+            &s,
+            &t,
+            "update_task",
+            json!({"task_id": id, "recurrence": bad}),
+        )
+        .await;
+        assert_eq!(code, "invalid_value", "{bad}: {message}");
+        assert!(
+            message.contains("muss null oder ein Rhythmus"),
+            "{bad}: {message}"
+        );
+    }
+    let task = mcp_ok(&s, &t, "get_task", json!({"task_id": id})).await;
+    assert_eq!(task["task"]["recurrence"], month_end());
+}
+
 #[tokio::test]
 async fn mcp_explains_invalid_recurrences() {
     let s = TestServer::new().await;
