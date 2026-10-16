@@ -4,7 +4,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 import { formatDateLabel } from "../src/sync/dates";
-import { entityFields, openApp, prepare, row, Seeder, suffix } from "./fixtures";
+import { card, entityFields, openApp, prepare, row, Seeder, suffix } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
   await prepare(page);
@@ -74,6 +74,46 @@ test("Rhythmus setzen, abhaken: die nächste Instanz erscheint mit der richtigen
   await expect.poll(async () => (await entityFields(page, "task", id)).status).toBe("done");
   await page.waitForTimeout(500);
   expect(await successors(page, id)).toHaveLength(1);
+});
+
+test("Auf dem Board erledigen: Hinweis wie beim Abhaken, der Verlauf verlinkt die vorherige Instanz", async ({ page }) => {
+  const s = suffix();
+  const title = `Release prüfen ${s}`;
+  const seeder = new Seeder();
+  const area = seeder.area(`Arbeit ${s}`);
+  const project = seeder.project(`App ${s}`, area, { kind: "dev", repo: "example/app" });
+  const id = seeder.task(title, { location: { kind: "project", id: project }, due: `${YEAR}-01-31`, recurrence: { every: 1, unit: "month", day: "last", from: "due" } });
+  await seeder.push(page);
+  await openApp(page, `#/bereiche/project/${project}`);
+  const board = page.getByRole("region", { name: `Board App ${s}` });
+  const open = board.locator('.board-column[data-status="open"]');
+
+  // Room for all five columns (dragging does not scroll the board).
+  await page.getByRole("button", { name: "Bereiche ausblenden" }).click();
+  await card(page, title).dragTo(board.locator('.board-column[data-status="done"]'));
+  const nextDue = `${YEAR}-02-${FEB_LAST}`;
+  await expect(page.locator(".toast", { hasText: "Nächste Instanz" })).toHaveText(`Nächste Instanz am ${formatDateLabel(nextDue, new Date())}`);
+  await expect.poll(async () => (await successors(page, id)).length).toBe(1);
+  const [next] = await successors(page, id);
+  await expect(open.locator(".card", { hasText: title })).toHaveAttribute("data-task-id", next!.id);
+
+  // Keyboard (Shift+L, four columns to the right) completes the new instance the same way.
+  await open.locator(".card", { hasText: title }).click();
+  await expect(detail(page).locator(".detail-title")).toHaveValue(title);
+  const history = detail(page).locator(".history");
+  if (!(await history.evaluate((el) => (el as HTMLDetailsElement).open))) await history.locator("summary").click();
+  const prev = history.locator(".history-list li", { hasText: "Vorherige Instanz" });
+  await expect(prev.getByRole("link")).toHaveText(`„${title}“`);
+  await page.keyboard.press("Escape");
+  for (let i = 0; i < 4; i++) await page.keyboard.press("Shift+L");
+  await expect.poll(async () => (await entityFields(page, "task", next!.id)).status).toBe("done");
+  await expect.poll(async () => (await successors(page, next!.id)).length).toBe(1);
+  await expect(page.locator(".toast", { hasText: "Nächste Instanz" }).last()).toHaveText(`Nächste Instanz am ${formatDateLabel(`${YEAR}-03-31`, new Date())}`);
+
+  // The link opens the previous instance.
+  await open.locator(".card", { hasText: title }).click();
+  await detail(page).locator(".history .history-list li", { hasText: "Vorherige Instanz" }).getByRole("link").click();
+  await expect(detail(page).getByLabel("Fälligkeitsdatum")).toHaveValue(nextDue);
 });
 
 test("Ohne Fälligkeit ist Wiederholen deaktiviert, Unteraufgaben bieten es nicht an", async ({ page }) => {

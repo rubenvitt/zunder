@@ -14,7 +14,9 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use serde_json::json;
-use time::macros::datetime;
+use time::format_description::well_known::Rfc3339;
+use time::macros::{offset, time};
+use time::{Date, Month, OffsetDateTime, Time, UtcOffset, Weekday};
 use zunder_core::hlc::system_time_ms;
 use zunder_core::ids::Id;
 use zunder_core::model::fields::task as f;
@@ -367,6 +369,23 @@ fn follow_ups(store: &Mutex<LocalStore>, prev: Id) -> Vec<Id> {
         .collect()
 }
 
+/// The first year after the current one whose 31.03. is a Sunday (2030,
+/// 2041, …): Berlin switches to summer time in that very night, so a
+/// month-end series due at the end of February crosses the switch while its
+/// reminder the day before does not. Being ahead of today, the series never
+/// adjusts to it, whatever the date the test runs on.
+fn year_switching_on_march_31() -> i32 {
+    let mut year = OffsetDateTime::now_utc().year() + 1;
+    while Date::from_calendar_date(year, Month::March, 31)
+        .unwrap()
+        .weekday()
+        != Weekday::Sunday
+    {
+        year += 1;
+    }
+    year
+}
+
 #[tokio::test]
 #[ignore = "braucht ZUNDER_SERVER_BIN (gebautes zunder-server-Binary)"]
 async fn recurring_tasks_continue_through_the_real_server() {
@@ -380,6 +399,16 @@ async fn recurring_tasks_continue_through_the_real_server() {
     let mut phone_ui = Ui::new("web-phone");
     let mut laptop_ui = Ui::new("web-laptop");
     let rhythm = json!({"every": 1, "unit": "month", "day": "last", "from": "due"});
+    let year = year_switching_on_march_31();
+    let feb_last = Month::February.length(year);
+    let at = |month: Month, day: u8, time: Time, offset: UtcOffset| {
+        Date::from_calendar_date(year, month, day)
+            .unwrap()
+            .with_time(time)
+            .assume_offset(offset)
+    };
+    let due = at(Month::February, feb_last, time!(09:00), offset!(+1));
+    let remind = at(Month::February, feb_last - 1, time!(18:00), offset!(+1));
 
     // Offline on the phone: create the series and tick it off right away.
     // Both land in one push (pending_batch), which still completes it.
@@ -388,8 +417,8 @@ async fn recurring_tasks_continue_through_the_real_server() {
         let task = b.create_task(
             NewTask::new("Odoo absenden und Stunden bestätigen").at(Location::Area { id: area }),
         );
-        b.set_task(task, f::DUE, "2030-02-28T09:00:00+01:00");
-        b.set_task(task, f::REMIND_AT, "2030-02-27T18:00:00+01:00");
+        b.set_task(task, f::DUE, due.format(&Rfc3339).unwrap());
+        b.set_task(task, f::REMIND_AT, remind.format(&Rfc3339).unwrap());
         b.set_task(task, f::RECURRENCE, rhythm.clone());
         (area, task)
     });
@@ -416,13 +445,21 @@ async fn recurring_tasks_continue_through_the_real_server() {
         assert_eq!(t.location, Location::Area { id: area });
         assert_eq!(t.recurrence, Some(Recurrence::parse(&rhythm).unwrap()));
         // Last day of the next month, same local time across the switch
-        // to summer time (31.03.2030); the reminder keeps "the day before
-        // at 18:00".
+        // to summer time (31.03.); the reminder keeps "the day before at
+        // 18:00".
         assert_eq!(
             t.due,
-            Some(Due::DateTime(datetime!(2030-03-31 09:00 +02:00)))
+            Some(Due::DateTime(at(
+                Month::March,
+                31,
+                time!(09:00),
+                offset!(+2)
+            )))
         );
-        assert_eq!(t.remind_at, Some(datetime!(2030-03-30 18:00 +01:00)));
+        assert_eq!(
+            t.remind_at,
+            Some(at(Month::March, 30, time!(18:00), offset!(+1)))
+        );
         assert_eq!(p.state().task(first).unwrap().status, TaskStatus::Done);
 
         // Reminders move to the new instance.

@@ -56,12 +56,18 @@ export function updateTask(id: string, fields: Record<string, JsonValue>): boole
   return apply([{ entity: "task", id, fields }]);
 }
 
-export function setStatus(id: string, status: TaskStatus): boolean {
+/**
+ * The one path for status changes (detail, check button, board drag and keys): writes
+ * the status (with `extra` fields such as the board's rank in the same push group),
+ * warns about open subtasks and waits for the next instance of a completed series.
+ */
+export function setStatus(id: string, status: TaskStatus, extra: Record<string, JsonValue> = {}): boolean {
   const task = data.tasks[id];
-  if (!task || task.status === status) return true;
+  if (!task) return true;
+  if (task.status === status) return Object.keys(extra).length === 0 || updateTask(id, extra);
   const completes = isClosed(status) && !isClosed(task.status);
   const before = { ...task };
-  const ok = updateTask(id, { status });
+  const ok = updateTask(id, { ...extra, status });
   if (ok && status === "done") warnIfOpenChildren(id);
   if (ok && completes) expectNextInstance(before);
   return ok;
@@ -93,12 +99,27 @@ export function dropInstance(id: string): boolean {
   return true;
 }
 
-/** "Serie beenden": drops the task and removes its rhythm in one action, no next instance. */
+/**
+ * "Serie beenden": drops the task and removes its rhythm in one action, no next instance.
+ * `recurrence: null` comes first in the oplog: the app pushes its pending ops in batches
+ * regardless of where an action ends, and a push holding only `status: dropped` would
+ * still find the rhythm and create the next instance.
+ */
 export function endSeries(id: string): boolean {
   const task = data.tasks[id];
-  if (!task || !updateTask(id, { status: "dropped", recurrence: null })) return false;
+  if (!task || !updateTask(id, { recurrence: null, status: "dropped" })) return false;
   toast(`„${shorten(task.title)}“ verworfen, Serie beendet.`);
   return true;
+}
+
+/**
+ * Removes the due date; a recurring task needs one, so its series ends with it (the
+ * caller asks first). `recurrence: null` comes first, so a split push stays valid.
+ */
+export function clearDue(id: string): boolean {
+  const task = data.tasks[id];
+  if (!task) return false;
+  return updateTask(id, task.recurrence ? { recurrence: null, due: null } : { due: null });
 }
 
 /** The "done with open subtasks" hint (contract 2.5: a warning, not a refusal). */
@@ -154,10 +175,18 @@ export function deleteTask(id: string): boolean {
   return deleteCascade("task", id);
 }
 
-/** Places `id` between `before` and `after` (neighbors in the target order) and optionally sets fields. */
-export function placeTask(id: string, before: Task | null, after: Task | null, fields: Record<string, JsonValue> = {}): boolean {
+/**
+ * Places `id` between `before` and `after` (neighbors in the target order), optionally
+ * in another status. The status goes the common way (setStatus, dropTask), so completing
+ * on the board behaves like the check button.
+ */
+export function placeTask(id: string, before: Task | null, after: Task | null, status?: TaskStatus): boolean {
   const rank = rankBetween(before ? sortKey(before) : null, after ? sortKey(after) : null);
-  return updateTask(id, { ...fields, rank });
+  const task = data.tasks[id];
+  if (!task || status === undefined || status === task.status) return updateTask(id, { rank });
+  // Dropping asks first for a recurring task; the rank follows when it goes ahead.
+  if (status === "dropped") return dropTask(id, () => updateTask(id, { rank }));
+  return setStatus(id, status, { rank });
 }
 
 export function shorten(text: string, max = 40): string {

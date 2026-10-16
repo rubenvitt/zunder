@@ -78,8 +78,9 @@ Beschreibung. Phönix: phoenix markiert Feuer-Schritte und Flammen einer ISO-Woc
 start_flame/stop_flame messen Deep-Work-Blöcke (mit Timing, falls angebunden). \
 Zeitangaben: due als JJJJ-MM-TT oder RFC 3339 mit Offset, remind_at als RFC 3339. \
 Wiederkehrende Aufgaben: recurrence ist der Rhythmus (every, unit day/week/month/year, \
-optional weekdays bei Wochen oder day 1–31/last bei Monaten und Jahren (im Monat der Fälligkeit), from due = fester Kalender oder \
-done = ab Erledigung), z. B. jeden Monatsletzten {\"every\":1,\"unit\":\"month\",\"day\":\"last\",\"from\":\"due\"}. \
+optional weekdays bei Wochen oder day 1–31/last bei Monaten und Jahren, from due = fester \
+Kalender ab der Fälligkeit oder done = ab Erledigung; day gilt bei Jahren im Monat dieses Ankers, \
+fehlt day, gilt sein Tag: bei from due der Tag der Fälligkeit, bei from done der Tag der Erledigung), z. B. jeden Monatsletzten {\"every\":1,\"unit\":\"month\",\"day\":\"last\",\"from\":\"due\"}. \
 Er braucht due und geht nur an Aufgaben ohne parent_id. Wer eine wiederkehrende Aufgabe auf done \
 oder dropped setzt, schließt nur diese Instanz: Der Server legt die nächste mit neuer Fälligkeit an \
 (gleiche Stelle, ohne Unteraufgaben und Kommentare, recurrence_prev zeigt auf die Vorgängerin) und \

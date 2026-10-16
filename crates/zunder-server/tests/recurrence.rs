@@ -5,23 +5,21 @@
 mod common;
 
 use serde_json::{json, Value};
-use time::{Duration, OffsetDateTime};
+use time::OffsetDateTime;
 use zunder_core::ids::Id;
 use zunder_core::model::fields;
 use zunder_core::{Clock, Due, EntityKind, Location, NewTask, NodeId, Task, TaskStatus};
 use zunder_server::calendar::FeedScope;
 
-use common::{api_token, client_clock, mcp_err, mcp_ok, ops, Auth, TestServer, BOOTSTRAP};
+use common::{
+    api_token, client_clock, mcp_err, mcp_ok, mcp_post, ops, Auth, TestServer, BOOTSTRAP,
+};
 
 const BOOT: Auth<'static> = Auth::Bearer(BOOTSTRAP);
 
 /// Monthly on the last day; far in the future so "today" does not matter.
 fn month_end() -> Value {
     json!({"every": 1, "unit": "month", "day": "last", "from": "due"})
-}
-
-fn instant(s: &str) -> OffsetDateTime {
-    OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).unwrap()
 }
 
 /// Pushes `ops` with the bootstrap token and checks that all were accepted.
@@ -268,12 +266,23 @@ async fn subtasks_comments_phoenix_and_blockers_stay_behind() {
     assert_eq!(next.vault_links, ["Notizen/Plan.md"]);
 }
 
+/// The instant of a local date and time in the server's zone (`TZ` of the
+/// test process), so expectations hold in every zone.
+fn local_instant(y: i32, m: u32, d: u32, hour: u32, minute: u32) -> OffsetDateTime {
+    use chrono::TimeZone;
+    let local = chrono::Local
+        .with_ymd_and_hms(y, m, d, hour, minute, 0)
+        .single()
+        .expect("an unambiguous local time");
+    OffsetDateTime::from_unix_timestamp(local.timestamp()).unwrap()
+}
+
 #[tokio::test]
 async fn reminder_keeps_its_distance_to_the_due_time() {
     let s = TestServer::new().await;
     let mut clock = client_clock();
-    let due = instant("2099-01-31T17:00:00Z");
-    let remind = instant("2099-01-30T08:00:00Z");
+    let due = local_instant(2099, 1, 31, 17, 0);
+    let remind = local_instant(2099, 1, 30, 8, 0);
     let mut id = None;
     let create = ops(&mut clock, |b| {
         let t = b.create_task(NewTask {
@@ -288,17 +297,24 @@ async fn reminder_keeps_its_distance_to_the_due_time() {
     let id = id.unwrap();
     set_status(&s, &mut clock, id, TaskStatus::Done).await;
 
-    // 31.01. → 28.02.: 28 days later at the same local time (no daylight
-    // saving change between January and February in the test's zone).
+    // 31.01. → 28.02. at the same local time; the reminder stays "the day
+    // before at 08:00" (local dates, whatever the zone's offset).
     let next = only_successor(&s, id);
-    assert_eq!(next.due, Some(Due::DateTime(due + Duration::days(28))));
-    assert_eq!(next.remind_at, Some(remind + Duration::days(28)));
+    let next_due = local_instant(2099, 2, 28, 17, 0);
+    assert_eq!(next.due, Some(Due::DateTime(next_due)));
+    assert_eq!(next.remind_at, Some(local_instant(2099, 2, 27, 8, 0)));
 
     // The calendar feed shows the instance by itself.
     let feed = s.app.calendar_feed(FeedScope::All).await.unwrap();
     let unfolded = feed.replace("\r\n ", "");
     assert!(unfolded.contains(&format!("UID:{}", next.id)), "{feed}");
-    assert!(unfolded.contains("DTSTART:20990228T170000Z"), "{feed}");
+    let dtstart = next_due
+        .to_offset(time::UtcOffset::UTC)
+        .format(time::macros::format_description!(
+            "DTSTART:[year][month][day]T[hour][minute][second]Z"
+        ))
+        .unwrap();
+    assert!(unfolded.contains(&dtstart), "{feed}");
 }
 
 #[tokio::test]
@@ -353,6 +369,84 @@ async fn instances_in_keyed_projects_get_the_next_reference() {
         .collect();
     assert!(!touched.contains(&next.id.to_string().as_str()), "{log}");
     assert!(touched.contains(&id.to_string().as_str()), "{log}");
+}
+
+/// Log output of the whole test binary (the server logs from blocking
+/// threads, so the subscriber is global); tests look for their own IDs.
+fn captured_logs() -> String {
+    use std::sync::{Arc, Mutex, OnceLock};
+
+    #[derive(Clone)]
+    struct Sink(Arc<Mutex<Vec<u8>>>);
+    impl std::io::Write for Sink {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    static LOGS: OnceLock<Arc<Mutex<Vec<u8>>>> = OnceLock::new();
+    let logs = LOGS.get_or_init(|| {
+        let logs = Arc::new(Mutex::new(Vec::new()));
+        let sink = Sink(logs.clone());
+        let subscriber = tracing_subscriber::fmt()
+            .with_ansi(false)
+            .with_writer(move || sink.clone())
+            .finish();
+        tracing::subscriber::set_global_default(subscriber).unwrap();
+        logs
+    });
+    String::from_utf8_lossy(&logs.lock().unwrap()).into_owned()
+}
+
+/// Log lines announcing a next instance of the series of `predecessor`.
+fn announced_instances(predecessor: Id) -> Vec<String> {
+    captured_logs()
+        .lines()
+        .filter(|l| {
+            l.contains("next instance of a recurring task")
+                && l.contains(&format!("predecessor={predecessor}"))
+        })
+        .map(str::to_owned)
+        .collect()
+}
+
+#[tokio::test]
+async fn next_instance_is_logged_only_once_it_is_stored() {
+    captured_logs();
+    let s = TestServer::new().await;
+    let mut clock = client_clock();
+    let id = recurring(&s, &mut clock, "Odoo absenden", Location::Inbox).await;
+
+    // Storing the server's own push fails (the client's push goes through).
+    let db = rusqlite::Connection::open(s.dir.path().join("data/zunder.db")).unwrap();
+    db.execute_batch(
+        "CREATE TRIGGER fail_server_ops BEFORE INSERT ON ops WHEN NEW.source = 'server'
+         BEGIN SELECT RAISE(ABORT, 'disk full'); END;",
+    )
+    .unwrap();
+    set_status(&s, &mut clock, id, TaskStatus::Done).await;
+    assert!(successors(&s, id).is_empty());
+    assert_eq!(announced_instances(id), Vec::<String>::new());
+    assert!(
+        captured_logs().contains("creating next instances of recurring tasks failed"),
+        "the failure is logged"
+    );
+
+    // Once storing works again, reopening and completing creates and logs it.
+    db.execute_batch("DROP TRIGGER fail_server_ops;").unwrap();
+    set_status(&s, &mut clock, id, TaskStatus::Open).await;
+    set_status(&s, &mut clock, id, TaskStatus::Done).await;
+    let next = only_successor(&s, id);
+    let logged = announced_instances(id);
+    assert_eq!(logged.len(), 1, "{logged:?}");
+    assert!(
+        logged[0].contains(&format!("task_id={}", next.id)),
+        "{logged:?}"
+    );
 }
 
 // ----- MCP (contract 4.1) ---------------------------------------------------------------
@@ -703,6 +797,31 @@ async fn mcp_explains_invalid_recurrences() {
     .await;
     assert_eq!(code, "invalid_value");
     assert!(message.contains("recurrence: null"), "{message}");
+    // Sending a recurrence along with due: null does not ask for due "in the
+    // same call": without a due date the series ends.
+    let plain = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Einmalig", "due": "2099-01-31"}),
+    )
+    .await;
+    for id in [&recurring["task"]["id"], &plain["task"]["id"]] {
+        let (code, message) = mcp_err(
+            &s,
+            &t,
+            "update_task",
+            json!({"task_id": id, "due": null, "recurrence": month_end()}),
+        )
+        .await;
+        assert_eq!(code, "invalid_value");
+        assert!(
+            message.contains("endet die Serie")
+                && message.contains("recurrence: null")
+                && !message.contains("mitgeben"),
+            "{message}"
+        );
+    }
     // recurrence_prev is the server's.
     let (code, _) = mcp_err(
         &s,
@@ -747,4 +866,138 @@ async fn mcp_filters_recurring_tasks() {
     assert_eq!(titles(&r), ["Einmalig"]);
     let (code, _) = mcp_err(&s, &t, "filter_tasks", json!({"recurring": "ja"})).await;
     assert_eq!(code, "invalid_arguments");
+}
+
+/// The server's local date, as the follow-up rules see it.
+fn local_today() -> chrono::NaiveDate {
+    chrono::Local::now().date_naive()
+}
+
+/// Creates a task with `recurrence` due `due`, completes it over MCP and
+/// returns the next instance with the due dates `rule` gives for the local
+/// dates before and after the call (equal unless it straddles midnight).
+async fn complete_relative(
+    s: &TestServer,
+    t: &str,
+    recurrence: &Value,
+    due: chrono::NaiveDate,
+    rule: impl Fn(chrono::NaiveDate) -> chrono::NaiveDate,
+) -> (Value, [String; 2]) {
+    let created = mcp_ok(
+        s,
+        t,
+        "create_task",
+        json!({"title": "Serie", "due": due.to_string(), "recurrence": recurrence}),
+    )
+    .await;
+    let before = local_today();
+    let done = mcp_ok(
+        s,
+        t,
+        "update_task",
+        json!({"task_id": created["task"]["id"], "status": "done"}),
+    )
+    .await;
+    let after = local_today();
+    let next = done["next_task"].clone();
+    assert_eq!(next["recurrence_prev"], created["task"]["id"]);
+    (next, [rule(before).to_string(), rule(after).to_string()])
+}
+
+fn assert_due_in(next: &Value, expected: &[String; 2]) {
+    let due = next["due"].as_str().unwrap_or_default().to_owned();
+    assert!(expected.contains(&due), "due {due}, expected {expected:?}");
+}
+
+#[tokio::test]
+async fn mcp_missed_dates_are_skipped_but_the_next_is_not_before_today() {
+    let s = TestServer::new().await;
+    let t = api_token(&s, "claude").await;
+    let days = |n: i64| chrono::Duration::days(n);
+
+    // Weekly, ten days overdue: the date three days ago is skipped, exactly
+    // one instance follows four days from now.
+    let weekly = json!({"every": 1, "unit": "week", "from": "due"});
+    let (next, expected) = complete_relative(&s, &t, &weekly, local_today() - days(10), |today| {
+        today + days(4)
+    })
+    .await;
+    assert_due_in(&next, &expected);
+    assert_eq!(next["recurrence"], weekly);
+
+    // Daily, three days overdue: today itself is the next date.
+    let daily = json!({"every": 1, "unit": "day", "from": "due"});
+    let (next, expected) =
+        complete_relative(&s, &t, &daily, local_today() - days(3), |today| today).await;
+    assert_due_in(&next, &expected);
+}
+
+#[tokio::test]
+async fn mcp_done_anchor_counts_from_the_completion() {
+    let s = TestServer::new().await;
+    let t = api_token(&s, "claude").await;
+    let days = |n: i64| chrono::Duration::days(n);
+
+    // Three days after the completion, not after the old due date.
+    let every_three = json!({"every": 3, "unit": "day", "from": "done"});
+    let (next, expected) =
+        complete_relative(&s, &t, &every_three, local_today() - days(10), |today| {
+            today + days(3)
+        })
+        .await;
+    assert_due_in(&next, &expected);
+
+    // Monthly without day: the day of the completion (not of the old due
+    // date) one month later, clamped to the month's length; the series keeps
+    // its recurrence without a fixed day.
+    let monthly = json!({"every": 1, "unit": "month", "from": "done"});
+    let (next, expected) = complete_relative(&s, &t, &monthly, local_today() - days(40), |today| {
+        today.checked_add_months(chrono::Months::new(1)).unwrap()
+    })
+    .await;
+    assert_due_in(&next, &expected);
+    assert_eq!(next["recurrence"], monthly);
+}
+
+#[tokio::test]
+async fn mcp_schema_describes_the_recurrence_precisely() {
+    let s = TestServer::new().await;
+    let t = api_token(&s, "claude").await;
+    let r = mcp_post(
+        &s,
+        &t,
+        json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}),
+    )
+    .await;
+    let tools = r.json()["result"]["tools"].clone();
+    for name in ["create_task", "update_task"] {
+        let tool = tools
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == name)
+            .unwrap();
+        let props = &tool["inputSchema"]["properties"]["recurrence"]["properties"];
+        assert_eq!(
+            props["day"]["oneOf"],
+            json!([
+                {"type": "integer", "minimum": 1, "maximum": 31},
+                {"type": "string", "const": "last"},
+            ]),
+            "{name}"
+        );
+        let day = props["day"]["description"].as_str().unwrap();
+        assert!(
+            day.contains("bei from due der Tag der Fälligkeit")
+                && day.contains("bei from done der Tag der Erledigung"),
+            "{name}: {day}"
+        );
+        let weekdays = &props["weekdays"];
+        assert_eq!(
+            weekdays["items"]["enum"],
+            json!(["mo", "tu", "we", "th", "fr", "sa", "su"])
+        );
+        assert_eq!(weekdays["minItems"], 1);
+        assert_eq!(weekdays["uniqueItems"], true);
+    }
 }

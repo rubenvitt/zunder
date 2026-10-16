@@ -84,7 +84,7 @@ npx playwright test                              # Mock (Standard)
 ZUNDER_E2E_BACKEND=real npx playwright test      # echter Server
 ```
 
-Mit `ZUNDER_E2E_BACKEND=real` startet die Playwright-Konfiguration den Server aus `ZUNDER_SERVER_BIN` (Default `../target/debug/zunder-server`, relativ zu `web/`) mit frischem Datenordner, `ZUNDER_DEV_AUTH=true` und `ZUNDER_WEB_DIR=dist` auf `127.0.0.1:18080`. `npm run e2e` baut vorher zusätzlich die Web-UI. Die CI nutzt einen Release-Build, weil sie das Tempo-Budget misst.
+Mit `ZUNDER_E2E_BACKEND=real` startet die Playwright-Konfiguration den Server aus `ZUNDER_SERVER_BIN` (Default `../target/debug/zunder-server`, relativ zu `web/`) mit frischem Datenordner, `ZUNDER_DEV_AUTH=true` und `ZUNDER_WEB_DIR=dist` auf `127.0.0.1:18080`. Browser, Server bzw. Mock und Testprozesse laufen dabei immer in `TZ=Europe/Berlin`, unabhängig von der Zeitzone der Shell. `npm run e2e` baut vorher zusätzlich die Web-UI. Die CI nutzt einen Release-Build, weil sie das Tempo-Budget misst.
 
 Ende-zu-Ende-Tests anderer Clients gegen den echten Server (ignoriert, solange `ZUNDER_SERVER_BIN` fehlt):
 

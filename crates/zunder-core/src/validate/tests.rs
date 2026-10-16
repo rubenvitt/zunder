@@ -1247,11 +1247,19 @@ fn a_recurrence_needs_a_due_date() {
     });
     let outcome = push(&state, &ops);
     assert_all_rejected(&outcome, &ops, RejectCode::InvalidValue);
-    assert!(outcome.rejected[0].message.contains("Fälligkeit"));
+    // Setting a recurrence asks for a due date, not to remove it.
+    assert_eq!(
+        outcome.rejected[0].message,
+        "Ein Rhythmus braucht eine Fälligkeit. Bitte zusammen mit dem Rhythmus eine Fälligkeit setzen."
+    );
     let ops = batch(|b| {
         b.set_task(ids.inbox_task, "recurrence", monthly_last());
     });
-    assert_all_rejected(&push(&state, &ops), &ops, RejectCode::InvalidValue);
+    let outcome = push(&state, &ops);
+    assert_all_rejected(&outcome, &ops, RejectCode::InvalidValue);
+    assert!(outcome.rejected[0]
+        .message
+        .contains("eine Fälligkeit setzen"));
 
     // With due in the same push: accepted; typed view carries it.
     let ops = batch(|b| {
@@ -1275,7 +1283,10 @@ fn a_recurrence_needs_a_due_date() {
     });
     let outcome = push(&state, &ops);
     assert_all_rejected(&outcome, &ops, RejectCode::InvalidValue);
-    assert!(outcome.rejected[0].message.contains("Rhythmus entfernen"));
+    assert_eq!(
+        outcome.rejected[0].message,
+        "Eine wiederkehrende Aufgabe braucht eine Fälligkeit. Bitte zuerst den Rhythmus entfernen."
+    );
     // … unless the series ends in the same push.
     let ops = batch(|b| {
         b.set_task(ids.inbox_task, "due", Value::Null);

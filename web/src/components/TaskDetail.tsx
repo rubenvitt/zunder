@@ -5,8 +5,8 @@ import { fireOf, formatDateLabel, formatInstant, fromDatetimeLocalInput, localDa
 import { hasOpenChildren, isClaimActive, isDevLocation, isFlameRunning, isRecurring } from "../sync/derived";
 import { hlcWallMs } from "../sync/hlc";
 import { PHOENIX_ROLES, TASK_STATUSES, TASK_TYPES, type HistoryEntry, type JsonValue, type Link, type Task, type TaskStatus, type TaskType } from "../sync/types";
-import { describeValue, FIELD_LABELS, locationLabel, PHOENIX_LABELS, sourceLabel, STATUS_LABELS, TYPE_LABELS } from "../labels";
-import { addComment, createTask, deleteComment, deleteTask, dependentsCount, dropTask, flame, moveTask, setParent, setStatus, updateComment, updateTask } from "../state/actions";
+import { describeValue, FIELD_LABELS, historyTaskRefs, locationLabel, PHOENIX_LABELS, sourceLabel, STATUS_LABELS, TYPE_LABELS } from "../labels";
+import { addComment, clearDue, createTask, deleteComment, deleteTask, dependentsCount, dropTask, flame, moveTask, setParent, setStatus, updateComment, updateTask } from "../state/actions";
 import { detailBack, NARROW_LAYOUT } from "../state/back";
 import { appConfig } from "../state/desktop";
 import { isTauri } from "../platform/runtime";
@@ -690,9 +690,8 @@ function DueEditor(props: { task: Task; autoOpen?: (el: HTMLInputElement) => voi
   const setDue = (due: string) => updateTask(props.task.id, props.task.undated_ack ? { due, undated_ack: null } : { due });
   // A recurring task needs its due date (contract 2.5): removing it ends the series, after asking.
   const removeDue = () => {
-    if (!props.task.recurrence) return updateTask(props.task.id, { due: null });
-    if (!confirm("Ohne Fälligkeit endet die Serie.")) return false;
-    return updateTask(props.task.id, { due: null, recurrence: null });
+    if (props.task.recurrence && !confirm("Ohne Fälligkeit endet die Serie.")) return false;
+    return clearDue(props.task.id);
   };
   const commit = (date: string, time: string) => {
     if (!date) {
@@ -957,6 +956,31 @@ function Comments(props: { taskId: string }) {
 
 const [historyOpen, setHistoryOpen] = createSignal(false);
 
+/** A value in the change history; tasks it names (parent, blockers, previous instance) as links. */
+function HistoryValue(props: { field: string; value: JsonValue }) {
+  const refs = () => historyTaskRefs(props.field, props.value);
+  return (
+    <Show when={refs()} fallback={describeValue(props.field, props.value)}>
+      {(list) => (
+        <For each={list()}>
+          {(ref, i) => (
+            <>
+              {i() > 0 ? ", " : ""}
+              <Show when={ref.task && !ref.task.deleted ? ref.task : undefined} fallback={ref.label}>
+                {(t) => (
+                  <a class="task-link" href={taskHref(t())} data-task-id={t().id}>
+                    {ref.label}
+                  </a>
+                )}
+              </Show>
+            </>
+          )}
+        </For>
+      )}
+    </Show>
+  );
+}
+
 function History(props: { taskId: string; version: string }) {
   // Refetch shortly after changes settle (pushed and confirmed).
   const [key, setKey] = createSignal({ id: props.taskId, n: 0 });
@@ -1002,7 +1026,7 @@ function History(props: { taskId: string; version: string }) {
               <li>
                 <span class="history-time">{hlcLabel(entry.op.hlc)}</span>
                 <span>
-                  <strong>{FIELD_LABELS[entry.op.field] ?? entry.op.field}</strong> → {describeValue(entry.op.field, entry.op.value)}
+                  <strong>{FIELD_LABELS[entry.op.field] ?? entry.op.field}</strong> → <HistoryValue field={entry.op.field} value={entry.op.value} />
                 </span>
                 <span class="history-source" title={entry.source}>
                   {sourceLabel(entry.source)}

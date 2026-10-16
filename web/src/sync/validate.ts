@@ -661,12 +661,21 @@ class Checker {
 
   /**
    * A recurring task needs a due date and must be a root task (core: Checker::check_recurring).
-   * Sending `recurrence: null` along lifts both rules.
+   * Sending `recurrence: null` along lifts both rules. A missing due date is explained by what
+   * the push did: setting the recurrence asks for a due date, removing it (or restoring) for
+   * removing the recurrence.
    */
   private checkRecurring(t: EntityState): void {
     const key = keyOf("task", t.id);
     if (value(t, "due") === undefined) {
-      this.blame(key, "invalid_value", "Eine wiederkehrende Aufgabe braucht eine Fälligkeit. Bitte zuerst den Rhythmus entfernen.");
+      const setsRecurrence = this.changed.get(key)?.has("recurrence") ?? false;
+      this.blame(
+        key,
+        "invalid_value",
+        setsRecurrence
+          ? "Ein Rhythmus braucht eine Fälligkeit. Bitte zusammen mit dem Rhythmus eine Fälligkeit setzen."
+          : "Eine wiederkehrende Aufgabe braucht eine Fälligkeit. Bitte zuerst den Rhythmus entfernen.",
+      );
     } else if (value(t, "parent_id") !== undefined) {
       this.blame(key, "invalid_value", "Nur Aufgaben ohne übergeordnete Aufgabe können wiederkehren.");
     }

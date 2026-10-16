@@ -334,3 +334,209 @@ describe("quick capture recurrence shorthand", () => {
     expect(r.tokens.map((t) => t.kind)).toEqual(["time"]);
   });
 });
+
+// ZUN-24: phrases that used to give silently wrong results. NOW is Sunday, 11 Oct 2026, 14:30.
+describe("quick capture recurrence shorthand: fixed days, ordinals, punctuation", () => {
+  const week = (every: number, weekdays?: Recurrence["weekdays"]): Recurrence =>
+    weekdays ? { every, unit: "week", weekdays, from: "due" } : { every, unit: "week", from: "due" };
+  const month = (every: number, day?: number | "last"): Recurrence =>
+    day === undefined ? { every, unit: "month", from: "due" } : { every, unit: "month", day, from: "due" };
+
+  it.each<[string, Recurrence, string, string]>([
+    // Monthly with a fixed day.
+    ["monatlich am 15.", month(1, 15), "2026-10-15", "Monatlich am 15."],
+    ["jeden Monat am 15.", month(1, 15), "2026-10-15", "Monatlich am 15."],
+    ["monatlich am 5.", month(1, 5), "2026-11-05", "Monatlich am 5."],
+    ["alle 2 Monate am 20.", month(2, 20), "2026-10-20", "Alle 2 Monate am 20."],
+    ["monatlich am Monatsletzten", month(1, "last"), "2026-10-31", "Monatlich am Monatsletzten"],
+    ["monatlich zum Monatsende", month(1, "last"), "2026-10-31", "Monatlich am Monatsletzten"],
+    ["monatlich am Monatsende", month(1, "last"), "2026-10-31", "Monatlich am Monatsletzten"],
+    ["jeden Monat zum Monatsletzten", month(1, "last"), "2026-10-31", "Monatlich am Monatsletzten"],
+    // Yearly with a fixed date.
+    ["jährlich am 15.10.", { every: 1, unit: "year", day: 15, from: "due" }, "2026-10-15", "Jährlich am 15.10."],
+    ["jährlich am 11.10.", { every: 1, unit: "year", day: 11, from: "due" }, "2026-10-11", "Jährlich am 11.10."],
+    ["jährlich am 10.10.", { every: 1, unit: "year", day: 10, from: "due" }, "2027-10-10", "Jährlich am 10.10."],
+    ["jährlich am 29.02.", { every: 1, unit: "year", day: 29, from: "due" }, "2027-02-28", "Jährlich am 29.02."],
+    ["jedes Jahr am 1.3.", { every: 1, unit: "year", day: 1, from: "due" }, "2027-03-01", "Jährlich am 01.03."],
+    ["alle 2 Jahre am 12.10.", { every: 2, unit: "year", day: 12, from: "due" }, "2026-10-12", "Alle 2 Jahre am 12.10."],
+    // "jeden <n>." followed by a unit is every n units, not day n of the month.
+    ["jeden 2. Tag", { every: 2, unit: "day", from: "due" }, "2026-10-11", "Alle 2 Tage"],
+    ["jede 2. Woche", week(2), "2026-10-11", "Alle 2 Wochen"],
+    ["jeden 3. Monat", month(3), "2026-10-11", "Alle 3 Monate"],
+    ["jedes 2. Jahr", { every: 2, unit: "year", from: "due" }, "2026-10-11", "Alle 2 Jahre"],
+    ["jeden 2. Woche", week(2), "2026-10-11", "Alle 2 Wochen"],
+    ["jede 2. Woche montags", week(2, ["mo"]), "2026-10-12", "Alle 2 Wochen (Mo)"],
+    ["jeden 3. Monat am 15.", month(3, 15), "2026-10-15", "Alle 3 Monate am 15."],
+    ["jedes 2. Jahr am 1.3.", { every: 2, unit: "year", day: 1, from: "due" }, "2027-03-01", "Alle 2 Jahre am 01.03."],
+    ["monatlich am 15. nach Erledigung", { every: 1, unit: "month", day: 15, from: "done" }, "2026-10-15", "Monatlich am 15. nach Erledigung"],
+    // "des Monats" after a fixed day belongs to the rhythm; "Tag des Monats" is a day, not every n days.
+    ["jeden 1. des Monats", month(1, 1), "2026-11-01", "Monatlich am 1."],
+    ["jeden 1. Tag des Monats", month(1, 1), "2026-11-01", "Monatlich am 1."],
+    ["jeden 15. Tag des Monats.", month(1, 15), "2026-10-15", "Monatlich am 15."],
+    ["monatlich am 15. des Monats", month(1, 15), "2026-10-15", "Monatlich am 15."],
+    ["alle 2 Monate am 20. Tag des Monats", month(2, 20), "2026-10-20", "Alle 2 Monate am 20."],
+  ])("%s → rhythm, first due date and label", (shorthand, recurrence, due, label) => {
+    const r = parse(`Gießen ${shorthand}`);
+    expect(r.title).toBe("Gießen");
+    expect(r.recurrence).toEqual(recurrence);
+    expect(r.due).toBe(due);
+    expect(r.remind_at).toBeNull();
+    expect(r.tokens).toEqual([{ kind: "recurrence", text: shorthand, label }]);
+  });
+
+  it("starts a yearly 29.02. in the next leap year when that comes first", () => {
+    expect(parse("Feier jährlich am 29.02.", new Date(2027, 11, 1)).due).toBe("2028-02-29");
+    expect(parse("Feier jährlich am 29.02.", new Date(2028, 1, 29, 8)).due).toBe("2028-02-29");
+  });
+
+  it("combines a fixed monthly day with a time", () => {
+    const r = parse("Abrechnung monatlich am 11. 9:00");
+    expect(r.title).toBe("Abrechnung");
+    expect(r.due).toBe("2026-11-11T09:00:00+01:00");
+    expect(r.remind_at).toBe(r.due);
+    expect(r.recurrence).toEqual(month(1, 11));
+  });
+
+  it("a full date after monatlich stays the due date", () => {
+    expect(parse("Steuer monatlich am 20.10.")).toMatchObject({ title: "Steuer", due: "2026-10-20", recurrence: month(1) });
+    expect(parse("Fest jährlich am 15.10.2027")).toMatchObject({ title: "Fest", due: "2027-10-15", recurrence: { every: 1, unit: "year", from: "due" } });
+  });
+
+  it.each<[string, Recurrence, string]>([
+    ["täglich.", { every: 1, unit: "day", from: "due" }, "2026-10-11"],
+    ["jeden Freitag.", week(1, ["fr"]), "2026-10-16"],
+    ["jeden Montag und Donnerstag.", week(1, ["mo", "th"]), "2026-10-12"],
+    ["alle 2 Wochen!", week(2), "2026-10-11"],
+    ["werktags,", week(1, ["mo", "tu", "we", "th", "fr"]), "2026-10-12"],
+    ["jeden Monatsletzten.", month(1, "last"), "2026-10-31"],
+    ["monatlich am 15..", month(1, 15), "2026-10-15"],
+    ["jeden 15.!", month(1, 15), "2026-10-15"],
+    ["jeden 12.10..", { every: 1, unit: "year", day: 12, from: "due" }, "2026-10-12"],
+    ["monatlich nach Erledigung.", { every: 1, unit: "month", from: "done" }, "2026-10-11"],
+  ])("trailing punctuation does not hide the rhythm: %s", (shorthand, recurrence, due) => {
+    const r = parse(`Gießen ${shorthand}`);
+    expect(r.title).toBe("Gießen");
+    expect(r.recurrence).toEqual(recurrence);
+    expect(r.due).toBe(due);
+  });
+
+  it("trailing punctuation does not hide dates and times either", () => {
+    expect(parse("Abgabe morgen.")).toMatchObject({ title: "Abgabe", due: "2026-10-12" });
+    expect(parse("Abgabe am 20.10.2026.")).toMatchObject({ title: "Abgabe", due: "2026-10-20" });
+    expect(parse("Zahnarzt Freitag um 9 Uhr.")).toMatchObject({ title: "Zahnarzt", due: "2026-10-16T09:00:00+02:00" });
+    expect(parse("Zahnarzt morgen 9:00.")).toMatchObject({ title: "Zahnarzt", due: "2026-10-12T09:00:00+02:00" });
+    expect(parse("Satz endet hier.")).toMatchObject({ title: "Satz endet hier.", due: null });
+  });
+
+  it.each([
+    "Meeting jeden letzten Freitag im Monat",
+    "Stammtisch jeden ersten Montag",
+    "Stammtisch jeden ersten und dritten Montag",
+    "Stammtisch jeden letzten Freitag.",
+    "Treffen jeden 1. Montag",
+    "Treffen jeden 2. und 4. Dienstag",
+    "Gießen jeden zweiten Tag",
+    "Kehrwoche jede zweite Woche",
+    "Termin jeden letzten Werktag",
+    "Abrechnung monatlich am ersten Montag",
+    "Abrechnung jeden Monat am letzten Freitag",
+    "Abrechnung monatlich am 1. Montag",
+    "Abrechnung monatlich am 1. und 15.",
+    "Miete monatlich am 32.",
+    "Fest jährlich am 30.02.",
+    "Fest jährlich am 15.",
+    "Fest jährlich am ersten Sonntag",
+    "Fest jeden 12.10. und 15.04.",
+    "Jeden letzten Cent sparen",
+    // A unit, month name or month number after "<d>." is no fixed day of the month.
+    "Lohn jeden 1. Werktag",
+    "Lohn jeden 1. Werktag des Monats",
+    "Lohn monatlich am 2. Werktag",
+    "Lohn jeden Monat am 1. Werktag",
+    "Bericht jeden 2. Arbeitstag",
+    "Putzen jeden 1. Wochenende",
+    "Steuer jeden 1. Quartal",
+    "Miete monatlich am 1. Tag",
+    "Miete jeden 32. Tag des Monats",
+    "Fest jeden 1. Mai",
+    "Fest jeden 24. Dezember",
+    "Fest jeden 24. Dez.",
+    "Fest jeden 1. 5.",
+    "Fest monatlich am 1. Mai",
+    "Fest jährlich am 1. Mai",
+    "Fest jeden 12.10. Montag",
+    // An ordinal continuing a weekday list.
+    "Treffen jeden Montag und ersten Freitag",
+    "Treffen jeden Montag und letzten Freitag",
+    "Treffen jeden Montag, 1. Freitag",
+    "Treffen wöchentlich am Montag und ersten Freitag",
+    "Treffen montags und ersten Freitag",
+    // What follows the unit of an unsupported phrase belongs to it, as after a supported one.
+    "Kehrwoche jede zweite Woche montags",
+    "Kehrwoche jede zweite Woche montags und donnerstags",
+    "Kehrwoche jede zweite Woche am Montag",
+    "Kehrwoche jede zweite Woche am Montag und ersten Freitag",
+    "Kehrwoche jede zweite Woche nach Erledigung",
+    "Fest jedes zweite Jahr am 12.10.",
+    "Fest jedes zweite Jahr am 12.10.2027",
+    "Miete jeden zweiten Monat am 20.10.",
+    "Miete jeden zweiten Monat am 15.",
+    "Miete jeden zweiten Monat am 1. Werktag",
+    "Miete jeden zweiten Monat zum Monatsende",
+    "Lohn jeden 1. Werktag am 3.11.",
+    "Gießen jeden zweiten Tag am Montag",
+    // Numbers in words after "alle".
+    "Kehrwoche alle zwei Wochen",
+    "Kehrwoche alle zwei Wochen am Montag",
+    "Kehrwoche alle zwei Wochen freitags",
+    "Kehrwoche alle drei Wochen montags und donnerstags nach Erledigung",
+    "Gießen alle paar Tage",
+    "Miete alle zwei Monate am 20.10.",
+    "Fest alle zwei Jahre am 12.10.",
+    // An ordinal after "am" in a weekly rhythm.
+    "Treffen wöchentlich am ersten Montag",
+    "Treffen jede Woche am letzten Freitag",
+    "Treffen alle 2 Wochen am ersten Montag",
+    "Treffen jede 2. Woche am 1. Montag",
+    "Treffen wöchentlich am 15.",
+  ])("leaves unsupported rhythm-like phrases whole in the title, without a due date: %s", (input) => {
+    for (const r of [parse(input), parseNoRhythm(input)]) {
+      expect(r.title).toBe(input);
+      expect(r.recurrence).toBeNull();
+      expect(r.due).toBeNull();
+      expect(r.tokens).toEqual([]);
+    }
+  });
+
+  it("other tokens next to an unsupported phrase are still read", () => {
+    let r = parse("Meeting jeden letzten Freitag im Monat #arbeit");
+    expect(r).toMatchObject({ title: "Meeting jeden letzten Freitag im Monat", due: null, recurrence: null, location: { kind: "area", id: "area-arbeit" } });
+    // The time is not part of the phrase: due today at 19:00, no rhythm.
+    r = parse("Stammtisch jeden ersten Montag 19:00");
+    expect(r).toMatchObject({ title: "Stammtisch jeden ersten Montag", due: "2026-10-11T19:00:00+02:00", recurrence: null });
+    // A rhythm before it still counts; the phrase stays in the title.
+    r = parse("Gießen täglich jeden ersten Montag");
+    expect(r).toMatchObject({ title: "Gießen jeden ersten Montag", due: "2026-10-11", recurrence: { every: 1, unit: "day", from: "due" } });
+    // A time after the weekdays of an unsupported phrase is not part of it.
+    r = parse("Kehrwoche jede zweite Woche freitags um 9 Uhr");
+    expect(r).toMatchObject({ title: "Kehrwoche jede zweite Woche freitags", due: "2026-10-12T09:00:00+02:00", recurrence: null });
+  });
+
+  it("a full date after a weekly rhythm stays the due date", () => {
+    expect(parse("Treffen wöchentlich am 20.10.")).toMatchObject({ title: "Treffen", due: "2026-10-20", recurrence: { every: 1, unit: "week", from: "due" } });
+  });
+
+  it("a date in another month than a fixed yearly day stays the due date, the rhythm keeps no day", () => {
+    for (const input of ["Feier jährlich am 29.02. morgen", "Feier jeden 29.02. morgen"]) {
+      const r = parse(input);
+      expect(r).toMatchObject({ title: "Feier", due: "2026-10-12", recurrence: { every: 1, unit: "year", from: "due" } });
+      expect(r.recurrence).not.toHaveProperty("day");
+      expect(r.tokens.find((t) => t.kind === "recurrence")?.label).toBe("Jährlich");
+    }
+    const r = parse("Feier jährlich am 29.02. 20.03.2027 9:00");
+    expect(r).toMatchObject({ due: "2027-03-20T09:00:00+01:00", recurrence: { every: 1, unit: "year", from: "due" } });
+    expect(r.recurrence).not.toHaveProperty("day");
+    // A date in the same month keeps the day.
+    expect(parse("Feier jährlich am 12.10. 20.10.").recurrence).toEqual({ every: 1, unit: "year", day: 12, from: "due" });
+  });
+});

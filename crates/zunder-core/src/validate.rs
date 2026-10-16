@@ -844,15 +844,23 @@ impl Checker<'_> {
     /// A recurring task needs a due date and must be a root task. Checked
     /// when the push sets the recurrence, the due date or the parent (or
     /// restores the task); sending `recurrence: null` along lifts both rules.
+    /// A missing due date is explained by what the push did: setting the
+    /// recurrence asks for a due date, removing the due date (or restoring
+    /// the task) for removing the recurrence.
     fn check_recurring(&mut self, task: &Entity) {
         use fields::task as f;
         let key = (EntityKind::Task, task.id());
         if task.value(f::DUE).is_none() {
-            self.blame(
-                key,
-                RejectCode::InvalidValue,
-                "Eine wiederkehrende Aufgabe braucht eine Fälligkeit. Bitte zuerst den Rhythmus entfernen.",
-            );
+            let sets_recurrence = self
+                .changed
+                .get(&key)
+                .is_some_and(|set| set.contains(f::RECURRENCE));
+            let message = if sets_recurrence {
+                "Ein Rhythmus braucht eine Fälligkeit. Bitte zusammen mit dem Rhythmus eine Fälligkeit setzen."
+            } else {
+                "Eine wiederkehrende Aufgabe braucht eine Fälligkeit. Bitte zuerst den Rhythmus entfernen."
+            };
+            self.blame(key, RejectCode::InvalidValue, message);
         } else if task.value(f::PARENT_ID).is_some() {
             self.blame(
                 key,

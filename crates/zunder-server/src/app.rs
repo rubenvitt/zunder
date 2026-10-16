@@ -1395,6 +1395,7 @@ impl Inner {
         before: &CompletionsBefore,
     ) -> AppResult<()> {
         let now = system_time_ms();
+        let mut created = Vec::new();
         let validated = {
             let mat = self.read_materialized();
             let follow_ups = before.follow_ups(&mat.state, local_today(), &ServerZone);
@@ -1407,8 +1408,7 @@ impl Inner {
             let mut batch = OpBatch::new(clock, now);
             for instance in follow_ups.instances {
                 let predecessor = instance.predecessor;
-                let id = instance.write(&mut batch);
-                tracing::info!(task_id = %id, predecessor = %predecessor, "next instance of a recurring task");
+                created.push((instance.write(&mut batch), predecessor));
             }
             Validated::by(&mat, batch.ops(), now, Author::Server)
         };
@@ -1416,6 +1416,13 @@ impl Inner {
             tracing::error!(op_id = %r.op_id, code = r.code.as_str(), message = %r.message, "next instance of a recurring task rejected");
         }
         self.persist(conn, clock, validated, &Source::Server, None, false, None)?;
+        // Only now, and only for instances that made it into the state.
+        let mat = self.read_materialized();
+        for (id, predecessor) in created {
+            if mat.state.task(id).is_some() {
+                tracing::info!(task_id = %id, predecessor = %predecessor, "next instance of a recurring task");
+            }
+        }
         Ok(())
     }
 }
