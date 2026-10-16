@@ -10,11 +10,13 @@
 //! - [`validate`]: push validation with stable rejection codes
 //! - [`builder`]: ergonomic construction of operation batches
 //! - [`blocking`]: task status follows dependencies (`blocked_by`)
+//! - [`defer`]: "Heute nicht" and the deferral counter
 //! - [`recurrence`]: due date and reminder of the next instance of a series
 //! - [`search`]: diacritic-tolerant full-text search
 
 pub mod blocking;
 pub mod builder;
+pub mod defer;
 pub mod hlc;
 pub mod ids;
 pub mod model;
@@ -31,9 +33,9 @@ mod testutil;
 pub use builder::{NewArea, NewProject, NewTask, OpBatch};
 pub use hlc::{Clock, Hlc, NodeId};
 pub use model::{
-    Area, AreaState, Comment, Due, IsoWeek, Link, Location, MonthDay, Phoenix, PhoenixRole,
-    Project, ProjectKind, ProjectStatus, ProjectView, Recurrence, RecurrenceFrom, RecurrenceUnit,
-    Task, TaskStatus, TaskType, WeekdayCode,
+    Area, AreaState, Comment, Due, ForWhom, IsoWeek, Link, Location, MonthDay, Phoenix,
+    PhoenixRole, Project, ProjectKind, ProjectStatus, ProjectView, Recurrence, RecurrenceFrom,
+    RecurrenceUnit, Task, TaskStatus, TaskType, WeekdayCode, Weight,
 };
 pub use op::{EntityKind, Op};
 pub use state::{Progress, SnapshotEntity, State};
