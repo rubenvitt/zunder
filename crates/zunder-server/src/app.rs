@@ -1427,8 +1427,9 @@ impl Inner {
     }
 }
 
-/// The server's time zone (`TZ`) for the calendar of recurring tasks.
-struct ServerZone;
+/// The server's time zone (`TZ`) for the calendar of recurring tasks and
+/// the week of the Wochenbilanz.
+pub(crate) struct ServerZone;
 
 impl LocalZone for ServerZone {
     fn offset_at(&self, instant: time::OffsetDateTime) -> time::UtcOffset {

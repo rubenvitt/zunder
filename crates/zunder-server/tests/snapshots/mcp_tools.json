@@ -1089,6 +1089,27 @@
   },
   {
     "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Wochenbilanz"
+    },
+    "description": "Wochenbilanz: zählt die in einer ISO-Woche erledigten Aufgaben (Status done, Unteraufgaben eingeschlossen, verworfene nicht, Dev-Projekte ausgenommen) nach Gewicht und nach Für wen, so wie der Wochenspiegel der Oberfläche. Maßgeblich ist der Kalendertag der Statusänderung (status_changed_at) in der Zeitzone des Servers, Montag bis Sonntag. Ergebnis: week, from und to (Montag und Sonntag, JJJJ-MM-TT), total, by_weight (brand, glut, rauch, asche, none = ohne Gewicht) und by_for_whom (mich, uns, andere, none = ohne Angabe). Für Wochenrückblick und Feuer-Review: sachlich spiegeln, nicht bewerten.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "week": {
+          "description": "ISO-Woche JJJJ-Www, z. B. 2026-W44. Standard: die aktuelle Woche in der Zeitzone des Servers.",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "week_balance",
+    "title": "Wochenbilanz"
+  },
+  {
+    "annotations": {
       "destructiveHint": false,
       "idempotentHint": false,
       "openWorldHint": false,

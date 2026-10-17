@@ -354,6 +354,14 @@ const DEFER_TASK: &str = "Verschiebt eine Aufgabe auf später („Heute nicht“
     decompose_task, dann deferrals 0) oder ruhen gelassen wird (due null, undated_ack true, \
     deferrals 0).";
 
+const WEEK_BALANCE: &str = "Wochenbilanz: zählt die in einer ISO-Woche erledigten Aufgaben \
+    (Status done, Unteraufgaben eingeschlossen, verworfene nicht, Dev-Projekte ausgenommen) nach \
+    Gewicht und nach Für wen, so wie der Wochenspiegel der Oberfläche. Maßgeblich ist der \
+    Kalendertag der Statusänderung (status_changed_at) in der Zeitzone des Servers, Montag bis \
+    Sonntag. Ergebnis: week, from und to (Montag und Sonntag, JJJJ-MM-TT), total, by_weight \
+    (brand, glut, rauch, asche, none = ohne Gewicht) und by_for_whom (mich, uns, andere, none = \
+    ohne Angabe). Für Wochenrückblick und Feuer-Review: sachlich spiegeln, nicht bewerten.";
+
 /// All tools in a stable order.
 pub fn definitions() -> Vec<ToolDef> {
     vec![
@@ -735,6 +743,21 @@ pub fn definitions() -> Vec<ToolDef> {
                 vec![(
                     "include_archived",
                     boolean("Auch archivierte Bereiche und abgeschlossene Projekte (Standard false)."),
+                )],
+                &[],
+            ),
+            read_only: true,
+            destructive: false,
+            idempotent: true,
+        },
+        ToolDef {
+            name: "week_balance",
+            title: "Wochenbilanz",
+            description: WEEK_BALANCE,
+            input_schema: object(
+                vec![(
+                    "week",
+                    string("ISO-Woche JJJJ-Www, z. B. 2026-W44. Standard: die aktuelle Woche in der Zeitzone des Servers."),
                 )],
                 &[],
             ),

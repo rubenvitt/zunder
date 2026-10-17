@@ -106,6 +106,8 @@ Nachfragen; dem Nutzer einen Satzbaustein vorschlagen, etwa „Ich kann <Titel> 
 offene Rauch- oder Brand-Aufgabe> diese Woche machen. Was davon ist dir wichtiger?“ oder ohne \
 Alternative „Ich schaffe <Titel> diese Woche nicht. Wie wichtig ist es dir?“. Nicht selbst \
 verschicken. \
+Wochenrückblick und Feuer-Review: week_balance zählt die erledigten Aufgaben einer ISO-Woche \
+nach Gewicht und Für wen (wie der Wochenspiegel in Heute); sachlich spiegeln, nicht bewerten. \
 Abgelehnte Änderungen kommen mit deutscher Begründung zurück; nichts wird still verworfen.";
 
 /// The `/mcp` route (without state).

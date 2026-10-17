@@ -7,6 +7,7 @@ use std::sync::OnceLock;
 
 use serde_json::{json, Map, Value};
 use time::Date;
+use zunder_core::balance;
 use zunder_core::defer::{self, DeferTarget, FREE_DEFERRALS};
 use zunder_core::hlc::system_time_ms;
 use zunder_core::ids::Id;
@@ -20,7 +21,7 @@ use zunder_core::{
 
 use super::args::Args;
 use super::schema::{definitions, ToolDef};
-use crate::app::{format_ms, App, Source};
+use crate::app::{format_ms, App, ServerZone, Source};
 use crate::error::{AppError, AppResult};
 use crate::flame;
 use crate::views::{
@@ -126,6 +127,7 @@ async fn dispatch(app: &App, source: Source, name: &str, args: &Args) -> AppResu
         "release_task" => release_task(app, source, args).await,
         "decompose_task" => decompose_task(app, source, args).await,
         "list_structure" => list_structure(app, args).await,
+        "week_balance" => week_balance(app, args).await,
         "create_area" => create_area(app, source, args).await,
         "update_area" => update_area(app, source, args).await,
         "create_project" => create_project(app, source, args).await,
@@ -719,6 +721,23 @@ async fn list_structure(app: &App, args: &Args) -> AppResult<Value> {
         Ok(json!({"areas": out, "inbox_open": inbox, "loose_open": loose}))
     })
     .await?
+}
+
+/// Wochenbilanz of `week` (default: the current week in the server's
+/// zone), counted like the web UI's Wochenspiegel ([`zunder_core::balance`]).
+async fn week_balance(app: &App, args: &Args) -> AppResult<Value> {
+    let week = match args.str("week")? {
+        Some(s) => IsoWeek::parse(s)
+            .ok_or_else(|| invalid("„week“ muss eine ISO-Woche JJJJ-Www sein, z. B. 2026-W44."))?,
+        None => IsoWeek::of(
+            local_day(system_time_ms())
+                .ok_or_else(|| AppError::Internal(anyhow::anyhow!("no local calendar day")))?,
+        ),
+    };
+    let balance = app
+        .read_blocking(move |state| balance::week_balance(state, week, &ServerZone))
+        .await?;
+    to_json(&balance)
 }
 
 async fn task_history(app: &App, args: &Args) -> AppResult<Value> {
