@@ -98,6 +98,10 @@ pub mod fields {
         pub const FOR_WHOM: &str = "for_whom";
         /// How often the task was put off with "Heute nicht"; unset = never.
         pub const DEFERRALS: &str = "deferrals";
+        /// Who has the decision right now (a name, e.g. after handing a
+        /// Rauch task back); unset = nobody is waited for. Status follows it
+        /// like a blocker (see [`crate::blocking`]).
+        pub const WAITING_ON: &str = "waiting_on";
         /// Human-readable reference (`ZUN-42`). Assigned once by the server,
         /// never changed afterwards (see [`crate::numbering`]).
         pub const REF: &str = "ref";
@@ -131,6 +135,7 @@ pub mod fields {
             WEIGHT,
             FOR_WHOM,
             DEFERRALS,
+            WAITING_ON,
             REF,
             DELETED,
         ];
@@ -883,6 +888,8 @@ pub struct Task {
     pub for_whom: Option<ForWhom>,
     /// How often the task was put off ("Heute nicht").
     pub deferrals: u32,
+    /// Who has the decision; `None` = nobody is waited for.
+    pub waiting_on: Option<String>,
     /// Reference such as `ZUN-42`, once the server has assigned it.
     #[serde(rename = "ref")]
     pub reference: Option<String>,
@@ -988,6 +995,7 @@ fn shape_of(kind: EntityKind, field: &str) -> Option<Shape> {
             t::RECURRENCE => Shape::Recurrence,
             t::PR_URL => Shape::HttpUrl,
             t::REF => Shape::TaskRef,
+            t::WAITING_ON => Shape::Title,
             t::DESCRIPTION
             | t::CLAIMED_BY
             | t::PLAN
@@ -1519,6 +1527,26 @@ mod tests {
         bad(EntityKind::Task, "deferrals", json!(-1));
         bad(EntityKind::Task, "deferrals", json!(1.5));
         bad(EntityKind::Task, "deferrals", json!("2"));
+    }
+
+    #[test]
+    fn waiting_on() {
+        ok(EntityKind::Task, "waiting_on", json!("Anna"));
+        ok(EntityKind::Task, "waiting_on", json!("Frau Dr. Özdemir"));
+        ok(
+            EntityKind::Task,
+            "waiting_on",
+            json!("a".repeat(MAX_TITLE_CHARS)),
+        );
+        ok(EntityKind::Task, "waiting_on", json!(null));
+        bad(EntityKind::Task, "waiting_on", json!(""));
+        bad(EntityKind::Task, "waiting_on", json!("  "));
+        bad(
+            EntityKind::Task,
+            "waiting_on",
+            json!("a".repeat(MAX_TITLE_CHARS + 1)),
+        );
+        bad(EntityKind::Task, "waiting_on", json!(["Anna"]));
     }
 
     #[test]

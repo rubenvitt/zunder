@@ -246,6 +246,7 @@ fn invalid_values_are_rejected() {
         ("weight", json!("hoch")),
         ("for_whom", json!("alle")),
         ("deferrals", json!(-1)),
+        ("waiting_on", json!(" ")),
         ("phoenix", json!({"role": "flamme", "fire": "2026-W60"})),
         ("pr_url", json!("not a url")),
         ("links", json!([{"url": "relative/path"}])),

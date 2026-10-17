@@ -1,0 +1,285 @@
+{
+  "name": "validierung-wartet-auf",
+  "description": "„Wartet auf“ (waiting_on) ist ein optionaler Name: nicht leer nach dem Trimmen, höchstens 500 Zeichen, auch in Dev-Projekten erlaubt; null entfernt ihn. Leere Texte, zu lange Texte und andere Typen werden abgelehnt.",
+  "kind": "validate",
+  "now_ms": 1760000101000,
+  "state": [
+    {
+      "op_id": "v000700080000e0000000023",
+      "entity": "area",
+      "entity_id": "v000700080000a0000000001",
+      "field": "name",
+      "value": "Arbeit",
+      "hlc": "1760000000001:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e0000000024",
+      "entity": "area",
+      "entity_id": "v000700080000a0000000002",
+      "field": "name",
+      "value": "Haus",
+      "hlc": "1760000000002:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e0000000025",
+      "entity": "project",
+      "entity_id": "v000700080000b0000000001",
+      "field": "name",
+      "value": "Zunder",
+      "hlc": "1760000000003:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e0000000026",
+      "entity": "project",
+      "entity_id": "v000700080000b0000000001",
+      "field": "area_id",
+      "value": "v000700080000a0000000001",
+      "hlc": "1760000000004:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e0000000027",
+      "entity": "project",
+      "entity_id": "v000700080000b0000000001",
+      "field": "kind",
+      "value": "dev",
+      "hlc": "1760000000005:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e0000000028",
+      "entity": "project",
+      "entity_id": "v000700080000b0000000002",
+      "field": "name",
+      "value": "Umzug",
+      "hlc": "1760000000006:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e0000000029",
+      "entity": "project",
+      "entity_id": "v000700080000b0000000002",
+      "field": "area_id",
+      "value": "v000700080000a0000000002",
+      "hlc": "1760000000007:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e000000002a",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000001",
+      "field": "title",
+      "value": "Absturz",
+      "hlc": "1760000000008:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e000000002b",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000001",
+      "field": "type",
+      "value": "bug",
+      "hlc": "1760000000009:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e000000002c",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000001",
+      "field": "location",
+      "value": {
+        "kind": "project",
+        "id": "v000700080000b0000000001"
+      },
+      "hlc": "1760000000010:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e000000002d",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000002",
+      "field": "title",
+      "value": "Kisten packen",
+      "hlc": "1760000000011:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e000000002e",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000002",
+      "field": "location",
+      "value": {
+        "kind": "project",
+        "id": "v000700080000b0000000002"
+      },
+      "hlc": "1760000000012:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e000000002f",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000003",
+      "field": "title",
+      "value": "Klebeband",
+      "hlc": "1760000000013:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e0000000030",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000003",
+      "field": "parent_id",
+      "value": "v000700080000c0000000002",
+      "hlc": "1760000000014:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e0000000031",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000004",
+      "field": "title",
+      "value": "Gelöscht",
+      "hlc": "1760000000015:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e0000000032",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000004",
+      "field": "deleted",
+      "value": true,
+      "hlc": "1760000000016:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e0000000033",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000005",
+      "field": "title",
+      "value": "Elternaufgabe im Dev-Projekt",
+      "hlc": "1760000000017:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e0000000034",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000005",
+      "field": "location",
+      "value": {
+        "kind": "project",
+        "id": "v000700080000b0000000001"
+      },
+      "hlc": "1760000000018:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e0000000035",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000006",
+      "field": "title",
+      "value": "Bug-Unteraufgabe",
+      "hlc": "1760000000019:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e0000000036",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000006",
+      "field": "parent_id",
+      "value": "v000700080000c0000000005",
+      "hlc": "1760000000020:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e0000000037",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000006",
+      "field": "type",
+      "value": "bug",
+      "hlc": "1760000000021:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e0000000038",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000007",
+      "field": "title",
+      "value": "Kind einer gelöschten Aufgabe",
+      "hlc": "1760000000022:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e0000000039",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000007",
+      "field": "parent_id",
+      "value": "v000700080000c0000000004",
+      "hlc": "1760000000023:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e000000003a",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000007",
+      "field": "deleted",
+      "value": true,
+      "hlc": "1760000000024:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e000000003b",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000008",
+      "field": "title",
+      "value": "Rasen mähen",
+      "hlc": "1760000000025:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e000000003c",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000008",
+      "field": "location",
+      "value": {
+        "kind": "area",
+        "id": "v000700080000a0000000002"
+      },
+      "hlc": "1760000000026:00000:seed"
+    }
+  ],
+  "push": [
+    {
+      "op_id": "v000700080000e0000000600",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000002",
+      "field": "waiting_on",
+      "value": "Anna",
+      "hlc": "1760000100000:00000:web-test"
+    },
+    {
+      "op_id": "v000700080000e0000000601",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000008",
+      "field": "waiting_on",
+      "value": null,
+      "hlc": "1760000100001:00000:web-test"
+    },
+    {
+      "op_id": "v000700080000e0000000602",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000001",
+      "field": "waiting_on",
+      "value": "Team Zunder",
+      "hlc": "1760000100002:00000:web-test"
+    },
+    {
+      "op_id": "v000700080000e0000000603",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000003",
+      "field": "waiting_on",
+      "value": "   ",
+      "hlc": "1760000100003:00000:web-test"
+    },
+    {
+      "op_id": "v000700080000e0000000604",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000005",
+      "field": "waiting_on",
+      "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hlc": "1760000100004:00000:web-test"
+    },
+    {
+      "op_id": "v000700080000e0000000605",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000006",
+      "field": "waiting_on",
+      "value": [
+        "Anna"
+      ],
+      "hlc": "1760000100005:00000:web-test"
+    }
+  ],
+  "expected_rejected": {
+    "v000700080000c0000000003": "invalid_value",
+    "v000700080000c0000000005": "invalid_value",
+    "v000700080000c0000000006": "invalid_value"
+  }
+}

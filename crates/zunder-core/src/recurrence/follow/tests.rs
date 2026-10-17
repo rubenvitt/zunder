@@ -178,6 +178,9 @@ fn completing_creates_the_next_instance() {
 fn the_written_instance_carries_the_series_and_nothing_else() {
     let mut w = World::new();
     let id = w.recurring("Miete", "2025-10-31");
+    w.push(|b| {
+        b.set_task(id, fields::task::WAITING_ON, "Vermieterin");
+    });
     let next = w.set_status(id, TaskStatus::Done);
     assert_eq!(next.len(), 1);
     let task = w.task(next[0]);
@@ -194,6 +197,8 @@ fn the_written_instance_carries_the_series_and_nothing_else() {
     assert_eq!(task.phoenix, None);
     assert_eq!(task.reference, None);
     assert!(task.blocked_by.is_empty());
+    // The new instance waits on nobody.
+    assert_eq!(task.waiting_on, None);
     // The predecessor keeps its recurrence.
     assert_eq!(w.task(id).recurrence.unwrap().day, None);
 }

@@ -1,16 +1,21 @@
-//! Task status follows dependencies (`blocked_by`).
+//! Task status follows dependencies (`blocked_by`) and `waiting_on`.
 //!
-//! When a push gives an `open` task a blocker that is neither done nor
-//! dropped, the task becomes `blocked`. When the last such blocker of a
-//! `blocked` task is resolved (done, dropped, deleted or removed from
-//! `blocked_by`), the task becomes `open` again.
+//! A task is held by its open blockers (in `blocked_by`, neither done nor
+//! dropped) and by a person it waits on (`waiting_on`). When a push gives an
+//! `open` task a new hold (a blocker that was not open before, or a
+//! `waiting_on` where there was none), the task becomes `blocked`. When the
+//! last hold of a `blocked` task goes away (the last open blocker is done,
+//! dropped, deleted or removed from `blocked_by`, or `waiting_on` is cleared)
+//! and nothing else holds it, the task becomes `open` again: clearing
+//! `waiting_on` leaves a task with open blockers blocked, and resolving the
+//! last blocker leaves a task that still waits on someone blocked.
 //!
 //! The rules react to changes, not to the state as a whole, so a status a
 //! person chose stays: a task set to `open` despite open blockers is not
-//! blocked again until a new blocker appears, a task blocked by hand without
-//! any `blocked_by` (waiting for someone) is never opened, and a push that
-//! changes a task's status itself decides that status. Tasks in progress,
-//! in review or closed are left alone.
+//! blocked again until a new hold appears, a task blocked by hand without
+//! any hold is never opened, and a push that changes a task's status itself
+//! decides that status. Tasks in progress, in review or closed are left
+//! alone.
 //!
 //! Only the server applies these rules (after each stored push, as its own
 //! push), so offline clients and every write path agree.
@@ -36,12 +41,14 @@ struct Before {
     status: Option<TaskStatus>,
     /// Live blockers that were neither done nor dropped.
     open: BTreeSet<Id>,
+    /// Whether the task waited on someone (`waiting_on`).
+    waiting: bool,
 }
 
 impl BlockingBefore {
     /// Captures the tasks `ops` may affect: tasks whose `blocked_by`,
-    /// `status` or `deleted` changes, and every task naming one of those in
-    /// its `blocked_by`.
+    /// `waiting_on`, `status` or `deleted` changes, and every task naming one
+    /// of those in its `blocked_by`.
     pub fn capture(state: &State, ops: &[Op]) -> Self {
         let mut direct: BTreeSet<Id> = BTreeSet::new();
         // Tasks whose open-ness as a blocker may change.
@@ -51,7 +58,7 @@ impl BlockingBefore {
                 continue;
             }
             match op.field.as_str() {
-                fields::task::BLOCKED_BY => {
+                fields::task::BLOCKED_BY | fields::task::WAITING_ON => {
                     direct.insert(op.entity_id);
                 }
                 fields::task::STATUS | fields::DELETED => {
@@ -82,6 +89,7 @@ impl BlockingBefore {
                     Before {
                         status,
                         open: open_blockers(state, id),
+                        waiting: waits(state, id),
                     },
                 )
             })
@@ -103,11 +111,15 @@ impl BlockingBefore {
                 continue;
             }
             let open = open_blockers(state, id);
+            let waiting = waits(state, id);
+            let held_before = !before.open.is_empty() || before.waiting;
             match status {
-                TaskStatus::Open if !open.is_subset(&before.open) => {
+                TaskStatus::Open
+                    if !open.is_subset(&before.open) || (waiting && !before.waiting) =>
+                {
                     out.push((id, TaskStatus::Blocked));
                 }
-                TaskStatus::Blocked if !before.open.is_empty() && open.is_empty() => {
+                TaskStatus::Blocked if held_before && open.is_empty() && !waiting => {
                     out.push((id, TaskStatus::Open));
                 }
                 _ => {}
@@ -115,6 +127,13 @@ impl BlockingBefore {
         }
         out
     }
+}
+
+/// Whether a live task waits on someone (`waiting_on` set).
+fn waits(state: &State, task_id: Id) -> bool {
+    state
+        .live_entity(EntityKind::Task, task_id)
+        .is_some_and(|e| e.str_value(fields::task::WAITING_ON).is_some())
 }
 
 /// Live blockers of a live task that are neither done nor dropped.
@@ -352,6 +371,134 @@ mod tests {
             b.clear(EntityKind::Task, t, fields::task::BLOCKED_BY);
         });
         assert!(changes.is_empty());
+    }
+
+    #[test]
+    fn waiting_on_someone_blocks_an_open_task() {
+        let mut w = World::new();
+        let t = w.task("T", TaskStatus::Open);
+        let changes = w.push(|b| {
+            b.set_task(t, fields::task::WAITING_ON, "Anna");
+        });
+        assert_eq!(changes, vec![(t, TaskStatus::Blocked)]);
+        // A new task that waits on someone starts blocked.
+        let mut u = None;
+        let changes = w.push(|b| {
+            let id = b.create_task(NewTask::new("U"));
+            b.set_task(id, fields::task::WAITING_ON, "Ben");
+            u = Some(id);
+        });
+        assert_eq!(changes, vec![(u.unwrap(), TaskStatus::Blocked)]);
+    }
+
+    #[test]
+    fn only_open_tasks_get_blocked_by_waiting() {
+        let mut w = World::new();
+        for status in [
+            TaskStatus::InProgress,
+            TaskStatus::Review,
+            TaskStatus::Done,
+            TaskStatus::Dropped,
+        ] {
+            let t = w.task("T", status);
+            let changes = w.push(|b| {
+                b.set_task(t, fields::task::WAITING_ON, "Anna");
+            });
+            assert!(changes.is_empty(), "{status:?}");
+        }
+    }
+
+    #[test]
+    fn another_name_is_no_new_hold() {
+        let mut w = World::new();
+        let t = w.task("T", TaskStatus::Open);
+        w.push_and_follow(|b| {
+            b.set_task(t, fields::task::WAITING_ON, "Anna");
+        });
+        // Opened by hand while waiting: a new name does not block again.
+        w.push_and_follow(|b| {
+            b.set_status(t, TaskStatus::Open);
+        });
+        let changes = w.push(|b| {
+            b.set_task(t, fields::task::WAITING_ON, "Ben");
+        });
+        assert!(changes.is_empty());
+    }
+
+    #[test]
+    fn clearing_waiting_on_opens_the_task() {
+        let mut w = World::new();
+        let t = w.task("T", TaskStatus::Open);
+        w.push_and_follow(|b| {
+            b.set_task(t, fields::task::WAITING_ON, "Anna");
+        });
+        assert_eq!(w.status(t), TaskStatus::Blocked);
+        w.push_and_follow(|b| {
+            b.clear(EntityKind::Task, t, fields::task::WAITING_ON);
+        });
+        assert_eq!(w.status(t), TaskStatus::Open);
+    }
+
+    #[test]
+    fn handing_back_in_one_push_keeps_its_own_status() {
+        // The web's "Zurückgeben": waiting_on and status blocked together.
+        let mut w = World::new();
+        let t = w.task("T", TaskStatus::Open);
+        let changes = w.push(|b| {
+            b.set_task(t, fields::task::WAITING_ON, "Anna");
+            b.set_status(t, TaskStatus::Blocked);
+        });
+        assert!(changes.is_empty());
+        assert_eq!(w.status(t), TaskStatus::Blocked);
+    }
+
+    #[test]
+    fn clearing_waiting_on_keeps_open_blockers() {
+        let mut w = World::new();
+        let a = w.task("A", TaskStatus::Open);
+        let t = w.task("T", TaskStatus::Open);
+        w.push_and_follow(|b| {
+            b.set_task(t, fields::task::BLOCKED_BY, list(&[a]));
+            b.set_task(t, fields::task::WAITING_ON, "Anna");
+        });
+        assert_eq!(w.status(t), TaskStatus::Blocked);
+        w.push_and_follow(|b| {
+            b.clear(EntityKind::Task, t, fields::task::WAITING_ON);
+        });
+        assert_eq!(w.status(t), TaskStatus::Blocked);
+        // The last blocker done, nothing holds it any more.
+        w.push_and_follow(|b| {
+            b.set_status(a, TaskStatus::Done);
+        });
+        assert_eq!(w.status(t), TaskStatus::Open);
+    }
+
+    #[test]
+    fn the_last_blocker_done_keeps_a_waiting_task_blocked() {
+        let mut w = World::new();
+        let a = w.task("A", TaskStatus::Open);
+        let t = w.task("T", TaskStatus::Open);
+        w.push_and_follow(|b| {
+            b.set_task(t, fields::task::BLOCKED_BY, list(&[a]));
+        });
+        w.push_and_follow(|b| {
+            b.set_task(t, fields::task::WAITING_ON, "Anna");
+        });
+        assert_eq!(w.status(t), TaskStatus::Blocked);
+        let changes = w.push(|b| {
+            b.set_status(a, TaskStatus::Done);
+        });
+        assert!(changes.is_empty());
+        // Removing the blocker does not open it either.
+        let changes = w.push(|b| {
+            b.clear(EntityKind::Task, t, fields::task::BLOCKED_BY);
+        });
+        assert!(changes.is_empty());
+        // Only the answer does.
+        w.push_and_follow(|b| {
+            b.clear(EntityKind::Task, t, fields::task::WAITING_ON);
+        });
+        assert_eq!(w.status(t), TaskStatus::Open);
     }
 
     #[test]

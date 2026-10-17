@@ -311,6 +311,7 @@ impl Entity {
             weight: self.parsed(f::WEIGHT),
             for_whom: self.parsed(f::FOR_WHOM),
             deferrals: self.parsed(f::DEFERRALS).unwrap_or(0),
+            waiting_on: self.string(f::WAITING_ON),
             reference: self.string(f::REF),
             deleted: self.is_deleted(),
         })
