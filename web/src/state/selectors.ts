@@ -1,6 +1,7 @@
 // Task selections for the views. All functions are reactive (read the store).
 
 import { localDate, parseDue } from "../sync/dates";
+import { weekBalance, type WeekBalance } from "../sync/balance";
 import { openCommitments } from "../sync/commitments";
 import { compareTasks, isClosed, isDevLocation, isFlameRunning, statusChangedMs, weightRank } from "../sync/derived";
 import type { Location, Task } from "../sync/types";
@@ -126,12 +127,23 @@ export function waitingGroups(): WaitingGroup[] {
 }
 
 /**
- * Offene Zusagen: live tasks for others, not done or dropped (subtasks and tasks that wait on
- * someone included), outside dev projects; due first, then rank (rule in sync/commitments).
+ * Offene Zusagen: live tasks for others, not done or dropped and waiting on nobody (subtasks
+ * included), outside dev projects; due first, then rank (rule in sync/commitments).
  */
 export function commitmentTasks(): Task[] {
   const index = taskIndex();
   return openCommitments(index.byId.values(), (t) => index.isDeleted(t) || isDevLocation(index.location(t), (id) => data.projects[id]));
+}
+
+/** Deleted tasks and tasks in dev projects: they count neither in the balance nor in "Erst für dich". */
+function notPersonal(t: Task): boolean {
+  const index = taskIndex();
+  return index.isDeleted(t) || isDevLocation(index.location(t), (id) => data.projects[id]);
+}
+
+/** Wochenspiegel: the balance of `week` (rule in sync/balance, one pass over the tasks). */
+export function weekBalanceOf(week: string): WeekBalance {
+  return weekBalance(taskIndex().byId.values(), week, notPersonal);
 }
 
 export function phoenixTasks(fire: string): { steps: Task[]; flames: Task[] } {

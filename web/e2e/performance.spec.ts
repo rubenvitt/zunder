@@ -101,6 +101,16 @@ test("Kaltstart unter 1 s und Interaktionen unter 100 ms", async ({ page }) => {
   console.log(`g i (Sicht wechseln): ${switchView.toFixed(1)} ms`);
   expect(switchView).toBeLessThan(INTERACTION_BUDGET_MS);
 
+  // Interaction: back to Heute with g h until its Wochenspiegel (one pass over all tasks) is shown.
+  await page.keyboard.press("g");
+  const switchToday = await measureKey(
+    page,
+    "h",
+    `document.querySelector('.view-head h1')?.textContent === "Heute" && !!document.querySelector('.week-mirror-total')`,
+  );
+  console.log(`g h (Heute mit Wochenspiegel): ${switchToday.toFixed(1)} ms`);
+  expect(switchToday).toBeLessThan(INTERACTION_BUDGET_MS);
+
   // Interaction: open the command palette and search.
   const palette = await measureKey(page, "Control+k", `!!document.querySelector('.palette-input')`);
   console.log(`Strg+K (Palette): ${palette.toFixed(1)} ms`);

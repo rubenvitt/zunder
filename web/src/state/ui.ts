@@ -232,3 +232,12 @@ export function setDevProjectFilter(ids: string[]): void {
   setDevProjectFilterSignal(ids);
   store("zunder.devProjectFilter", ids.join(","));
 }
+
+// Heute: the Wochenspiegel is open or collapsed, remembered per device (open by default).
+const [weekMirrorOpen, setWeekMirrorOpenSignal] = createSignal(stored("zunder.weekMirrorOpen") !== "0");
+export { weekMirrorOpen };
+
+export function setWeekMirrorOpen(open: boolean): void {
+  setWeekMirrorOpenSignal(open);
+  store("zunder.weekMirrorOpen", open ? "1" : "0");
+}

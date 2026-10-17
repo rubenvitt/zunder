@@ -3511,3 +3511,99 @@ a.sync {
   background: transparent;
   border: 1px solid rgb(127 127 127 / 0.55);
 }
+
+/* ---- Wochenspiegel (contract 5.1) -------------------------------------------------------- */
+
+.week-mirror {
+  margin-top: 1.5rem;
+}
+.week-mirror summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.2rem 0;
+}
+.week-mirror summary::-webkit-details-marker {
+  display: none;
+}
+.week-mirror summary::before {
+  content: "";
+  width: 0.4rem;
+  height: 0.4rem;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+  align-self: center;
+}
+.week-mirror details[open] summary::before {
+  transform: rotate(45deg);
+}
+.week-mirror-title {
+  font-size: 0.74rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+.week-mirror-total {
+  font-size: 0.84rem;
+}
+.week-mirror-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.35rem 0 0 1rem;
+  max-width: 34rem;
+}
+.week-mirror-line {
+  margin: 0.3rem 0 0;
+  font-size: 0.88rem;
+  color: var(--text-2);
+}
+.week-mirror-hint {
+  margin: 0.3rem 0 0;
+  font-size: 0.78rem;
+}
+/* Two slim bars; each segment as wide as its share. Colours follow the chips, Rauch and
+   "ohne" also differ by pattern and outline, and the text above says it in words. */
+.balance-bar {
+  display: flex;
+  gap: 2px;
+  height: 0.5rem;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.balance-seg {
+  flex-basis: 0;
+  min-width: 4px;
+}
+.balance-weight-brand {
+  background: var(--accent);
+}
+.balance-weight-glut {
+  background: var(--warning);
+}
+.balance-weight-rauch {
+  background: repeating-linear-gradient(135deg, var(--text-2) 0 3px, var(--surface-3) 3px 5px);
+}
+.balance-weight-asche {
+  background: var(--border-strong);
+}
+.balance-weight-none,
+.balance-for-none {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.balance-for-mich {
+  background: var(--text-2);
+}
+.balance-for-uns {
+  background: var(--violet);
+}
+.balance-for-andere {
+  background: var(--info);
+}

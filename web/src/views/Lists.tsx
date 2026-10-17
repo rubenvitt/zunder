@@ -3,6 +3,7 @@
 import { createMemo, For, onMount, Show } from "solid-js";
 import { EmptyState } from "../components/EmptyState";
 import { TaskList } from "../components/TaskList";
+import { WeekMirror } from "../components/WeekMirror";
 import type { DeferTarget } from "../sync/defer";
 import type { Task } from "../sync/types";
 import { canHandBack, deferTask, dropTask, moveTask, setWaitingOn, shorten } from "../state/actions";
@@ -85,6 +86,7 @@ export function TodayView() {
           </a>
         </EmptyState>
       </Show>
+      <WeekMirror />
     </div>
   );
 }

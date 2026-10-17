@@ -2,6 +2,7 @@
 
 import type { AreaState, ForWhom, JsonValue, Location, PhoenixRole, ProjectKind, ProjectStatus, Recurrence, RecurrenceFrom, RecurrenceUnit, Task, TaskStatus, TaskType, WeekdayCode, Weight } from "./sync/types";
 import { WEEKDAY_CODES } from "./sync/types";
+import { FOR_WHOM_KEYS, WEIGHT_KEYS, type ForWhomKey, type WeekBalance, type WeightKey } from "./sync/balance";
 import { formatDateLabel, parseDue } from "./sync/dates";
 import { parseRecurrence, sameRecurrence, weekdayOf } from "./sync/recurrence";
 import { data } from "./state/store";
@@ -77,6 +78,35 @@ export const FOR_WHOM_HINTS: Record<ForWhom, string> = {
 
 /** Asked once when a task is set to "andere": a real commitment, or one made to oneself? */
 export const COMMITMENT_QUESTION = "Zugesagt oder selbst verpflichtet?";
+/** Wochenspiegel groups: weights and "ohne Gewicht". */
+export const BALANCE_WEIGHT_LABELS: Record<WeightKey, string> = { ...WEIGHT_LABELS, none: "ohne Gewicht" };
+/** Wochenspiegel groups: for whom and "ohne Angabe". */
+export const BALANCE_FOR_WHOM_LABELS: Record<ForWhomKey, string> = { ...FOR_WHOM_LABELS, none: "ohne Angabe" };
+
+/** "3 Glut, 11 Rauch": the non-empty groups in display order, plainly counted. */
+export function balanceParts<K extends string>(counts: Record<K, number>, keys: readonly K[], labels: Record<K, string>): string {
+  return keys
+    .filter((k) => counts[k] > 0)
+    .map((k) => `${counts[k]} ${labels[k]}`)
+    .join(", ");
+}
+
+/** Wochenspiegel, by weight: "Diese Woche: 3 Glut, 11 Rauch." (a mirror, no judgement). */
+export function weekWeightLine(balance: WeekBalance): string {
+  if (balance.total === 0) return "Diese Woche ist noch nichts erledigt.";
+  return `Diese Woche: ${balanceParts(balance.by_weight, WEIGHT_KEYS, BALANCE_WEIGHT_LABELS)}.`;
+}
+
+/** Wochenspiegel, for whom: "Für wen: 5 für mich, 9 für andere." */
+export function weekForWhomLine(balance: WeekBalance): string {
+  return `Für wen: ${balanceParts(balance.by_for_whom, FOR_WHOM_KEYS, BALANCE_FOR_WHOM_LABELS)}.`;
+}
+
+/** "1 erledigt", "14 erledigt": the Wochenspiegel's summary. */
+export function doneCountLabel(count: number): string {
+  return `${count} erledigt`;
+}
+
 /** Heute's quiet hint from COMMITMENT_LIMIT open commitments on (sync/commitments). */
 export const COMMITMENT_HINT = "Viele Zusagen offen. Eine zurückgeben?";
 
