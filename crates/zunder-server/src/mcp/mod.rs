@@ -65,7 +65,7 @@ ohne force kommt die Warnung open_subtasks und nichts wird geändert. \
 Abhängigkeiten: blocked_by nennt die Aufgaben, die vorher erledigt sein müssen; blocks zeigt die \
 Gegenrichtung (abgeleitet). Der Server setzt den Status danach: Eine offene Aufgabe, die einen \
 noch nicht erledigten Blocker bekommt, wird blocked; ist der letzte Blocker erledigt, verworfen, \
-gelöscht oder entfernt, wird sie wieder open. Kennungen wie ZUN-42 in Beschreibungen und Kommentaren verlinkt die \
+gelöscht oder entfernt, wird sie wieder open (außer sie wartet noch auf jemanden, waiting_on). Kennungen wie ZUN-42 in Beschreibungen und Kommentaren verlinkt die \
 Oberfläche auf die Aufgabe. \
 filter_tasks blendet erledigte und verworfene Aufgaben 3 Tage nach der Statusänderung aus \
 (include_closed zeigt sie), search findet sie immer. Aufgaben werden über task_id (ID oder \
@@ -98,6 +98,14 @@ setzen, wenn es aus dem Kontext klar ist, sonst weglassen; filter_tasks filtert 
 „Heute nicht“: defer_task schiebt auf morgen, nächste Woche oder einen Tag und zählt mit \
 (deferrals). Der dritte Aufschub ist eine Entscheidung des Nutzers (Fehler decision_due): \
 streichen, neu schneiden oder ruhen lassen. \
+Wartet auf: waiting_on nennt, wer gerade die Entscheidung hat (ein Name). Setzen macht eine \
+offene Aufgabe blocked; waiting_on: null macht sie wieder open, wenn kein Blocker mehr offen ist. \
+filter_tasks mit has_waiting_on oder waiting_on (Name) findet sie. Zurückgeben (vor allem bei \
+rauch): waiting_on setzen, der Status wird blocked, remind_at auf 3 Werktage später zum \
+Nachfragen; dem Nutzer einen Satzbaustein vorschlagen, etwa „Ich kann <Titel> oder <andere \
+offene Rauch- oder Brand-Aufgabe> diese Woche machen. Was davon ist dir wichtiger?“ oder ohne \
+Alternative „Ich schaffe <Titel> diese Woche nicht. Wie wichtig ist es dir?“. Nicht selbst \
+verschicken. \
 Abgelehnte Änderungen kommen mit deutscher Begründung zurück; nichts wird still verworfen.";
 
 /// The `/mcp` route (without state).

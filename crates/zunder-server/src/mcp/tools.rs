@@ -224,6 +224,9 @@ struct TaskFilter {
     weights: Option<Vec<Weight>>,
     has_weight: Option<bool>,
     for_whom: Option<Vec<ForWhom>>,
+    has_waiting_on: Option<bool>,
+    /// A name, compared without case.
+    waiting_on: Option<String>,
     min_deferrals: Option<u32>,
     due_before: Option<Date>,
     due_after: Option<Date>,
@@ -350,6 +353,10 @@ impl TaskFilter {
             weights: args.codes("weight", &Weight::codes())?,
             has_weight: args.bool("has_weight")?,
             for_whom: args.codes("for_whom", &ForWhom::codes())?,
+            has_waiting_on: args.bool("has_waiting_on")?,
+            waiting_on: args
+                .non_empty_str("waiting_on")?
+                .map(|name| name.trim().to_lowercase()),
             min_deferrals: match args.value("min_deferrals") {
                 None => None,
                 Some(_) => Some(args.int("min_deferrals", 1, MAX_DEFERRALS, 1)? as u32),
@@ -475,6 +482,21 @@ impl TaskFilter {
             .is_some_and(|f| task.for_whom.is_none_or(|t| !f.contains(&t)))
         {
             return false;
+        }
+        if self
+            .has_waiting_on
+            .is_some_and(|has| task.waiting_on.is_some() != has)
+        {
+            return false;
+        }
+        if let Some(name) = &self.waiting_on {
+            if task
+                .waiting_on
+                .as_deref()
+                .is_none_or(|w| w.trim().to_lowercase() != *name)
+            {
+                return false;
+            }
         }
         if self.min_deferrals.is_some_and(|min| task.deferrals < min) {
             return false;
@@ -740,6 +762,9 @@ async fn create_task(app: &App, source: Source, args: &Args) -> AppResult<Value>
     if let Some(ack) = undated_ack_value(args)?.filter(|v| !v.is_null()) {
         fields.push((ft::UNDATED_ACK, ack));
     }
+    if let Some(name) = waiting_on_value(args)?.filter(|v| !v.is_null()) {
+        fields.push((ft::WAITING_ON, name));
+    }
     let task_type = take(&mut fields, ft::TYPE).unwrap_or_else(|| TaskType::Aufgabe.into());
     let status = take(&mut fields, ft::STATUS).unwrap_or_else(|| TaskStatus::Open.into());
     let blockers = args.task_links(ft::BLOCKED_BY)?.flatten();
@@ -807,6 +832,22 @@ fn undated_ack_value(args: &Args) -> AppResult<Option<Value>> {
     }
 }
 
+/// The value written to `waiting_on`: the trimmed name, `null` for `null` or
+/// a blank text (the core checks the length). `None` when the parameter is
+/// absent.
+fn waiting_on_value(args: &Args) -> AppResult<Option<Value>> {
+    match args.raw(ft::WAITING_ON) {
+        None => Ok(None),
+        Some(Value::Null) => Ok(Some(Value::Null)),
+        Some(Value::String(name)) if name.trim().is_empty() => Ok(Some(Value::Null)),
+        Some(Value::String(name)) => Ok(Some(Value::String(name.trim().to_owned()))),
+        Some(_) => Err(invalid(format!(
+            "„{}“ muss ein Text oder null sein.",
+            ft::WAITING_ON
+        ))),
+    }
+}
+
 fn take(fields: &mut Vec<(&'static str, Value)>, key: &str) -> Option<Value> {
     let pos = fields.iter().position(|(k, _)| *k == key)?;
     Some(fields.remove(pos).1)
@@ -818,6 +859,9 @@ async fn update_task(app: &App, source: Source, args: &Args) -> AppResult<Value>
     fields.extend(present(args, TASK_FIELDS, true));
     if let Some(ack) = undated_ack_value(args)? {
         fields.push((ft::UNDATED_ACK, ack));
+    }
+    if let Some(name) = waiting_on_value(args)? {
+        fields.push((ft::WAITING_ON, name));
     }
     if let Some(count) = args.raw(ft::DEFERRALS) {
         // 0 is stored as "never put off" (unset); the core checks the rest.

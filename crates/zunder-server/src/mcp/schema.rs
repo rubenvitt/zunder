@@ -252,6 +252,12 @@ const FOR_WHOM: &str = "Für wen (optional), gemeint ist: Wer wartet, wenn es si
     (absprechen), andere = jemand hat eine Zusage und wartet darauf (wer verschiebt, sagt \
     Bescheid).";
 
+const WAITING_ON: &str = "Wartet auf (optional): wer gerade die Entscheidung hat, ein Name wie \
+    „Anna“ (getrimmt, höchstens 500 Zeichen; leer wie null). Setzen macht eine offene Aufgabe \
+    blocked; wird der Name entfernt und blockiert sonst nichts, wird sie wieder open. \
+    Zurückgeben einer Rauch-Aufgabe: waiting_on setzen und eine Erinnerung (remind_at) zum \
+    Nachfragen.";
+
 /// An optional code, nullable for update_task.
 fn optional_code(codes: Vec<&'static str>, description: &str, nullable: bool) -> Value {
     if nullable {
@@ -302,6 +308,14 @@ fn task_fields(nullable: bool) -> Vec<(&'static str, Value)> {
         (
             "for_whom",
             optional_code(ForWhom::codes(), FOR_WHOM, nullable),
+        ),
+        (
+            "waiting_on",
+            if nullable {
+                nullable_string(&format!("{WAITING_ON} null entfernt den Wert."))
+            } else {
+                string(WAITING_ON)
+            },
         ),
         ("recurrence", recurrence(nullable)),
         ("blocked_by", blocked_by(nullable)),
@@ -387,6 +401,14 @@ pub fn definitions() -> Vec<ToolDef> {
                     (
                         "for_whom",
                         enum_list(ForWhom::codes(), "Nur Aufgaben für diese Personen (mich, uns, andere)."),
+                    ),
+                    (
+                        "has_waiting_on",
+                        boolean("true: nur Aufgaben, die auf jemanden warten (waiting_on gesetzt); false: nur ohne."),
+                    ),
+                    (
+                        "waiting_on",
+                        string("Nur Aufgaben, die auf diese Person warten (Name wie in waiting_on, Groß- und Kleinschreibung egal)."),
                     ),
                     (
                         "min_deferrals",

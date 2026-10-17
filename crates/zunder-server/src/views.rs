@@ -104,6 +104,8 @@ pub struct TaskView {
     pub for_whom: Option<ForWhom>,
     /// How often the task was put off with "Heute nicht" (`defer_task`).
     pub deferrals: u32,
+    /// Who has the decision (a name); `null` = nobody is waited for.
+    pub waiting_on: Option<String>,
     /// Recurrence of the series (`null` for a one-off task).
     pub recurrence: Option<Recurrence>,
     /// The previous instance of the series (written by the server only).
@@ -281,6 +283,7 @@ impl TaskView {
             weight: task.weight,
             for_whom: task.for_whom,
             deferrals: task.deferrals,
+            waiting_on: task.waiting_on,
             recurrence: task.recurrence,
             recurrence_prev: task.recurrence_prev,
             claimed_by: task.claimed_by,

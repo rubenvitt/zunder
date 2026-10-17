@@ -403,6 +403,7 @@ async fn create_get_update_with_history() {
         "weight",
         "for_whom",
         "deferrals",
+        "waiting_on",
         "claimed_by",
         "claim_expires_at",
         "plan",
@@ -1986,4 +1987,141 @@ async fn defer_task_keeps_the_time_and_refuses_bad_targets() {
     )
     .await;
     assert_eq!(code, "invalid_value");
+}
+
+// ----- waiting on someone (Zurückgeben) -------------------------------------------------------
+
+#[tokio::test]
+async fn waiting_on_blocks_reopens_and_filters() {
+    let (s, t) = setup().await;
+    // Trimmed; setting it blocks an open task (the server writes the status).
+    let r = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Bericht für Anna", "weight": "rauch", "waiting_on": "  Anna "}),
+    )
+    .await;
+    assert_eq!(r["task"]["waiting_on"], "Anna");
+    assert_eq!(r["task"]["status"], "blocked");
+    let report = r["task"]["id"].as_str().unwrap().to_owned();
+    let r = mcp_ok(&s, &t, "get_task_history", json!({"task_id": report})).await;
+    let last = r["entries"].as_array().unwrap().last().unwrap().clone();
+    assert_eq!(
+        (last["field"].as_str(), last["source"].as_str()),
+        (Some("status"), Some("server"))
+    );
+
+    let plain = create(&s, &t, json!({"title": "Folien"})).await;
+    let r = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": plain, "waiting_on": "Ben"}),
+    )
+    .await;
+    assert_eq!(r["task"]["status"], "blocked");
+    create(&s, &t, json!({"title": "Ohne Wartende"})).await;
+
+    let f = |args: Value| {
+        let (s, t) = (&s, &t);
+        async move { titles(&mcp_ok(s, t, "filter_tasks", args).await) }
+    };
+    assert_eq!(
+        f(json!({"has_waiting_on": true})).await,
+        ["Bericht für Anna", "Folien"]
+    );
+    assert_eq!(f(json!({"has_waiting_on": false})).await, ["Ohne Wartende"]);
+    assert_eq!(f(json!({"waiting_on": "anna"})).await, ["Bericht für Anna"]);
+    assert!(f(json!({"waiting_on": "Ann"})).await.is_empty());
+    let (code, _) = mcp_err(&s, &t, "filter_tasks", json!({"waiting_on": " "})).await;
+    assert_eq!(code, "invalid_arguments");
+
+    // A blank name is null: the answer is there, the task opens again.
+    let r = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": report, "waiting_on": ""}),
+    )
+    .await;
+    assert_eq!(r["task"]["waiting_on"], Value::Null);
+    assert_eq!(r["task"]["status"], "open");
+    let r = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": plain, "waiting_on": null}),
+    )
+    .await;
+    assert_eq!(r["task"]["status"], "open");
+
+    let (code, _) = mcp_err(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": plain, "waiting_on": 7}),
+    )
+    .await;
+    assert_eq!(code, "invalid_arguments");
+    let (code, message) = mcp_err(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": plain, "waiting_on": "x".repeat(501)}),
+    )
+    .await;
+    assert_eq!(code, "invalid_value", "{message}");
+}
+
+#[tokio::test]
+async fn waiting_on_and_blockers_hold_together() {
+    let (s, t) = setup().await;
+    let offer = create(&s, &t, json!({"title": "Angebot einholen"})).await;
+    let r = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Vertrag", "blocked_by": [offer], "waiting_on": "Vermieterin"}),
+    )
+    .await;
+    assert_eq!(r["task"]["status"], "blocked");
+    let contract = r["task"]["id"].as_str().unwrap().to_owned();
+
+    // The last blocker done: still waiting on someone, still blocked.
+    mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": offer, "status": "done"}),
+    )
+    .await;
+    let r = mcp_ok(&s, &t, "get_task", json!({"task_id": contract})).await;
+    assert_eq!(r["task"]["status"], "blocked");
+
+    // Reopened blocker, then the answer: the open blocker still holds it.
+    mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": offer, "status": "open"}),
+    )
+    .await;
+    let r = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": contract, "waiting_on": null}),
+    )
+    .await;
+    assert_eq!(r["task"]["status"], "blocked");
+    mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": offer, "status": "done"}),
+    )
+    .await;
+    let r = mcp_ok(&s, &t, "get_task", json!({"task_id": contract})).await;
+    assert_eq!(r["task"]["status"], "open");
 }

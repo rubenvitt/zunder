@@ -239,6 +239,7 @@ async fn subtasks_comments_phoenix_and_blockers_stay_behind() {
         b.set_task(id, fields::task::WEIGHT, "glut");
         b.set_task(id, fields::task::FOR_WHOM, "uns");
         b.set_task(id, fields::task::DEFERRALS, 2);
+        b.set_task(id, fields::task::WAITING_ON, "Anna");
         blocker = Some(x);
         waiting = Some(w);
     });
@@ -267,6 +268,8 @@ async fn subtasks_comments_phoenix_and_blockers_stay_behind() {
         "the deferrals belong to the closed instance"
     );
     assert_eq!(waiting_blockers, [id], "waiting tasks keep their blocker");
+    assert_eq!(next.waiting_on, None, "the new instance waits on nobody");
+    assert_eq!(next.status, TaskStatus::Open);
     assert_eq!(next.weight, Some(zunder_core::Weight::Glut));
     assert_eq!(next.for_whom, Some(zunder_core::ForWhom::Uns));
     // Carried over.

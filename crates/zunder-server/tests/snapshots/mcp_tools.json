@@ -53,6 +53,10 @@
           "description": "true: nur Aufgaben mit Fälligkeit; false: nur ohne.",
           "type": "boolean"
         },
+        "has_waiting_on": {
+          "description": "true: nur Aufgaben, die auf jemanden warten (waiting_on gesetzt); false: nur ohne.",
+          "type": "boolean"
+        },
         "has_weight": {
           "description": "true: nur gewichtete Aufgaben; false: nur ungewichtete (zum Nachtragen).",
           "type": "boolean"
@@ -165,6 +169,10 @@
           "maximum": 520,
           "minimum": 1,
           "type": "integer"
+        },
+        "waiting_on": {
+          "description": "Nur Aufgaben, die auf diese Person warten (Name wie in waiting_on, Groß- und Kleinschreibung egal).",
+          "type": "string"
         },
         "weight": {
           "description": "Nur Aufgaben mit diesem Gewicht (brand, glut, rauch, asche).",
@@ -442,6 +450,10 @@
           },
           "type": "array"
         },
+        "waiting_on": {
+          "description": "Wartet auf (optional): wer gerade die Entscheidung hat, ein Name wie „Anna“ (getrimmt, höchstens 500 Zeichen; leer wie null). Setzen macht eine offene Aufgabe blocked; wird der Name entfernt und blockiert sonst nichts, wird sie wieder open. Zurückgeben einer Rauch-Aufgabe: waiting_on setzen und eine Erinnerung (remind_at) zum Nachfragen.",
+          "type": "string"
+        },
         "weight": {
           "description": "Gewicht nach Covey (optional): brand = wichtig und dringlich (heute tun), glut = wichtig, nicht dringlich (einplanen, darf rutschen, nicht verlieren), rauch = dringlich nur fürs System oder für andere, selbst nicht wichtig (kurz halten, hinterfragen, zurückgeben oder ablehnen), asche = weder noch (darf liegen bleiben, streichen ist in Ordnung).",
           "enum": [
@@ -716,6 +728,13 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "waiting_on": {
+          "description": "Wartet auf (optional): wer gerade die Entscheidung hat, ein Name wie „Anna“ (getrimmt, höchstens 500 Zeichen; leer wie null). Setzen macht eine offene Aufgabe blocked; wird der Name entfernt und blockiert sonst nichts, wird sie wieder open. Zurückgeben einer Rauch-Aufgabe: waiting_on setzen und eine Erinnerung (remind_at) zum Nachfragen. null entfernt den Wert.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "weight": {
           "description": "Gewicht nach Covey (optional): brand = wichtig und dringlich (heute tun), glut = wichtig, nicht dringlich (einplanen, darf rutschen, nicht verlieren), rauch = dringlich nur fürs System oder für andere, selbst nicht wichtig (kurz halten, hinterfragen, zurückgeben oder ablehnen), asche = weder noch (darf liegen bleiben, streichen ist in Ordnung). null entfernt den Wert.",
