@@ -43,6 +43,7 @@ use crate::calendar::{
 use crate::config::Config;
 use crate::db::{self, TokenRow, User};
 use crate::error::{AppError, AppResult};
+use crate::focus::{FocusSettings, FocusUpdate, FOCUS_PREFIX};
 use crate::settings::{
     EffectiveTiming, TimingCheck, TimingOverrides, TimingSettings, TimingUpdate, TIMING_PREFIX,
     TIMING_PROJECT_KEY, TIMING_TOKEN_KEY,
@@ -959,6 +960,32 @@ impl App {
             } else {
                 Err(AppError::NotFound("Token nicht gefunden".into()))
             }
+        })
+        .await
+    }
+
+    // ----- "Erst für dich" (focus) -----------------------------------------------------
+
+    /// The focus settings of Heute (day clicked away, task picked).
+    pub async fn focus_settings(&self) -> AppResult<FocusSettings> {
+        self.with_reader(|conn| Ok(FocusSettings::from_rows(&db::settings(conn, FOCUS_PREFIX)?)))
+            .await
+    }
+
+    /// Writes the given focus settings (missing fields stay, `null` removes).
+    pub async fn update_focus_settings(&self, update: FocusUpdate) -> AppResult<FocusSettings> {
+        let update = update.validated()?;
+        self.with_writer(move |conn| {
+            let now = now_ms();
+            let tx = conn.transaction()?;
+            for (key, value) in update.rows() {
+                match value {
+                    Some(v) => db::set_setting(&tx, key, &v, now)?,
+                    None => db::delete_setting(&tx, key)?,
+                }
+            }
+            tx.commit()?;
+            Ok(FocusSettings::from_rows(&db::settings(conn, FOCUS_PREFIX)?))
         })
         .await
     }
