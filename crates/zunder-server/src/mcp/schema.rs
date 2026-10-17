@@ -245,11 +245,12 @@ const UNDATED_ACK: &str = "Bewusst ohne Fälligkeit: true markiert die Aufgabe j
 
 const WEIGHT: &str = "Gewicht nach Covey (optional): brand = wichtig und dringlich (heute tun), \
     glut = wichtig, nicht dringlich (einplanen, darf rutschen, nicht verlieren), rauch = dringlich \
-    nur fürs System oder für andere, selbst nicht wichtig (kurz halten, hinterfragen, abgeben), \
-    asche = weder noch (darf liegen bleiben, streichen ist in Ordnung).";
-const FOR_WHOM: &str = "Für wen (optional): mich = nur für einen selbst (still verschiebbar), \
-    uns = für die Partnerschaft oder den Haushalt (absprechen), andere = eine Zusage, auf die \
-    jemand wartet (wer verschiebt, sagt Bescheid).";
+    nur fürs System oder für andere, selbst nicht wichtig (kurz halten, hinterfragen, zurückgeben \
+    oder ablehnen), asche = weder noch (darf liegen bleiben, streichen ist in Ordnung).";
+const FOR_WHOM: &str = "Für wen (optional), gemeint ist: Wer wartet, wenn es sich verschiebt? \
+    Nicht, wem es nützt. mich = niemand (still verschiebbar), uns = Partnerschaft oder Haushalt \
+    (absprechen), andere = jemand hat eine Zusage und wartet darauf (wer verschiebt, sagt \
+    Bescheid).";
 
 /// An optional code, nullable for update_task.
 fn optional_code(codes: Vec<&'static str>, description: &str, nullable: bool) -> Value {

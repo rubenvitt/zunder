@@ -3326,6 +3326,16 @@ a.sync {
 .segmented.choice {
   flex-wrap: wrap;
 }
+/* The hint below makes the control taller; the label stays level with the buttons. */
+.prop:has(.choice-field) {
+  align-items: first baseline;
+}
+.choice-hint {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
 .segmented.choice button.weight-option-brand.active {
   color: var(--accent-fg);
   background: var(--accent-soft);

@@ -54,7 +54,7 @@ export const WEIGHT_LABELS: Record<Weight, string> = {
 export const WEIGHT_HINTS: Record<Weight, string> = {
   brand: "Wichtig und dringlich: heute tun",
   glut: "Wichtig, nicht dringlich: einplanen, darf rutschen, nicht verlieren",
-  rauch: "Dringlich nur fürs System: kurz halten, hinterfragen, abgeben",
+  rauch: "Dringlich nur fürs System: kurz halten, hinterfragen, zurückgeben oder ablehnen",
   asche: "Weder wichtig noch dringlich: darf liegen bleiben, streichen ist in Ordnung",
 };
 
@@ -64,10 +64,15 @@ export const FOR_WHOM_LABELS: Record<ForWhom, string> = {
   andere: "für andere",
 };
 
+/** The question each choice answers, shown while nothing is picked. */
+export const WEIGHT_QUESTION = "Ist es dir wichtig, und drängt es wirklich?";
+export const FOR_WHOM_QUESTION = "Wer wartet, wenn es sich verschiebt?";
+
+/** Whom it is for means who waits on it (a commitment), not who benefits. */
 export const FOR_WHOM_HINTS: Record<ForWhom, string> = {
-  mich: "Nur du merkst, ob es passiert: still verschiebbar",
-  uns: "Partnerschaft oder Haushalt: verschieben heißt absprechen",
-  andere: "Eine Zusage, auf die jemand wartet: wer verschiebt, sagt Bescheid",
+  mich: "Niemand wartet darauf: still verschiebbar",
+  uns: "Partnerschaft oder Haushalt warten mit: verschieben heißt absprechen",
+  andere: "Jemand wartet auf deine Zusage: wer verschiebt, sagt Bescheid",
 };
 
 export function deferralsLabel(count: number): string {
