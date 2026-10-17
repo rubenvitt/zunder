@@ -17,8 +17,9 @@
 // intake channels (management under /api/intake/channels, POST /intake/v1/tasks with
 // a zi_ token: idempotent per external_id, 409 for a dead or completed target, 429
 // after 30 tasks per hour), follow-up instances of recurring tasks after each push
-// (3.1, calendar in mock-recurrence.ts, time zone of the mock process), and a subset of
-// the core validation with the core's rejection codes.
+// (3.1, calendar in mock-recurrence.ts, time zone of the mock process), the status rule
+// for `waiting_on` (not for `blocked_by`), and a subset of the core validation with the
+// core's rejection codes.
 
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -103,7 +104,7 @@ const FIELDS: Record<string, string[]> = {
     "title", "description", "type", "status", "location", "parent_id", "due", "remind_at", "vault_links", "links",
     "phoenix", "claimed_by", "claim_expires_at", "plan", "branch", "pr_url", "timing_ref", "flame_started_at",
     "flame_ended_at", "clickup_id", "rank", "undated_ack", "recurrence", "recurrence_prev", "blocked_by", "weight",
-    "for_whom", "deferrals", "ref", "deleted",
+    "for_whom", "deferrals", "waiting_on", "ref", "deleted",
   ],
   comment: ["task_id", "body", "author", "deleted"],
 };
@@ -226,8 +227,11 @@ function checkOp(op: Op): [string, string] | null {
   }
   const allowed = ENUMS[`${op.entity}.${op.field}`];
   if (allowed && !allowed.includes(String(op.value))) return ["invalid_value", `Ungültiger Wert für „${op.field}“.`];
-  if (["title", "name", "body", "author"].includes(op.field) && (typeof op.value !== "string" || !op.value.trim())) {
+  if (["title", "name", "body", "author", "waiting_on"].includes(op.field) && (typeof op.value !== "string" || !op.value.trim())) {
     return ["invalid_value", `„${op.field}“ darf nicht leer sein.`];
+  }
+  if (op.field === "waiting_on" && [...String(op.value)].length > 500) {
+    return ["invalid_value", "„waiting_on“ darf höchstens 500 Zeichen lang sein."];
   }
   if (op.entity === "project" && op.field === "key" && !/^[A-Z][A-Z0-9]{0,9}$/.test(String(op.value))) {
     return ["invalid_value", "Ungültiger Schlüssel."];
@@ -403,6 +407,7 @@ function push(ops: Op[], source: string) {
     }
   }
   const completions = completionsBefore([...groups.values()].flat());
+  const waiting = waitingBefore([...groups.values()].flat());
   for (const op of ops) {
     const reason = verdict.get(op.op_id);
     if (reason) {
@@ -426,6 +431,7 @@ function push(ops: Op[], source: string) {
   }
   if (groups.size > 0) {
     assignRefs();
+    followWaiting(waiting);
     if (followUps(completions) > 0) assignRefs();
     notify();
   }
@@ -485,6 +491,42 @@ function followUps(candidates: Set<string>): number {
     created += 1;
   }
   return created;
+}
+
+/**
+ * Tasks whose `waiting_on` the push changes, with status and waiting before it. Only this part
+ * of "Status folgt Abhängigkeiten" (zunder_core::blocking) is mirrored: the mock does not follow
+ * `blocked_by` (contract 3.1).
+ */
+function waitingBefore(ops: Op[]): Map<string, { status: string; waiting: boolean }> {
+  const out = new Map<string, { status: string; waiting: boolean }>();
+  for (const op of ops) {
+    if (op.entity !== "task" || op.field !== "waiting_on" || out.has(op.entity_id)) continue;
+    const e = state.get(key("task", op.entity_id));
+    const live = !!e && e.fields.deleted?.value !== true;
+    out.set(op.entity_id, { status: live ? String(e.fields.status?.value ?? "open") : "", waiting: live && typeof e.fields.waiting_on?.value === "string" });
+  }
+  return out;
+}
+
+/**
+ * An open task that starts waiting on someone becomes blocked; a blocked one whose name is
+ * cleared opens again unless an open blocker holds it. A push that set the status keeps it.
+ */
+function followWaiting(before: Map<string, { status: string; waiting: boolean }>) {
+  for (const [id, was] of [...before].sort(([a], [b]) => (a < b ? -1 : 1))) {
+    const e = state.get(key("task", id));
+    if (!e || e.fields.deleted?.value === true) continue;
+    const status = String(e.fields.status?.value ?? "open");
+    if (was.status && was.status !== status) continue;
+    const waiting = typeof e.fields.waiting_on?.value === "string";
+    const blockers = Array.isArray(e.fields.blocked_by?.value) ? (e.fields.blocked_by.value as Json[]).map(String) : [];
+    const openBlocker = blockers.some((b) => alive("task", b) && !CLOSED.includes(String(state.get(key("task", b))!.fields.status?.value ?? "open")));
+    let next: string | null = null;
+    if (status === "open" && waiting && !was.waiting) next = "blocked";
+    if (status === "blocked" && was.waiting && !waiting && !openBlocker) next = "open";
+    if (next) append({ op_id: createId(), entity: "task", entity_id: id, field: "status", value: next, hlc: serverHlc() }, "server");
+  }
 }
 
 /** Task references like the server (zunder_core::numbering): per key in creation order, never reused. */

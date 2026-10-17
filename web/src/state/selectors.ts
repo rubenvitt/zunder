@@ -98,6 +98,32 @@ export function todayGroups(): TodayGroups {
   return groups;
 }
 
+export interface WaitingGroup {
+  name: string;
+  tasks: Task[];
+}
+
+/**
+ * Wartet auf andere: open tasks (subtasks included) whose `waiting_on` names someone, grouped
+ * by that name regardless of case and sorted by it; within a group due first, then rank.
+ */
+export function waitingGroups(): WaitingGroup[] {
+  const index = taskIndex();
+  const groups = new Map<string, WaitingGroup>();
+  for (const t of index.byId.values()) {
+    const name = t.waiting_on?.trim();
+    if (!name || index.isDeleted(t) || isClosed(t.status)) continue;
+    const key = name.toLocaleLowerCase("de");
+    let group = groups.get(key);
+    if (!group) groups.set(key, (group = { name, tasks: [] }));
+    group.tasks.push(t);
+  }
+  const due = (t: Task) => parseDue(t.due)?.at.getTime() ?? Infinity;
+  const out = [...groups.values()].sort((a, b) => a.name.localeCompare(b.name, "de"));
+  for (const g of out) g.tasks.sort((a, b) => due(a) - due(b) || compareTasks(a, b));
+  return out;
+}
+
 export function phoenixTasks(fire: string): { steps: Task[]; flames: Task[] } {
   const index = taskIndex();
   const nowMs = now();

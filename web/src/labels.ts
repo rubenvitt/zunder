@@ -75,6 +75,11 @@ export const FOR_WHOM_HINTS: Record<ForWhom, string> = {
   andere: "Jemand wartet auf deine Zusage: wer verschiebt, sagt Bescheid",
 };
 
+/** "wartet auf Anna": whom a task waits on (waiting_on). */
+export function waitingLabel(name: string): string {
+  return `wartet auf ${name}`;
+}
+
 export function deferralsLabel(count: number): string {
   return count === 1 ? "einmal verschoben" : `${count}-mal verschoben`;
 }
@@ -109,6 +114,7 @@ export const FIELD_LABELS: Record<string, string> = {
   weight: "Gewicht",
   for_whom: "Für wen",
   deferrals: "Aufschübe",
+  waiting_on: "Wartet auf",
   ref: "Kennung",
   key: "Schlüssel",
   deleted: "Gelöscht",

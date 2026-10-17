@@ -9,6 +9,7 @@ export type Route =
   | { view: "heute" }
   | { view: "inbox" }
   | { view: "lose" }
+  | { view: "wartet" }
   | { view: "bereiche"; kind?: "area" | "project"; id?: string }
   | { view: "dev" }
   | { view: "phoenix"; fire?: string }
@@ -28,6 +29,8 @@ export function parseRoute(hash: string): Route {
       return { view: "inbox" };
     case "lose":
       return { view: "lose" };
+    case "wartet":
+      return { view: "wartet" };
     case "bereiche":
       // Links from before CUID2 (UUIDs) lead to the same place.
       if ((parts[1] === "area" || parts[1] === "project") && parts[2]) return { view: "bereiche", kind: parts[1], id: upgradeId(parts[2]) };

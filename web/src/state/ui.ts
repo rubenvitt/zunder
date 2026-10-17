@@ -140,8 +140,15 @@ export interface DeferRequest {
 
 export const [deferRequest, setDeferRequest] = createSignal<DeferRequest | null>(null);
 
+/** "Zurückgeben" of a Rauch task (contract 5.1): the dialog with sentence, name and reminder. */
+export interface HandBackRequest {
+  taskId: string;
+}
+
+export const [handBackRequest, setHandBackRequest] = createSignal<HandBackRequest | null>(null);
+
 export function anyOverlayOpen(): boolean {
-  return captureOpen() || helpOpen() || palette() !== null || structureEdit() !== null || dropRequest() !== null || deferRequest() !== null;
+  return captureOpen() || helpOpen() || palette() !== null || structureEdit() !== null || dropRequest() !== null || deferRequest() !== null || handBackRequest() !== null;
 }
 
 // ---- Detail panel layout (per device, remembered) -----------------------

@@ -1,9 +1,22 @@
-import { For, Show } from "solid-js";
+import { createSignal, createUniqueId, For, Show } from "solid-js";
 import { deferralsLabel, describeRecurrence } from "../labels";
-import { cutAnew, dropTask, dropInstance, endSeries, letRest, writeDeferral } from "../state/actions";
-import { data } from "../state/store";
+import { cutAnew, dropTask, dropInstance, endSeries, handBack, handBackAlternative, letRest, writeDeferral } from "../state/actions";
+import { data, now, taskIndex } from "../state/store";
+import { formatInstant } from "../sync/dates";
 import { isRecurring } from "../sync/derived";
-import { dismissToast, setDeferRequest, setDropRequest, setHelpOpen, toasts, type DeferRequest, type DropRequest } from "../state/ui";
+import { handbackRemindAt, handbackSentence, HANDBACK_WORKDAYS, waitingNames } from "../sync/handback";
+import {
+  copyText,
+  dismissToast,
+  setDeferRequest,
+  setDropRequest,
+  setHandBackRequest,
+  setHelpOpen,
+  toasts,
+  type DeferRequest,
+  type DropRequest,
+  type HandBackRequest,
+} from "../state/ui";
 import { Icon } from "./Icon";
 import { Modal } from "./Modal";
 
@@ -46,6 +59,7 @@ const SHORTCUTS: [string, string][] = [
   ["g b", "Bereiche"],
   ["g d", "Dev"],
   ["g p", "Phönix"],
+  ["g w", "Wartet auf andere"],
   ["?", "Diese Übersicht"],
 ];
 
@@ -183,6 +197,76 @@ export function DeferDecisionDialog(props: { request: DeferRequest }) {
           Trotzdem verschieben
         </button>
       </div>
+    </Modal>
+  );
+}
+
+/**
+ * "Zurückgeben" (contract 5.1): Rauch goes back to whoever asked for it. The sentence to send
+ * (Zunder copies it, the owner sends it), whom the task now waits on (required) and a reminder
+ * in three working days (preselected). "Zurückgeben" copies the sentence and writes
+ * `waiting_on`, `blocked` and `remind_at` in one action; Esc cancels.
+ */
+export function HandBackDialog(props: { request: HandBackRequest }) {
+  const nameId = createUniqueId();
+  const listId = createUniqueId();
+  const sentenceId = createUniqueId();
+  // Fixed when the dialog opens, so the text does not change while it is edited.
+  const opened = data.tasks[props.request.taskId];
+  const alternative = opened ? handBackAlternative(opened) : null;
+  const [sentence, setSentence] = createSignal(opened ? handbackSentence(opened.title, alternative?.title ?? null) : "");
+  const [name, setName] = createSignal(opened?.waiting_on ?? "");
+  const [remind, setRemind] = createSignal(true);
+  const names = waitingNames([...taskIndex().byId.values()].filter((t) => !taskIndex().isDeleted(t)));
+  const remindLabel = formatInstant(handbackRemindAt(new Date(now())), new Date(now()));
+  const close = () => setHandBackRequest(null);
+  const submit = (e: SubmitEvent) => {
+    e.preventDefault();
+    if (!name().trim()) return;
+    // Read before closing: the dialog (and its props) go away with it.
+    const { taskId } = props.request;
+    const text = sentence().trim();
+    close();
+    handBack(taskId, name(), remind(), text);
+  };
+  return (
+    <Modal label="Zurückgeben" onClose={close} class="handback">
+      <form onSubmit={submit}>
+        <h2>Zurückgeben</h2>
+        <p class="muted">Rauch drängt, ist dir selbst aber nicht wichtig. Gib die Entscheidung an die Person zurück, die gefragt hat.</p>
+        <label class="handback-label" for={sentenceId}>
+          Satz zum Verschicken
+        </label>
+        <textarea id={sentenceId} class="field handback-sentence" rows={3} value={sentence()} onInput={(e) => setSentence(e.currentTarget.value)} />
+        <div class="handback-row">
+          <button type="button" class="btn btn-small" onClick={() => copyText(sentence().trim(), "Satz kopiert.")}>
+            <Icon name="copy" size={14} />
+            Kopieren
+          </button>
+          <span class="muted small">Zunder verschickt nichts.</span>
+        </div>
+        <label class="handback-label" for={nameId}>
+          Wer entscheidet?
+        </label>
+        <input id={nameId} class="field" list={listId} required autofocus placeholder="Name" value={name()} onInput={(e) => setName(e.currentTarget.value)} />
+        <datalist id={listId}>
+          <For each={names}>{(n) => <option value={n} />}</For>
+        </datalist>
+        <label class="handback-check">
+          <input type="checkbox" checked={remind()} onChange={(e) => setRemind(e.currentTarget.checked)} />
+          In {HANDBACK_WORKDAYS} Werktagen erinnern
+          <span class="muted small">({remindLabel})</span>
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" onClick={close}>
+            Abbrechen
+          </button>
+          <span class="spacer" />
+          <button type="submit" class="btn btn-primary" disabled={!name().trim()} title="Kopiert den Satz und wartet auf die Antwort">
+            Zurückgeben
+          </button>
+        </div>
+      </form>
     </Modal>
   );
 }

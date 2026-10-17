@@ -1,12 +1,12 @@
-// Heute, Inbox and Lose.
+// Heute, Inbox, Lose and Wartet auf andere.
 
-import { createMemo, onMount, Show } from "solid-js";
+import { createMemo, For, onMount, Show } from "solid-js";
 import { EmptyState } from "../components/EmptyState";
 import { TaskList } from "../components/TaskList";
 import type { DeferTarget } from "../sync/defer";
 import type { Task } from "../sync/types";
-import { deferTask, dropTask, moveTask, shorten } from "../state/actions";
-import { inboxTasks, tasksAt, todayGroups } from "../state/selectors";
+import { deferTask, dropTask, moveTask, setWaitingOn, shorten } from "../state/actions";
+import { inboxTasks, tasksAt, todayGroups, waitingGroups } from "../state/selectors";
 import { activeList, pickLocation, registerList, selectedId, setCaptureOpen, setSelectedId, toast } from "../state/ui";
 import { now } from "../state/store";
 import { locationLabel } from "../labels";
@@ -152,6 +152,49 @@ export function LooseView() {
         label="Lose Aufgaben"
         empty={<EmptyState icon="loose" title="Keine losen Aufgaben." hint="Hier liegt, was bewusst zu keinem Bereich gehört. Aus der Inbox mit l hierher schieben." />}
       />
+    </div>
+  );
+}
+
+/**
+ * Wartet auf andere (contract 5.1): what was handed back or waits on someone's decision,
+ * grouped by name. "Antwort ist da" clears the name; the server then opens the task again
+ * unless a blocker still holds it.
+ */
+export function WaitingView() {
+  const groups = createMemo(waitingGroups);
+  const all = createMemo(() => groups().flatMap((g) => g.tasks));
+  onMount(() => registerList(all));
+  const answered = (task: Task) => {
+    selectNextAfter(task.id);
+    if (setWaitingOn(task.id, "")) toast(`„${shorten(task.title)}“ wartet nicht mehr.`);
+  };
+  return (
+    <div class="view">
+      <header class="view-head">
+        <h1>Wartet auf andere</h1>
+        <span class="count-badge">{all().length}</span>
+      </header>
+      <For each={groups()}>
+        {(group) => (
+          <section class="group">
+            <h2>{group.name}</h2>
+            <TaskList
+              tasks={group.tasks}
+              showLocation
+              label={`Wartet auf ${group.name}`}
+              actions={(task) => [{ label: "Antwort ist da", mobile: true, run: () => answered(task) }]}
+            />
+          </section>
+        )}
+      </For>
+      <Show when={all().length === 0}>
+        <EmptyState
+          icon="user"
+          title="Niemand ist am Zug."
+          hint="Hier steht, was du zurückgegeben hast oder wo jemand anderes entscheidet. Im Detail unter „Wartet auf“ eintragen."
+        />
+      </Show>
     </div>
   );
 }

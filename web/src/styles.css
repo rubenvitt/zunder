@@ -3402,3 +3402,51 @@ a.sync {
 .defer-decision .modal-actions {
   flex-wrap: wrap;
 }
+
+/* ---- Zurückgeben, Wartet auf andere (contract 5.1) ------------------------------------- */
+
+.handback-button {
+  margin-top: 0.4rem;
+}
+.waiting-input {
+  max-width: 16rem;
+}
+.chip-waiting-on {
+  color: var(--info);
+  background: var(--info-soft);
+}
+.handback {
+  width: min(520px, 100%);
+}
+.handback form {
+  display: grid;
+  gap: 0.45rem;
+}
+.handback h2 {
+  margin-bottom: 0;
+}
+.handback p {
+  margin: 0 0 0.35rem;
+}
+.handback-label {
+  margin-top: 0.4rem;
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+.handback-sentence {
+  width: 100%;
+  resize: vertical;
+}
+.handback-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.handback-check {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.4rem;
+}

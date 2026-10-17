@@ -109,6 +109,7 @@ export const TASK_FIELDS = [
   "weight",
   "for_whom",
   "deferrals",
+  "waiting_on",
   "ref",
   "deleted",
 ] as const;
@@ -192,6 +193,8 @@ export interface Task extends EntityMeta {
   for_whom: ForWhom | null;
   /** How often the task was put off with "Heute nicht" (0 = never). */
   deferrals: number;
+  /** Who has the decision (a name, e.g. after handing a Rauch task back); null = nobody. */
+  waiting_on: string | null;
   /** Reference such as `ZUN-42`, assigned by the server (never by a client). */
   ref: string | null;
   /** HLC of the winning status op, or created_hlc when the status was never set. */

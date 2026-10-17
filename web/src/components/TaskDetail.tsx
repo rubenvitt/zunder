@@ -23,12 +23,13 @@ import {
   WEIGHT_LABELS,
   WEIGHT_QUESTION,
 } from "../labels";
-import { addComment, clearDue, createTask, deferTask, deleteComment, deleteTask, dependentsCount, dropTask, flame, moveTask, setParent, setStatus, updateComment, updateTask } from "../state/actions";
+import { addComment, canHandBack, clearDue, createTask, deferTask, deleteComment, deleteTask, dependentsCount, dropTask, flame, moveTask, setParent, setStatus, setWaitingOn, updateComment, updateTask } from "../state/actions";
 import { detailBack, NARROW_LAYOUT } from "../state/back";
 import { appConfig } from "../state/desktop";
 import { isTauri } from "../platform/runtime";
 import { api, commentsOf, data, now, pendingCount, taskIndex } from "../state/store";
-import { copyTaskId, copyText, detailWide, pickLocation, pickTask, selectedId, setDetailId, setDetailWide, setDetailWidth, setSelectedId } from "../state/ui";
+import { copyTaskId, copyText, detailWide, pickLocation, pickTask, selectedId, setDetailId, setDetailWide, setDetailWidth, setHandBackRequest, setSelectedId } from "../state/ui";
+import { waitingNames } from "../sync/handback";
 import { TextField } from "./Fields";
 import { Icon, type IconName } from "./Icon";
 import { MarkdownField } from "./MarkdownField";
@@ -334,6 +335,10 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
               </select>
             </Prop>
 
+            <Prop icon="user" label="Wartet auf">
+              <WaitingOnField task={t()} />
+            </Prop>
+
             <Prop icon={t().type === "bug" ? "bug" : t().type === "feature" ? "star" : "tag"} label="Typ">
               <select
                 class="prop-select"
@@ -361,6 +366,12 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
                   optionClass={(w) => `weight-option weight-option-${w}`}
                   onChange={(weight) => set({ weight })}
                 />
+                <Show when={canHandBack(t())}>
+                  <button class="btn btn-small handback-button" onClick={() => setHandBackRequest({ taskId: t().id })}>
+                    <Icon name="left" size={14} />
+                    Zurückgeben
+                  </button>
+                </Show>
               </Prop>
             </Show>
 
@@ -693,6 +704,28 @@ function Choice<T extends string>(props: {
         {props.value ? props.optionHint(props.value) : props.question}
       </p>
     </div>
+  );
+}
+
+/**
+ * Who has the decision (waiting_on): free text for every task, with the names used so far as
+ * suggestions. Blank clears it; the server sets the status (blocked while someone decides).
+ */
+function WaitingOnField(props: { task: Task }) {
+  const listId = createUniqueId();
+  const names = () => waitingNames([...taskIndex().byId.values()].filter((t) => !taskIndex().isDeleted(t)));
+  return (
+    <span class="prop-inline">
+      <TextField class="prop-input waiting-input" label="Wartet auf" list={listId} placeholder="niemand" value={props.task.waiting_on} onCommit={(v) => setWaitingOn(props.task.id, v)} />
+      <datalist id={listId}>
+        <For each={names()}>{(name) => <option value={name} />}</For>
+      </datalist>
+      <Show when={props.task.waiting_on}>
+        <button class="btn btn-ghost btn-icon btn-xs" aria-label="Wartet auf entfernen" title="Antwort ist da: entfernen" onClick={() => setWaitingOn(props.task.id, "")}>
+          <Icon name="x" size={14} />
+        </button>
+      </Show>
+    </span>
   );
 }
 

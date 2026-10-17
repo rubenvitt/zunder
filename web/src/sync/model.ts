@@ -152,6 +152,7 @@ export function toTask(e: EntityState): Task {
     weight: optionalOneOf(value(e, "weight"), WEIGHTS),
     for_whom: optionalOneOf(value(e, "for_whom"), FOR_WHOMS),
     deferrals: count(value(e, "deferrals")),
+    waiting_on: str(value(e, "waiting_on")),
     ref: str(value(e, "ref")),
     status_hlc: e.fields.status?.hlc ?? min,
   };

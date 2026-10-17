@@ -1,7 +1,7 @@
 import { createSignal, For, lazy, Match, onCleanup, onMount, Show, Switch } from "solid-js";
 import { CommandPalette } from "./components/CommandPalette";
 import { Icon, type IconName } from "./components/Icon";
-import { DeferDecisionDialog, DropSeriesDialog, ShortcutHelp, Toasts } from "./components/Overlays";
+import { DeferDecisionDialog, DropSeriesDialog, HandBackDialog, ShortcutHelp, Toasts } from "./components/Overlays";
 import { QuickCapture } from "./components/QuickCapture";
 import { StructureForm } from "./components/StructureForm";
 import { TaskDetail } from "./components/TaskDetail";
@@ -13,10 +13,10 @@ import { isUnauthorized } from "./sync/transport";
 import { navigate, parseRoute, route, type Route, type ViewName } from "./state/router";
 import { inboxCount } from "./state/selectors";
 import { api, data, getEngine, pendingCount, ready, setNotifier, startSync, syncStatus, taskIndex } from "./state/store";
-import { captureOpen, deferRequest, detailId, dropRequest, detailWide, detailWidth, helpOpen, openSearch, palette, setCaptureOpen, setDetailId, setHelpOpen, setSelectedId, sidebarHidden, structureEdit, toast } from "./state/ui";
+import { captureOpen, deferRequest, detailId, handBackRequest, dropRequest, detailWide, detailWidth, helpOpen, openSearch, palette, setCaptureOpen, setDetailId, setHelpOpen, setSelectedId, sidebarHidden, structureEdit, toast } from "./state/ui";
 import { Logo } from "./components/Logo";
 import { preloadEditor } from "./components/MarkdownField";
-import { InboxView, LooseView, TodayView } from "./views/Lists";
+import { InboxView, LooseView, TodayView, WaitingView } from "./views/Lists";
 import { DevView, LoginView, PhoenixView, TokensView } from "./views/Other";
 import { AgentLogView } from "./views/AgentLog";
 import { SettingsView } from "./views/Settings";
@@ -25,6 +25,8 @@ import { StructureView } from "./views/Structure";
 interface NavItem {
   view: ViewName;
   label: string;
+  /** Label in the phone's tab bar, where space is short. */
+  short?: string;
   icon: IconName;
   keys: string;
 }
@@ -36,6 +38,7 @@ const NAV: NavItem[] = [
   { view: "bereiche", label: "Bereiche", icon: "folder", keys: "g b" },
   { view: "dev", label: "Dev", icon: "code", keys: "g d" },
   { view: "phoenix", label: "Phönix", icon: "flame", keys: "g p" },
+  { view: "wartet", label: "Wartet auf andere", short: "Wartet", icon: "user", keys: "g w" },
 ];
 
 setNotifier({
@@ -223,6 +226,9 @@ function Shell() {
           <Match when={route().view === "lose"}>
             <LooseView />
           </Match>
+          <Match when={route().view === "wartet"}>
+            <WaitingView />
+          </Match>
           <Match when={route().view === "bereiche"}>
             <StructureView />
           </Match>
@@ -265,7 +271,7 @@ function Shell() {
           {(item) => (
             <button class="tab" classList={{ active: active(item.view) }} onClick={() => navigate(parseRoute(`#/${item.view}`))} aria-current={active(item.view) ? "page" : undefined}>
               <Icon name={item.icon} size={20} />
-              <span>{item.label}</span>
+              <span>{item.short ?? item.label}</span>
               <Show when={item.view === "inbox" && inboxCount() > 0}>
                 <span class="tab-count">{inboxCount()}</span>
               </Show>
@@ -284,6 +290,7 @@ function Shell() {
       </Show>
       <Show when={dropRequest()}>{(req) => <DropSeriesDialog request={req()} />}</Show>
       <Show when={deferRequest()}>{(req) => <DeferDecisionDialog request={req()} />}</Show>
+      <Show when={handBackRequest()}>{(req) => <HandBackDialog request={req()} />}</Show>
       <Toasts />
       <TaskHoverCard />
     </div>
