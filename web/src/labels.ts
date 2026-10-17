@@ -75,6 +75,14 @@ export const FOR_WHOM_HINTS: Record<ForWhom, string> = {
   andere: "Jemand wartet auf deine Zusage: wer verschiebt, sagt Bescheid",
 };
 
+/** Heute's quiet hint from COMMITMENT_LIMIT open commitments on (sync/commitments). */
+export const COMMITMENT_HINT = "Viele Zusagen offen. Eine zurückgeben?";
+
+/** "1 offene Zusage", "3 offene Zusagen": Heute's count of open commitments. */
+export function commitmentsLabel(count: number): string {
+  return count === 1 ? "1 offene Zusage" : `${count} offene Zusagen`;
+}
+
 /** "wartet auf Anna": whom a task waits on (waiting_on). */
 export function waitingLabel(name: string): string {
   return `wartet auf ${name}`;

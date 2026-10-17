@@ -1,7 +1,8 @@
 // Task selections for the views. All functions are reactive (read the store).
 
 import { localDate, parseDue } from "../sync/dates";
-import { compareTasks, isClosed, isFlameRunning, statusChangedMs, weightRank } from "../sync/derived";
+import { openCommitments } from "../sync/commitments";
+import { compareTasks, isClosed, isDevLocation, isFlameRunning, statusChangedMs, weightRank } from "../sync/derived";
 import type { Location, Task } from "../sync/types";
 import { data, now, taskIndex } from "./store";
 
@@ -122,6 +123,15 @@ export function waitingGroups(): WaitingGroup[] {
   const out = [...groups.values()].sort((a, b) => a.name.localeCompare(b.name, "de"));
   for (const g of out) g.tasks.sort((a, b) => due(a) - due(b) || compareTasks(a, b));
   return out;
+}
+
+/**
+ * Offene Zusagen: live tasks for others, not done or dropped (subtasks and tasks that wait on
+ * someone included), outside dev projects; due first, then rank (rule in sync/commitments).
+ */
+export function commitmentTasks(): Task[] {
+  const index = taskIndex();
+  return openCommitments(index.byId.values(), (t) => index.isDeleted(t) || isDevLocation(index.location(t), (id) => data.projects[id]));
 }
 
 export function phoenixTasks(fire: string): { steps: Task[]; flames: Task[] } {

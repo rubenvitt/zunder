@@ -3450,3 +3450,30 @@ a.sync {
   gap: 0.45rem;
   margin-top: 0.4rem;
 }
+
+/* ---- Zusagen-Bremse (contract 5.1) ------------------------------------------------------ */
+
+.commitments {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.6rem;
+  font-size: 0.84rem;
+}
+.commitments a {
+  text-decoration: none;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+}
+.commitments a:hover {
+  text-decoration: underline;
+}
+.commitments-count {
+  color: var(--info);
+  background: var(--info-soft);
+  font-weight: 600;
+}
+.commitments-hint {
+  color: var(--warning);
+  background: var(--warning-soft);
+}

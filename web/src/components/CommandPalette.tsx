@@ -115,6 +115,7 @@ export function CommandPalette(props: { request: PaletteRequest }) {
       go("Gehe zu Dev", () => navigate({ view: "dev" }), "g d"),
       go("Gehe zu Phönix", () => navigate({ view: "phoenix" }), "g p"),
       go("Gehe zu Wartet auf andere", () => navigate({ view: "wartet" }), "g w"),
+      go("Gehe zu Offene Zusagen", () => navigate({ view: "zusagen" }), "g z"),
       go("Neuer Bereich", () => setStructureEdit({ kind: "area" })),
       go("Neues Projekt", () => setStructureEdit({ kind: "project" })),
       go(sidebarHidden() ? "Seitenleiste einblenden" : "Seitenleiste ausblenden", toggleSidebar, "⌘B"),

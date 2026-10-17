@@ -31,6 +31,7 @@ const GO: Record<string, Route> = {
   d: { view: "dev" },
   p: { view: "phoenix" },
   w: { view: "wartet" },
+  z: { view: "zusagen" },
 };
 
 function isTyping(target: EventTarget | null): boolean {

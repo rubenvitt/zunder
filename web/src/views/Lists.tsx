@@ -1,15 +1,16 @@
-// Heute, Inbox, Lose and Wartet auf andere.
+// Heute, Inbox, Lose, Wartet auf andere and Offene Zusagen.
 
 import { createMemo, For, onMount, Show } from "solid-js";
 import { EmptyState } from "../components/EmptyState";
 import { TaskList } from "../components/TaskList";
 import type { DeferTarget } from "../sync/defer";
 import type { Task } from "../sync/types";
-import { deferTask, dropTask, moveTask, setWaitingOn, shorten } from "../state/actions";
-import { inboxTasks, tasksAt, todayGroups, waitingGroups } from "../state/selectors";
-import { activeList, pickLocation, registerList, selectedId, setCaptureOpen, setSelectedId, toast } from "../state/ui";
+import { canHandBack, deferTask, dropTask, moveTask, setWaitingOn, shorten } from "../state/actions";
+import { commitmentTasks, inboxTasks, tasksAt, todayGroups, waitingGroups } from "../state/selectors";
+import { activeList, pickLocation, registerList, selectedId, setCaptureOpen, setHandBackRequest, setSelectedId, toast } from "../state/ui";
 import { now } from "../state/store";
-import { locationLabel } from "../labels";
+import { tooManyCommitments } from "../sync/commitments";
+import { COMMITMENT_HINT, commitmentsLabel, locationLabel } from "../labels";
 
 /** "Heute nicht" from the Heute list (s: tomorrow, Shift+S: next week, swipe right). */
 export const todayActions = {
@@ -30,6 +31,8 @@ export function TodayView() {
     const seen = new Set<string>();
     return [...g.flames, ...g.overdue, ...g.dueToday, ...g.reminders].filter((t) => !seen.has(t.id) && !!seen.add(t.id));
   });
+  // Zusagen-Bremse: how many promises are open, shown before they press (contract 5.1).
+  const commitments = createMemo(() => commitmentTasks().length);
   onMount(() => registerList(all));
   const nothing = () => all().length === 0;
   return (
@@ -37,6 +40,19 @@ export function TodayView() {
       <header class="view-head">
         <h1>Heute</h1>
         <span class="muted">{new Date(now()).toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })}</span>
+        <Show when={commitments() > 0}>
+          <span class="spacer" />
+          <span class="commitments">
+            <a class="commitments-count" href="#/zusagen" title="Jemand wartet auf deine Zusage: Liste öffnen">
+              {commitmentsLabel(commitments())}
+            </a>
+            <Show when={tooManyCommitments(commitments())}>
+              <a class="commitments-hint" href="#/zusagen">
+                {COMMITMENT_HINT}
+              </a>
+            </Show>
+          </span>
+        </Show>
       </header>
       <Show when={groups().flames.length > 0}>
         <section class="group group-flame">
@@ -195,6 +211,33 @@ export function WaitingView() {
           hint="Hier steht, was du zurückgegeben hast oder wo jemand anderes entscheidet. Im Detail unter „Wartet auf“ eintragen."
         />
       </Show>
+    </div>
+  );
+}
+
+/**
+ * Offene Zusagen (contract 5.1): everything someone waits on you for, reached from the count in
+ * Heute's head. Rauch rows can be handed back right here (the dialog of "Zurückgeben").
+ */
+export function CommitmentsView() {
+  const tasks = createMemo(commitmentTasks);
+  onMount(() => registerList(tasks));
+  return (
+    <div class="view">
+      <header class="view-head">
+        <h1>Offene Zusagen</h1>
+        <span class="count-badge">{tasks().length}</span>
+        <Show when={tooManyCommitments(tasks().length)}>
+          <span class="muted">Rauch kannst du hier zurückgeben.</span>
+        </Show>
+      </header>
+      <TaskList
+        tasks={tasks()}
+        showLocation
+        label="Offene Zusagen"
+        empty={<EmptyState icon="user" title="Keine offenen Zusagen." hint="Hier steht, was du anderen zugesagt hast: Für wen „andere“, noch nicht erledigt." />}
+        actions={(task) => (canHandBack(task) ? [{ label: "Zurückgeben", mobile: true, run: () => setHandBackRequest({ taskId: task.id }) }] : [])}
+      />
     </div>
   );
 }

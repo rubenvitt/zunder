@@ -16,7 +16,7 @@ import { api, data, getEngine, pendingCount, ready, setNotifier, startSync, sync
 import { captureOpen, deferRequest, detailId, handBackRequest, dropRequest, detailWide, detailWidth, helpOpen, openSearch, palette, setCaptureOpen, setDetailId, setHelpOpen, setSelectedId, sidebarHidden, structureEdit, toast } from "./state/ui";
 import { Logo } from "./components/Logo";
 import { preloadEditor } from "./components/MarkdownField";
-import { InboxView, LooseView, TodayView, WaitingView } from "./views/Lists";
+import { CommitmentsView, InboxView, LooseView, TodayView, WaitingView } from "./views/Lists";
 import { DevView, LoginView, PhoenixView, TokensView } from "./views/Other";
 import { AgentLogView } from "./views/AgentLog";
 import { SettingsView } from "./views/Settings";
@@ -228,6 +228,9 @@ function Shell() {
           </Match>
           <Match when={route().view === "wartet"}>
             <WaitingView />
+          </Match>
+          <Match when={route().view === "zusagen"}>
+            <CommitmentsView />
           </Match>
           <Match when={route().view === "bereiche"}>
             <StructureView />

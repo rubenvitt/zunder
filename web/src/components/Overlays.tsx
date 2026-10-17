@@ -60,6 +60,7 @@ const SHORTCUTS: [string, string][] = [
   ["g d", "Dev"],
   ["g p", "Phönix"],
   ["g w", "Wartet auf andere"],
+  ["g z", "Offene Zusagen"],
   ["?", "Diese Übersicht"],
 ];
 
