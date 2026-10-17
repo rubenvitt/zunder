@@ -85,11 +85,16 @@ async function checkMirror(page: Page, before: Counts): Promise<void> {
   await summary.click();
   await expect(weightLine).toBeHidden();
   await expect(mirror(page).locator(".week-mirror-total")).toBeVisible();
+  // The toggle event (which remembers the state) fires after the click: wait for it before reloading.
+  await expect.poll(() => storedOpen(page)).toBe("0");
   await reloadApp(page);
   await expect(mirror(page).locator("details")).not.toHaveAttribute("open");
   await expect(weightLine).toBeHidden();
   await summary.click();
   await expect(weightLine).toBeVisible();
+  await expect.poll(() => storedOpen(page)).toBe("1");
   await reloadApp(page);
   await expect(weightLine).toBeVisible();
 }
+
+const storedOpen = (page: Page) => page.evaluate(() => localStorage.getItem("zunder.weekMirrorOpen"));
