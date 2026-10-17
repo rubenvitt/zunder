@@ -34,8 +34,10 @@ describe("isOpenCommitment", () => {
     expect(isOpenCommitment(task("t", { for_whom: null }))).toBe(false);
   });
 
-  it("a commitment stays open while it waits on someone", () => {
-    expect(isOpenCommitment(task("t", { status: "blocked", waiting_on: "Anna" }))).toBe(true);
+  it("handed back (waiting on someone) leaves the count, blocked by a task does not", () => {
+    expect(isOpenCommitment(task("t", { status: "blocked", waiting_on: "Anna" }))).toBe(false);
+    expect(isOpenCommitment(task("t", { status: "in_progress", waiting_on: "Anna" }))).toBe(false);
+    expect(isOpenCommitment(task("t", { status: "blocked", waiting_on: null }))).toBe(true);
   });
 });
 
@@ -43,7 +45,14 @@ describe("openCommitments", () => {
   const none = () => false;
 
   it("leaves out what the caller excludes (dev projects, deleted)", () => {
-    const tasks = [task("a"), task("dev"), task("deleted"), task("mine", { for_whom: "mich" }), task("done", { status: "done" })];
+    const tasks = [
+      task("a"),
+      task("dev"),
+      task("deleted"),
+      task("mine", { for_whom: "mich" }),
+      task("done", { status: "done" }),
+      task("waiting", { status: "blocked", waiting_on: "Anna" }),
+    ];
     const excluded = (t: Task) => t.id === "dev" || t.id === "deleted";
     expect(openCommitments(tasks, excluded).map((t) => t.id)).toEqual(["a"]);
   });

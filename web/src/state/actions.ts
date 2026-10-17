@@ -14,7 +14,7 @@ import { expectNextInstance } from "./series";
 import { setDeferRequest, setDetailId, setDropRequest, setSelectedId, toast } from "./ui";
 import { deferDay, deferFields, needsDecision, type DeferTarget } from "../sync/defer";
 import { formatDateLabel, formatInstant, localDate, toRfc3339Local } from "../sync/dates";
-import { handbackRemindAt, pickAlternative } from "../sync/handback";
+import { handbackRemindAt, offersHandBack, pickAlternative } from "../sync/handback";
 
 function apply(changes: Change[]): boolean {
   const issues = getEngine().change(changes);
@@ -214,9 +214,9 @@ function inDevProject(task: Task): boolean {
   return isDevLocation(taskIndex().location(task), (id) => data.projects[id]);
 }
 
-/** Whether a task offers "Zurückgeben": weighed Rauch, not closed, outside dev projects. */
+/** Whether a task offers "Zurückgeben" (rule in sync/handback): Rauch, open, waiting on nobody, outside dev projects. */
 export function canHandBack(task: Task): boolean {
-  return task.weight === "rauch" && !isClosed(task.status) && !inDevProject(task);
+  return offersHandBack(task, inDevProject(task));
 }
 
 /** The second task the sentence offers (rule in sync/handback). */

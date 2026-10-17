@@ -9,16 +9,17 @@ import type { Task } from "./types";
 export const COMMITMENT_LIMIT = 8;
 
 /**
- * A commitment is open while the task is for others and neither done nor dropped. Waiting on
- * someone (`waiting_on`, blocked) does not close it: the promise still stands.
+ * A commitment is open while the task is for others, neither done nor dropped and waits on
+ * nobody. Handing it back (`waiting_on`) leaves the decision with someone else, so it leaves the
+ * count at once; the task stays in "Wartet auf andere".
  */
 export function isOpenCommitment(task: Task): boolean {
-  return task.for_whom === "andere" && !isClosed(task.status);
+  return task.for_whom === "andere" && !isClosed(task.status) && !task.waiting_on;
 }
 
 /**
- * Open commitments among `tasks` (subtasks included), without what `excluded` names (deleted
- * tasks, dev projects); due first, then rank.
+ * Open commitments among `tasks` (subtasks included, also blocked ones that wait on nobody),
+ * without what `excluded` names (deleted tasks, dev projects); due first, then rank.
  */
 export function openCommitments(tasks: Iterable<Task>, excluded: (t: Task) => boolean): Task[] {
   const out: Task[] = [];

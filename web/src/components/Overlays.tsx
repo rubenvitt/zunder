@@ -233,7 +233,7 @@ export function HandBackDialog(props: { request: HandBackRequest }) {
   const opened = data.tasks[props.request.taskId];
   const alternative = opened ? handBackAlternative(opened) : null;
   const [sentence, setSentence] = createSignal(opened ? handbackSentence(opened.title, alternative?.title ?? null) : "");
-  const [name, setName] = createSignal(opened?.waiting_on ?? "");
+  const [name, setName] = createSignal("");
   const [remind, setRemind] = createSignal(true);
   const names = waitingNames([...taskIndex().byId.values()].filter((t) => !taskIndex().isDeleted(t)));
   const remindLabel = formatInstant(handbackRemindAt(new Date(now())), new Date(now()));

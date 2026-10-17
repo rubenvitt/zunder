@@ -51,6 +51,12 @@ test("Zurückgeben: Satz kopieren, auf jemanden warten, in drei Werktagen erinne
     await expect(page.locator(".toast")).toContainText(`Satz kopiert. „Bericht ${s}“ wartet auf Anna ${s}. Erinnerung:`);
     await expect(row(page, `Bericht ${s}`).locator(".chip-waiting-on")).toHaveText(`wartet auf Anna ${s}`);
     await expect(detail(page).getByLabel("Wartet auf", { exact: true })).toHaveValue(`Anna ${s}`);
+    // Handed back already: no second "Zurückgeben" while it waits, neither in the detail nor in the palette.
+    await expect(detail(page).getByRole("button", { name: "Zurückgeben" })).toHaveCount(0);
+    await page.keyboard.press("Control+k");
+    await expect(page.locator(".palette-item").first()).toBeVisible();
+    await expect(page.locator(".palette-item", { hasText: "Zurückgeben" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
 
     // Wartet auf andere: grouped by name; the answer clears it and the task opens again.
     await page.locator(".sidebar").getByRole("link", { name: "Wartet auf andere" }).click();

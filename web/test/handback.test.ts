@@ -1,7 +1,7 @@
 // "Zurückgeben" (contract 5.1): sentence, second task and reminder in three working days.
 
 import { describe, expect, it } from "vitest";
-import { handbackRemindAt, handbackSentence, pickAlternative, waitingNames, workdaysLater } from "../src/sync/handback";
+import { handbackRemindAt, handbackSentence, offersHandBack, pickAlternative, waitingNames, workdaysLater } from "../src/sync/handback";
 import type { Task } from "../src/sync/types";
 
 function task(id: string, extra: Partial<Task> = {}): Task {
@@ -16,6 +16,24 @@ function task(id: string, extra: Partial<Task> = {}): Task {
     ...extra,
   } as Task;
 }
+
+describe("offersHandBack", () => {
+  it("offers Rauch that is not closed, outside dev projects", () => {
+    expect(offersHandBack(task("t"), false)).toBe(true);
+    expect(offersHandBack(task("t", { status: "in_progress" }), false)).toBe(true);
+    expect(offersHandBack(task("t", { status: "blocked" }), false)).toBe(true);
+    expect(offersHandBack(task("t", { weight: "brand" }), false)).toBe(false);
+    expect(offersHandBack(task("t", { weight: null }), false)).toBe(false);
+    expect(offersHandBack(task("t", { status: "done" }), false)).toBe(false);
+    expect(offersHandBack(task("t", { status: "dropped" }), false)).toBe(false);
+    expect(offersHandBack(task("t"), true)).toBe(false);
+  });
+
+  it("not once the task waits on someone: it was handed back already", () => {
+    expect(offersHandBack(task("t", { status: "blocked", waiting_on: "Anna" }), false)).toBe(false);
+    expect(offersHandBack(task("t", { waiting_on: "Anna" }), false)).toBe(false);
+  });
+});
 
 describe("workdaysLater", () => {
   it("skips weekends and lands at 9:00 local time", () => {

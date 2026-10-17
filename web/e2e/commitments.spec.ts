@@ -156,11 +156,15 @@ test("Heute zählt offene Zusagen, ein Klick zeigt sie, Rauch lässt sich dort z
     await openApp(page, "#/heute");
     await expect(count(page)).toHaveText(commitmentsLabel(base + 1));
 
-    // Counted: waiting on someone (blocked), in progress, subtasks. Not: done, dropped, for me, dev projects.
+    // Counted: in progress, subtasks, blocked by another task. Not: waiting on someone (handed
+    // back), done, dropped, for me, dev projects.
     const waiting = seeder.task(`Gutachten ${s}`, { location: loose, for_whom: "andere", waiting_on: `Anna ${s}` });
     const parent = seeder.task(`Umzug ${s}`, { location: loose });
     const sub = seeder.task(`Kisten ${s}`, { parent_id: parent, for_whom: "andere", status: "in_progress" });
-    ids.push(waiting, parent, sub);
+    const blocker = seeder.task(`Termin ${s}`, { location: loose });
+    // The mock does not follow blocked_by, so the status is seeded as the server sets it.
+    const blocked = seeder.task(`Vortrag ${s}`, { location: loose, for_whom: "andere", blocked_by: [blocker], status: "blocked" });
+    ids.push(waiting, parent, sub, blocker, blocked);
     ids.push(seeder.task(`Erledigt ${s}`, { location: loose, for_whom: "andere", status: "done" }));
     ids.push(seeder.task(`Verworfen ${s}`, { location: loose, for_whom: "andere", status: "dropped" }));
     ids.push(seeder.task(`Für mich ${s}`, { location: loose, for_whom: "mich", weight: "rauch" }));
@@ -171,17 +175,16 @@ test("Heute zählt offene Zusagen, ein Klick zeigt sie, Rauch lässt sich dort z
     await openApp(page, "#/heute");
     await expect(count(page)).toHaveText(commitmentsLabel(base + 3));
     await expect.poll(async () => (await entityFields(page, "task", waiting)).status).toBe("blocked");
+    await expect.poll(async () => (await entityFields(page, "task", blocked)).status).toBe("blocked");
 
     await count(page).click();
     await expect(page).toHaveURL(/#\/zusagen$/);
     await expect(page.getByRole("heading", { name: "Offene Zusagen" })).toBeVisible();
     const list = page.getByRole("list", { name: "Offene Zusagen" });
-    for (const title of [`Bewerbung lesen ${s}`, `Gutachten ${s}`, `Kisten ${s}`]) await expect(row(page, title)).toBeVisible();
-    for (const title of [`Umzug ${s}`, `Erledigt ${s}`, `Verworfen ${s}`, `Für mich ${s}`, `Ticket ${s}`]) await expect(list.locator(".task-title", { hasText: title })).toHaveCount(0);
-    await expect(row(page, `Gutachten ${s}`).locator(".chip-waiting-on")).toHaveText(`wartet auf Anna ${s}`);
+    for (const title of [`Bewerbung lesen ${s}`, `Kisten ${s}`, `Vortrag ${s}`]) await expect(row(page, title)).toBeVisible();
+    for (const title of [`Gutachten ${s}`, `Umzug ${s}`, `Erledigt ${s}`, `Verworfen ${s}`, `Für mich ${s}`, `Ticket ${s}`]) await expect(list.locator(".task-title", { hasText: title })).toHaveCount(0);
 
     // "Zurückgeben" only on Rauch rows, with the dialog from the detail.
-    await expect(row(page, `Gutachten ${s}`).getByRole("button", { name: "Zurückgeben" })).toHaveCount(0);
     await expect(row(page, `Kisten ${s}`).getByRole("button", { name: "Zurückgeben" })).toHaveCount(0);
     await row(page, `Bewerbung lesen ${s}`).getByRole("button", { name: "Zurückgeben" }).click();
     const dialog = page.getByRole("dialog", { name: "Zurückgeben" });
@@ -193,8 +196,13 @@ test("Heute zählt offene Zusagen, ein Klick zeigt sie, Rauch lässt sich dort z
       const f = await entityFields(page, "task", rauch);
       return [f.waiting_on, f.status, f.for_whom];
     }).toEqual([`Ben ${s}`, "blocked", "andere"]);
-    // The promise stays open while the other person decides.
-    await expect(row(page, `Bewerbung lesen ${s}`).locator(".chip-waiting-on")).toHaveText(`wartet auf Ben ${s}`);
+    // Handed back: the other person decides now, so it leaves the list and the count at once
+    // and waits in "Wartet auf andere".
+    await expect(list.locator(".task-title", { hasText: `Bewerbung lesen ${s}` })).toHaveCount(0);
+    await openApp(page, "#/heute");
+    await expect(count(page)).toHaveText(commitmentsLabel(base + 2));
+    await openApp(page, "#/wartet");
+    await expect(page.getByRole("list", { name: `Wartet auf Ben ${s}` }).locator(".task-title")).toHaveText([`Bewerbung lesen ${s}`]);
   } finally {
     await close(page, ...ids);
   }

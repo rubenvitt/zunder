@@ -3,12 +3,21 @@
 // reminder to ask again.
 
 import { addDays, parseDue, startOfDay, toRfc3339Local } from "./dates";
+import { isClosed } from "./derived";
 import type { Task } from "./types";
 
 /** Working days (Monday to Friday) until the reminder. */
 export const HANDBACK_WORKDAYS = 3;
 /** Local hour of the reminder. */
 export const HANDBACK_HOUR = 9;
+
+/**
+ * Whether a task offers "Zurückgeben": weighed Rauch, not closed, waiting on nobody yet (it was
+ * handed back already otherwise) and not in a dev project (`inDevProject`, resolved by the caller).
+ */
+export function offersHandBack(task: Task, inDevProject: boolean): boolean {
+  return task.weight === "rauch" && !isClosed(task.status) && !task.waiting_on && !inDevProject;
+}
 
 /** `workdays` working days (Mon–Fri) after the day of `from`, at HANDBACK_HOUR local time. */
 export function workdaysLater(from: Date, workdays: number): Date {
