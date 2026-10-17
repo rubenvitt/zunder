@@ -14,7 +14,10 @@
 //! - [`defer`]: "Heute nicht" and the deferral counter
 //! - [`recurrence`]: due date and reminder of the next instance of a series
 //! - [`search`]: diacritic-tolerant full-text search
+//! - [`balance`]: Wochenbilanz, done tasks of an ISO week by weight and
+//!   for whom
 
+pub mod balance;
 pub mod blocking;
 pub mod builder;
 pub mod defer;

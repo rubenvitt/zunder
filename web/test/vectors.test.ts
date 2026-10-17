@@ -5,10 +5,13 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { weekBalance, type WeekBalance } from "../src/sync/balance";
+import { isDevLocation, TaskIndex } from "../src/sync/derived";
 import { compareHlc, isValidHlc } from "../src/sync/hlc";
+import { toProject, toTask } from "../src/sync/model";
 import { mergeOps } from "../src/sync/merge";
 import { validateOps } from "../src/sync/validate";
-import type { JsonValue, Op } from "../src/sync/types";
+import type { JsonValue, Op, Project, Task } from "../src/sync/types";
 import { permutations, shuffled } from "./helpers";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -37,7 +40,30 @@ interface ValidateVector {
   expected_rejected: Record<string, string>;
 }
 
-type Vector = MergeVector | HlcOrderVector | ValidateVector;
+interface WeekBalanceVector {
+  name: string;
+  kind: "week_balance";
+  /** The zone the expected counts hold in; the tests run in it (vite.config.ts, TZ). */
+  time_zone: string;
+  week: string;
+  state: Op[];
+  expected: WeekBalance;
+}
+
+type Vector = MergeVector | HlcOrderVector | ValidateVector | WeekBalanceVector;
+
+/** Balance as the web UI computes it from a merged state (deleted tasks and dev projects excluded). */
+function balanceOf(ops: Op[], week: string): WeekBalance {
+  const store = mergeOps(ops);
+  const tasks: Task[] = [];
+  const projects = new Map<string, Project>();
+  for (const e of store.values()) {
+    if (e.entity === "task") tasks.push(toTask(e));
+    else if (e.entity === "project") projects.set(e.id, toProject(e));
+  }
+  const index = new TaskIndex(tasks);
+  return weekBalance(index.byId.values(), week, (t) => index.isDeleted(t) || isDevLocation(index.location(t), (id) => projects.get(id)));
+}
 
 function orderings<T>(items: readonly T[]): T[][] {
   const result = [items.slice(), items.slice().reverse()];
@@ -78,6 +104,11 @@ describe("shared test vectors", () => {
         const got = Object.fromEntries(issues.map((i) => [i.entity_id, i.code]));
         expect(issues).toHaveLength(Object.keys(got).length);
         expect(got).toEqual(vector.expected_rejected);
+        return;
+      }
+      if (vector.kind === "week_balance") {
+        expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe(vector.time_zone);
+        for (const order of orderings(vector.state)) expect(balanceOf(order, vector.week)).toEqual(vector.expected);
         return;
       }
       expect(vector.kind).toBe("merge");
