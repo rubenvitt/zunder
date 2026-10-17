@@ -106,8 +106,9 @@ impl CompletionsBefore {
                     remind_at: next.remind_at,
                     vault_links: task.vault_links,
                     links: task.links,
-                    // The weighing carries over; the deferrals belong to
-                    // the closed instance.
+                    // The weighing carries over; the deferrals and whom the
+                    // closed instance waited on belong to it (the new one
+                    // waits on nobody and starts open).
                     weight: task.weight,
                     for_whom: task.for_whom,
                     ..NewTask::default()

@@ -337,6 +337,7 @@ async fn tool_schemas_match_snapshot() {
             "release_task",
             "decompose_task",
             "list_structure",
+            "week_balance",
             "create_area",
             "update_area",
             "create_project",
@@ -403,6 +404,7 @@ async fn create_get_update_with_history() {
         "weight",
         "for_whom",
         "deferrals",
+        "waiting_on",
         "claimed_by",
         "claim_expires_at",
         "plan",
@@ -1986,4 +1988,267 @@ async fn defer_task_keeps_the_time_and_refuses_bad_targets() {
     )
     .await;
     assert_eq!(code, "invalid_value");
+}
+
+// ----- waiting on someone (Zurückgeben) -------------------------------------------------------
+
+#[tokio::test]
+async fn waiting_on_blocks_reopens_and_filters() {
+    let (s, t) = setup().await;
+    // Trimmed; setting it blocks an open task (the server writes the status).
+    let r = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Bericht für Anna", "weight": "rauch", "waiting_on": "  Anna "}),
+    )
+    .await;
+    assert_eq!(r["task"]["waiting_on"], "Anna");
+    assert_eq!(r["task"]["status"], "blocked");
+    let report = r["task"]["id"].as_str().unwrap().to_owned();
+    let r = mcp_ok(&s, &t, "get_task_history", json!({"task_id": report})).await;
+    let last = r["entries"].as_array().unwrap().last().unwrap().clone();
+    assert_eq!(
+        (last["field"].as_str(), last["source"].as_str()),
+        (Some("status"), Some("server"))
+    );
+
+    let plain = create(&s, &t, json!({"title": "Folien"})).await;
+    let r = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": plain, "waiting_on": "Ben"}),
+    )
+    .await;
+    assert_eq!(r["task"]["status"], "blocked");
+    create(&s, &t, json!({"title": "Ohne Wartende"})).await;
+
+    let f = |args: Value| {
+        let (s, t) = (&s, &t);
+        async move { titles(&mcp_ok(s, t, "filter_tasks", args).await) }
+    };
+    assert_eq!(
+        f(json!({"has_waiting_on": true})).await,
+        ["Bericht für Anna", "Folien"]
+    );
+    assert_eq!(f(json!({"has_waiting_on": false})).await, ["Ohne Wartende"]);
+    assert_eq!(f(json!({"waiting_on": "anna"})).await, ["Bericht für Anna"]);
+    assert!(f(json!({"waiting_on": "Ann"})).await.is_empty());
+    let (code, _) = mcp_err(&s, &t, "filter_tasks", json!({"waiting_on": " "})).await;
+    assert_eq!(code, "invalid_arguments");
+
+    // A blank name is null: the answer is there, the task opens again.
+    let r = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": report, "waiting_on": ""}),
+    )
+    .await;
+    assert_eq!(r["task"]["waiting_on"], Value::Null);
+    assert_eq!(r["task"]["status"], "open");
+    let r = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": plain, "waiting_on": null}),
+    )
+    .await;
+    assert_eq!(r["task"]["status"], "open");
+
+    let (code, _) = mcp_err(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": plain, "waiting_on": 7}),
+    )
+    .await;
+    assert_eq!(code, "invalid_arguments");
+    let (code, message) = mcp_err(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": plain, "waiting_on": "x".repeat(501)}),
+    )
+    .await;
+    assert_eq!(code, "invalid_value", "{message}");
+}
+
+#[tokio::test]
+async fn waiting_on_and_blockers_hold_together() {
+    let (s, t) = setup().await;
+    let offer = create(&s, &t, json!({"title": "Angebot einholen"})).await;
+    let r = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Vertrag", "blocked_by": [offer], "waiting_on": "Vermieterin"}),
+    )
+    .await;
+    assert_eq!(r["task"]["status"], "blocked");
+    let contract = r["task"]["id"].as_str().unwrap().to_owned();
+
+    // The last blocker done: still waiting on someone, still blocked.
+    mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": offer, "status": "done"}),
+    )
+    .await;
+    let r = mcp_ok(&s, &t, "get_task", json!({"task_id": contract})).await;
+    assert_eq!(r["task"]["status"], "blocked");
+
+    // Reopened blocker, then the answer: the open blocker still holds it.
+    mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": offer, "status": "open"}),
+    )
+    .await;
+    let r = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": contract, "waiting_on": null}),
+    )
+    .await;
+    assert_eq!(r["task"]["status"], "blocked");
+    mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": offer, "status": "done"}),
+    )
+    .await;
+    let r = mcp_ok(&s, &t, "get_task", json!({"task_id": contract})).await;
+    assert_eq!(r["task"]["status"], "open");
+}
+
+/// ISO week of a local date (`JJJJ-Www`).
+fn iso_week(day: chrono::NaiveDate) -> String {
+    let w = chrono::Datelike::iso_week(&day);
+    format!("{:04}-W{:02}", w.year(), w.week())
+}
+
+#[tokio::test]
+async fn week_balance_counts_done_tasks_by_weight_and_for_whom() {
+    let (s, t) = setup().await;
+    let (_, dev, project) = structure(&s, &t).await;
+    let today = local_today();
+    let monday = today
+        - chrono::Days::new(u64::from(
+            chrono::Datelike::weekday(&today).num_days_from_monday(),
+        ));
+
+    // Nothing done yet: the current week in the server's zone, all groups at 0.
+    let empty = mcp_ok(&s, &t, "week_balance", json!({})).await;
+    assert_eq!(empty["week"], iso_week(today));
+    assert_eq!(empty["from"], monday.to_string());
+    assert_eq!(empty["to"], (monday + chrono::Days::new(6)).to_string());
+    assert_eq!(empty["total"], 0);
+    assert_eq!(
+        empty["by_weight"],
+        json!({"brand": 0, "glut": 0, "rauch": 0, "asche": 0, "none": 0})
+    );
+    assert_eq!(
+        empty["by_for_whom"],
+        json!({"mich": 0, "uns": 0, "andere": 0, "none": 0})
+    );
+
+    let done = |id: String| {
+        let s = &s;
+        let t = &t;
+        async move {
+            mcp_ok(
+                s,
+                t,
+                "update_task",
+                json!({"task_id": id, "status": "done", "force": true}),
+            )
+            .await;
+        }
+    };
+    let laufen = create(
+        &s,
+        &t,
+        json!({"title": "Laufen", "weight": "glut", "for_whom": "mich",
+               "location": {"kind": "project", "id": project}}),
+    )
+    .await;
+    let schuhe = create(
+        &s,
+        &t,
+        json!({"title": "Schuhe", "weight": "rauch", "parent_id": laufen}),
+    )
+    .await;
+    done(schuhe).await;
+    done(laufen).await;
+    done(
+        create(
+            &s,
+            &t,
+            json!({"title": "Rede", "weight": "rauch", "for_whom": "andere"}),
+        )
+        .await,
+    )
+    .await;
+    done(create(&s, &t, json!({"title": "Ohne Einteilung"})).await).await;
+    // Not counted: dropped, open, dev projects.
+    let dropped = create(&s, &t, json!({"title": "Verworfen", "weight": "brand"})).await;
+    mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": dropped, "status": "dropped"}),
+    )
+    .await;
+    create(&s, &t, json!({"title": "Offen", "weight": "glut"})).await;
+    let ticket = create(
+        &s,
+        &t,
+        json!({"title": "Ticket", "weight": "rauch", "location": {"kind": "project", "id": dev}}),
+    )
+    .await;
+    done(ticket).await;
+    // Done a week ago: the previous week.
+    closed_task(&s, "Vorwoche", TaskStatus::Done, 7).await;
+
+    let r = mcp_ok(&s, &t, "week_balance", json!({})).await;
+    assert_eq!(r["total"], 4, "{r}");
+    assert_eq!(
+        r["by_weight"],
+        json!({"brand": 0, "glut": 1, "rauch": 2, "asche": 0, "none": 1})
+    );
+    assert_eq!(
+        r["by_for_whom"],
+        json!({"mich": 1, "uns": 0, "andere": 1, "none": 2})
+    );
+    assert_eq!(
+        mcp_ok(&s, &t, "week_balance", json!({"week": iso_week(today)})).await,
+        r
+    );
+    let before = mcp_ok(
+        &s,
+        &t,
+        "week_balance",
+        json!({"week": iso_week(today - chrono::Days::new(7))}),
+    )
+    .await;
+    assert_eq!(before["total"], 1);
+    assert_eq!(before["by_weight"]["none"], 1);
+    assert_eq!(before["from"], (monday - chrono::Days::new(7)).to_string());
+
+    for bad in [
+        json!({"week": "2025-W53"}),
+        json!({"week": "2026W44"}),
+        json!({"week": 44}),
+    ] {
+        let (code, message) = mcp_err(&s, &t, "week_balance", bad.clone()).await;
+        assert_eq!(code, "invalid_arguments", "{bad}: {message}");
+    }
+    let (code, _) = mcp_err(&s, &t, "week_balance", json!({"from": "2026-10-26"})).await;
+    assert_eq!(code, "invalid_arguments");
 }

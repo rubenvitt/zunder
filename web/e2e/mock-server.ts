@@ -14,11 +14,13 @@
 // format {"error":{"code","message"}}, CSRF header X-Zunder-Client: web for
 // state-changing requests, snapshot with created_hlc/op_id, history entries with
 // source/received_at, flame responses (409 without a running flame), token rules,
+// "Erst für dich" settings (/api/settings/focus, reset with the seed),
 // intake channels (management under /api/intake/channels, POST /intake/v1/tasks with
 // a zi_ token: idempotent per external_id, 409 for a dead or completed target, 429
 // after 30 tasks per hour), follow-up instances of recurring tasks after each push
-// (3.1, calendar in mock-recurrence.ts, time zone of the mock process), and a subset of
-// the core validation with the core's rejection codes.
+// (3.1, calendar in mock-recurrence.ts, time zone of the mock process), the status rule
+// for `waiting_on` (not for `blocked_by`), and a subset of the core validation with the
+// core's rejection codes.
 
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -103,7 +105,7 @@ const FIELDS: Record<string, string[]> = {
     "title", "description", "type", "status", "location", "parent_id", "due", "remind_at", "vault_links", "links",
     "phoenix", "claimed_by", "claim_expires_at", "plan", "branch", "pr_url", "timing_ref", "flame_started_at",
     "flame_ended_at", "clickup_id", "rank", "undated_ack", "recurrence", "recurrence_prev", "blocked_by", "weight",
-    "for_whom", "deferrals", "ref", "deleted",
+    "for_whom", "deferrals", "waiting_on", "ref", "deleted",
   ],
   comment: ["task_id", "body", "author", "deleted"],
 };
@@ -137,6 +139,8 @@ let devices: Device[] = [];
 let intakeChannels: IntakeChannel[] = [];
 /** Calendar feed: creation time of the token, null without a feed. */
 let calendarCreatedAt: string | null = null;
+/** "Erst für dich" (GET/PUT /api/settings/focus): days as the client sends them. */
+let focus: { dismissed_on: string | null; chosen: { on: string; task_id: string } | null } = { dismissed_on: null, chosen: null };
 let authenticated = true;
 const sseClients = new Set<ServerResponse>();
 
@@ -194,6 +198,14 @@ function alive(entity: string, id: string): boolean {
 // ---- Validation (subset of contract 2.5, core codes) ------------------------------
 
 const ID_RE = /^[a-z][a-z0-9]{23}$/;
+
+/** A real calendar day "YYYY-MM-DD". */
+function isCalendarDay(value: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return false;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return d.getUTCFullYear() === Number(m[1]) && d.getUTCMonth() === Number(m[2]) - 1 && d.getUTCDate() === Number(m[3]);
+}
 const HLC_RE = /^\d{13}:\d{5}:[a-z0-9-]{1,36}$/;
 const REQUIRED: Record<string, string[]> = { area: ["name"], project: ["name", "area_id"], task: ["title"], comment: ["task_id", "body"] };
 
@@ -226,8 +238,11 @@ function checkOp(op: Op): [string, string] | null {
   }
   const allowed = ENUMS[`${op.entity}.${op.field}`];
   if (allowed && !allowed.includes(String(op.value))) return ["invalid_value", `Ungültiger Wert für „${op.field}“.`];
-  if (["title", "name", "body", "author"].includes(op.field) && (typeof op.value !== "string" || !op.value.trim())) {
+  if (["title", "name", "body", "author", "waiting_on"].includes(op.field) && (typeof op.value !== "string" || !op.value.trim())) {
     return ["invalid_value", `„${op.field}“ darf nicht leer sein.`];
+  }
+  if (op.field === "waiting_on" && [...String(op.value)].length > 500) {
+    return ["invalid_value", "„waiting_on“ darf höchstens 500 Zeichen lang sein."];
   }
   if (op.entity === "project" && op.field === "key" && !/^[A-Z][A-Z0-9]{0,9}$/.test(String(op.value))) {
     return ["invalid_value", "Ungültiger Schlüssel."];
@@ -403,6 +418,7 @@ function push(ops: Op[], source: string) {
     }
   }
   const completions = completionsBefore([...groups.values()].flat());
+  const waiting = waitingBefore([...groups.values()].flat());
   for (const op of ops) {
     const reason = verdict.get(op.op_id);
     if (reason) {
@@ -426,6 +442,7 @@ function push(ops: Op[], source: string) {
   }
   if (groups.size > 0) {
     assignRefs();
+    followWaiting(waiting);
     if (followUps(completions) > 0) assignRefs();
     notify();
   }
@@ -485,6 +502,42 @@ function followUps(candidates: Set<string>): number {
     created += 1;
   }
   return created;
+}
+
+/**
+ * Tasks whose `waiting_on` the push changes, with status and waiting before it. Only this part
+ * of "Status folgt Abhängigkeiten" (zunder_core::blocking) is mirrored: the mock does not follow
+ * `blocked_by` (contract 3.1).
+ */
+function waitingBefore(ops: Op[]): Map<string, { status: string; waiting: boolean }> {
+  const out = new Map<string, { status: string; waiting: boolean }>();
+  for (const op of ops) {
+    if (op.entity !== "task" || op.field !== "waiting_on" || out.has(op.entity_id)) continue;
+    const e = state.get(key("task", op.entity_id));
+    const live = !!e && e.fields.deleted?.value !== true;
+    out.set(op.entity_id, { status: live ? String(e.fields.status?.value ?? "open") : "", waiting: live && typeof e.fields.waiting_on?.value === "string" });
+  }
+  return out;
+}
+
+/**
+ * An open task that starts waiting on someone becomes blocked; a blocked one whose name is
+ * cleared opens again unless an open blocker holds it. A push that set the status keeps it.
+ */
+function followWaiting(before: Map<string, { status: string; waiting: boolean }>) {
+  for (const [id, was] of [...before].sort(([a], [b]) => (a < b ? -1 : 1))) {
+    const e = state.get(key("task", id));
+    if (!e || e.fields.deleted?.value === true) continue;
+    const status = String(e.fields.status?.value ?? "open");
+    if (was.status && was.status !== status) continue;
+    const waiting = typeof e.fields.waiting_on?.value === "string";
+    const blockers = Array.isArray(e.fields.blocked_by?.value) ? (e.fields.blocked_by.value as Json[]).map(String) : [];
+    const openBlocker = blockers.some((b) => alive("task", b) && !CLOSED.includes(String(state.get(key("task", b))!.fields.status?.value ?? "open")));
+    let next: string | null = null;
+    if (status === "open" && waiting && !was.waiting) next = "blocked";
+    if (status === "blocked" && was.waiting && !waiting && !openBlocker) next = "open";
+    if (next) append({ op_id: createId(), entity: "task", entity_id: id, field: "status", value: next, hlc: serverHlc() }, "server");
+  }
 }
 
 /** Task references like the server (zunder_core::numbering): per key in creation order, never reused. */
@@ -566,6 +619,7 @@ function seed(kind: string) {
   devices = [];
   intakeChannels = [];
   calendarCreatedAt = null;
+  focus = { dismissed_on: null, chosen: null };
   if (kind === "empty") return;
   const base = Date.now() - 3600_000;
   let n = 0;
@@ -965,6 +1019,30 @@ const server = createServer(async (req, res) => {
       if (path === "/api/settings/timing/check" && method === "POST") {
         if (!timing.token) return error(res, 409, "conflict", "Timing ist nicht eingerichtet.");
         return send(res, 200, { ok: true, error: null });
+      }
+      if (path === "/api/settings/focus") {
+        if (method === "PUT") {
+          const body = await readJson(req);
+          const unknown = Object.keys(body).find((k) => k !== "dismissed_on" && k !== "chosen");
+          if (unknown) return error(res, 400, "invalid_request", `Unbekanntes Feld „${unknown}“`);
+          const day = (v: unknown) => (typeof v === "string" && isCalendarDay(v.trim()) ? v.trim() : null);
+          const next = { ...focus };
+          if (body.dismissed_on !== undefined) {
+            if (body.dismissed_on !== null && !day(body.dismissed_on)) return error(res, 400, "invalid_request", "„dismissed_on“ muss ein Tag JJJJ-MM-TT sein");
+            next.dismissed_on = body.dismissed_on === null ? null : day(body.dismissed_on);
+          }
+          if (body.chosen !== undefined) {
+            const c = body.chosen as { on?: unknown; task_id?: unknown } | null;
+            if (c !== null) {
+              if (typeof c !== "object" || Array.isArray(c) || Object.keys(c).some((k) => k !== "on" && k !== "task_id")) return error(res, 400, "invalid_request", "„chosen“ braucht on und task_id");
+              if (!day(c.on)) return error(res, 400, "invalid_request", "„chosen.on“ muss ein Tag JJJJ-MM-TT sein");
+              if (typeof c.task_id !== "string" || !ID_RE.test(c.task_id.trim())) return error(res, 400, "invalid_request", "„chosen.task_id“ muss eine Aufgaben-ID sein");
+              next.chosen = { on: day(c.on)!, task_id: c.task_id.trim() };
+            } else next.chosen = null;
+          }
+          focus = next;
+        } else if (method !== "GET") return error(res, 405, "invalid_request", "Methode nicht erlaubt.");
+        return send(res, 200, focus);
       }
       if (path === "/api/settings/calendar") {
         if (method === "POST") {

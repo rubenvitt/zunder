@@ -1,0 +1,642 @@
+{
+  "name": "wochenbilanz-winterzeit",
+  "description": "Wochenbilanz der ISO-Woche 2026-W44 in Europe/Berlin (Montag 26.10. bis Sonntag 1.11., direkt nach dem Ende der Sommerzeit): erledigte, lebende Aufgaben außerhalb von Dev-Projekten nach dem Kalendertag von status_changed_at in Ortszeit, Unteraufgaben eingeschlossen; verworfene, gelöschte, offene, wieder geöffnete und Dev-Aufgaben zählen nicht. Grenzen: Sonntag 25.10. 23:30 MEZ (22:30 UTC) gehört noch zur Vorwoche, Montag 0:00 MEZ (23:00 UTC) schon zu W44, Sonntag 1.11. 23:59:59,999 noch, Montag 2.11. 0:00 nicht mehr. Ohne Gewicht bzw. Für wen zählt unter none.",
+  "kind": "week_balance",
+  "time_zone": "Europe/Berlin",
+  "week": "2026-W44",
+  "state": [
+    {
+      "op_id": "w530000000e0000000000001",
+      "entity": "area",
+      "entity_id": "w530000000a0000000000001",
+      "field": "name",
+      "value": "Haus",
+      "hlc": "1790841600000:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000002",
+      "entity": "project",
+      "entity_id": "w530000000b0000000000002",
+      "field": "name",
+      "value": "Garten",
+      "hlc": "1790841600001:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000003",
+      "entity": "project",
+      "entity_id": "w530000000b0000000000002",
+      "field": "area_id",
+      "value": "w530000000a0000000000001",
+      "hlc": "1790841600002:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000004",
+      "entity": "project",
+      "entity_id": "w530000000b0000000000003",
+      "field": "name",
+      "value": "App",
+      "hlc": "1790841600003:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000005",
+      "entity": "project",
+      "entity_id": "w530000000b0000000000003",
+      "field": "area_id",
+      "value": "w530000000a0000000000001",
+      "hlc": "1790841600004:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000006",
+      "entity": "project",
+      "entity_id": "w530000000b0000000000003",
+      "field": "kind",
+      "value": "dev",
+      "hlc": "1790841600005:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000007",
+      "entity": "project",
+      "entity_id": "w530000000b0000000000003",
+      "field": "repo",
+      "value": "example/app",
+      "hlc": "1790841600006:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000008",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000004",
+      "field": "title",
+      "value": "Laufen",
+      "hlc": "1792483200007:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000009",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000004",
+      "field": "location",
+      "value": {
+        "kind": "loose"
+      },
+      "hlc": "1792483200007:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000010",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000004",
+      "field": "weight",
+      "value": "glut",
+      "hlc": "1792483200007:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000011",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000004",
+      "field": "for_whom",
+      "value": "mich",
+      "hlc": "1792483200007:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000012",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000004",
+      "field": "status",
+      "value": "done",
+      "hlc": "1793185200000:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000013",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000005",
+      "field": "title",
+      "value": "Steuer, Montag 0:00",
+      "hlc": "1792483200012:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000014",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000005",
+      "field": "location",
+      "value": {
+        "kind": "loose"
+      },
+      "hlc": "1792483200012:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000015",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000005",
+      "field": "weight",
+      "value": "brand",
+      "hlc": "1792483200012:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000016",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000005",
+      "field": "for_whom",
+      "value": "uns",
+      "hlc": "1792483200012:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000017",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000005",
+      "field": "status",
+      "value": "done",
+      "hlc": "1792969200000:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000018",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000006",
+      "field": "title",
+      "value": "Sonntag 23:30 Winterzeit",
+      "hlc": "1792483200017:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000019",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000006",
+      "field": "location",
+      "value": {
+        "kind": "loose"
+      },
+      "hlc": "1792483200017:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000020",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000006",
+      "field": "weight",
+      "value": "rauch",
+      "hlc": "1792483200017:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000021",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000006",
+      "field": "for_whom",
+      "value": "andere",
+      "hlc": "1792483200017:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000022",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000006",
+      "field": "status",
+      "value": "done",
+      "hlc": "1792967400000:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000023",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000007",
+      "field": "title",
+      "value": "Sonntag 23:59:59,999",
+      "hlc": "1792483200022:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000024",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000007",
+      "field": "location",
+      "value": {
+        "kind": "loose"
+      },
+      "hlc": "1792483200022:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000025",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000007",
+      "field": "weight",
+      "value": "rauch",
+      "hlc": "1792483200022:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000026",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000007",
+      "field": "for_whom",
+      "value": "andere",
+      "hlc": "1792483200022:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000027",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000007",
+      "field": "status",
+      "value": "done",
+      "hlc": "1793573999999:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000028",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000008",
+      "field": "title",
+      "value": "Montag danach 0:00",
+      "hlc": "1792483200027:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000029",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000008",
+      "field": "location",
+      "value": {
+        "kind": "loose"
+      },
+      "hlc": "1792483200027:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000030",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000008",
+      "field": "weight",
+      "value": "asche",
+      "hlc": "1792483200027:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000031",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000008",
+      "field": "status",
+      "value": "done",
+      "hlc": "1793574000000:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000032",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000009",
+      "field": "title",
+      "value": "Ohne Einteilung",
+      "hlc": "1792483200031:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000033",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000009",
+      "field": "location",
+      "value": {
+        "kind": "loose"
+      },
+      "hlc": "1792483200031:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000034",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000009",
+      "field": "status",
+      "value": "done",
+      "hlc": "1793286000000:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000035",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000010",
+      "field": "title",
+      "value": "Schuhe (Unteraufgabe)",
+      "hlc": "1792483200034:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000036",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000010",
+      "field": "location",
+      "value": {
+        "kind": "loose"
+      },
+      "hlc": "1792483200034:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000037",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000010",
+      "field": "parent_id",
+      "value": "w530000000t0000000000004",
+      "hlc": "1792483200034:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000038",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000010",
+      "field": "weight",
+      "value": "asche",
+      "hlc": "1792483200034:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000039",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000010",
+      "field": "status",
+      "value": "done",
+      "hlc": "1793350800000:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000040",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000011",
+      "field": "title",
+      "value": "Verworfen",
+      "hlc": "1792483200039:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000041",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000011",
+      "field": "location",
+      "value": {
+        "kind": "loose"
+      },
+      "hlc": "1792483200039:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000042",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000011",
+      "field": "weight",
+      "value": "brand",
+      "hlc": "1792483200039:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000043",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000011",
+      "field": "status",
+      "value": "dropped",
+      "hlc": "1793188800000:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000044",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000012",
+      "field": "title",
+      "value": "Ticket im Dev-Projekt",
+      "hlc": "1792483200043:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000045",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000012",
+      "field": "location",
+      "value": {
+        "kind": "project",
+        "id": "w530000000b0000000000003"
+      },
+      "hlc": "1792483200043:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000046",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000012",
+      "field": "weight",
+      "value": "rauch",
+      "hlc": "1792483200043:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000047",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000012",
+      "field": "status",
+      "value": "done",
+      "hlc": "1793188800000:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000048",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000013",
+      "field": "title",
+      "value": "Gelöscht",
+      "hlc": "1792483200047:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000049",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000013",
+      "field": "location",
+      "value": {
+        "kind": "loose"
+      },
+      "hlc": "1792483200047:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000050",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000013",
+      "field": "weight",
+      "value": "glut",
+      "hlc": "1792483200047:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000051",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000013",
+      "field": "status",
+      "value": "done",
+      "hlc": "1793188800000:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000052",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000013",
+      "field": "deleted",
+      "value": true,
+      "hlc": "1793275200000:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000053",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000014",
+      "field": "title",
+      "value": "Offen",
+      "hlc": "1792483200052:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000054",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000014",
+      "field": "location",
+      "value": {
+        "kind": "loose"
+      },
+      "hlc": "1792483200052:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000055",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000014",
+      "field": "weight",
+      "value": "glut",
+      "hlc": "1792483200052:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000056",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000014",
+      "field": "for_whom",
+      "value": "mich",
+      "hlc": "1792483200052:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000057",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000015",
+      "field": "title",
+      "value": "Wieder geöffnet",
+      "hlc": "1792483200056:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000058",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000015",
+      "field": "location",
+      "value": {
+        "kind": "loose"
+      },
+      "hlc": "1792483200056:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000059",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000015",
+      "field": "weight",
+      "value": "glut",
+      "hlc": "1792483200056:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000060",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000015",
+      "field": "status",
+      "value": "done",
+      "hlc": "1793102400000:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000061",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000015",
+      "field": "status",
+      "value": "open",
+      "hlc": "1793188800000:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000062",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000016",
+      "field": "title",
+      "value": "Zweimal erledigt",
+      "hlc": "1792483200061:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000063",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000016",
+      "field": "location",
+      "value": {
+        "kind": "loose"
+      },
+      "hlc": "1792483200061:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000064",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000016",
+      "field": "weight",
+      "value": "glut",
+      "hlc": "1792483200061:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000065",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000016",
+      "field": "for_whom",
+      "value": "mich",
+      "hlc": "1792483200061:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000066",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000016",
+      "field": "status",
+      "value": "done",
+      "hlc": "1792584000000:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000067",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000016",
+      "field": "status",
+      "value": "in_progress",
+      "hlc": "1793102400000:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000068",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000016",
+      "field": "status",
+      "value": "done",
+      "hlc": "1793448000000:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000069",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000017",
+      "field": "title",
+      "value": "Im Projekt",
+      "hlc": "1792483200068:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000070",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000017",
+      "field": "location",
+      "value": {
+        "kind": "project",
+        "id": "w530000000b0000000000002"
+      },
+      "hlc": "1792483200068:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000071",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000017",
+      "field": "weight",
+      "value": "rauch",
+      "hlc": "1792483200068:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000072",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000017",
+      "field": "for_whom",
+      "value": "uns",
+      "hlc": "1792483200068:00000:w"
+    },
+    {
+      "op_id": "w530000000e0000000000073",
+      "entity": "task",
+      "entity_id": "w530000000t0000000000017",
+      "field": "status",
+      "value": "done",
+      "hlc": "1793084400000:00000:w"
+    }
+  ],
+  "expected": {
+    "week": "2026-W44",
+    "from": "2026-10-26",
+    "to": "2026-11-01",
+    "total": 7,
+    "by_weight": {
+      "brand": 1,
+      "glut": 2,
+      "rauch": 2,
+      "asche": 1,
+      "none": 1
+    },
+    "by_for_whom": {
+      "mich": 2,
+      "uns": 2,
+      "andere": 1,
+      "none": 2
+    }
+  }
+}

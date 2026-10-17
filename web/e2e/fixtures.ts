@@ -84,6 +84,13 @@ export async function openApp(page: Page, hash = "#/heute"): Promise<void> {
   await expect(page.locator(".app")).toBeVisible();
 }
 
+/** A real reload (openApp with the same hash only moves within the page). */
+export async function reloadApp(page: Page): Promise<void> {
+  await page.reload();
+  await expect(page.locator("html[data-ready]")).toBeAttached();
+  await expect(page.locator(".app")).toBeVisible();
+}
+
 export async function entityFields(page: Page, entity: string, id: string): Promise<Record<string, Json>> {
   const res = await page.request.get("/api/snapshot");
   const body = (await res.json()) as { entities: { entity: string; entity_id: string; fields: Record<string, { value: Json }> }[] };

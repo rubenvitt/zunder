@@ -183,12 +183,14 @@ fn task_view_serializes_with_contract_names() {
         op(5, T, 4, "weight", json!("glut"), h(1, 4, "a")),
         op(6, T, 4, "for_whom", json!("andere"), h(1, 5, "a")),
         op(7, T, 4, "deferrals", json!(2), h(1, 6, "a")),
+        op(8, T, 4, "waiting_on", json!("Anna"), h(1, 7, "a")),
     ];
     let s = apply_all(&ops);
     let task = s.task(uid(4)).unwrap();
     assert_eq!(task.weight, Some(crate::Weight::Glut));
     assert_eq!(task.for_whom, Some(crate::ForWhom::Andere));
     assert_eq!(task.deferrals, 2);
+    assert_eq!(task.waiting_on.as_deref(), Some("Anna"));
     let v = serde_json::to_value(task).unwrap();
     assert_eq!(v["type"], json!("aufgabe"));
     assert_eq!(v["location"], json!({"kind": "inbox"}));
@@ -198,6 +200,7 @@ fn task_view_serializes_with_contract_names() {
     assert_eq!(v["weight"], json!("glut"));
     assert_eq!(v["for_whom"], json!("andere"));
     assert_eq!(v["deferrals"], json!(2));
+    assert_eq!(v["waiting_on"], json!("Anna"));
     assert_eq!(v["parent_id"], Value::Null);
 }
 

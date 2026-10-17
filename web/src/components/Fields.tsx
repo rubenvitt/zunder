@@ -19,6 +19,8 @@ interface TextFieldProps {
   autosize?: boolean;
   /** A single-line value shown wrapped over several lines (e.g. a long title); Enter commits. */
   wrap?: boolean;
+  /** ID of a <datalist> with suggestions (single-line fields). */
+  list?: string;
 }
 
 /** Grows a textarea to fit its content. */
@@ -84,7 +86,7 @@ export function TextField(props: TextFieldProps) {
   return (
     <Show
       when={props.multiline || props.wrap}
-      fallback={<input {...common} type={props.type ?? "text"} value={draft()} onInput={(e) => onInput(e.currentTarget.value)} />}
+      fallback={<input {...common} type={props.type ?? "text"} list={props.list} value={draft()} onInput={(e) => onInput(e.currentTarget.value)} />}
     >
       <textarea
         ref={area}

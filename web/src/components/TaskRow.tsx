@@ -2,7 +2,7 @@ import { createEffect, createSignal, For, Show, type JSX } from "solid-js";
 import { isClosed, isClaimActive, isDevLocation, isFlameRunning } from "../sync/derived";
 import { needsDecision } from "../sync/defer";
 import type { Task } from "../sync/types";
-import { deferralsLabel, describeRecurrence, FOR_WHOM_HINTS, FOR_WHOM_LABELS, locationLabel, PHOENIX_LABELS, STATUS_LABELS, TYPE_LABELS, WEIGHT_HINTS, WEIGHT_LABELS } from "../labels";
+import { deferralsLabel, describeRecurrence, FOR_WHOM_HINTS, FOR_WHOM_LABELS, locationLabel, PHOENIX_LABELS, STATUS_LABELS, TYPE_LABELS, waitingLabel, WEIGHT_HINTS, WEIGHT_LABELS } from "../labels";
 import { data, now, taskIndex } from "../state/store";
 import { Icon } from "./Icon";
 import { CheckButton, DueChip, RefButton, SubtaskToggle, SubtaskTree } from "./TaskBits";
@@ -95,6 +95,14 @@ export function TaskMeta(props: { task: Task; showLocation?: boolean; showRef?: 
               {blockers().length}
             </span>
           </Show>
+        )}
+      </Show>
+      <Show when={!isClosed(props.task.status) && props.task.waiting_on}>
+        {(name) => (
+          <span class="chip chip-waiting-on" title={`Die Entscheidung liegt bei ${name()}`}>
+            <Icon name="user" size={12} />
+            {waitingLabel(name())}
+          </span>
         )}
       </Show>
       <DueChip task={props.task} />

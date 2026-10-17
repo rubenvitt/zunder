@@ -24,6 +24,7 @@ use crate::auth::Principal;
 use crate::calendar::{CalendarSettings, CreatedCalendarFeed};
 use crate::error::{AppError, AppResult};
 use crate::flame::{self, FlameOutcome};
+use crate::focus::{FocusSettings, FocusUpdate};
 use crate::intake::{ChannelInfo, CreatedChannel};
 use crate::oauth;
 use crate::settings::{TimingCheck, TimingSettings, TimingUpdate};
@@ -63,6 +64,10 @@ pub fn routes() -> Router<App> {
         )
         .route("/settings/timing/check", post(check_timing))
         .route("/settings/timing/projects", get(timing_projects))
+        .route(
+            "/settings/focus",
+            get(focus_settings).put(update_focus_settings),
+        )
         .route(
             "/settings/calendar",
             get(calendar_settings)
@@ -436,6 +441,23 @@ async fn timing_projects(
 ) -> AppResult<Json<Vec<TimingProject>>> {
     require_browser_for_settings(&principal)?;
     Ok(Json(app.timing_projects().await?))
+}
+
+async fn focus_settings(
+    State(app): State<App>,
+    principal: Principal,
+) -> AppResult<Json<FocusSettings>> {
+    require_browser_for_settings(&principal)?;
+    Ok(Json(app.focus_settings().await?))
+}
+
+async fn update_focus_settings(
+    State(app): State<App>,
+    principal: Principal,
+    ApiJson(body): ApiJson<FocusUpdate>,
+) -> AppResult<Json<FocusSettings>> {
+    require_browser_for_settings(&principal)?;
+    Ok(Json(app.update_focus_settings(body).await?))
 }
 
 async fn calendar_settings(

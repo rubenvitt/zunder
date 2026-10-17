@@ -6,10 +6,17 @@ import type { Location, ProjectKind, Task } from "../sync/types";
 
 export type ToastKind = "info" | "warning" | "error";
 
+/** A button in a toast: runs and closes the toast. */
+export interface ToastAction {
+  label: string;
+  run: () => void;
+}
+
 export interface Toast {
   id: number;
   kind: ToastKind;
   message: string;
+  actions?: ToastAction[];
 }
 
 const [toasts, setToasts] = createSignal<Toast[]>([]);
@@ -20,6 +27,16 @@ export { toasts };
 export function toast(message: string, kind: ToastKind = "info", durationMs = kind === "error" ? 7000 : 4000): void {
   const id = ++toastSeq;
   setToasts((list) => [...list.slice(-3), { id, kind, message }]);
+  setTimeout(() => dismissToast(id), durationMs);
+}
+
+/**
+ * A quiet question with a few answers (e.g. after a quick capture). Ignoring it is an answer
+ * too: it goes away by itself and nothing changes.
+ */
+export function askToast(message: string, actions: ToastAction[], durationMs = 10_000): void {
+  const id = ++toastSeq;
+  setToasts((list) => [...list.slice(-3), { id, kind: "info", message, actions }]);
   setTimeout(() => dismissToast(id), durationMs);
 }
 
@@ -140,8 +157,15 @@ export interface DeferRequest {
 
 export const [deferRequest, setDeferRequest] = createSignal<DeferRequest | null>(null);
 
+/** "Zurückgeben" of a Rauch task (contract 5.1): the dialog with sentence, name and reminder. */
+export interface HandBackRequest {
+  taskId: string;
+}
+
+export const [handBackRequest, setHandBackRequest] = createSignal<HandBackRequest | null>(null);
+
 export function anyOverlayOpen(): boolean {
-  return captureOpen() || helpOpen() || palette() !== null || structureEdit() !== null || dropRequest() !== null || deferRequest() !== null;
+  return captureOpen() || helpOpen() || palette() !== null || structureEdit() !== null || dropRequest() !== null || deferRequest() !== null || handBackRequest() !== null;
 }
 
 // ---- Detail panel layout (per device, remembered) -----------------------
@@ -207,4 +231,13 @@ export { devProjectFilter };
 export function setDevProjectFilter(ids: string[]): void {
   setDevProjectFilterSignal(ids);
   store("zunder.devProjectFilter", ids.join(","));
+}
+
+// Heute: the Wochenspiegel is open or collapsed, remembered per device (open by default).
+const [weekMirrorOpen, setWeekMirrorOpenSignal] = createSignal(stored("zunder.weekMirrorOpen") !== "0");
+export { weekMirrorOpen };
+
+export function setWeekMirrorOpen(open: boolean): void {
+  setWeekMirrorOpenSignal(open);
+  store("zunder.weekMirrorOpen", open ? "1" : "0");
 }

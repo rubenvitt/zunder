@@ -1,7 +1,7 @@
 // User intents → sync engine changes. Every mutation goes through engine.change,
 // which validates client-side, applies optimistically and queues the push.
 
-import { hasOpenChildren, isClosed, isRecurring, sortKey } from "../sync/derived";
+import { hasOpenChildren, isClosed, isDevLocation, isRecurring, sortKey } from "../sync/derived";
 import type { Change } from "../sync/engine";
 import { rankBetween } from "../sync/rank";
 import { recurrenceValue } from "../sync/recurrence";
@@ -13,7 +13,8 @@ import { api, data, getEngine, now, taskIndex } from "./store";
 import { expectNextInstance } from "./series";
 import { setDeferRequest, setDetailId, setDropRequest, setSelectedId, toast } from "./ui";
 import { deferDay, deferFields, needsDecision, type DeferTarget } from "../sync/defer";
-import { formatDateLabel, localDate, toRfc3339Local } from "../sync/dates";
+import { formatDateLabel, formatInstant, localDate, toRfc3339Local } from "../sync/dates";
+import { handbackRemindAt, offersHandBack, pickAlternative } from "../sync/handback";
 
 function apply(changes: Change[]): boolean {
   const issues = getEngine().change(changes);
@@ -205,6 +206,58 @@ export function letRest(id: string): boolean {
   const ok = updateTask(id, { due: null, remind_at: null, undated_ack: toRfc3339Local(new Date(now())), deferrals: null });
   if (ok) toast(`„${shorten(task.title)}“ ruht, ohne Datum. Die Deadline-Prüfung fragt erst später wieder.`);
   return ok;
+}
+
+// ---- "Zurückgeben" (contract 5.1) -------------------------------------------
+
+function inDevProject(task: Task): boolean {
+  return isDevLocation(taskIndex().location(task), (id) => data.projects[id]);
+}
+
+/** Whether a task offers "Zurückgeben" (rule in sync/handback): Rauch, open, waiting on nobody, outside dev projects. */
+export function canHandBack(task: Task): boolean {
+  return offersHandBack(task, inDevProject(task));
+}
+
+/** The second task the sentence offers (rule in sync/handback). */
+export function handBackAlternative(task: Task): Task | null {
+  const index = taskIndex();
+  return pickAlternative(task, index.byId.values(), (t) => index.isDeleted(t) || inDevProject(t));
+}
+
+/**
+ * Hands a task back: it waits on `name` and is blocked until the answer, with a reminder in
+ * three working days when `remind` is set (one push group). `sentence` goes to the clipboard.
+ */
+export function handBack(id: string, name: string, remind: boolean, sentence = ""): boolean {
+  const task = data.tasks[id];
+  const waiting = name.trim();
+  if (!task || !waiting) return false;
+  const fields: Record<string, JsonValue> = { waiting_on: waiting, status: "blocked" };
+  const remindAt = remind ? handbackRemindAt(new Date(now())) : null;
+  if (remindAt) fields.remind_at = remindAt;
+  if (!updateTask(id, fields)) return false;
+  let copied = "";
+  if (sentence && navigator.clipboard) {
+    copied = "Satz kopiert. ";
+    void navigator.clipboard.writeText(sentence).catch(() => toast("Kopieren nicht möglich.", "warning"));
+  } else if (sentence) toast("Kopieren nicht möglich.", "warning");
+  const reminder = remindAt ? ` Erinnerung: ${formatInstant(remindAt, new Date(now()))}.` : "";
+  toast(`${copied}„${shorten(task.title)}“ wartet auf ${waiting}.${reminder}`);
+  return true;
+}
+
+// ---- Zusagen-Bremse (contract 5.1) --------------------------------------------
+
+/** "Selbst verpflichtet": nobody waits on it after all, so the task is for oneself. */
+export function selfCommitted(id: string): boolean {
+  return updateTask(id, { for_whom: "mich" });
+}
+
+/** Sets or clears whom a task waits on (trimmed, blank = nobody); the server sets the status. */
+export function setWaitingOn(id: string, name: string): boolean {
+  const waiting = name.trim();
+  return updateTask(id, { waiting_on: waiting || null });
 }
 
 export function moveTask(id: string, location: Location): boolean {

@@ -2,11 +2,12 @@ import { createMemo, createSignal, For, onMount, Show, untrack } from "solid-js"
 import { captureContext } from "../capture/context";
 import { parseCapture, slugify } from "../capture/parse";
 import { formatDue } from "../sync/dates";
-import { describeRecurrence, FOR_WHOM_HINTS, FOR_WHOM_LABELS, locationLabel, WEIGHT_HINTS, WEIGHT_LABELS } from "../labels";
-import { createTask } from "../state/actions";
+import { isDevLocation } from "../sync/derived";
+import { COMMITMENT_QUESTION, describeRecurrence, FOR_WHOM_HINTS, FOR_WHOM_LABELS, locationLabel, WEIGHT_HINTS, WEIGHT_LABELS } from "../labels";
+import { createTask, selfCommitted, shorten } from "../state/actions";
 import { route } from "../state/router";
 import { areaList, data, now, projectList } from "../state/store";
-import { setCaptureOpen, toast } from "../state/ui";
+import { askToast, setCaptureOpen, toast } from "../state/ui";
 import { Icon } from "./Icon";
 import { Modal } from "./Modal";
 
@@ -69,7 +70,20 @@ export function QuickCapture() {
     // Quick capture only creates root tasks, so a rhythm is always allowed (contract 2.5).
     const id = createTask({ title: result.title, location, due: result.due, remind_at: result.remind_at, recurrence: result.recurrence, weight: result.weight, for_whom: result.for_whom });
     if (!id) return;
-    toast(`Erfasst in ${locationLabel(location)}.`);
+    // "Zugesagt oder selbst verpflichtet?" (contract 5.1), outside dev projects like the chips.
+    if (result.for_whom === "andere" && !isDevLocation(location, (pid) => data.projects[pid])) {
+      // Asked after saving, not in the preview: Enter stays one keystroke, and the answer
+      // belongs to the task that now exists. Ignoring it changes nothing.
+      askToast(`Erfasst in ${locationLabel(location)}. ${COMMITMENT_QUESTION}`, [
+        { label: "Zugesagt", run: () => {} },
+        {
+          label: "Selbst verpflichtet",
+          run: () => {
+            if (selfCommitted(id)) toast(`„${shorten(result.title)}“ ist für dich. ${FOR_WHOM_HINTS.mich}.`);
+          },
+        },
+      ]);
+    } else toast(`Erfasst in ${locationLabel(location)}.`);
     setText("");
     setCaptureOpen(false);
   }

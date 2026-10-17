@@ -252,6 +252,12 @@ const FOR_WHOM: &str = "Für wen (optional), gemeint ist: Wer wartet, wenn es si
     (absprechen), andere = jemand hat eine Zusage und wartet darauf (wer verschiebt, sagt \
     Bescheid).";
 
+const WAITING_ON: &str = "Wartet auf (optional): wer gerade die Entscheidung hat, ein Name wie \
+    „Anna“ (getrimmt, höchstens 500 Zeichen; leer wie null). Setzen macht eine offene Aufgabe \
+    blocked; wird der Name entfernt und blockiert sonst nichts, wird sie wieder open. \
+    Zurückgeben einer Rauch-Aufgabe: waiting_on setzen und eine Erinnerung (remind_at) zum \
+    Nachfragen.";
+
 /// An optional code, nullable for update_task.
 fn optional_code(codes: Vec<&'static str>, description: &str, nullable: bool) -> Value {
     if nullable {
@@ -303,6 +309,14 @@ fn task_fields(nullable: bool) -> Vec<(&'static str, Value)> {
             "for_whom",
             optional_code(ForWhom::codes(), FOR_WHOM, nullable),
         ),
+        (
+            "waiting_on",
+            if nullable {
+                nullable_string(&format!("{WAITING_ON} null entfernt den Wert."))
+            } else {
+                string(WAITING_ON)
+            },
+        ),
         ("recurrence", recurrence(nullable)),
         ("blocked_by", blocked_by(nullable)),
         ("plan", text("Plan (Markdown), z. B. aus dem Dev-Modus.")),
@@ -339,6 +353,14 @@ const DEFER_TASK: &str = "Verschiebt eine Aufgabe auf später („Heute nicht“
     (update_task status dropped), neu geschnitten (Titel oder Beschreibung schärfen oder \
     decompose_task, dann deferrals 0) oder ruhen gelassen wird (due null, undated_ack true, \
     deferrals 0).";
+
+const WEEK_BALANCE: &str = "Wochenbilanz: zählt die in einer ISO-Woche erledigten Aufgaben \
+    (Status done, Unteraufgaben eingeschlossen, verworfene nicht, Dev-Projekte ausgenommen) nach \
+    Gewicht und nach Für wen, so wie der Wochenspiegel der Oberfläche. Maßgeblich ist der \
+    Kalendertag der Statusänderung (status_changed_at) in der Zeitzone des Servers, Montag bis \
+    Sonntag. Ergebnis: week, from und to (Montag und Sonntag, JJJJ-MM-TT), total, by_weight \
+    (brand, glut, rauch, asche, none = ohne Gewicht) und by_for_whom (mich, uns, andere, none = \
+    ohne Angabe). Für Wochenrückblick und Feuer-Review: sachlich spiegeln, nicht bewerten.";
 
 /// All tools in a stable order.
 pub fn definitions() -> Vec<ToolDef> {
@@ -387,6 +409,14 @@ pub fn definitions() -> Vec<ToolDef> {
                     (
                         "for_whom",
                         enum_list(ForWhom::codes(), "Nur Aufgaben für diese Personen (mich, uns, andere)."),
+                    ),
+                    (
+                        "has_waiting_on",
+                        boolean("true: nur Aufgaben, die auf jemanden warten (waiting_on gesetzt); false: nur ohne."),
+                    ),
+                    (
+                        "waiting_on",
+                        string("Nur Aufgaben, die auf diese Person warten (Name wie in waiting_on, Groß- und Kleinschreibung egal)."),
                     ),
                     (
                         "min_deferrals",
@@ -713,6 +743,21 @@ pub fn definitions() -> Vec<ToolDef> {
                 vec![(
                     "include_archived",
                     boolean("Auch archivierte Bereiche und abgeschlossene Projekte (Standard false)."),
+                )],
+                &[],
+            ),
+            read_only: true,
+            destructive: false,
+            idempotent: true,
+        },
+        ToolDef {
+            name: "week_balance",
+            title: "Wochenbilanz",
+            description: WEEK_BALANCE,
+            input_schema: object(
+                vec![(
+                    "week",
+                    string("ISO-Woche JJJJ-Www, z. B. 2026-W44. Standard: die aktuelle Woche in der Zeitzone des Servers."),
                 )],
                 &[],
             ),

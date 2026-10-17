@@ -7,7 +7,10 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use serde_json::{Map, Value};
-use zunder_core::{validate_push, Hlc, Op, State};
+use time::{Date, Month, OffsetDateTime, UtcOffset, Weekday};
+use zunder_core::balance::week_balance;
+use zunder_core::recurrence::LocalZone;
+use zunder_core::{validate_push, Hlc, IsoWeek, Op, State};
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -32,6 +35,39 @@ enum Vector {
         push: Vec<Op>,
         expected_rejected: BTreeMap<String, String>,
     },
+    /// `state` is merged, then the balance of `week` in `time_zone` must
+    /// equal `expected` (shape of `zunder_core::balance::WeekBalance`).
+    WeekBalance {
+        name: String,
+        time_zone: String,
+        week: IsoWeek,
+        state: Vec<Op>,
+        expected: Value,
+    },
+}
+
+/// Europe/Berlin without a time zone database: CET, and CEST from the last
+/// Sunday of March to the last Sunday of October, 01:00 UTC each (EU rule
+/// since 1996).
+struct Berlin;
+
+impl Berlin {
+    fn last_sunday(year: i32, month: Month) -> OffsetDateTime {
+        let mut day = Date::from_calendar_date(year, month, month.length(year)).unwrap();
+        while day.weekday() != Weekday::Sunday {
+            day = day.previous_day().unwrap();
+        }
+        day.with_hms(1, 0, 0).unwrap().assume_utc()
+    }
+}
+
+impl LocalZone for Berlin {
+    fn offset_at(&self, instant: OffsetDateTime) -> UtcOffset {
+        let year = instant.to_offset(UtcOffset::UTC).year();
+        let summer = Self::last_sunday(year, Month::March) <= instant
+            && instant < Self::last_sunday(year, Month::October);
+        UtcOffset::from_hms(if summer { 2 } else { 1 }, 0, 0).unwrap()
+    }
 }
 
 fn vector_files() -> Vec<PathBuf> {
@@ -111,6 +147,7 @@ fn shared_vectors() {
     let mut merge_count = 0;
     let mut hlc_count = 0;
     let mut validate_count = 0;
+    let mut balance_count = 0;
     for path in &files {
         let file_name = path.file_name().unwrap().to_string_lossy().into_owned();
         match load(path) {
@@ -174,6 +211,29 @@ fn shared_vectors() {
                     );
                 }
             }
+            Vector::WeekBalance {
+                name,
+                time_zone,
+                week,
+                state,
+                expected,
+            } => {
+                balance_count += 1;
+                assert!(
+                    file_name.contains(&name),
+                    "{file_name}: name {name:?} does not match"
+                );
+                assert_eq!(
+                    time_zone, "Europe/Berlin",
+                    "{name}: only Europe/Berlin is modelled"
+                );
+                for (label, perm) in permutations(&state) {
+                    let merged = State::from_ops(&perm);
+                    let balance =
+                        serde_json::to_value(week_balance(&merged, week, &Berlin)).unwrap();
+                    assert_eq!(balance, expected, "vector {name}, order: {label}");
+                }
+            }
             Vector::HlcOrder { name, sorted } => {
                 hlc_count += 1;
                 assert!(
@@ -206,6 +266,10 @@ fn shared_vectors() {
         "expected at least 10 merge vectors, found {merge_count}"
     );
     assert!(hlc_count >= 1, "expected at least one hlc_order vector");
+    assert!(
+        balance_count >= 1,
+        "expected at least one week_balance vector"
+    );
     assert!(
         validate_count >= 10,
         "expected at least 10 validate vectors, found {validate_count}"

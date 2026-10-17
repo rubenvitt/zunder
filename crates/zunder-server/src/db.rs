@@ -654,6 +654,12 @@ pub fn set_setting(conn: &Connection, key: &str, value: &str, now: i64) -> anyho
     Ok(())
 }
 
+/// Removes one setting.
+pub fn delete_setting(conn: &Connection, key: &str) -> anyhow::Result<()> {
+    conn.execute("DELETE FROM settings WHERE key = ?1", [key])?;
+    Ok(())
+}
+
 /// Removes every setting whose key starts with `prefix`.
 pub fn delete_settings(conn: &Connection, prefix: &str) -> anyhow::Result<usize> {
     Ok(conn.execute(

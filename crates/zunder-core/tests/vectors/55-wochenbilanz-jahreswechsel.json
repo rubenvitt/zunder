@@ -1,0 +1,214 @@
+{
+  "name": "wochenbilanz-jahreswechsel",
+  "description": "Wochenbilanz der ISO-Woche 2026-W53 (Montag 28.12.2026 bis Sonntag 3.1.2027): Die Woche reicht ins neue Jahr; Sonntag 3.1. 23:00 MEZ zählt noch, Montag 4.1. 0:00 MEZ (3.1. 23:00 UTC) gehört zu 2027-W01.",
+  "kind": "week_balance",
+  "time_zone": "Europe/Berlin",
+  "week": "2026-W53",
+  "state": [
+    {
+      "op_id": "w550000000e0000000000001",
+      "entity": "task",
+      "entity_id": "w550000000t0000000000001",
+      "field": "title",
+      "value": "Sonntag 27.12.",
+      "hlc": "1797753600000:00000:w"
+    },
+    {
+      "op_id": "w550000000e0000000000002",
+      "entity": "task",
+      "entity_id": "w550000000t0000000000001",
+      "field": "location",
+      "value": {
+        "kind": "loose"
+      },
+      "hlc": "1797753600000:00000:w"
+    },
+    {
+      "op_id": "w550000000e0000000000003",
+      "entity": "task",
+      "entity_id": "w550000000t0000000000001",
+      "field": "weight",
+      "value": "glut",
+      "hlc": "1797753600000:00000:w"
+    },
+    {
+      "op_id": "w550000000e0000000000004",
+      "entity": "task",
+      "entity_id": "w550000000t0000000000001",
+      "field": "status",
+      "value": "done",
+      "hlc": "1798372800000:00000:w"
+    },
+    {
+      "op_id": "w550000000e0000000000005",
+      "entity": "task",
+      "entity_id": "w550000000t0000000000002",
+      "field": "title",
+      "value": "Montag 28.12.",
+      "hlc": "1797753600004:00000:w"
+    },
+    {
+      "op_id": "w550000000e0000000000006",
+      "entity": "task",
+      "entity_id": "w550000000t0000000000002",
+      "field": "location",
+      "value": {
+        "kind": "loose"
+      },
+      "hlc": "1797753600004:00000:w"
+    },
+    {
+      "op_id": "w550000000e0000000000007",
+      "entity": "task",
+      "entity_id": "w550000000t0000000000002",
+      "field": "weight",
+      "value": "glut",
+      "hlc": "1797753600004:00000:w"
+    },
+    {
+      "op_id": "w550000000e0000000000008",
+      "entity": "task",
+      "entity_id": "w550000000t0000000000002",
+      "field": "for_whom",
+      "value": "uns",
+      "hlc": "1797753600004:00000:w"
+    },
+    {
+      "op_id": "w550000000e0000000000009",
+      "entity": "task",
+      "entity_id": "w550000000t0000000000002",
+      "field": "status",
+      "value": "done",
+      "hlc": "1798459200000:00000:w"
+    },
+    {
+      "op_id": "w550000000e0000000000010",
+      "entity": "task",
+      "entity_id": "w550000000t0000000000003",
+      "field": "title",
+      "value": "Neujahr",
+      "hlc": "1797753600009:00000:w"
+    },
+    {
+      "op_id": "w550000000e0000000000011",
+      "entity": "task",
+      "entity_id": "w550000000t0000000000003",
+      "field": "location",
+      "value": {
+        "kind": "loose"
+      },
+      "hlc": "1797753600009:00000:w"
+    },
+    {
+      "op_id": "w550000000e0000000000012",
+      "entity": "task",
+      "entity_id": "w550000000t0000000000003",
+      "field": "weight",
+      "value": "asche",
+      "hlc": "1797753600009:00000:w"
+    },
+    {
+      "op_id": "w550000000e0000000000013",
+      "entity": "task",
+      "entity_id": "w550000000t0000000000003",
+      "field": "for_whom",
+      "value": "mich",
+      "hlc": "1797753600009:00000:w"
+    },
+    {
+      "op_id": "w550000000e0000000000014",
+      "entity": "task",
+      "entity_id": "w550000000t0000000000003",
+      "field": "status",
+      "value": "done",
+      "hlc": "1798804800000:00000:w"
+    },
+    {
+      "op_id": "w550000000e0000000000015",
+      "entity": "task",
+      "entity_id": "w550000000t0000000000004",
+      "field": "title",
+      "value": "Sonntag 3.1.",
+      "hlc": "1797753600014:00000:w"
+    },
+    {
+      "op_id": "w550000000e0000000000016",
+      "entity": "task",
+      "entity_id": "w550000000t0000000000004",
+      "field": "location",
+      "value": {
+        "kind": "loose"
+      },
+      "hlc": "1797753600014:00000:w"
+    },
+    {
+      "op_id": "w550000000e0000000000017",
+      "entity": "task",
+      "entity_id": "w550000000t0000000000004",
+      "field": "for_whom",
+      "value": "andere",
+      "hlc": "1797753600014:00000:w"
+    },
+    {
+      "op_id": "w550000000e0000000000018",
+      "entity": "task",
+      "entity_id": "w550000000t0000000000004",
+      "field": "status",
+      "value": "done",
+      "hlc": "1799013600000:00000:w"
+    },
+    {
+      "op_id": "w550000000e0000000000019",
+      "entity": "task",
+      "entity_id": "w550000000t0000000000005",
+      "field": "title",
+      "value": "Montag 4.1.",
+      "hlc": "1797753600018:00000:w"
+    },
+    {
+      "op_id": "w550000000e0000000000020",
+      "entity": "task",
+      "entity_id": "w550000000t0000000000005",
+      "field": "location",
+      "value": {
+        "kind": "loose"
+      },
+      "hlc": "1797753600018:00000:w"
+    },
+    {
+      "op_id": "w550000000e0000000000021",
+      "entity": "task",
+      "entity_id": "w550000000t0000000000005",
+      "field": "weight",
+      "value": "brand",
+      "hlc": "1797753600018:00000:w"
+    },
+    {
+      "op_id": "w550000000e0000000000022",
+      "entity": "task",
+      "entity_id": "w550000000t0000000000005",
+      "field": "status",
+      "value": "done",
+      "hlc": "1799017200000:00000:w"
+    }
+  ],
+  "expected": {
+    "week": "2026-W53",
+    "from": "2026-12-28",
+    "to": "2027-01-03",
+    "total": 3,
+    "by_weight": {
+      "brand": 0,
+      "glut": 1,
+      "rauch": 0,
+      "asche": 1,
+      "none": 1
+    },
+    "by_for_whom": {
+      "mich": 1,
+      "uns": 1,
+      "andere": 1,
+      "none": 0
+    }
+  }
+}

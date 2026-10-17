@@ -109,6 +109,7 @@ export const TASK_FIELDS = [
   "weight",
   "for_whom",
   "deferrals",
+  "waiting_on",
   "ref",
   "deleted",
 ] as const;
@@ -192,6 +193,8 @@ export interface Task extends EntityMeta {
   for_whom: ForWhom | null;
   /** How often the task was put off with "Heute nicht" (0 = never). */
   deferrals: number;
+  /** Who has the decision (a name, e.g. after handing a Rauch task back); null = nobody. */
+  waiting_on: string | null;
   /** Reference such as `ZUN-42`, assigned by the server (never by a client). */
   ref: string | null;
   /** HLC of the winning status op, or created_hlc when the status was never set. */
@@ -334,6 +337,24 @@ export interface IntakeChannel {
 /** A newly created intake channel; `token` (`zi_…`) is shown only once. */
 export interface CreatedIntakeChannel extends IntakeChannel {
   token: string;
+}
+
+/** A Glut task picked for "Erst für dich" on one day (client's calendar day). */
+export interface FocusChoice {
+  on: string;
+  task_id: string;
+}
+
+/** "Erst für dich" in Heute, see `GET /api/settings/focus` (days are the client's calendar days). */
+export interface FocusSettings {
+  dismissed_on: string | null;
+  chosen: FocusChoice | null;
+}
+
+/** `PUT /api/settings/focus`: a missing field stays, null removes it. */
+export interface FocusSettingsUpdate {
+  dismissed_on?: string | null;
+  chosen?: FocusChoice | null;
 }
 
 /** Where an effective setting comes from: the settings view or an environment variable. */

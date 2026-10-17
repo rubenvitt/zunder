@@ -24,6 +24,8 @@ import type {
   CreatedToken,
   Device,
   FlameResult,
+  FocusSettings,
+  FocusSettingsUpdate,
   HistoryEntry,
   IntakeChannel,
   Me,
@@ -410,6 +412,15 @@ export class TauriTransport implements SyncTransport, ApiClient {
   }
 
   timingProjects(): Promise<TimingProject[]> {
+    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+  }
+
+  // "Erst für dich" stays on this device in the app: the settings need a browser session.
+  focusSettings(): Promise<FocusSettings> {
+    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+  }
+
+  updateFocusSettings(_update: FocusSettingsUpdate): Promise<FocusSettings> {
     return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
   }
 

@@ -1,15 +1,19 @@
-// Heute, Inbox and Lose.
+// Heute, Inbox, Lose, Wartet auf andere and Offene Zusagen.
 
-import { createMemo, onMount, Show } from "solid-js";
+import { createMemo, For, onMount, Show } from "solid-js";
 import { EmptyState } from "../components/EmptyState";
 import { TaskList } from "../components/TaskList";
+import { FocusSection } from "../components/FocusSection";
+import { WeekMirror } from "../components/WeekMirror";
 import type { DeferTarget } from "../sync/defer";
 import type { Task } from "../sync/types";
-import { deferTask, dropTask, moveTask, shorten } from "../state/actions";
-import { inboxTasks, tasksAt, todayGroups } from "../state/selectors";
-import { activeList, pickLocation, registerList, selectedId, setCaptureOpen, setSelectedId, toast } from "../state/ui";
+import { canHandBack, deferTask, dropTask, moveTask, setWaitingOn, shorten } from "../state/actions";
+import { commitmentTasks, inboxTasks, tasksAt, todayGroups, waitingGroups } from "../state/selectors";
+import { activeList, pickLocation, registerList, selectedId, setCaptureOpen, setHandBackRequest, setSelectedId, toast } from "../state/ui";
 import { now } from "../state/store";
-import { locationLabel } from "../labels";
+import { refreshFocus } from "../state/focus";
+import { tooManyCommitments } from "../sync/commitments";
+import { COMMITMENT_HINT, commitmentsLabel, locationLabel } from "../labels";
 
 /** "Heute nicht" from the Heute list (s: tomorrow, Shift+S: next week, swipe right). */
 export const todayActions = {
@@ -30,14 +34,34 @@ export function TodayView() {
     const seen = new Set<string>();
     return [...g.flames, ...g.overdue, ...g.dueToday, ...g.reminders].filter((t) => !seen.has(t.id) && !!seen.add(t.id));
   });
-  onMount(() => registerList(all));
+  // Zusagen-Bremse: how many promises are open, shown before they press (contract 5.1).
+  const commitments = createMemo(() => commitmentTasks().length);
+  onMount(() => {
+    registerList(all);
+    // Another device may have clicked "Erst für dich" away or picked a task today.
+    void refreshFocus();
+  });
   const nothing = () => all().length === 0;
   return (
     <div class="view">
       <header class="view-head">
         <h1>Heute</h1>
         <span class="muted">{new Date(now()).toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })}</span>
+        <Show when={commitments() > 0}>
+          <span class="spacer" />
+          <span class="commitments">
+            <a class="commitments-count" href="#/zusagen" title="Jemand wartet auf deine Zusage: Liste öffnen">
+              {commitmentsLabel(commitments())}
+            </a>
+            <Show when={tooManyCommitments(commitments())}>
+              <a class="commitments-hint" href="#/zusagen">
+                {COMMITMENT_HINT}
+              </a>
+            </Show>
+          </span>
+        </Show>
       </header>
+      <FocusSection />
       <Show when={groups().flames.length > 0}>
         <section class="group group-flame">
           <h2>Laufende Flamme</h2>
@@ -69,6 +93,7 @@ export function TodayView() {
           </a>
         </EmptyState>
       </Show>
+      <WeekMirror />
     </div>
   );
 }
@@ -151,6 +176,76 @@ export function LooseView() {
         tasks={tasks()}
         label="Lose Aufgaben"
         empty={<EmptyState icon="loose" title="Keine losen Aufgaben." hint="Hier liegt, was bewusst zu keinem Bereich gehört. Aus der Inbox mit l hierher schieben." />}
+      />
+    </div>
+  );
+}
+
+/**
+ * Wartet auf andere (contract 5.1): what was handed back or waits on someone's decision,
+ * grouped by name. "Antwort ist da" clears the name; the server then opens the task again
+ * unless a blocker still holds it.
+ */
+export function WaitingView() {
+  const groups = createMemo(waitingGroups);
+  const all = createMemo(() => groups().flatMap((g) => g.tasks));
+  onMount(() => registerList(all));
+  const answered = (task: Task) => {
+    selectNextAfter(task.id);
+    if (setWaitingOn(task.id, "")) toast(`„${shorten(task.title)}“ wartet nicht mehr.`);
+  };
+  return (
+    <div class="view">
+      <header class="view-head">
+        <h1>Wartet auf andere</h1>
+        <span class="count-badge">{all().length}</span>
+      </header>
+      <For each={groups()}>
+        {(group) => (
+          <section class="group">
+            <h2>{group.name}</h2>
+            <TaskList
+              tasks={group.tasks}
+              showLocation
+              label={`Wartet auf ${group.name}`}
+              actions={(task) => [{ label: "Antwort ist da", mobile: true, run: () => answered(task) }]}
+            />
+          </section>
+        )}
+      </For>
+      <Show when={all().length === 0}>
+        <EmptyState
+          icon="user"
+          title="Niemand ist am Zug."
+          hint="Hier steht, was du zurückgegeben hast oder wo jemand anderes entscheidet. Im Detail unter „Wartet auf“ eintragen."
+        />
+      </Show>
+    </div>
+  );
+}
+
+/**
+ * Offene Zusagen (contract 5.1): everything someone waits on you for, reached from the count in
+ * Heute's head. Rauch rows can be handed back right here (the dialog of "Zurückgeben").
+ */
+export function CommitmentsView() {
+  const tasks = createMemo(commitmentTasks);
+  onMount(() => registerList(tasks));
+  return (
+    <div class="view">
+      <header class="view-head">
+        <h1>Offene Zusagen</h1>
+        <span class="count-badge">{tasks().length}</span>
+        <Show when={tooManyCommitments(tasks().length)}>
+          <span class="muted">Rauch kannst du hier zurückgeben.</span>
+        </Show>
+      </header>
+      <TaskList
+        tasks={tasks()}
+        showLocation
+        label="Offene Zusagen"
+        empty={<EmptyState icon="user" title="Keine offenen Zusagen." hint="Hier steht, was du anderen zugesagt hast: Für wen „andere“, noch nicht erledigt." />}
+        actions={(task) => (canHandBack(task) ? [{ label: "Zurückgeben", mobile: true, run: () => setHandBackRequest({ taskId: task.id }) }] : [])}
       />
     </div>
   );

@@ -8,7 +8,24 @@ import { locationLabel, STATUS_LABELS } from "../labels";
 import { isTauri } from "../platform/runtime";
 import { navigate } from "../state/router";
 import { api, areaList, data, projectList, taskIndex } from "../state/store";
-import { setCaptureOpen, setDetailId, setHelpOpen, setPalette, setSelectedId, setStructureEdit, sidebarHidden, toast, toggleSidebar, toggleTree, treeHidden, type PaletteRequest } from "../state/ui";
+import { canHandBack } from "../state/actions";
+import {
+  detailId,
+  selectedId,
+  setCaptureOpen,
+  setDetailId,
+  setHandBackRequest,
+  setHelpOpen,
+  setPalette,
+  setSelectedId,
+  setStructureEdit,
+  sidebarHidden,
+  toast,
+  toggleSidebar,
+  toggleTree,
+  treeHidden,
+  type PaletteRequest,
+} from "../state/ui";
 import { Modal } from "./Modal";
 
 interface Item {
@@ -85,7 +102,11 @@ export function CommandPalette(props: { request: PaletteRequest }) {
               .finally(() => location.reload());
           }),
         ];
+    // "Zurückgeben" for the open (or selected) task, only while it is Rauch (contract 5.1).
+    const current = data.tasks[detailId() ?? selectedId() ?? ""];
+    const handBack = current && canHandBack(current) ? [go(`Zurückgeben: ${current.title}`, () => setHandBackRequest({ taskId: current.id }), "Rauch")] : [];
     return [
+      ...handBack,
       go("Neue Aufgabe", () => setCaptureOpen(true), "n"),
       go("Gehe zu Heute", () => navigate({ view: "heute" }), "g h"),
       go("Gehe zu Inbox", () => navigate({ view: "inbox" }), "g i"),
@@ -93,6 +114,8 @@ export function CommandPalette(props: { request: PaletteRequest }) {
       go("Gehe zu Bereiche", () => navigate({ view: "bereiche" }), "g b"),
       go("Gehe zu Dev", () => navigate({ view: "dev" }), "g d"),
       go("Gehe zu Phönix", () => navigate({ view: "phoenix" }), "g p"),
+      go("Gehe zu Wartet auf andere", () => navigate({ view: "wartet" }), "g w"),
+      go("Gehe zu Offene Zusagen", () => navigate({ view: "zusagen" }), "g z"),
       go("Neuer Bereich", () => setStructureEdit({ kind: "area" })),
       go("Neues Projekt", () => setStructureEdit({ kind: "project" })),
       go(sidebarHidden() ? "Seitenleiste einblenden" : "Seitenleiste ausblenden", toggleSidebar, "⌘B"),

@@ -1,7 +1,10 @@
 // Task selections for the views. All functions are reactive (read the store).
 
 import { localDate, parseDue } from "../sync/dates";
-import { compareTasks, isClosed, isFlameRunning, statusChangedMs, weightRank } from "../sync/derived";
+import { weekBalance, type WeekBalance } from "../sync/balance";
+import { openCommitments } from "../sync/commitments";
+import { pickFocus, type Focus } from "../sync/focus";
+import { compareTasks, isClosed, isDevLocation, isFlameRunning, statusChangedMs, weightRank } from "../sync/derived";
 import type { Location, Task } from "../sync/types";
 import { data, now, taskIndex } from "./store";
 
@@ -96,6 +99,57 @@ export function todayGroups(): TodayGroups {
   groups.dueToday.sort(byDue);
   groups.reminders.sort((a, b) => Date.parse(a.remind_at!) - Date.parse(b.remind_at!));
   return groups;
+}
+
+export interface WaitingGroup {
+  name: string;
+  tasks: Task[];
+}
+
+/**
+ * Wartet auf andere: open tasks (subtasks included) whose `waiting_on` names someone, grouped
+ * by that name regardless of case and sorted by it; within a group due first, then rank.
+ */
+export function waitingGroups(): WaitingGroup[] {
+  const index = taskIndex();
+  const groups = new Map<string, WaitingGroup>();
+  for (const t of index.byId.values()) {
+    const name = t.waiting_on?.trim();
+    if (!name || index.isDeleted(t) || isClosed(t.status)) continue;
+    const key = name.toLocaleLowerCase("de");
+    let group = groups.get(key);
+    if (!group) groups.set(key, (group = { name, tasks: [] }));
+    group.tasks.push(t);
+  }
+  const due = (t: Task) => parseDue(t.due)?.at.getTime() ?? Infinity;
+  const out = [...groups.values()].sort((a, b) => a.name.localeCompare(b.name, "de"));
+  for (const g of out) g.tasks.sort((a, b) => due(a) - due(b) || compareTasks(a, b));
+  return out;
+}
+
+/**
+ * Offene Zusagen: live tasks for others, not done or dropped and waiting on nobody (subtasks
+ * included), outside dev projects; due first, then rank (rule in sync/commitments).
+ */
+export function commitmentTasks(): Task[] {
+  const index = taskIndex();
+  return openCommitments(index.byId.values(), (t) => index.isDeleted(t) || isDevLocation(index.location(t), (id) => data.projects[id]));
+}
+
+/** Deleted tasks and tasks in dev projects: they count neither in the balance nor in "Erst für dich". */
+function notPersonal(t: Task): boolean {
+  const index = taskIndex();
+  return index.isDeleted(t) || isDevLocation(index.location(t), (id) => data.projects[id]);
+}
+
+/** "Erst für dich": the task at the top of Heute for `today`, or Glut tasks to pick (rule in sync/focus). */
+export function focusOf(today: string, chosenId: string | null): Focus {
+  return pickFocus(taskIndex().byId.values(), today, notPersonal, chosenId);
+}
+
+/** Wochenspiegel: the balance of `week` (rule in sync/balance, one pass over the tasks). */
+export function weekBalanceOf(week: string): WeekBalance {
+  return weekBalance(taskIndex().byId.values(), week, notPersonal);
 }
 
 export function phoenixTasks(fire: string): { steps: Task[]; flames: Task[] } {

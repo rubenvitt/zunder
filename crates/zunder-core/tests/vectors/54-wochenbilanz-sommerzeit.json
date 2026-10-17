@@ -1,0 +1,214 @@
+{
+  "name": "wochenbilanz-sommerzeit",
+  "description": "Wochenbilanz der ISO-Woche 2026-W13 in Europe/Berlin (Montag 23.3. bis Sonntag 29.3., am Sonntag beginnt die Sommerzeit): Die Woche beginnt Montag 0:00 MEZ (22.3. 23:00 UTC) und endet Montag 30.3. 0:00 MESZ (29.3. 22:00 UTC), ist also nur 167 Stunden lang. Wer das Ende mit dem Winter-Offset rechnet, zählt 22:00 und 22:30 UTC fälschlich mit.",
+  "kind": "week_balance",
+  "time_zone": "Europe/Berlin",
+  "week": "2026-W13",
+  "state": [
+    {
+      "op_id": "w540000000e0000000000001",
+      "entity": "task",
+      "entity_id": "w540000000t0000000000001",
+      "field": "title",
+      "value": "Sonntag davor 23:59",
+      "hlc": "1773993600000:00000:w"
+    },
+    {
+      "op_id": "w540000000e0000000000002",
+      "entity": "task",
+      "entity_id": "w540000000t0000000000001",
+      "field": "location",
+      "value": {
+        "kind": "loose"
+      },
+      "hlc": "1773993600000:00000:w"
+    },
+    {
+      "op_id": "w540000000e0000000000003",
+      "entity": "task",
+      "entity_id": "w540000000t0000000000001",
+      "field": "weight",
+      "value": "brand",
+      "hlc": "1773993600000:00000:w"
+    },
+    {
+      "op_id": "w540000000e0000000000004",
+      "entity": "task",
+      "entity_id": "w540000000t0000000000001",
+      "field": "status",
+      "value": "done",
+      "hlc": "1774220399999:00000:w"
+    },
+    {
+      "op_id": "w540000000e0000000000005",
+      "entity": "task",
+      "entity_id": "w540000000t0000000000002",
+      "field": "title",
+      "value": "Montag 0:00 MEZ",
+      "hlc": "1773993600004:00000:w"
+    },
+    {
+      "op_id": "w540000000e0000000000006",
+      "entity": "task",
+      "entity_id": "w540000000t0000000000002",
+      "field": "location",
+      "value": {
+        "kind": "loose"
+      },
+      "hlc": "1773993600004:00000:w"
+    },
+    {
+      "op_id": "w540000000e0000000000007",
+      "entity": "task",
+      "entity_id": "w540000000t0000000000002",
+      "field": "weight",
+      "value": "glut",
+      "hlc": "1773993600004:00000:w"
+    },
+    {
+      "op_id": "w540000000e0000000000008",
+      "entity": "task",
+      "entity_id": "w540000000t0000000000002",
+      "field": "for_whom",
+      "value": "mich",
+      "hlc": "1773993600004:00000:w"
+    },
+    {
+      "op_id": "w540000000e0000000000009",
+      "entity": "task",
+      "entity_id": "w540000000t0000000000002",
+      "field": "status",
+      "value": "done",
+      "hlc": "1774220400000:00000:w"
+    },
+    {
+      "op_id": "w540000000e0000000000010",
+      "entity": "task",
+      "entity_id": "w540000000t0000000000003",
+      "field": "title",
+      "value": "Sonntag 23:59:59,999 MESZ",
+      "hlc": "1773993600009:00000:w"
+    },
+    {
+      "op_id": "w540000000e0000000000011",
+      "entity": "task",
+      "entity_id": "w540000000t0000000000003",
+      "field": "location",
+      "value": {
+        "kind": "loose"
+      },
+      "hlc": "1773993600009:00000:w"
+    },
+    {
+      "op_id": "w540000000e0000000000012",
+      "entity": "task",
+      "entity_id": "w540000000t0000000000003",
+      "field": "weight",
+      "value": "rauch",
+      "hlc": "1773993600009:00000:w"
+    },
+    {
+      "op_id": "w540000000e0000000000013",
+      "entity": "task",
+      "entity_id": "w540000000t0000000000003",
+      "field": "for_whom",
+      "value": "andere",
+      "hlc": "1773993600009:00000:w"
+    },
+    {
+      "op_id": "w540000000e0000000000014",
+      "entity": "task",
+      "entity_id": "w540000000t0000000000003",
+      "field": "status",
+      "value": "done",
+      "hlc": "1774821599999:00000:w"
+    },
+    {
+      "op_id": "w540000000e0000000000015",
+      "entity": "task",
+      "entity_id": "w540000000t0000000000004",
+      "field": "title",
+      "value": "Montag 0:00 MESZ",
+      "hlc": "1773993600014:00000:w"
+    },
+    {
+      "op_id": "w540000000e0000000000016",
+      "entity": "task",
+      "entity_id": "w540000000t0000000000004",
+      "field": "location",
+      "value": {
+        "kind": "loose"
+      },
+      "hlc": "1773993600014:00000:w"
+    },
+    {
+      "op_id": "w540000000e0000000000017",
+      "entity": "task",
+      "entity_id": "w540000000t0000000000004",
+      "field": "weight",
+      "value": "asche",
+      "hlc": "1773993600014:00000:w"
+    },
+    {
+      "op_id": "w540000000e0000000000018",
+      "entity": "task",
+      "entity_id": "w540000000t0000000000004",
+      "field": "status",
+      "value": "done",
+      "hlc": "1774821600000:00000:w"
+    },
+    {
+      "op_id": "w540000000e0000000000019",
+      "entity": "task",
+      "entity_id": "w540000000t0000000000005",
+      "field": "title",
+      "value": "Montag 0:30 MESZ",
+      "hlc": "1773993600018:00000:w"
+    },
+    {
+      "op_id": "w540000000e0000000000020",
+      "entity": "task",
+      "entity_id": "w540000000t0000000000005",
+      "field": "location",
+      "value": {
+        "kind": "loose"
+      },
+      "hlc": "1773993600018:00000:w"
+    },
+    {
+      "op_id": "w540000000e0000000000021",
+      "entity": "task",
+      "entity_id": "w540000000t0000000000005",
+      "field": "weight",
+      "value": "asche",
+      "hlc": "1773993600018:00000:w"
+    },
+    {
+      "op_id": "w540000000e0000000000022",
+      "entity": "task",
+      "entity_id": "w540000000t0000000000005",
+      "field": "status",
+      "value": "done",
+      "hlc": "1774823400000:00000:w"
+    }
+  ],
+  "expected": {
+    "week": "2026-W13",
+    "from": "2026-03-23",
+    "to": "2026-03-29",
+    "total": 2,
+    "by_weight": {
+      "brand": 0,
+      "glut": 1,
+      "rauch": 1,
+      "asche": 0,
+      "none": 0
+    },
+    "by_for_whom": {
+      "mich": 1,
+      "uns": 0,
+      "andere": 1,
+      "none": 0
+    }
+  }
+}

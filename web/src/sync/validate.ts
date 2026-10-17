@@ -201,6 +201,7 @@ const SHAPES: Record<EntityKind, Record<string, Shape>> = {
     weight: WEIGHTS,
     for_whom: FOR_WHOMS,
     deferrals: "count",
+    waiting_on: "title",
     ref: "task_ref",
     deleted: "bool",
   },
@@ -220,6 +221,7 @@ const FIELD_LABELS: Record<string, string> = {
   weight: "Gewicht (brand, glut, rauch oder asche)",
   for_whom: "Für wen (mich, uns oder andere)",
   deferrals: `Aufschübe (ganze Zahl von 0 bis ${MAX_DEFERRALS})`,
+  waiting_on: "Wartet auf",
   pr_url: "PR-Link (http(s)-URL)",
   repo: "Repository (owner/name)",
   key: "Schlüssel (Großbuchstaben und Ziffern, z. B. ZUN)",
@@ -311,7 +313,9 @@ export function checkField(entity: EntityKind, field: string, value: JsonValue):
             ? "Ein Kommentar braucht Text."
             : `${label(field)} darf nicht leer sein.`
           : entity === "task"
-            ? "Eine Aufgabe braucht einen Titel."
+            ? field === "title"
+              ? "Eine Aufgabe braucht einen Titel."
+              : `${label(field)} darf nicht leer sein.`
             : `${DEFINITE[entity]} ${KIND_LABEL[entity]} braucht einen Namen.`;
       return { code: "invalid_value", message };
     }

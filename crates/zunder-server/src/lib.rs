@@ -10,6 +10,7 @@
 //! - [`views`]: task, area and project representations for tools
 //! - [`flame`]: starting and stopping flames (shared by HTTP and MCP)
 //! - [`calendar`]: calendar feed (iCalendar) of flames and timed tasks
+//! - [`focus`]: "Erst für dich" in Heute (day clicked away, task picked)
 //! - [`intake`]: intake channels (write-only task creation for other servers)
 //! - [`settings`]: settings changed in the web UI (Timing bridge)
 //! - [`timing`]: client for the Timing web API
@@ -24,6 +25,7 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod flame;
+pub mod focus;
 pub mod healthcheck;
 pub mod http;
 pub mod intake;

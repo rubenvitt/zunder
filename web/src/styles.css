@@ -3402,3 +3402,282 @@ a.sync {
 .defer-decision .modal-actions {
   flex-wrap: wrap;
 }
+
+/* ---- Zurückgeben, Wartet auf andere (contract 5.1) ------------------------------------- */
+
+.handback-button {
+  margin-top: 0.4rem;
+}
+.waiting-input {
+  max-width: 16rem;
+}
+.chip-waiting-on {
+  color: var(--info);
+  background: var(--info-soft);
+}
+.handback {
+  width: min(520px, 100%);
+}
+.handback form {
+  display: grid;
+  gap: 0.45rem;
+}
+.handback h2 {
+  margin-bottom: 0;
+}
+.handback p {
+  margin: 0 0 0.35rem;
+}
+.handback-label {
+  margin-top: 0.4rem;
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+.handback-sentence {
+  width: 100%;
+  resize: vertical;
+}
+.handback-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.handback-check {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.4rem;
+}
+
+/* ---- Zusagen-Bremse (contract 5.1) ------------------------------------------------------ */
+
+.commitment-ask {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.35rem;
+  margin: 0.3rem 0 0;
+  color: var(--text-2);
+  font-size: 0.82rem;
+}
+.commitment-ask span {
+  margin-right: 0.2rem;
+}
+.commitment-ask .btn {
+  min-height: 1.5rem;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.8rem;
+  color: var(--info);
+}
+.commitments {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.6rem;
+  font-size: 0.84rem;
+}
+.commitments a {
+  text-decoration: none;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+}
+.commitments a:hover {
+  text-decoration: underline;
+}
+.commitments-count {
+  color: var(--info);
+  background: var(--info-soft);
+  font-weight: 600;
+}
+.commitments-hint {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+/* A question toast: message and close on top, the answers in their own row below. */
+.toast-ask {
+  flex-wrap: wrap;
+}
+.toast-actions {
+  order: 3;
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding-bottom: 0.15rem;
+}
+.toast .toast-action {
+  background: transparent;
+  border: 1px solid rgb(127 127 127 / 0.55);
+}
+
+/* ---- Wochenspiegel (contract 5.1) -------------------------------------------------------- */
+
+.week-mirror {
+  margin-top: 1.5rem;
+}
+.week-mirror summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.2rem 0;
+}
+.week-mirror summary::-webkit-details-marker {
+  display: none;
+}
+.week-mirror summary::before {
+  content: "";
+  width: 0.4rem;
+  height: 0.4rem;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+  align-self: center;
+}
+.week-mirror details[open] summary::before {
+  transform: rotate(45deg);
+}
+.week-mirror-title {
+  font-size: 0.74rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+.week-mirror-total {
+  font-size: 0.84rem;
+}
+.week-mirror-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.35rem 0 0 1rem;
+  max-width: 34rem;
+}
+.week-mirror-line {
+  margin: 0.3rem 0 0;
+  font-size: 0.88rem;
+  color: var(--text-2);
+}
+.week-mirror-hint {
+  margin: 0.3rem 0 0;
+  font-size: 0.78rem;
+}
+/* Two slim bars; each segment as wide as its share. Colours follow the chips, Rauch and
+   "ohne" also differ by pattern and outline, and the text above says it in words. */
+.balance-bar {
+  display: flex;
+  gap: 2px;
+  height: 0.5rem;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.balance-seg {
+  flex-basis: 0;
+  min-width: 4px;
+}
+.balance-weight-brand {
+  background: var(--accent);
+}
+.balance-weight-glut {
+  background: var(--warning);
+}
+.balance-weight-rauch {
+  background: repeating-linear-gradient(135deg, var(--text-2) 0 3px, var(--surface-3) 3px 5px);
+}
+.balance-weight-asche {
+  background: var(--border-strong);
+}
+.balance-weight-none,
+.balance-for-none {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.balance-for-mich {
+  background: var(--text-2);
+}
+.balance-for-uns {
+  background: var(--violet);
+}
+.balance-for-andere {
+  background: var(--info);
+}
+
+/* ---- Erst für dich (contract 5.1) -------------------------------------------------------- */
+
+.focus {
+  margin: 0.4rem 0 0.6rem;
+  padding: 0.25rem 0.75rem 0.65rem;
+  border-radius: var(--radius);
+  background: var(--warning-soft);
+  background: color-mix(in srgb, var(--warning-soft) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning) 22%, transparent);
+}
+/* Nothing planned yet: said quietly, without the glow. */
+.focus.focus-quiet {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--border-strong);
+}
+.focus.focus-quiet .focus-head h2 {
+  color: var(--muted);
+}
+.focus-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.focus-head h2 {
+  margin: 0.6rem 0 0.4rem;
+  color: var(--warning);
+}
+.focus-dismiss {
+  margin-left: auto;
+  color: var(--muted);
+}
+.focus-task {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.focus-title {
+  font-weight: 600;
+  font-size: 0.98rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.focus-note {
+  font-size: 0.8rem;
+}
+.focus-empty p {
+  margin: 0;
+  font-size: 0.88rem;
+}
+.focus-choices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.45rem;
+  margin-top: 0.45rem;
+  font-size: 0.84rem;
+}
+.focus-choice {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.focus-choice:hover {
+  border-color: var(--warning);
+  color: var(--text);
+}
