@@ -92,7 +92,8 @@ Bewusst ohne Fälligkeit: undated_ack: true markiert eine Aufgabe als „bewusst
 noch nicht entschiedenen, undated_ack_weeks lässt alte Markierungen ablaufen. \
 Einteilung (optional, vor allem außerhalb von Dev-Projekten): weight ist das Gewicht nach Covey \
 (brand = wichtig und dringlich, glut = wichtig, nicht dringlich, rauch = nur fürs System dringlich, \
-asche = weder noch), for_whom sagt, für wen (mich, uns, andere = Zusage an jemanden). Beides \
+asche = weder noch), for_whom sagt, wer wartet, wenn es sich verschiebt (mich = niemand, uns = \
+Partnerschaft oder Haushalt, andere = Zusage an jemanden; nicht: wem es nützt). Beides \
 setzen, wenn es aus dem Kontext klar ist, sonst weglassen; filter_tasks filtert danach. \
 „Heute nicht“: defer_task schiebt auf morgen, nächste Woche oder einen Tag und zählt mit \
 (deferrals). Der dritte Aufschub ist eine Entscheidung des Nutzers (Fehler decision_due): \

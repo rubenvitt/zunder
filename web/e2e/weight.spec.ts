@@ -22,12 +22,16 @@ test("Gewicht und Für wen: im Detail wählen, als Chip sehen, erneut klicken en
   await openApp(page, "#/lose");
   await row(page, `Steuer ${s}`).locator(".task-main").click();
 
+  // The meaning is readable without hovering: the question first, then the picked option's hint.
+  await expect(detail(page).getByText("Ist es dir wichtig, und drängt es wirklich?")).toBeVisible();
+  await expect(detail(page).getByText("Wer wartet, wenn es sich verschiebt?")).toBeVisible();
   const weight = detail(page).getByRole("group", { name: "Gewicht" });
   await weight.getByRole("button", { name: "Glut" }).click();
   await expect(weight.getByRole("button", { name: "Glut" })).toHaveAttribute("aria-pressed", "true");
   await expect(row(page, `Steuer ${s}`).locator(".chip-weight-glut")).toHaveText("Glut");
   await detail(page).getByRole("group", { name: "Für wen" }).getByRole("button", { name: "andere" }).click();
   await expect(row(page, `Steuer ${s}`).locator(".chip-for-andere")).toHaveText("für andere");
+  await expect(detail(page).getByText("Jemand wartet auf deine Zusage: wer verschiebt, sagt Bescheid")).toBeVisible();
   await expect.poll(async () => {
     const f = await entityFields(page, "task", id);
     return [f.weight, f.for_whom];

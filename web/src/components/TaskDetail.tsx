@@ -1,6 +1,6 @@
 // Task detail side panel: everything inline editable, subtask tree, change history.
 
-import { createEffect, createResource, createSignal, For, on, onCleanup, onMount, Show, type JSX } from "solid-js";
+import { createEffect, createResource, createSignal, createUniqueId, For, on, onCleanup, onMount, Show, type JSX } from "solid-js";
 import { fireOf, formatDateLabel, formatInstant, fromDatetimeLocalInput, localDate, parseDue, toDatetimeLocalInput, toRfc3339Local } from "../sync/dates";
 import { hasOpenChildren, isClaimActive, isClosed, isDevLocation, isFlameRunning, isRecurring } from "../sync/derived";
 import { needsDecision } from "../sync/defer";
@@ -12,6 +12,7 @@ import {
   FIELD_LABELS,
   FOR_WHOM_HINTS,
   FOR_WHOM_LABELS,
+  FOR_WHOM_QUESTION,
   historyTaskRefs,
   locationLabel,
   PHOENIX_LABELS,
@@ -20,6 +21,7 @@ import {
   TYPE_LABELS,
   WEIGHT_HINTS,
   WEIGHT_LABELS,
+  WEIGHT_QUESTION,
 } from "../labels";
 import { addComment, clearDue, createTask, deferTask, deleteComment, deleteTask, dependentsCount, dropTask, flame, moveTask, setParent, setStatus, updateComment, updateTask } from "../state/actions";
 import { detailBack, NARROW_LAYOUT } from "../state/back";
@@ -355,6 +357,7 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
                   value={t().weight}
                   optionLabel={(w) => WEIGHT_LABELS[w]}
                   optionHint={(w) => WEIGHT_HINTS[w]}
+                  question={WEIGHT_QUESTION}
                   optionClass={(w) => `weight-option weight-option-${w}`}
                   onChange={(weight) => set({ weight })}
                 />
@@ -369,6 +372,7 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
                   value={t().for_whom}
                   optionLabel={(f) => FOR_WHOM_LABELS[f].replace("für ", "")}
                   optionHint={(f) => FOR_WHOM_HINTS[f]}
+                  question={FOR_WHOM_QUESTION}
                   onChange={(for_whom) => set({ for_whom })}
                 />
               </Prop>
@@ -660,25 +664,34 @@ function Choice<T extends string>(props: {
   value: T | null;
   optionLabel: (v: T) => string;
   optionHint: (v: T) => string;
+  /** The question the choice answers, shown below it while nothing is picked. */
+  question: string;
   optionClass?: (v: T) => string;
   onChange: (v: T | null) => void;
 }) {
+  // Tooltips never show on touch, so the meaning stays visible below the buttons.
+  const hintId = createUniqueId();
   return (
-    <div class="segmented choice" role="group" aria-label={props.label}>
-      <For each={props.options}>
-        {(option) => (
-          <button
-            type="button"
-            class={props.optionClass?.(option) ?? ""}
-            classList={{ active: props.value === option }}
-            aria-pressed={props.value === option}
-            title={props.value === option ? `${props.optionHint(option)} (noch einmal klicken entfernt)` : props.optionHint(option)}
-            onClick={() => props.onChange(props.value === option ? null : option)}
-          >
-            {props.optionLabel(option)}
-          </button>
-        )}
-      </For>
+    <div class="choice-field">
+      <div class="segmented choice" role="group" aria-label={props.label} aria-describedby={hintId}>
+        <For each={props.options}>
+          {(option) => (
+            <button
+              type="button"
+              class={props.optionClass?.(option) ?? ""}
+              classList={{ active: props.value === option }}
+              aria-pressed={props.value === option}
+              title={props.value === option ? `${props.optionHint(option)} (noch einmal klicken entfernt)` : props.optionHint(option)}
+              onClick={() => props.onChange(props.value === option ? null : option)}
+            >
+              {props.optionLabel(option)}
+            </button>
+          )}
+        </For>
+      </div>
+      <p class="choice-hint" id={hintId}>
+        {props.value ? props.optionHint(props.value) : props.question}
+      </p>
     </div>
   );
 }
