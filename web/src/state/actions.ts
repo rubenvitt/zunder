@@ -247,6 +247,13 @@ export function handBack(id: string, name: string, remind: boolean, sentence = "
   return true;
 }
 
+// ---- Zusagen-Bremse (contract 5.1) --------------------------------------------
+
+/** "Selbst verpflichtet": nobody waits on it after all, so the task is for oneself. */
+export function selfCommitted(id: string): boolean {
+  return updateTask(id, { for_whom: "mich" });
+}
+
 /** Sets or clears whom a task waits on (trimmed, blank = nobody); the server sets the status. */
 export function setWaitingOn(id: string, name: string): boolean {
   const waiting = name.trim();

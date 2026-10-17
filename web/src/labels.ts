@@ -75,6 +75,8 @@ export const FOR_WHOM_HINTS: Record<ForWhom, string> = {
   andere: "Jemand wartet auf deine Zusage: wer verschiebt, sagt Bescheid",
 };
 
+/** Asked once when a task is set to "andere": a real commitment, or one made to oneself? */
+export const COMMITMENT_QUESTION = "Zugesagt oder selbst verpflichtet?";
 /** Heute's quiet hint from COMMITMENT_LIMIT open commitments on (sync/commitments). */
 export const COMMITMENT_HINT = "Viele Zusagen offen. Eine zurückgeben?";
 

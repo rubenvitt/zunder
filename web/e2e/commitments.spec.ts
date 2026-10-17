@@ -1,10 +1,10 @@
-// Zusagen-Bremse (contract 5.1): "für andere" is a real promise. Heute counts the open ones
-// and hints from eight on.
+// Zusagen-Bremse (contract 5.1): "für andere" is a real promise. Setting it asks quietly whether
+// someone was promised it, Heute counts the open ones and hints from eight on.
 // The real backend keeps data between tests: counts are read first and checked relative to
 // that, and every seeded commitment is closed again in `finally`.
 
 import { expect, test, type Page } from "@playwright/test";
-import { COMMITMENT_HINT, commitmentsLabel } from "../src/labels";
+import { COMMITMENT_HINT, COMMITMENT_QUESTION, commitmentsLabel } from "../src/labels";
 import { COMMITMENT_LIMIT } from "../src/sync/commitments";
 import { entityFields, isMock, openApp, prepare, row, Seeder, suffix } from "./fixtures";
 
@@ -12,7 +12,11 @@ test.beforeEach(async ({ page }) => {
   await prepare(page);
 });
 
+const detail = (page: Page) => page.getByRole("complementary", { name: "Aufgabendetail" });
+const ask = (page: Page) => detail(page).getByRole("group", { name: COMMITMENT_QUESTION });
+const askToast = (page: Page) => page.locator(".toast", { hasText: COMMITMENT_QUESTION });
 const count = (page: Page) => page.locator(".commitments-count");
+const forWhom = async (page: Page, id: string) => (await entityFields(page, "task", id)).for_whom ?? null;
 
 /** Open commitments Heute shows right now (0 while the count is hidden). */
 async function openCount(page: Page): Promise<number> {
@@ -27,6 +31,115 @@ async function close(page: Page, ...ids: string[]): Promise<void> {
   for (const id of ids) seeder.raw("task", id, { status: "done" });
   await seeder.push(page);
 }
+
+/** ID of the live task with this title (from the snapshot, e.g. after a quick capture). */
+async function taskId(page: Page, title: string): Promise<string> {
+  let id = "";
+  await expect.poll(async () => {
+    const res = await page.request.get("/api/snapshot");
+    const body = (await res.json()) as { entities: { entity: string; entity_id: string; fields: Record<string, { value: unknown }> }[] };
+    id = body.entities.find((x) => x.entity === "task" && x.fields.title?.value === title)?.entity_id ?? "";
+    return id;
+  }, { message: `Aufgabe „${title}“ auf dem Server` }).not.toBe("");
+  return id;
+}
+
+test("Rückfrage im Detail: zugesagt, selbst verpflichtet oder einfach weiter", async ({ page }) => {
+  const s = suffix();
+  const seeder = new Seeder();
+  const id = seeder.task(`Umzugshilfe ${s}`, { location: { kind: "loose" } });
+  const given = seeder.task(`Geschenk ${s}`, { location: { kind: "loose" }, for_whom: "andere" });
+  await seeder.push(page);
+  try {
+    await openApp(page, "#/lose");
+    // Opening a task that already is for others does not ask.
+    await row(page, `Geschenk ${s}`).locator(".task-main").click();
+    await expect(detail(page).getByRole("group", { name: "Für wen" }).getByRole("button", { name: "andere" })).toHaveAttribute("aria-pressed", "true");
+    await expect(ask(page)).toHaveCount(0);
+
+    await row(page, `Umzugshilfe ${s}`).locator(".task-main").click();
+    const choice = detail(page).getByRole("group", { name: "Für wen" });
+
+    // Zugesagt: stays for others, the line goes.
+    await choice.getByRole("button", { name: "andere" }).click();
+    await expect(ask(page)).toBeVisible();
+    await ask(page).getByRole("button", { name: "Zugesagt" }).click();
+    await expect(ask(page)).toHaveCount(0);
+    await expect.poll(() => forWhom(page, id)).toBe("andere");
+
+    // Selbst verpflichtet: nobody waits, so it is for me.
+    await choice.getByRole("button", { name: "mich" }).click();
+    await expect(ask(page)).toHaveCount(0);
+    await choice.getByRole("button", { name: "andere" }).click();
+    await ask(page).getByRole("button", { name: "Selbst verpflichtet" }).click();
+    await expect(ask(page)).toHaveCount(0);
+    await expect(choice.getByRole("button", { name: "mich" })).toHaveAttribute("aria-pressed", "true");
+    await expect(detail(page).getByText("Niemand wartet darauf: still verschiebbar")).toBeVisible();
+    await expect.poll(() => forWhom(page, id)).toBe("mich");
+
+    // Ignored: nothing blocks, the value stays, and the line is gone after leaving the task.
+    await choice.getByRole("button", { name: "andere" }).click();
+    await expect(ask(page)).toBeVisible();
+    await expect.poll(() => forWhom(page, id)).toBe("andere");
+    await row(page, `Geschenk ${s}`).locator(".task-main").click();
+    await row(page, `Umzugshilfe ${s}`).locator(".task-main").click();
+    await expect(choice.getByRole("button", { name: "andere" })).toHaveAttribute("aria-pressed", "true");
+    await expect(ask(page)).toHaveCount(0);
+  } finally {
+    await close(page, id, given);
+  }
+});
+
+test("Rückfrage nach der Schnellerfassung mit @andere, ohne zu blockieren", async ({ page }) => {
+  const s = suffix();
+  const ids: string[] = [];
+  try {
+    await openApp(page, "#/lose");
+    const input = page.getByLabel("Titel der neuen Aufgabe");
+
+    // Selbst verpflichtet turns it into a task for me.
+    await page.keyboard.press("n");
+    await input.fill(`Rückruf ${s} @andere`);
+    await input.press("Enter");
+    await expect(askToast(page)).toContainText(`Erfasst in Lose. ${COMMITMENT_QUESTION}`);
+    ids.push(await taskId(page, `Rückruf ${s}`));
+    await askToast(page).getByRole("button", { name: "Selbst verpflichtet" }).click();
+    await expect(askToast(page)).toHaveCount(0);
+    await expect(page.locator(".toast", { hasText: `„Rückruf ${s}“ ist für dich.` })).toContainText("Niemand wartet darauf: still verschiebbar.");
+    await expect(row(page, `Rückruf ${s}`).locator(".chip-for-mich")).toHaveText("für mich");
+    await expect.poll(() => forWhom(page, ids[0]!)).toBe("mich");
+
+    // Zugesagt keeps it for others.
+    await page.keyboard.press("n");
+    await input.fill(`Abholung ${s} @andere`);
+    await input.press("Enter");
+    ids.push(await taskId(page, `Abholung ${s}`));
+    await askToast(page).getByRole("button", { name: "Zugesagt" }).click();
+    await expect(askToast(page)).toHaveCount(0);
+    await expect(row(page, `Abholung ${s}`).locator(".chip-for-andere")).toHaveText("für andere");
+    await expect.poll(() => forWhom(page, ids[1]!)).toBe("andere");
+
+    // Ignored (closed or simply left): the task stays for others, the next capture works.
+    await page.keyboard.press("n");
+    await input.fill(`Brief ${s} @andere`);
+    await input.press("Enter");
+    ids.push(await taskId(page, `Brief ${s}`));
+    await expect(askToast(page)).toBeVisible();
+    await page.keyboard.press("n");
+    await input.fill(`Einkauf ${s} @uns`);
+    await input.press("Enter");
+    // Only "andere" asks: a plain confirmation, and still just the one question.
+    await expect(page.locator(".toast:not(.toast-ask)", { hasText: "Erfasst in Lose." })).toBeVisible();
+    await expect(askToast(page)).toHaveCount(1);
+    ids.push(await taskId(page, `Einkauf ${s}`));
+    await expect(row(page, `Einkauf ${s}`)).toBeVisible();
+    await askToast(page).getByRole("button", { name: "Meldung schließen" }).click();
+    await expect(askToast(page)).toHaveCount(0);
+    expect(await forWhom(page, ids[2]!)).toBe("andere");
+  } finally {
+    await close(page, ...ids);
+  }
+});
 
 test("Heute zählt offene Zusagen, ein Klick zeigt sie, Rauch lässt sich dort zurückgeben", async ({ page }) => {
   const s = suffix();

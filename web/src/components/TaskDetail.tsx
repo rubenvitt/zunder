@@ -5,8 +5,9 @@ import { fireOf, formatDateLabel, formatInstant, fromDatetimeLocalInput, localDa
 import { hasOpenChildren, isClaimActive, isClosed, isDevLocation, isFlameRunning, isRecurring } from "../sync/derived";
 import { needsDecision } from "../sync/defer";
 import { hlcWallMs } from "../sync/hlc";
-import { FOR_WHOMS, PHOENIX_ROLES, TASK_STATUSES, TASK_TYPES, WEIGHTS, type HistoryEntry, type JsonValue, type Link, type Task, type TaskStatus, type TaskType } from "../sync/types";
+import { FOR_WHOMS, PHOENIX_ROLES, TASK_STATUSES, TASK_TYPES, WEIGHTS, type ForWhom, type HistoryEntry, type JsonValue, type Link, type Task, type TaskStatus, type TaskType } from "../sync/types";
 import {
+  COMMITMENT_QUESTION,
   deferralsLabel,
   describeValue,
   FIELD_LABELS,
@@ -23,7 +24,25 @@ import {
   WEIGHT_LABELS,
   WEIGHT_QUESTION,
 } from "../labels";
-import { addComment, canHandBack, clearDue, createTask, deferTask, deleteComment, deleteTask, dependentsCount, dropTask, flame, moveTask, setParent, setStatus, setWaitingOn, updateComment, updateTask } from "../state/actions";
+import {
+  addComment,
+  canHandBack,
+  clearDue,
+  createTask,
+  deferTask,
+  deleteComment,
+  deleteTask,
+  dependentsCount,
+  dropTask,
+  flame,
+  moveTask,
+  selfCommitted,
+  setParent,
+  setStatus,
+  setWaitingOn,
+  updateComment,
+  updateTask,
+} from "../state/actions";
 import { detailBack, NARROW_LAYOUT } from "../state/back";
 import { appConfig } from "../state/desktop";
 import { isTauri } from "../platform/runtime";
@@ -251,6 +270,13 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
 
   const set = (fields: Record<string, JsonValue>) => updateTask(t().id, fields);
   const [recurrenceOpen, setRecurrenceOpen] = createSignal(false);
+  // Zusagen-Bremse: setting "andere" asks once, quietly, whether someone was promised it.
+  // Not remembered: the line goes with an answer, another value or another task.
+  const [askCommitment, setAskCommitment] = createSignal(false);
+  const setForWhom = (for_whom: ForWhom | null) => {
+    const asks = for_whom === "andere" && t().for_whom !== "andere" && personal();
+    if (set({ for_whom })) setAskCommitment(asks);
+  };
 
   return (
     <div class="detail-body">
@@ -384,8 +410,26 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
                   optionLabel={(f) => FOR_WHOM_LABELS[f].replace("für ", "")}
                   optionHint={(f) => FOR_WHOM_HINTS[f]}
                   question={FOR_WHOM_QUESTION}
-                  onChange={(for_whom) => set({ for_whom })}
+                  onChange={setForWhom}
                 />
+                <Show when={askCommitment() && t().for_whom === "andere"}>
+                  <p class="commitment-ask" role="group" aria-label={COMMITMENT_QUESTION}>
+                    <span>{COMMITMENT_QUESTION}</span>
+                    <button class="btn btn-ghost btn-small" onClick={() => setAskCommitment(false)} title="Jemand wartet darauf: bleibt „für andere“">
+                      Zugesagt
+                    </button>
+                    <button
+                      class="btn btn-ghost btn-small"
+                      title="Niemand wartet darauf: wird „für mich“"
+                      onClick={() => {
+                        setAskCommitment(false);
+                        selfCommitted(t().id);
+                      }}
+                    >
+                      Selbst verpflichtet
+                    </button>
+                  </p>
+                </Show>
               </Prop>
             </Show>
 

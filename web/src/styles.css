@@ -3453,6 +3453,24 @@ a.sync {
 
 /* ---- Zusagen-Bremse (contract 5.1) ------------------------------------------------------ */
 
+.commitment-ask {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.35rem;
+  margin: 0.3rem 0 0;
+  color: var(--text-2);
+  font-size: 0.82rem;
+}
+.commitment-ask span {
+  margin-right: 0.2rem;
+}
+.commitment-ask .btn {
+  min-height: 1.5rem;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.8rem;
+  color: var(--info);
+}
 .commitments {
   display: inline-flex;
   align-items: center;
@@ -3476,4 +3494,20 @@ a.sync {
 .commitments-hint {
   color: var(--warning);
   background: var(--warning-soft);
+}
+/* A question toast: message and close on top, the answers in their own row below. */
+.toast-ask {
+  flex-wrap: wrap;
+}
+.toast-actions {
+  order: 3;
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding-bottom: 0.15rem;
+}
+.toast .toast-action {
+  background: transparent;
+  border: 1px solid rgb(127 127 127 / 0.55);
 }

@@ -6,10 +6,17 @@ import type { Location, ProjectKind, Task } from "../sync/types";
 
 export type ToastKind = "info" | "warning" | "error";
 
+/** A button in a toast: runs and closes the toast. */
+export interface ToastAction {
+  label: string;
+  run: () => void;
+}
+
 export interface Toast {
   id: number;
   kind: ToastKind;
   message: string;
+  actions?: ToastAction[];
 }
 
 const [toasts, setToasts] = createSignal<Toast[]>([]);
@@ -20,6 +27,16 @@ export { toasts };
 export function toast(message: string, kind: ToastKind = "info", durationMs = kind === "error" ? 7000 : 4000): void {
   const id = ++toastSeq;
   setToasts((list) => [...list.slice(-3), { id, kind, message }]);
+  setTimeout(() => dismissToast(id), durationMs);
+}
+
+/**
+ * A quiet question with a few answers (e.g. after a quick capture). Ignoring it is an answer
+ * too: it goes away by itself and nothing changes.
+ */
+export function askToast(message: string, actions: ToastAction[], durationMs = 10_000): void {
+  const id = ++toastSeq;
+  setToasts((list) => [...list.slice(-3), { id, kind: "info", message, actions }]);
   setTimeout(() => dismissToast(id), durationMs);
 }
 

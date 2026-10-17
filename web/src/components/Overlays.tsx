@@ -25,8 +25,25 @@ export function Toasts() {
     <div class="toasts" role="status" aria-live="polite">
       <For each={toasts()}>
         {(t) => (
-          <div class={`toast toast-${t.kind}`} data-kind={t.kind}>
+          <div class={`toast toast-${t.kind}`} classList={{ "toast-ask": !!t.actions?.length }} data-kind={t.kind}>
             <span>{t.message}</span>
+            <Show when={t.actions?.length}>
+              <div class="toast-actions">
+                <For each={t.actions}>
+                  {(action) => (
+                    <button
+                      class="btn btn-small toast-action"
+                      onClick={() => {
+                        dismissToast(t.id);
+                        action.run();
+                      }}
+                    >
+                      {action.label}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </Show>
             <button class="btn btn-ghost btn-icon" aria-label="Meldung schließen" onClick={() => dismissToast(t.id)}>
               <Icon name="x" size={14} />
             </button>
