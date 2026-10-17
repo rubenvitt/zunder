@@ -3,6 +3,7 @@
 import { localDate, parseDue } from "../sync/dates";
 import { weekBalance, type WeekBalance } from "../sync/balance";
 import { openCommitments } from "../sync/commitments";
+import { pickFocus, type Focus } from "../sync/focus";
 import { compareTasks, isClosed, isDevLocation, isFlameRunning, statusChangedMs, weightRank } from "../sync/derived";
 import type { Location, Task } from "../sync/types";
 import { data, now, taskIndex } from "./store";
@@ -139,6 +140,11 @@ export function commitmentTasks(): Task[] {
 function notPersonal(t: Task): boolean {
   const index = taskIndex();
   return index.isDeleted(t) || isDevLocation(index.location(t), (id) => data.projects[id]);
+}
+
+/** "Erst für dich": the task at the top of Heute for `today`, or Glut tasks to pick (rule in sync/focus). */
+export function focusOf(today: string, chosenId: string | null): Focus {
+  return pickFocus(taskIndex().byId.values(), today, notPersonal, chosenId);
 }
 
 /** Wochenspiegel: the balance of `week` (rule in sync/balance, one pass over the tasks). */

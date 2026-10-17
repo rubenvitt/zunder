@@ -14,6 +14,7 @@
 // format {"error":{"code","message"}}, CSRF header X-Zunder-Client: web for
 // state-changing requests, snapshot with created_hlc/op_id, history entries with
 // source/received_at, flame responses (409 without a running flame), token rules,
+// "Erst für dich" settings (/api/settings/focus, reset with the seed),
 // intake channels (management under /api/intake/channels, POST /intake/v1/tasks with
 // a zi_ token: idempotent per external_id, 409 for a dead or completed target, 429
 // after 30 tasks per hour), follow-up instances of recurring tasks after each push
@@ -138,6 +139,8 @@ let devices: Device[] = [];
 let intakeChannels: IntakeChannel[] = [];
 /** Calendar feed: creation time of the token, null without a feed. */
 let calendarCreatedAt: string | null = null;
+/** "Erst für dich" (GET/PUT /api/settings/focus): days as the client sends them. */
+let focus: { dismissed_on: string | null; chosen: { on: string; task_id: string } | null } = { dismissed_on: null, chosen: null };
 let authenticated = true;
 const sseClients = new Set<ServerResponse>();
 
@@ -195,6 +198,14 @@ function alive(entity: string, id: string): boolean {
 // ---- Validation (subset of contract 2.5, core codes) ------------------------------
 
 const ID_RE = /^[a-z][a-z0-9]{23}$/;
+
+/** A real calendar day "YYYY-MM-DD". */
+function isCalendarDay(value: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return false;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return d.getUTCFullYear() === Number(m[1]) && d.getUTCMonth() === Number(m[2]) - 1 && d.getUTCDate() === Number(m[3]);
+}
 const HLC_RE = /^\d{13}:\d{5}:[a-z0-9-]{1,36}$/;
 const REQUIRED: Record<string, string[]> = { area: ["name"], project: ["name", "area_id"], task: ["title"], comment: ["task_id", "body"] };
 
@@ -608,6 +619,7 @@ function seed(kind: string) {
   devices = [];
   intakeChannels = [];
   calendarCreatedAt = null;
+  focus = { dismissed_on: null, chosen: null };
   if (kind === "empty") return;
   const base = Date.now() - 3600_000;
   let n = 0;
@@ -1007,6 +1019,30 @@ const server = createServer(async (req, res) => {
       if (path === "/api/settings/timing/check" && method === "POST") {
         if (!timing.token) return error(res, 409, "conflict", "Timing ist nicht eingerichtet.");
         return send(res, 200, { ok: true, error: null });
+      }
+      if (path === "/api/settings/focus") {
+        if (method === "PUT") {
+          const body = await readJson(req);
+          const unknown = Object.keys(body).find((k) => k !== "dismissed_on" && k !== "chosen");
+          if (unknown) return error(res, 400, "invalid_request", `Unbekanntes Feld „${unknown}“`);
+          const day = (v: unknown) => (typeof v === "string" && isCalendarDay(v.trim()) ? v.trim() : null);
+          const next = { ...focus };
+          if (body.dismissed_on !== undefined) {
+            if (body.dismissed_on !== null && !day(body.dismissed_on)) return error(res, 400, "invalid_request", "„dismissed_on“ muss ein Tag JJJJ-MM-TT sein");
+            next.dismissed_on = body.dismissed_on === null ? null : day(body.dismissed_on);
+          }
+          if (body.chosen !== undefined) {
+            const c = body.chosen as { on?: unknown; task_id?: unknown } | null;
+            if (c !== null) {
+              if (typeof c !== "object" || Array.isArray(c) || Object.keys(c).some((k) => k !== "on" && k !== "task_id")) return error(res, 400, "invalid_request", "„chosen“ braucht on und task_id");
+              if (!day(c.on)) return error(res, 400, "invalid_request", "„chosen.on“ muss ein Tag JJJJ-MM-TT sein");
+              if (typeof c.task_id !== "string" || !ID_RE.test(c.task_id.trim())) return error(res, 400, "invalid_request", "„chosen.task_id“ muss eine Aufgaben-ID sein");
+              next.chosen = { on: day(c.on)!, task_id: c.task_id.trim() };
+            } else next.chosen = null;
+          }
+          focus = next;
+        } else if (method !== "GET") return error(res, 405, "invalid_request", "Methode nicht erlaubt.");
+        return send(res, 200, focus);
       }
       if (path === "/api/settings/calendar") {
         if (method === "POST") {

@@ -3,7 +3,7 @@
 // that (only tasks done now, i.e. in this week, are seeded).
 
 import { expect, test, type Page } from "@playwright/test";
-import { openApp, prepare, Seeder, suffix } from "./fixtures";
+import { openApp, prepare, reloadApp, Seeder, suffix } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
   await prepare(page);
@@ -47,12 +47,22 @@ test("Wochenspiegel zählt Erledigtes dieser Woche nach Gewicht und Für wen, ei
   seeder.task(`Ohne ${s}`, { location: loose, status: "done" });
   // Not counted: dropped, open, dev projects.
   seeder.task(`Verworfen ${s}`, { location: loose, weight: "brand", status: "dropped" });
-  seeder.task(`Offen ${s}`, { location: loose, weight: "glut", for_whom: "mich" });
+  // Open Glut for oneself would stand in "Erst für dich" for later tests: closed again below.
+  const open = seeder.task(`Offen ${s}`, { location: loose, weight: "glut", for_whom: "mich" });
   const area = seeder.area(`Arbeit ${s}`);
   const project = seeder.project(`App ${s}`, area, { kind: "dev", repo: "example/app", view: "list" });
   seeder.task(`Ticket ${s}`, { location: { kind: "project", id: project }, weight: "rauch", status: "done" });
   await seeder.push(page);
+  try {
+    await checkMirror(page, before);
+  } finally {
+    const close = new Seeder();
+    close.raw("task", open, { status: "dropped" });
+    await close.push(page);
+  }
+});
 
+async function checkMirror(page: Page, before: Counts): Promise<void> {
   await openApp(page, "#/heute");
   await expect(mirror(page).locator(".week-mirror-total")).toContainText(`${before.total + 4} erledigt`);
   const after = await counts(page);
@@ -75,11 +85,11 @@ test("Wochenspiegel zählt Erledigtes dieser Woche nach Gewicht und Für wen, ei
   await summary.click();
   await expect(weightLine).toBeHidden();
   await expect(mirror(page).locator(".week-mirror-total")).toBeVisible();
-  await openApp(page, "#/heute");
+  await reloadApp(page);
   await expect(mirror(page).locator("details")).not.toHaveAttribute("open");
   await expect(weightLine).toBeHidden();
   await summary.click();
   await expect(weightLine).toBeVisible();
-  await openApp(page, "#/heute");
+  await reloadApp(page);
   await expect(weightLine).toBeVisible();
-});
+}

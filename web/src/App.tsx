@@ -15,6 +15,7 @@ import { inboxCount } from "./state/selectors";
 import { api, data, getEngine, pendingCount, ready, setNotifier, startSync, syncStatus, taskIndex } from "./state/store";
 import { captureOpen, deferRequest, detailId, handBackRequest, dropRequest, detailWide, detailWidth, helpOpen, openSearch, palette, setCaptureOpen, setDetailId, setHelpOpen, setSelectedId, sidebarHidden, structureEdit, toast } from "./state/ui";
 import { Logo } from "./components/Logo";
+import { refreshFocus } from "./state/focus";
 import { preloadEditor } from "./components/MarkdownField";
 import { CommitmentsView, InboxView, LooseView, TodayView, WaitingView } from "./views/Lists";
 import { DevView, LoginView, PhoenixView, TokensView } from "./views/Other";
@@ -113,6 +114,8 @@ function markReady(): void {
 function Shell() {
   const desktop = isTauri();
   onMount(() => onCleanup(installKeyboard()));
+  // "Erst für dich": send what was changed offline, read what other devices changed.
+  onMount(() => void refreshFocus());
   installDetailHistory();
   // The Markdown editor is a separate chunk: fetch it once the app is idle, so the first task opens instantly.
   onMount(() => {

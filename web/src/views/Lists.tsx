@@ -3,6 +3,7 @@
 import { createMemo, For, onMount, Show } from "solid-js";
 import { EmptyState } from "../components/EmptyState";
 import { TaskList } from "../components/TaskList";
+import { FocusSection } from "../components/FocusSection";
 import { WeekMirror } from "../components/WeekMirror";
 import type { DeferTarget } from "../sync/defer";
 import type { Task } from "../sync/types";
@@ -10,6 +11,7 @@ import { canHandBack, deferTask, dropTask, moveTask, setWaitingOn, shorten } fro
 import { commitmentTasks, inboxTasks, tasksAt, todayGroups, waitingGroups } from "../state/selectors";
 import { activeList, pickLocation, registerList, selectedId, setCaptureOpen, setHandBackRequest, setSelectedId, toast } from "../state/ui";
 import { now } from "../state/store";
+import { refreshFocus } from "../state/focus";
 import { tooManyCommitments } from "../sync/commitments";
 import { COMMITMENT_HINT, commitmentsLabel, locationLabel } from "../labels";
 
@@ -34,7 +36,11 @@ export function TodayView() {
   });
   // Zusagen-Bremse: how many promises are open, shown before they press (contract 5.1).
   const commitments = createMemo(() => commitmentTasks().length);
-  onMount(() => registerList(all));
+  onMount(() => {
+    registerList(all);
+    // Another device may have clicked "Erst für dich" away or picked a task today.
+    void refreshFocus();
+  });
   const nothing = () => all().length === 0;
   return (
     <div class="view">
@@ -55,6 +61,7 @@ export function TodayView() {
           </span>
         </Show>
       </header>
+      <FocusSection />
       <Show when={groups().flames.length > 0}>
         <section class="group group-flame">
           <h2>Laufende Flamme</h2>

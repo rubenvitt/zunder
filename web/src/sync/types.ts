@@ -339,6 +339,24 @@ export interface CreatedIntakeChannel extends IntakeChannel {
   token: string;
 }
 
+/** A Glut task picked for "Erst für dich" on one day (client's calendar day). */
+export interface FocusChoice {
+  on: string;
+  task_id: string;
+}
+
+/** "Erst für dich" in Heute, see `GET /api/settings/focus` (days are the client's calendar days). */
+export interface FocusSettings {
+  dismissed_on: string | null;
+  chosen: FocusChoice | null;
+}
+
+/** `PUT /api/settings/focus`: a missing field stays, null removes it. */
+export interface FocusSettingsUpdate {
+  dismissed_on?: string | null;
+  chosen?: FocusChoice | null;
+}
+
 /** Where an effective setting comes from: the settings view or an environment variable. */
 export type SettingSource = "settings" | "env";
 

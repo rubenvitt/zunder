@@ -78,6 +78,9 @@ export const FOR_WHOM_HINTS: Record<ForWhom, string> = {
 
 /** Asked once when a task is set to "andere": a real commitment, or one made to oneself? */
 export const COMMITMENT_QUESTION = "Zugesagt oder selbst verpflichtet?";
+/** "Erst für dich" without a Glut task for oneself. */
+export const FOCUS_EMPTY = "Heute noch nichts für dich geplant.";
+
 /** Wochenspiegel groups: weights and "ohne Gewicht". */
 export const BALANCE_WEIGHT_LABELS: Record<WeightKey, string> = { ...WEIGHT_LABELS, none: "ohne Gewicht" };
 /** Wochenspiegel groups: for whom and "ohne Angabe". */

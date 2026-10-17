@@ -9,6 +9,8 @@ import type {
   CreatedIntakeChannel,
   CreatedToken,
   Device,
+  FocusSettings,
+  FocusSettingsUpdate,
   FlameResult,
   HistoryEntry,
   IntakeChannel,
@@ -93,6 +95,9 @@ export interface ApiClient {
   resetTimingSettings(): Promise<TimingSettings>;
   checkTiming(): Promise<TimingCheck>;
   timingProjects(): Promise<TimingProject[]>;
+  /** "Erst für dich": day clicked away and the task picked for a day. */
+  focusSettings(): Promise<FocusSettings>;
+  updateFocusSettings(update: FocusSettingsUpdate): Promise<FocusSettings>;
   calendarSettings(): Promise<CalendarSettings>;
   /** Creates the feed token; an existing one stops working. */
   createCalendarFeed(): Promise<CreatedCalendarFeed>;
@@ -244,6 +249,14 @@ export class HttpTransport implements SyncTransport, ApiClient {
 
   timingProjects(): Promise<TimingProject[]> {
     return this.request("GET", "/api/settings/timing/projects");
+  }
+
+  focusSettings(): Promise<FocusSettings> {
+    return this.request("GET", "/api/settings/focus");
+  }
+
+  updateFocusSettings(update: FocusSettingsUpdate): Promise<FocusSettings> {
+    return this.request("PUT", "/api/settings/focus", update);
   }
 
   calendarSettings(): Promise<CalendarSettings> {
