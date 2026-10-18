@@ -18,7 +18,7 @@ import { SyncEngine } from "../src/sync/engine";
 import { mergeOps } from "../src/sync/merge";
 import { toTask } from "../src/sync/model";
 import { isTransient, isUnauthorized, NetworkError } from "../src/sync/transport";
-import type { Op, Rejection } from "../src/sync/types";
+import type { FocusSettings, FocusSettingsUpdate, Op, Rejection } from "../src/sync/types";
 import { op } from "./helpers";
 
 type Args = Record<string, unknown> | undefined;
@@ -40,6 +40,8 @@ class FakeApp implements TauriBackend {
     pending: 0,
     last_sync: null,
   };
+  /** "Erst für dich" on the server, as focus_get/focus_set see it. */
+  focus: FocusSettings = { dismissed_on: null, chosen: null };
   /** Local validation of local_apply: return a message to reject an op. */
   reject: (op: Op) => string | null = () => null;
   /** Errors to throw for the next call of a command (raw, as Tauri would). */
@@ -95,6 +97,14 @@ class FakeApp implements TauriBackend {
       case "flame_start":
       case "flame_stop":
         return { running: cmd === "flame_start" };
+      case "focus_get":
+        return this.focus;
+      case "focus_set": {
+        const update = args?.update as FocusSettingsUpdate;
+        if (update.dismissed_on !== undefined) this.focus = { ...this.focus, dismissed_on: update.dismissed_on };
+        if (update.chosen !== undefined) this.focus = { ...this.focus, chosen: update.chosen };
+        return this.focus;
+      }
       default:
         throw `command ${cmd} not found`;
     }
@@ -251,6 +261,24 @@ describe("TauriTransport", () => {
     await expect(transport.flame("t1", "stop")).rejects.toThrow("Server-Fehler (409): Keine laufende Flamme");
     fake.failures.set("task_history", { code: "network", message: "Server nicht erreichbar: dns" });
     await expect(transport.history("t1")).rejects.toBeInstanceOf(NetworkError);
+  });
+
+  it("reads and writes Erst für dich through focus_get and focus_set", async () => {
+    fake.focus = { dismissed_on: "2026-10-17", chosen: null };
+    expect(await transport.focusSettings()).toEqual({ dismissed_on: "2026-10-17", chosen: null });
+    const chosen = { on: "2026-10-18", task_id: "t1" };
+    expect(await transport.updateFocusSettings({ chosen })).toEqual({ dismissed_on: "2026-10-17", chosen });
+    expect(fake.calls).toEqual([
+      { cmd: "focus_get", args: undefined },
+      { cmd: "focus_set", args: { update: { chosen } } },
+    ]);
+    // Offline: transient, the web side keeps the change pending.
+    fake.failures.set("focus_set", { code: "network", message: "Server nicht erreichbar: dns" });
+    await expect(transport.updateFocusSettings({ dismissed_on: null })).rejects.toBeInstanceOf(NetworkError);
+    // Connected with an API token: stays on the device.
+    fake.failures.set("focus_get", { code: "unsupported", message: "nur mit Anmeldung im Browser" });
+    const err = await transport.focusSettings().catch((e: unknown) => e);
+    expect(appErrorCode(err)).toBe("unsupported");
   });
 
   it("refuses token management (needs a browser session)", async () => {

@@ -126,6 +126,35 @@ impl HttpClient {
         let path = format!("api/tasks/{task_id}/flame/{}", action.as_str());
         self.send(self.http.post(self.url(&path)?)).await
     }
+
+    /// `GET /api/settings/focus` ("Erst für dich": day clicked away, task
+    /// picked for a day), answer unchanged. Only device tokens may read it:
+    /// with an API token the server answers 403, here `Error::Unsupported`
+    /// (the web UI then keeps the value on the device).
+    pub async fn focus_settings(&self) -> Result<serde_json::Value> {
+        focus_only_for_devices(self.send(self.http.get(self.url(FOCUS_PATH)?)).await)
+    }
+
+    /// `PUT /api/settings/focus` with the web UI's update unchanged (a
+    /// missing field stays, `null` removes it; the server validates).
+    pub async fn update_focus_settings(
+        &self,
+        update: &serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        let request = self.http.put(self.url(FOCUS_PATH)?).json(update);
+        focus_only_for_devices(self.send(request).await)
+    }
+}
+
+const FOCUS_PATH: &str = "api/settings/focus";
+
+fn focus_only_for_devices(result: Result<serde_json::Value>) -> Result<serde_json::Value> {
+    match result {
+        Err(Error::Server { status: 403, .. }) => Err(Error::Unsupported(
+            "„Erst für dich“ gleicht die App nur mit einer Anmeldung im Browser ab, nicht mit einem API-Token.".into(),
+        )),
+        other => other,
+    }
 }
 
 /// The reqwest client for a server (also used by the login).
@@ -292,6 +321,41 @@ mod tests {
 
         let err = client.flame(id, FlameAction::Stop).await.unwrap_err();
         assert_eq!(err.code(), "unauthorized");
+    }
+
+    #[tokio::test]
+    async fn focus_settings_pass_through_and_403_is_unsupported() {
+        let settings = r#"{"dismissed_on":"2026-10-18","chosen":null}"#;
+        let (url, seen) = canned(vec![
+            (200, settings),
+            (200, settings),
+            (
+                403,
+                r#"{"error":{"code":"forbidden","message":"nur Browser"}}"#,
+            ),
+        ]);
+        let client = client(&url);
+
+        let got = client.focus_settings().await.unwrap();
+        assert_eq!(got["dismissed_on"], "2026-10-18");
+        let request = seen.recv().unwrap();
+        assert_eq!(
+            request.request_line,
+            "GET /zunder/api/settings/focus HTTP/1.1"
+        );
+        assert_eq!(request.authorization.as_deref(), Some("Bearer zt_secret"));
+
+        let update = serde_json::json!({"dismissed_on": "2026-10-18"});
+        let got = client.update_focus_settings(&update).await.unwrap();
+        assert_eq!(got["chosen"], serde_json::Value::Null);
+        assert_eq!(
+            seen.recv().unwrap().request_line,
+            "PUT /zunder/api/settings/focus HTTP/1.1"
+        );
+
+        // An API token instead of a device token: stays on the device.
+        let err = client.focus_settings().await.unwrap_err();
+        assert_eq!(err.code(), "unsupported", "{err:?}");
     }
 
     #[tokio::test]
