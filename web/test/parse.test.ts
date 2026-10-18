@@ -200,7 +200,6 @@ describe("quick capture recurrence shorthand", () => {
     ["jeden Monatsletzten", { every: 1, unit: "month", day: "last", from: "due" }, "2026-10-31"],
     ["jeden letzten des Monats", { every: 1, unit: "month", day: "last", from: "due" }, "2026-10-31"],
     ["jeden letzten Tag des Monats", { every: 1, unit: "month", day: "last", from: "due" }, "2026-10-31"],
-    ["am Monatsende", { every: 1, unit: "month", day: "last", from: "due" }, "2026-10-31"],
     ["jedes Monatsende", { every: 1, unit: "month", day: "last", from: "due" }, "2026-10-31"],
     ["jährlich", { every: 1, unit: "year", from: "due" }, "2026-10-11"],
     ["jedes Jahr", { every: 1, unit: "year", from: "due" }, "2026-10-11"],
@@ -219,6 +218,42 @@ describe("quick capture recurrence shorthand", () => {
     expect(r.remind_at).toBeNull();
     expect(r.tokens).toEqual([{ kind: "recurrence", text: shorthand, label: expect.any(String) }]);
   });
+
+  // Decision of 18 Oct 2026 (ZUN-27): "am Monatsende" happens once; only an explicit rhythm recurs.
+  it("am Monatsende is a single date on the last day of this month, not a rhythm", () => {
+    let r = parse("Miete überweisen am Monatsende");
+    expect(r).toMatchObject({ title: "Miete überweisen", due: "2026-10-31", remind_at: null, recurrence: null });
+    expect(r.tokens).toEqual([{ kind: "date", text: "am Monatsende", label: "Monatsende" }]);
+    // The last day of this month is never past: on that day it is today.
+    expect(parse("Miete am Monatsende", new Date(2026, 9, 31, 23, 30)).due).toBe("2026-10-31");
+    expect(parse("Miete am Monatsende", new Date(2026, 10, 1, 0, 5)).due).toBe("2026-11-30");
+    expect(parse("Miete am Monatsende", new Date(2027, 1, 3)).due).toBe("2027-02-28");
+    expect(parse("Miete am Monatsende", new Date(2028, 1, 3)).due).toBe("2028-02-29");
+    expect(parse("Miete AM MONATSENDE.").due).toBe("2026-10-31");
+    // With a time like any other date: due and reminder (31 Oct is winter time).
+    r = parse("Miete am Monatsende 9:00 #arbeit");
+    expect(r).toMatchObject({
+      title: "Miete",
+      due: "2026-10-31T09:00:00+01:00",
+      remind_at: "2026-10-31T09:00:00+01:00",
+      recurrence: null,
+      location: { kind: "area", id: "area-arbeit" },
+    });
+    expect(parse("Miete um 9 Uhr am Monatsende").due).toBe("2026-10-31T09:00:00+01:00");
+    // Only the first date counts.
+    expect(parse("Miete morgen am Monatsende")).toMatchObject({ title: "Miete am Monatsende", due: "2026-10-12" });
+    // Without "am", "Monatsende" stays in the title.
+    expect(parse("Monatsende-Abrechnung prüfen")).toMatchObject({ title: "Monatsende-Abrechnung prüfen", due: null, tokens: [] });
+    expect(parse("Bericht fürs Monatsende")).toMatchObject({ title: "Bericht fürs Monatsende", due: null, tokens: [] });
+  });
+
+  it.each(["jeden Monatsletzten", "monatlich am Monatsletzten", "monatlich am Monatsende", "monatlich zum Monatsende", "jedes Monatsende"])(
+    "%s still recurs on the last day of the month",
+    (shorthand) => {
+      const r = parse(`Miete ${shorthand}`);
+      expect(r).toMatchObject({ title: "Miete", due: "2026-10-31", recurrence: { every: 1, unit: "month", day: "last", from: "due" } });
+    },
+  );
 
   it("recognises the shorthand anywhere in the input", () => {
     const r = parse("jeden Freitag Wochenbericht schreiben");

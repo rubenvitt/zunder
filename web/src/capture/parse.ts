@@ -1,7 +1,7 @@
 // Quick capture shorthand (contract section 5), e.g.
 //   "Zahnarzt anrufen morgen 9:00 #gesundheit"
 // Dates: heute, morgen, übermorgen, weekday names, "nächsten <Wochentag>",
-// 12.10., 12.10.2026 (optionally preceded by "am"). Times: 9:00, 9 Uhr, 9:30 Uhr
+// 12.10., 12.10.2026 (optionally preceded by "am"), "am Monatsende" (once). Times: 9:00, 9 Uhr, 9:30 Uhr
 // (optionally preceded by "um"). A time sets due and remind_at; a date alone
 // sets a date-only due. #slug resolves to an area or project (project wins on a tie).
 // Unresolved tags stay in the title. Rhythms ("jeden Freitag", "alle 2 Wochen",
@@ -129,6 +129,12 @@ function matchDate(words: readonly string[], i: number, today: Date): DateHit | 
       const offset = (target + 6) % 7;
       return { date: addDays(mondayThisWeek, 7 + offset), consumed: 2, label: `Nächsten ${WEEKDAY_LABELS[target]}` };
     }
+  }
+
+  // "am Monatsende" is a single date, the last day of this month (today at the latest),
+  // not a rhythm (contract 5.1). Only after "am", so a "Monatsende" in a title stays.
+  if (word === "monatsende" && i > 0 && words[i - 1]!.toLowerCase() === "am") {
+    return { date: new Date(today.getFullYear(), today.getMonth() + 1, 0), consumed: 1, label: "Monatsende" };
   }
 
   const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})?$/.exec(stripPunctuation(words[i]!));
@@ -600,8 +606,6 @@ function matchRhythmBase(words: readonly string[], i: number): RhythmMatch | nul
       return everyNth() ?? unsupportedFrom(i + 1);
     case "jeder":
       return unsupportedFrom(i + 1);
-    case "am":
-      return next === "monatsende" ? monthly(1, "last", 2) : null;
     case "alle": {
       const unit = UNIT_PLURALS.get(word(i + 2));
       if (!unit) return null;
