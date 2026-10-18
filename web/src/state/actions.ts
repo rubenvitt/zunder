@@ -41,6 +41,8 @@ export interface NewTask {
   recurrence?: Recurrence | null;
   weight?: Weight | null;
   for_whom?: ForWhom | null;
+  /** Whom the task waits on; the task is then created blocked (like "Zurückgeben"). */
+  waiting_on?: string | null;
 }
 
 /** Creates a task (one push group); returns its id or null when refused. */
@@ -56,6 +58,11 @@ export function createTask(input: NewTask): string | null {
   if (input.recurrence) fields.recurrence = recurrenceValue(input.recurrence);
   if (input.weight) fields.weight = input.weight;
   if (input.for_whom) fields.for_whom = input.for_whom;
+  const waiting = input.waiting_on?.trim();
+  if (waiting) {
+    fields.waiting_on = waiting;
+    fields.status = "blocked";
+  }
   return apply([{ entity: "task", id, fields }]) ? id : null;
 }
 

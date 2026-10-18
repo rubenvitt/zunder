@@ -276,6 +276,7 @@ export const CAPTURE_SHORTHAND: readonly { examples: readonly string[]; meaning:
   { examples: ["täglich nach Erledigung"], meaning: "Rhythmus ab Erledigung statt ab Fälligkeit" },
   { examples: ["!brand", "!glut", "!rauch", "!asche"], meaning: "Gewicht" },
   { examples: ["@mich", "@uns", "@andere"], meaning: "Für wen" },
+  { examples: ["wartet:Anna", "wartet:Team_Einkauf"], meaning: "Wartet auf (die Aufgabe startet blockiert)" },
 ];
 
 // ---- Recurrence (contract 5.1, "Rhythmen") ----------------------------------------

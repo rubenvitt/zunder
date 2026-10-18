@@ -42,6 +42,26 @@ describe("quick capture parser", () => {
     expect(parse("E-Mail an @andere!").for_whom).toBeNull();
   });
 
+  it("reads whom the task waits on (wartet:Anna)", () => {
+    const r = parse("Angebot prüfen wartet:Anna morgen @andere");
+    expect(r).toMatchObject({ title: "Angebot prüfen", waiting_on: "Anna", for_whom: "andere", due: "2026-10-12" });
+    expect(r.tokens.map((t) => t.kind)).toEqual(["waiting_on", "date", "for_whom"]);
+    expect(r.tokens[0]).toMatchObject({ text: "wartet:Anna", label: "wartet auf Anna" });
+    // "_" stands for a space, case and trailing punctuation do not matter.
+    expect(parse("Budget Wartet:Team_Einkauf.").waiting_on).toBe("Team Einkauf");
+    expect(parse("Brief wartet:Frau_Dr._Özdemir,").waiting_on).toBe("Frau Dr. Özdemir");
+    expect(parse("Brief wartet:__Anna__").waiting_on).toBe("Anna");
+    // Only the first counts; an empty name and the phrase in words stay in the title.
+    const second = parse("Paket wartet:Anna wartet:Ben");
+    expect(second).toMatchObject({ title: "Paket wartet:Ben", waiting_on: "Anna" });
+    expect(parse("Paket wartet: Anna")).toMatchObject({ title: "Paket wartet: Anna", waiting_on: null });
+    expect(parse("Paket wartet:_.")).toMatchObject({ title: "Paket wartet:_.", waiting_on: null });
+    expect(parse("Kunde wartet auf Angebot")).toMatchObject({ title: "Kunde wartet auf Angebot", waiting_on: null });
+    expect(parse(`Lang wartet:${"a".repeat(501)}`).waiting_on).toBeNull();
+    // No clash with the other shorthands: #, ! and @ keep their meaning next to it.
+    expect(parse("Paket #gesundheit !glut wartet:Anna").location).toEqual({ kind: "area", id: "area-gesundheit" });
+  });
+
   it("keeps a plain title untouched and lands in the inbox", () => {
     const r = parse("  Milch kaufen  ");
     expect(r).toMatchObject({ title: "Milch kaufen", due: null, remind_at: null, location: null, tokens: [] });
