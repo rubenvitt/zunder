@@ -205,6 +205,16 @@ export function toggleTree(): void {
   store("zunder.treeHidden", hidden ? "1" : "0");
 }
 
+// Quick capture: the shorthand examples ("?") stay open or closed, remembered per device.
+const [captureHelpShown, setCaptureHelpShown] = createSignal(stored("zunder.captureHelp") === "1");
+export { captureHelpShown };
+
+export function toggleCaptureHelp(): void {
+  const shown = !captureHelpShown();
+  setCaptureHelpShown(shown);
+  store("zunder.captureHelp", shown ? "1" : "0");
+}
+
 export const DETAIL_MIN_WIDTH = 380;
 const [detailWide, setDetailWideSignal] = createSignal(stored("zunder.detailWide") === "1");
 const [detailWidth, setDetailWidthSignal] = createSignal(Number(stored("zunder.detailWidth")) || 560);

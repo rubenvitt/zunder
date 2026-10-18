@@ -1,18 +1,37 @@
-import { createMemo, createSignal, For, onMount, Show, untrack } from "solid-js";
+import { createMemo, createSignal, createUniqueId, For, onMount, Show, untrack } from "solid-js";
 import { captureContext } from "../capture/context";
 import { parseCapture, slugify } from "../capture/parse";
 import { formatDue } from "../sync/dates";
 import { isDevLocation } from "../sync/derived";
-import { COMMITMENT_QUESTION, describeRecurrence, FOR_WHOM_HINTS, FOR_WHOM_LABELS, locationLabel, WEIGHT_HINTS, WEIGHT_LABELS } from "../labels";
+import { CAPTURE_SHORTHAND, COMMITMENT_QUESTION, describeRecurrence, FOR_WHOM_HINTS, FOR_WHOM_LABELS, locationLabel, WEIGHT_HINTS, WEIGHT_LABELS } from "../labels";
 import { createTask, selfCommitted, shorten } from "../state/actions";
 import { route } from "../state/router";
 import { areaList, data, now, projectList } from "../state/store";
-import { askToast, setCaptureOpen, toast } from "../state/ui";
+import { askToast, captureHelpShown, setCaptureOpen, toast, toggleCaptureHelp } from "../state/ui";
 import { Icon } from "./Icon";
 import { Modal } from "./Modal";
 
+/** The shorthand examples (labels: CAPTURE_SHORTHAND), static: nothing here runs per keystroke. */
+export function ShorthandList(props: { id?: string; class?: string; hidden?: boolean }) {
+  return (
+    <dl id={props.id} class={`shorthand ${props.class ?? ""}`} hidden={props.hidden}>
+      <For each={CAPTURE_SHORTHAND}>
+        {(item) => (
+          <>
+            <dt>
+              <For each={item.examples}>{(example) => <code>{example}</code>}</For>
+            </dt>
+            <dd>{item.meaning}</dd>
+          </>
+        )}
+      </For>
+    </dl>
+  );
+}
+
 export function QuickCapture() {
   const [text, setText] = createSignal("");
+  const helpId = createUniqueId();
   // Preselected from the view the capture was opened in; a #tag overrides it.
   const [preset, setPreset] = createSignal(
     untrack(() =>
@@ -120,6 +139,20 @@ export function QuickCapture() {
           }}
           aria-label="Titel der neuen Aufgabe"
         />
+        <button
+          type="button"
+          class="btn btn-ghost capture-help-toggle"
+          aria-expanded={captureHelpShown()}
+          aria-controls={helpId}
+          aria-label="Beispiele für die Kurzschreibweise"
+          title="Kurzschreibweise: Beispiele"
+          onClick={() => {
+            toggleCaptureHelp();
+            input?.focus();
+          }}
+        >
+          ?
+        </button>
         </div>
         <div class="capture-preview" aria-live="polite">
           <Show when={text().trim()} fallback={<span class="muted">Landet in</span>}>
@@ -180,6 +213,7 @@ export function QuickCapture() {
             </Show>
           </Show>
         </div>
+        <ShorthandList id={helpId} class="capture-help" hidden={!captureHelpShown()} />
         <Show when={suggestions().length > 0}>
           <ul class="suggestions">
             <For each={suggestions()}>

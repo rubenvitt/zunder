@@ -263,6 +263,21 @@ export function describeValue(field: string, value: JsonValue): string {
   return JSON.stringify(value);
 }
 
+// ---- Quick capture (contract 5, "Schnellerfassung") ---------------------------------
+
+/**
+ * Examples of the quick-capture shorthand and what they set: the "?" in the capture and
+ * the shortcut help show them. Each example must parse (test/labels.test.ts).
+ */
+export const CAPTURE_SHORTHAND: readonly { examples: readonly string[]; meaning: string }[] = [
+  { examples: ["morgen 9:00", "Freitag", "12.10.", "am Monatsende"], meaning: "Fälligkeit, mit Uhrzeit auch Erinnerung" },
+  { examples: ["#bereich", "#projekt"], meaning: "Bereich oder Projekt (Tab ergänzt)" },
+  { examples: ["jeden Freitag", "alle 2 Wochen", "monatlich am 15.", "jeden Monatsletzten"], meaning: "Rhythmus" },
+  { examples: ["täglich nach Erledigung"], meaning: "Rhythmus ab Erledigung statt ab Fälligkeit" },
+  { examples: ["!brand", "!glut", "!rauch", "!asche"], meaning: "Gewicht" },
+  { examples: ["@mich", "@uns", "@andere"], meaning: "Für wen" },
+];
+
 // ---- Recurrence (contract 5.1, "Rhythmen") ----------------------------------------
 
 export const WEEKDAY_LABELS: Record<WeekdayCode, string> = { mo: "Mo", tu: "Di", we: "Mi", th: "Do", fr: "Fr", sa: "Sa", su: "So" };

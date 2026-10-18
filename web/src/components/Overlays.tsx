@@ -19,6 +19,7 @@ import {
 } from "../state/ui";
 import { Icon } from "./Icon";
 import { Modal } from "./Modal";
+import { ShorthandList } from "./QuickCapture";
 
 export function Toasts() {
   return (
@@ -97,6 +98,8 @@ export function ShortcutHelp() {
           )}
         </For>
       </dl>
+      <h3 class="help-section">Kurzschreibweise beim Erfassen</h3>
+      <ShorthandList />
       <div class="modal-actions">
         <a class="small muted credit" href="https://icons8.com" target="_blank" rel="noopener noreferrer">
           Icons von Icons8
