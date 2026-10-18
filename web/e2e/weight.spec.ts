@@ -4,7 +4,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { localDate } from "../src/sync/dates";
 import { deferDay } from "../src/sync/defer";
-import { entityFields, openApp, prepare, row, Seeder, suffix } from "./fixtures";
+import { entityFields, openApp, prepare, reloadApp, row, Seeder, suffix } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
   await prepare(page);
@@ -80,17 +80,13 @@ test("Heute nicht: zweimal verschieben, beim dritten Mal ruhen lassen", async ({
     return [f.due, f.deferrals];
   }).toEqual([deferDay("tomorrow", today()), 1]);
 
-  // On a Sunday next week's Monday is tomorrow and "Nächste Woche" would have nothing left to
-  // move: the due date then goes back to yesterday, as if a day had passed.
-  const sunday = deferDay("tomorrow", today()) === deferDay("next_week", today());
-  if (sunday) {
-    const back = new Seeder();
-    back.raw("task", id, { due: yesterday() });
-    await back.push(page);
-  }
+  // Back into the past, so "Nächste Woche" moves even on a Sunday (tomorrow is Monday then).
+  const back = new Seeder();
+  back.raw("task", id, { due: yesterday() });
+  await back.push(page);
+  await reloadApp(page);
   await openApp(page, "#/lose");
   await row(page, `Keller ${s}`).locator(".task-main").click();
-  if (sunday) await expect(row(page, `Keller ${s}`)).toContainText("Gestern");
   await detail(page).getByRole("button", { name: "Nächste Woche" }).click();
   await expect(detail(page).locator(".deferral-count")).toHaveText("2-mal verschoben, beim nächsten Mal entscheiden");
   await expect(row(page, `Keller ${s}`).locator(".chip-deferred.chip-decision")).toHaveText("2");
