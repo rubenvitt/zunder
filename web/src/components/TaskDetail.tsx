@@ -3,7 +3,7 @@
 import { createEffect, createResource, createSignal, createUniqueId, For, on, onCleanup, onMount, Show, type JSX } from "solid-js";
 import { fireOf, formatDateLabel, formatInstant, fromDatetimeLocalInput, localDate, parseDue, toDatetimeLocalInput, toRfc3339Local } from "../sync/dates";
 import { hasOpenChildren, isClaimActive, isClosed, isDevLocation, isFlameRunning, isRecurring } from "../sync/derived";
-import { needsDecision } from "../sync/defer";
+import { needsDecision, offersNextWeek } from "../sync/defer";
 import { hlcWallMs } from "../sync/hlc";
 import { FOR_WHOMS, PHOENIX_ROLES, TASK_STATUSES, TASK_TYPES, WEIGHTS, type ForWhom, type HistoryEntry, type JsonValue, type Link, type Task, type TaskStatus, type TaskType } from "../sync/types";
 import {
@@ -448,9 +448,11 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
                   <button class="btn btn-ghost btn-small" onClick={() => deferTask(t().id, "tomorrow")}>
                     Morgen
                   </button>
-                  <button class="btn btn-ghost btn-small" onClick={() => deferTask(t().id, "next_week")}>
-                    Nächste Woche
-                  </button>
+                  <Show when={offersNextWeek(localDate(new Date(now())))}>
+                    <button class="btn btn-ghost btn-small" onClick={() => deferTask(t().id, "next_week")}>
+                      Nächste Woche
+                    </button>
+                  </Show>
                   <Show when={t().deferrals > 0}>
                     <span class="deferral-count" classList={{ "deferral-decision": needsDecision(t()) }}>
                       {deferralsLabel(t().deferrals)}

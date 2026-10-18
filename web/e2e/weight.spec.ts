@@ -3,7 +3,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 import { localDate } from "../src/sync/dates";
-import { deferDay } from "../src/sync/defer";
+import { deferDay, offersNextWeek } from "../src/sync/defer";
 import { entityFields, openApp, prepare, row, Seeder, suffix } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
@@ -80,21 +80,31 @@ test("Heute nicht: zweimal verschieben, beim dritten Mal ruhen lassen", async ({
     return [f.due, f.deferrals];
   }).toEqual([deferDay("tomorrow", today()), 1]);
 
+  // The second time from the detail, on a task due already (the first one is tomorrow now).
+  const again = new Seeder();
+  const attic = again.task(`Dachboden ${s}`, { location: { kind: "loose" }, due: yesterday(), weight: "asche", deferrals: 1 });
+  await again.push(page);
   await openApp(page, "#/lose");
-  await row(page, `Keller ${s}`).locator(".task-main").click();
-  await detail(page).getByRole("button", { name: "Nächste Woche" }).click();
+  await row(page, `Dachboden ${s}`).locator(".task-main").click();
+  const nextWeek = detail(page).getByRole("button", { name: "Nächste Woche" });
+  if (offersNextWeek(today())) await nextWeek.click();
+  else {
+    // Sunday: next week is tomorrow, so only "Morgen" is offered.
+    await expect(nextWeek).toHaveCount(0);
+    await detail(page).getByRole("button", { name: "Morgen", exact: true }).click();
+  }
   await expect(detail(page).locator(".deferral-count")).toHaveText("2-mal verschoben, beim nächsten Mal entscheiden");
-  await expect(row(page, `Keller ${s}`).locator(".chip-deferred.chip-decision")).toHaveText("2");
-  await expect.poll(async () => (await entityFields(page, "task", id)).due).toBe(deferDay("next_week", today()));
+  await expect(row(page, `Dachboden ${s}`).locator(".chip-deferred.chip-decision")).toHaveText("2");
+  await expect.poll(async () => (await entityFields(page, "task", attic)).due).toBe(deferDay("next_week", today()));
 
   // The third time: a decision instead of a click.
   await detail(page).getByRole("button", { name: "Morgen", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Entscheiden statt verschieben" });
-  await expect(dialog).toContainText(`„Keller ${s}“ ist schon 2-mal verschoben.`);
+  await expect(dialog).toContainText(`„Dachboden ${s}“ ist schon 2-mal verschoben.`);
   await dialog.getByRole("button", { name: /Ruhen lassen/ }).click();
   await expect(dialog).toBeHidden();
   await expect.poll(async () => {
-    const f = await entityFields(page, "task", id);
+    const f = await entityFields(page, "task", attic);
     return [f.due, f.deferrals, typeof f.undated_ack];
   }).toEqual([null, null, "string"]);
   await expect(detail(page).locator(".undated-ack")).toBeVisible();

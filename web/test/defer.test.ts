@@ -1,7 +1,7 @@
 // "Heute nicht" (contract 5.1): the client mirror of zunder_core::defer.
 
 import { describe, expect, it } from "vitest";
-import { deferDay, deferFields, needsDecision } from "../src/sync/defer";
+import { deferDay, deferFields, needsDecision, offersNextWeek } from "../src/sync/defer";
 
 const base = { due: null, remind_at: null, deferrals: 0, undated_ack: null };
 
@@ -13,6 +13,13 @@ describe("deferDay", () => {
     expect(deferDay("next_week", "2026-10-16")).toBe("2026-10-19");
     expect(deferDay("next_week", "2026-10-18")).toBe("2026-10-19");
     expect(deferDay("next_week", "2026-10-19")).toBe("2026-10-26");
+  });
+
+  it("offers next week except on Sundays, where it is tomorrow", () => {
+    expect(offersNextWeek("2026-10-16")).toBe(true);
+    expect(offersNextWeek("2026-10-17")).toBe(true);
+    expect(offersNextWeek("2026-10-18")).toBe(false);
+    expect(offersNextWeek("2026-10-19")).toBe(true);
   });
 });
 
