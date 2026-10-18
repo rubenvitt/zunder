@@ -1,5 +1,7 @@
 // Shared test vectors (contract 2.6) produced by zunder-core. The Rust and the
 // TypeScript merge must agree on every file in crates/zunder-core/tests/vectors.
+// The calendar of follow-up instances (next_occurrence) has its only TypeScript
+// copy in the mock server (e2e/mock-recurrence.ts).
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -12,6 +14,7 @@ import { toProject, toTask } from "../src/sync/model";
 import { mergeOps } from "../src/sync/merge";
 import { validateOps } from "../src/sync/validate";
 import type { JsonValue, Op, Project, Task } from "../src/sync/types";
+import { nextOccurrence, type MockNext, type MockRecurrence } from "../e2e/mock-recurrence";
 import { permutations, shuffled } from "./helpers";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -50,7 +53,32 @@ interface WeekBalanceVector {
   expected: WeekBalance;
 }
 
-type Vector = MergeVector | HlcOrderVector | ValidateVector | WeekBalanceVector;
+interface NextOccurrenceVector {
+  name: string;
+  kind: "next_occurrence";
+  /** The zone the cases are computed in; the tests run in it (vite.config.ts, TZ). */
+  time_zone: string;
+  cases: {
+    description: string;
+    recurrence: MockRecurrence;
+    due: string;
+    remind_at?: string;
+    /** RFC 3339: when the instance was completed (from done: its local date is the anchor). */
+    completed_at: string;
+    /** Local date the server handles the push on. */
+    today: string;
+    /** Next instance; null when none is created (beyond the year 9999). */
+    expected: MockNext | null;
+  }[];
+}
+
+type Vector = MergeVector | HlcOrderVector | ValidateVector | WeekBalanceVector | NextOccurrenceVector;
+
+/** Noon of a local date "YYYY-MM-DD" in the process zone, as Unix milliseconds. */
+function localNoon(date: string): number {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(y!, m! - 1, d!, 12).getTime();
+}
 
 /** Balance as the web UI computes it from a merged state (deleted tasks and dev projects excluded). */
 function balanceOf(ops: Op[], week: string): WeekBalance {
@@ -109,6 +137,17 @@ describe("shared test vectors", () => {
       if (vector.kind === "week_balance") {
         expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe(vector.time_zone);
         for (const order of orderings(vector.state)) expect(balanceOf(order, vector.week)).toEqual(vector.expected);
+        return;
+      }
+      if (vector.kind === "next_occurrence") {
+        expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe(vector.time_zone);
+        expect(vector.cases.length).toBeGreaterThan(0);
+        for (const c of vector.cases) {
+          const completed = Date.parse(c.completed_at);
+          expect(Number.isNaN(completed), c.description).toBe(false);
+          const got = nextOccurrence(c.recurrence, c.due, c.remind_at ?? null, completed, localNoon(c.today));
+          expect(got, c.description).toEqual(c.expected);
+        }
         return;
       }
       expect(vector.kind).toBe("merge");

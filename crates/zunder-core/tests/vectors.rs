@@ -6,10 +6,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 use time::{Date, Month, OffsetDateTime, UtcOffset, Weekday};
 use zunder_core::balance::week_balance;
-use zunder_core::recurrence::LocalZone;
+use zunder_core::model::{format_rfc3339, parse_plain_date, parse_rfc3339, Due, Recurrence};
+use zunder_core::recurrence::{next_occurrence, LocalZone};
 use zunder_core::{validate_push, Hlc, IsoWeek, Op, State};
 
 #[derive(Debug, Deserialize)]
@@ -44,6 +45,59 @@ enum Vector {
         state: Vec<Op>,
         expected: Value,
     },
+    /// Calendar of follow-up instances (contract 3.1) in `time_zone`: per
+    /// case, `zunder_core::recurrence::next_occurrence` must give
+    /// `expected`.
+    NextOccurrence {
+        name: String,
+        time_zone: String,
+        cases: Vec<OccurrenceCase>,
+    },
+}
+
+/// One completed instance of a series. `today` is the server's local date
+/// when it handles the push; `expected` is `{"due", "remind_at",
+/// "recurrence"}` of the next instance (`remind_at` null without a
+/// reminder), or `null` when the server creates none.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OccurrenceCase {
+    description: String,
+    recurrence: Recurrence,
+    due: Due,
+    #[serde(default)]
+    remind_at: Option<String>,
+    completed_at: String,
+    today: String,
+    expected: Value,
+}
+
+impl OccurrenceCase {
+    /// The next instance in the wire form of `expected`.
+    fn run(&self, zone: &impl LocalZone) -> Value {
+        let remind_at = self.remind_at.as_deref().map(|s| {
+            parse_rfc3339(s).unwrap_or_else(|| panic!("{}: bad remind_at {s:?}", self.description))
+        });
+        let completed_at = parse_rfc3339(&self.completed_at)
+            .unwrap_or_else(|| panic!("{}: bad completed_at", self.description));
+        let today = parse_plain_date(&self.today)
+            .unwrap_or_else(|| panic!("{}: bad today", self.description));
+        match next_occurrence(
+            &self.recurrence,
+            self.due,
+            remind_at,
+            completed_at,
+            today,
+            zone,
+        ) {
+            None => Value::Null,
+            Some(next) => json!({
+                "due": next.due,
+                "remind_at": next.remind_at.map(format_rfc3339),
+                "recurrence": next.recurrence,
+            }),
+        }
+    }
 }
 
 /// Europe/Berlin without a time zone database: CET, and CEST from the last
@@ -148,6 +202,7 @@ fn shared_vectors() {
     let mut hlc_count = 0;
     let mut validate_count = 0;
     let mut balance_count = 0;
+    let mut occurrence_count = 0;
     for path in &files {
         let file_name = path.file_name().unwrap().to_string_lossy().into_owned();
         match load(path) {
@@ -234,6 +289,30 @@ fn shared_vectors() {
                     assert_eq!(balance, expected, "vector {name}, order: {label}");
                 }
             }
+            Vector::NextOccurrence {
+                name,
+                time_zone,
+                cases,
+            } => {
+                occurrence_count += 1;
+                assert!(
+                    file_name.contains(&name),
+                    "{file_name}: name {name:?} does not match"
+                );
+                assert_eq!(
+                    time_zone, "Europe/Berlin",
+                    "{name}: only Europe/Berlin is modelled"
+                );
+                assert!(!cases.is_empty(), "{name}: no cases");
+                for case in &cases {
+                    assert_eq!(
+                        case.run(&Berlin),
+                        case.expected,
+                        "vector {name}, case {:?}",
+                        case.description
+                    );
+                }
+            }
             Vector::HlcOrder { name, sorted } => {
                 hlc_count += 1;
                 assert!(
@@ -269,6 +348,10 @@ fn shared_vectors() {
     assert!(
         balance_count >= 1,
         "expected at least one week_balance vector"
+    );
+    assert!(
+        occurrence_count >= 1,
+        "expected at least one next_occurrence vector"
     );
     assert!(
         validate_count >= 10,

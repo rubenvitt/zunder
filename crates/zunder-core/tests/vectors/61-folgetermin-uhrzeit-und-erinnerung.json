@@ -1,0 +1,303 @@
+{
+  "name": "folgetermin-uhrzeit-und-erinnerung",
+  "description": "Uhrzeit und Erinnerung (3.1) in Europe/Berlin: Ein reines Datum bleibt ein reines Datum; eine Fälligkeit mit Uhrzeit wird in Ortszeit umgerechnet und behält ihre lokale Uhrzeit über die Zeitumstellung hinweg, geschrieben mit dem dann geltenden Offset (Lücke im Frühjahr: später um die Länge der Lücke, Doppel im Herbst: die frühere). remind_at wandert um so viele Kalendertage wie die Fälligkeit, zur selben Ortszeit (bei from done auch rückwärts). Ein Termin jenseits des Jahres 9999 ergibt keine Instanz (expected null).",
+  "kind": "next_occurrence",
+  "time_zone": "Europe/Berlin",
+  "cases": [
+    {
+      "description": "reines Datum mit Erinnerung am Vortag 18:00",
+      "recurrence": {
+        "every": 1,
+        "unit": "month",
+        "day": "last",
+        "from": "due"
+      },
+      "due": "2026-10-31",
+      "remind_at": "2026-10-30T18:00:00+01:00",
+      "completed_at": "2026-10-31T12:00:00+01:00",
+      "today": "2026-10-31",
+      "expected": {
+        "due": "2026-11-30",
+        "remind_at": "2026-11-29T18:00:00+01:00",
+        "recurrence": {
+          "every": 1,
+          "unit": "month",
+          "day": "last",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "Ortszeit über das Ende der Sommerzeit: 09:00 bleibt 09:00",
+      "recurrence": {
+        "every": 1,
+        "unit": "day",
+        "from": "due"
+      },
+      "due": "2026-10-24T09:00:00+02:00",
+      "completed_at": "2026-10-24T10:00:00+02:00",
+      "today": "2026-10-24",
+      "expected": {
+        "due": "2026-10-25T09:00:00+01:00",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "day",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "Ortszeit über den Beginn der Sommerzeit: 09:00 bleibt 09:00",
+      "recurrence": {
+        "every": 1,
+        "unit": "day",
+        "from": "due"
+      },
+      "due": "2027-03-27T09:00:00+01:00",
+      "completed_at": "2027-03-27T10:00:00+01:00",
+      "today": "2027-03-27",
+      "expected": {
+        "due": "2027-03-28T09:00:00+02:00",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "day",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "02:30 in der Lücke der Sommerzeit → 03:30",
+      "recurrence": {
+        "every": 1,
+        "unit": "day",
+        "from": "due"
+      },
+      "due": "2027-03-27T02:30:00+01:00",
+      "completed_at": "2027-03-27T10:00:00+01:00",
+      "today": "2027-03-27",
+      "expected": {
+        "due": "2027-03-28T03:30:00+02:00",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "day",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "02:30 doppelt am Ende der Sommerzeit → die frühere",
+      "recurrence": {
+        "every": 1,
+        "unit": "day",
+        "from": "due"
+      },
+      "due": "2026-10-24T02:30:00+02:00",
+      "completed_at": "2026-10-24T10:00:00+02:00",
+      "today": "2026-10-24",
+      "expected": {
+        "due": "2026-10-25T02:30:00+02:00",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "day",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "fremder Offset: 30.10. 23:30 -05:00 ist der 31.10. 05:30 in Berlin",
+      "recurrence": {
+        "every": 1,
+        "unit": "month",
+        "day": "last",
+        "from": "due"
+      },
+      "due": "2026-10-30T23:30:00-05:00",
+      "completed_at": "2026-10-31T12:00:00+01:00",
+      "today": "2026-10-31",
+      "expected": {
+        "due": "2026-11-30T05:30:00+01:00",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "month",
+          "day": "last",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "UTC: 07:00Z ist 09:00 Ortszeit, die bleibt (nicht 07:00 UTC)",
+      "recurrence": {
+        "every": 1,
+        "unit": "week",
+        "from": "due"
+      },
+      "due": "2026-10-19T07:00:00Z",
+      "completed_at": "2026-10-19T12:00:00+02:00",
+      "today": "2026-10-19",
+      "expected": {
+        "due": "2026-10-26T09:00:00+01:00",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "week",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "Erinnerung über die Zeitumstellung: Vortag 18:00 bleibt Vortag 18:00",
+      "recurrence": {
+        "every": 1,
+        "unit": "week",
+        "from": "due"
+      },
+      "due": "2026-10-19T09:00:00+02:00",
+      "remind_at": "2026-10-18T18:00:00+02:00",
+      "completed_at": "2026-10-19T12:00:00+02:00",
+      "today": "2026-10-19",
+      "expected": {
+        "due": "2026-10-26T09:00:00+01:00",
+        "remind_at": "2026-10-25T18:00:00+01:00",
+        "recurrence": {
+          "every": 1,
+          "unit": "week",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "Erinnerung in UTC wird in Ortszeit verschoben und geschrieben",
+      "recurrence": {
+        "every": 1,
+        "unit": "week",
+        "from": "due"
+      },
+      "due": "2026-11-05",
+      "remind_at": "2026-11-04T17:00:00Z",
+      "completed_at": "2026-11-05T12:00:00+01:00",
+      "today": "2026-11-05",
+      "expected": {
+        "due": "2026-11-12",
+        "remind_at": "2026-11-11T18:00:00+01:00",
+        "recurrence": {
+          "every": 1,
+          "unit": "week",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "Erinnerung in der Lücke der Sommerzeit → 03:30",
+      "recurrence": {
+        "every": 1,
+        "unit": "day",
+        "from": "due"
+      },
+      "due": "2027-03-27",
+      "remind_at": "2027-03-27T02:30:00+01:00",
+      "completed_at": "2027-03-27T10:00:00+01:00",
+      "today": "2027-03-27",
+      "expected": {
+        "due": "2027-03-28",
+        "remind_at": "2027-03-28T03:30:00+02:00",
+        "recurrence": {
+          "every": 1,
+          "unit": "day",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "from done, früh erledigt: Erinnerung wandert rückwärts",
+      "recurrence": {
+        "every": 1,
+        "unit": "month",
+        "from": "done"
+      },
+      "due": "2026-11-30",
+      "remind_at": "2026-11-29T18:00:00+01:00",
+      "completed_at": "2026-10-15T12:00:00+02:00",
+      "today": "2026-10-15",
+      "expected": {
+        "due": "2026-11-15",
+        "remind_at": "2026-11-14T18:00:00+01:00",
+        "recurrence": {
+          "every": 1,
+          "unit": "month",
+          "from": "done"
+        }
+      }
+    },
+    {
+      "description": "from done mit Uhrzeit: Uhrzeit der alten Fälligkeit, Datum nach Erledigung",
+      "recurrence": {
+        "every": 1,
+        "unit": "day",
+        "from": "done"
+      },
+      "due": "2026-10-20T08:00:00+02:00",
+      "completed_at": "2026-10-26T20:00:00+01:00",
+      "today": "2026-10-26",
+      "expected": {
+        "due": "2026-10-27T08:00:00+01:00",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "day",
+          "from": "done"
+        }
+      }
+    },
+    {
+      "description": "Sekundenbruchteile bleiben erhalten (ohne Nullen am Ende)",
+      "recurrence": {
+        "every": 1,
+        "unit": "day",
+        "from": "due"
+      },
+      "due": "2026-10-24T09:00:00.5+02:00",
+      "remind_at": "2026-10-23T18:00:00.250+02:00",
+      "completed_at": "2026-10-24T10:00:00+02:00",
+      "today": "2026-10-24",
+      "expected": {
+        "due": "2026-10-25T09:00:00.5+01:00",
+        "remind_at": "2026-10-24T18:00:00.25+02:00",
+        "recurrence": {
+          "every": 1,
+          "unit": "day",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "Fälligkeit jenseits des Jahres 9999: keine Instanz",
+      "recurrence": {
+        "every": 1,
+        "unit": "day",
+        "from": "due"
+      },
+      "due": "9999-12-31",
+      "completed_at": "9999-12-31T10:00:00+01:00",
+      "today": "9999-12-31",
+      "expected": null
+    },
+    {
+      "description": "Erinnerung jenseits des Jahres 9999: keine Instanz",
+      "recurrence": {
+        "every": 1,
+        "unit": "day",
+        "from": "due"
+      },
+      "due": "9999-12-30",
+      "remind_at": "9999-12-31T23:30:00+01:00",
+      "completed_at": "9999-12-30T10:00:00+01:00",
+      "today": "9999-12-30",
+      "expected": null
+    }
+  ]
+}
