@@ -1902,28 +1902,26 @@ async fn defer_task_moves_counts_and_asks_for_a_decision() {
     let (code, _) = mcp_err(&s, &t, "defer_task", json!({"task_id": id})).await;
     assert_eq!(code, "invalid_value");
 
-    // Next week is its Monday; on a Sunday that is tomorrow, so nothing moves and the
-    // second deferral goes to the Monday after.
-    let until = if chrono::Datelike::weekday(&local_today()) == chrono::Weekday::Sun {
-        let (code, _) = mcp_err(
-            &s,
-            &t,
-            "defer_task",
-            json!({"task_id": id, "until": "next_week"}),
-        )
-        .await;
-        assert_eq!(code, "invalid_value");
-        json!((local_today() + chrono::Days::new(8)).to_string())
-    } else {
-        json!("next_week")
-    };
-    let second = mcp_ok(&s, &t, "defer_task", json!({"task_id": id, "until": until})).await;
+    // Back into the past, so "next week" moves even on a Sunday (tomorrow is Monday then).
+    mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": id, "due": "2020-01-06"}),
+    )
+    .await;
+    let second = mcp_ok(
+        &s,
+        &t,
+        "defer_task",
+        json!({"task_id": id, "until": "next_week"}),
+    )
+    .await;
     let monday =
         chrono::NaiveDate::parse_from_str(second["task"]["due"].as_str().unwrap(), "%Y-%m-%d")
             .unwrap();
     assert_eq!(chrono::Datelike::weekday(&monday), chrono::Weekday::Mon);
-    assert!(monday > local_today() + chrono::Days::new(1));
-    assert!(monday <= local_today() + chrono::Days::new(8));
+    assert!(monday > local_today() && monday <= local_today() + chrono::Days::new(7));
     assert_eq!(second["task"]["deferrals"], 2);
     assert_eq!(second["decision_due_next"], true);
 
