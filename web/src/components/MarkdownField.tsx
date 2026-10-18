@@ -155,6 +155,26 @@ export function MarkdownField(props: MarkdownFieldProps) {
 
   return (
     <div ref={wrapper} class={`md-field ${props.class ?? ""}`} classList={{ focused: focused(), source: source(), empty: !stored() && !focused() }}>
+      <Show when={source()}>
+        <TextField multiline autosize class="md-source mono" label={props.label} value={props.value} placeholder={props.placeholder} onCommit={props.onCommit} />
+      </Show>
+      {/* The editor owns the host's children: nothing else may render into it. */}
+      <div
+        ref={host}
+        class="md-host"
+        hidden={source() || !editor()}
+        onClick={(e) => {
+          // A click on the empty area below the text starts writing at the end.
+          const ed = editor();
+          if (ed && e.target === host) ed.commands.focus("end");
+        }}
+      />
+      <Show when={!editor() && !source()}>
+        <div class="md-host">
+          <div class="md-content md-loading">{stored() || props.placeholder}</div>
+        </div>
+      </Show>
+      {/* Below the text: appearing on focus must not move the text under the pointer. */}
       <div class="md-toolbar" role="toolbar" aria-label={`${props.label}: Formatierung`}>
         <Show when={!source()}>
           <For each={TOOLBAR}>
@@ -192,25 +212,6 @@ export function MarkdownField(props: MarkdownFieldProps) {
           <span>{source() ? "Ansicht" : "Markdown"}</span>
         </button>
       </div>
-      <Show when={source()}>
-        <TextField multiline autosize class="md-source mono" label={props.label} value={props.value} placeholder={props.placeholder} onCommit={props.onCommit} />
-      </Show>
-      {/* The editor owns the host's children: nothing else may render into it. */}
-      <div
-        ref={host}
-        class="md-host"
-        hidden={source() || !editor()}
-        onClick={(e) => {
-          // A click on the empty area below the text starts writing at the end.
-          const ed = editor();
-          if (ed && e.target === host) ed.commands.focus("end");
-        }}
-      />
-      <Show when={!editor() && !source()}>
-        <div class="md-host">
-          <div class="md-content md-loading">{stored() || props.placeholder}</div>
-        </div>
-      </Show>
     </div>
   );
 }
