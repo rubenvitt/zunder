@@ -1209,6 +1209,48 @@ async fn devices_log_in_via_oauth_and_are_revocable() {
 }
 
 #[tokio::test]
+async fn devices_share_the_focus_settings_with_the_browser() {
+    // "Erst für dich" (contract 5.1): what the app clicks away is gone in the
+    // browser the same day, and the other way round. No CSRF header needed.
+    let s = TestServer::new().await;
+    let client_id = register_app(&s).await;
+    let cookie = s.session().await;
+    let code = device_code(&s, &cookie, &client_id).await;
+    let device = device_token(&device_exchange(&s, &client_id, &code).await);
+    let session = s.session().await;
+
+    let r = s
+        .request(
+            Method::PUT,
+            "/api/settings/focus",
+            Auth::Bearer(&device),
+            Some(json!({"dismissed_on": "2026-10-18"})),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    let r = s.get("/api/settings/focus", Auth::Web(&session)).await;
+    assert_eq!(r.json()["dismissed_on"], "2026-10-18");
+
+    let chosen = json!({"on": "2026-10-18", "task_id": "t0000000000000000000000a"});
+    let r = s
+        .request(
+            Method::PUT,
+            "/api/settings/focus",
+            Auth::Web(&session),
+            Some(json!({"dismissed_on": null, "chosen": chosen})),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    let r = s.get("/api/settings/focus", Auth::Bearer(&device)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    assert_eq!(r.json(), json!({"dismissed_on": null, "chosen": chosen}));
+
+    // Other server settings stay browser only.
+    let r = s.get("/api/settings/timing", Auth::Bearer(&device)).await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
 async fn device_grants_keep_their_resource() {
     let s = TestServer::new().await;
     let client_id = register_app(&s).await;

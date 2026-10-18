@@ -98,6 +98,40 @@ for (const tag of ["", " @mobile"]) {
   });
 }
 
+test("Beschreibung: Tasten direkt nach dem Klick wirken an der Klickstelle", async ({ page }) => {
+  // Under load the browser delivers keys before the asynchronous selectionchange of
+  // the click (seen in CI); delaying that event here makes the race deterministic.
+  await page.addInitScript(() => {
+    const w = window as unknown as { __delaySelectionChange: number };
+    w.__delaySelectionChange = 0;
+    document.addEventListener(
+      "selectionchange",
+      (event) => {
+        if (!w.__delaySelectionChange || !event.isTrusted) return;
+        event.stopImmediatePropagation();
+        setTimeout(() => document.dispatchEvent(new Event("selectionchange")), w.__delaySelectionChange);
+      },
+      true,
+    );
+  });
+  const s = suffix();
+  const seeder = new Seeder();
+  const id = seeder.task(`Klickstelle ${s}`, { location: { kind: "loose" }, description: "## Ziel\n\n- erster Punkt\n- letzter Punkt" });
+  await seeder.push(page);
+  await openLoose(page, `Klickstelle ${s}`);
+
+  const description = detail(page).getByRole("textbox", { name: "Beschreibung (Markdown)" });
+  await expect(description.locator("h2")).toHaveText("Ziel");
+  await page.evaluate(() => ((window as unknown as { __delaySelectionChange: number }).__delaySelectionChange = 100));
+  await description.locator("li").last().click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Danach");
+  await page.keyboard.press("Control+Enter");
+  await expect.poll(async () => String((await entityFields(page, "task", id)).description)).toBe("## Ziel\n\n- erster Punkt\n- letzter Punkt\n\nDanach");
+});
+
 test("Beschreibung: Links öffnen sich per Klick, beim Schreiben per Cmd/Ctrl+Klick", async ({ page, context }) => {
   await context.route("https://example.org/**", (route) => route.fulfill({ body: "Beispiel" }));
   const s = suffix();

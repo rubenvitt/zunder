@@ -7,7 +7,7 @@ import { Placeholder } from "@tiptap/extensions";
 import { Markdown } from "@tiptap/markdown";
 import type { Node as PmNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import StarterKit from "@tiptap/starter-kit";
 import { openExternal } from "../../platform/runtime";
 import { findTaskRefs } from "./task-refs";
@@ -111,6 +111,18 @@ function linkToOpen(focused: boolean, event: MouseEvent): string | null {
   return anchor ? safeUrl(anchor.getAttribute("href") ?? "") : null;
 }
 
+/**
+ * ProseMirror learns about a click's new cursor only from the asynchronous
+ * `selectionchange` event. Under load the browser delivers a key pressed right
+ * after the click first, and Enter would then split the block at the previous
+ * selection (e.g. the start of the document). Reading the DOM selection before
+ * any key handler runs keeps keys at the clicked spot. `domObserver` is internal
+ * to prosemirror-view, hence the optional calls.
+ */
+function syncSelectionFromDOM(view: EditorView): void {
+  (view as EditorView & { domObserver?: { flush?: () => void } }).domObserver?.flush?.();
+}
+
 export function createMarkdownEditor(options: MarkdownEditorOptions): Editor {
   const editor = new Editor({
     element: options.element,
@@ -141,7 +153,8 @@ export function createMarkdownEditor(options: MarkdownEditorOptions): Editor {
         "aria-label": options.label,
         spellcheck: "true",
       },
-      handleKeyDown(_view, event) {
+      handleKeyDown(view, event) {
+        syncSelectionFromDOM(view);
         if (event.key === "Escape") {
           event.preventDefault();
           event.stopPropagation();

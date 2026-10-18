@@ -198,6 +198,8 @@ Die Web-UI ruft sie mit `invoke` aus `@tauri-apps/api/core` auf (`TauriTransport
 | `restart_app` | – | startet die App neu (etwa für ein installiertes Update) |
 | `test_notification` | – | `null`; zeigt sofort eine Benachrichtigung. Fehler `notification` |
 | `flame_start`, `flame_stop` | `{"task_id": UUID}` | Antwort des Servers unverändert (`{task, running, stopped_task_ids, unchanged, timing, warnings}`). Vorher wird gepusht, falls Operationen ausstehen (der Server kennt sonst die Aufgabe nicht), danach synchronisiert, damit `flame_started_at`/`flame_ended_at` sofort per `zunder://changed` ankommen. Stopp ohne laufende Flamme: Fehler `server` („Server-Fehler (409): …“) |
+| `focus_get` | – | `{"dismissed_on": String\|null, "chosen": {"on","task_id"}\|null}` – „Erst für dich“ aus `GET /api/settings/focus` mit dem gespeicherten Token. Nur mit Geräte-Token (Anmeldung im Browser); mit einem API-Token Fehler `unsupported` |
+| `focus_set` | `{"update": {"dismissed_on"?, "chosen"?}}` | wie `focus_get`, nach `PUT /api/settings/focus` (fehlender Schlüssel = unverändert, `null` = entfernen; geprüft vom Server) |
 
 Regeln:
 
@@ -217,7 +219,7 @@ Ereignisse (`listen` aus `@tauri-apps/api/event`):
 
 `local_apply` sendet kein Ereignis; die aufrufende UI kennt das Ergebnis.
 
-Die Content-Security-Policy erlaubt nur `ipc:`-Verbindungen (und der Server erlaubt kein CORS). Die Web-UI spricht in der App also nie direkt mit dem Server, sondern ausschließlich über diese Befehle. API-Tokens verwalten (`/api/tokens`) geht nur mit Browser-Sitzung und ist deshalb in der App nicht verfügbar.
+Die Content-Security-Policy erlaubt nur `ipc:`-Verbindungen (und der Server erlaubt kein CORS). Die Web-UI spricht in der App also nie direkt mit dem Server, sondern ausschließlich über diese Befehle. API-Tokens verwalten (`/api/tokens`) und die übrigen Server-Einstellungen gehen nur mit Browser-Sitzung und sind deshalb in der App nicht verfügbar; „Erst für dich“ (`/api/settings/focus`) nimmt der Server auch mit dem Geräte-Token an.
 
 ## Web-UI in der App
 
@@ -227,7 +229,7 @@ Die Web-UI erkennt die App an `window.__TAURI_INTERNALS__` und lädt erst dann p
 - **Sync-Engine der Web-UI:** Snapshot = `local_snapshot`, Push = `local_apply`, Pull gibt es nicht. Nach `zunder://changed` lädt die Engine den Snapshot neu (Ausstehendes bleibt obenauf). Die HLC-Knoten-ID ist `node_id`. Eine Ausstehend-Warteschlange führt die Web-UI nur für einen laufenden `local_apply`, gespeichert wird in SQLite.
 - **Status:** Die Sync-Anzeige folgt `zunder://sync` (Synchron, Synchronisiert …, Offline, Token abgelehnt, Sync-Fehler) und der Zahl ausstehender Operationen der App; Ablehnungen aus `report.rejected` erscheinen als Meldung, auch aus einem gescheiterten Durchgang. Ein Klick führt zu den **Einstellungen** der App (`#/verbindung`, in der Seitenleiste „Einstellungen“): Verbindung (Adresse, Token ersetzen), Abgleich (letzter Abgleich, „Jetzt abgleichen“) und App (Version, „Beim Anmelden am Rechner starten“, Update-Stand mit „Nach Updates suchen“ bzw. „Jetzt neu starten“, „Testbenachrichtigung senden“; mobil nur Version und Testbenachrichtigung). Sie ersetzen in der App die Token-Seite, die Server-Einstellungen und „Abmelden“.
 - **Serverwechsel** mit ausstehenden Änderungen: Die UI meldet `pending_ops` und bietet „Änderungen verwerfen und wechseln“ an (`discard_pending: true`).
-- Verlauf und Flammen laufen über `task_history`, `flame_start` und `flame_stop`.
+- Verlauf und Flammen laufen über `task_history`, `flame_start` und `flame_stop`, „Erst für dich“ über `focus_get` und `focus_set` (Wegklicken und Wahl gelten so auch im Browser; offline bleibt die Änderung im `localStorage` der Webview vorgemerkt).
 
 Geprüft wird das ohne Webview: Vitest mit nachgebautem `invoke`/`listen` (`web/test/tauri.test.ts`, `web/test/desktop.test.ts`) und ein Playwright-Test, der im Browser eine App-Attrappe als `__TAURI_INTERNALS__` einsetzt (`web/e2e/tauri.spec.ts`; prüft auch, dass keine einzige `/api`-Anfrage gestellt wird). Die HTTP-Seite der neuen Befehle testet `zunder-local` (`client.rs` gegen einen Testserver, `tests/server_e2e.rs` gegen den echten Server).
 

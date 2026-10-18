@@ -265,6 +265,10 @@ async fn history_and_flames_with_the_api_token() {
         .await
         .unwrap_err();
     assert!(err.to_string().contains("404"), "{err}");
+
+    // "Erst für dich" needs a device token (login), not an API token.
+    let err = client.focus_settings().await.unwrap_err();
+    assert_eq!(err.code(), "unsupported", "{err:?}");
 }
 
 #[tokio::test]
@@ -348,6 +352,19 @@ async fn login_yields_a_device_token_that_syncs() {
     let token = login::exchange(&pending, &code).await.unwrap();
     let phone = device(&dir, "phone2", &server, &token);
     syncer.sync(&phone, now()).await.unwrap();
+
+    // "Erst für dich" (commands `focus_get`, `focus_set`) with the device token.
+    let client = syncer.client(&phone).unwrap();
+    let update = serde_json::json!({"dismissed_on": "2026-10-18"});
+    let settings = client.update_focus_settings(&update).await.unwrap();
+    assert_eq!(
+        settings,
+        serde_json::json!({"dismissed_on": "2026-10-18", "chosen": null})
+    );
+    let update = serde_json::json!({"dismissed_on": null});
+    client.update_focus_settings(&update).await.unwrap();
+    let settings = client.focus_settings().await.unwrap();
+    assert_eq!(settings["dismissed_on"], serde_json::Value::Null);
 
     // Revoking (new login, logout) cuts the device off.
     login::revoke(&server.url, &token).await.unwrap();

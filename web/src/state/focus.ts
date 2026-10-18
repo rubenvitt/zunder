@@ -2,7 +2,8 @@
 // on the server (`/api/settings/focus`), so every browser sees them. This device keeps the last
 // known value and its own changes in localStorage: offline they hold at once and go to the
 // server at the next chance (start, switching to Heute, the browser going online). The Tauri app
-// has no browser session for server settings and keeps both on the device.
+// goes through its commands focus_get/focus_set with the device token; connected with an API token
+// instead, it keeps both on the device.
 
 import { createSignal } from "solid-js";
 import { localDate } from "../sync/dates";
@@ -42,7 +43,7 @@ export function focusToday(): string {
   return localDate(new Date(now()));
 }
 
-/** Errors that will not go away by trying again: the app has no such server settings. */
+/** Errors that will not go away by trying again: the app is connected with an API token. */
 function isLocalOnly(err: unknown): boolean {
   return !!err && typeof err === "object" && (err as { code?: unknown }).code === "unsupported";
 }
