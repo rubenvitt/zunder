@@ -251,7 +251,7 @@ async fn a_change_larger_than_a_push_batch_goes_through_in_one_push() {
     let (_, small) = ui.ops(|b| b.create_task(NewTask::new("Danach")));
     apply(&phone, &small);
     assert_eq!(
-        lock(&phone).pending_batch(PUSH_BATCH, PUSH_BATCH_BYTES),
+        lock(&phone).pending_batch(PUSH_BATCH, PUSH_BATCH_BYTES).ops,
         big,
         "the whole change is the first push"
     );
@@ -466,7 +466,8 @@ async fn recurring_tasks_continue_through_the_real_server() {
     let remind = at(Month::February, feb_last - 1, time!(18:00), offset!(+1));
 
     // Offline on the phone: create the series and tick it off right away.
-    // Both land in one push (pending_batch), which still completes it.
+    // Both touch the task, so they go in two pushes (pending_batch); the
+    // second completes it.
     let ((area, first), create) = phone_ui.ops(|b| {
         let area = b.create_area(NewArea::new("Arbeit"));
         let task = b.create_task(

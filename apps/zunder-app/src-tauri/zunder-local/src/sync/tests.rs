@@ -226,6 +226,105 @@ async fn several_changes_share_a_push_without_being_split() {
 }
 
 #[tokio::test]
+async fn an_invalid_later_change_does_not_cost_an_earlier_one() {
+    let server = FakeServer::new();
+    let device = store();
+    let mut ui = Author::new("web-a");
+    let mut other = Author::new("web-b");
+
+    let (area, create_area) = ui.create(|b| b.create_area(NewArea::new("Haushalt")));
+    let (task, create_task) = ui.create(|b| b.create_task(NewTask::new("Fenster")));
+    apply(&device, &[create_area, create_task].concat());
+    sync_once(&device, &server, now()).await.unwrap();
+    server.accept(&other.ops(|b| {
+        b.delete(zunder_core::EntityKind::Area, area);
+    }));
+
+    // Offline: rename the task, then file it into the (locally live) area.
+    let rename = ui.ops(|b| {
+        b.set_task(task, f::TITLE, "Fenster putzen");
+    });
+    let file = ui.ops(|b| {
+        b.move_task(task, Location::Area { id: area });
+    });
+    apply(&device, &rename);
+    apply(&device, &file);
+
+    // Both touch the task: two pushes, so only the move is rejected.
+    let report = sync_once(&device, &server, now()).await.unwrap();
+    assert_eq!(&server.push_sizes()[1..], [rename.len(), file.len()]);
+    assert_eq!(report.pushed, rename.len());
+    assert_eq!(report.rejected.len(), file.len());
+    assert!(report
+        .rejected
+        .iter()
+        .all(|r| r.code == RejectCode::InvalidReference));
+    let s = lock(&device);
+    assert_eq!(s.pending_count(), 0);
+    assert_eq!(s.state().task(task).unwrap().title, "Fenster putzen");
+    assert_eq!(s.state(), &server.state());
+}
+
+#[tokio::test]
+async fn a_push_refused_as_a_whole_is_retried_change_by_change() {
+    for status in [400, 413] {
+        let server = FakeServer::new();
+        let device = store();
+        let mut ui = Author::new("web-a");
+        let changes: Vec<_> = ["A", "B", "C"]
+            .map(|title| ui.create(|b| b.create_task(NewTask::new(title))))
+            .into();
+        for (_, ops) in &changes {
+            apply(&device, ops);
+        }
+        let [(a, a_ops), (b, b_ops), (c, c_ops)] = &changes[..] else {
+            unreachable!()
+        };
+        // Something in B makes the server refuse every request holding it.
+        server.refuse_pushes_with(status, b_ops.iter().map(|op| op.op_id));
+
+        let report = sync_once(&device, &server, now()).await.unwrap();
+        assert_eq!(
+            server.push_sizes(),
+            [
+                a_ops.len() + b_ops.len() + c_ops.len(),
+                a_ops.len(),
+                b_ops.len(),
+                c_ops.len()
+            ],
+            "status {status}"
+        );
+        assert_eq!(report.pushed, a_ops.len() + c_ops.len());
+        let rejected: Vec<_> = report.rejected.iter().map(|r| r.op_id).collect();
+        let b_ids: Vec<_> = b_ops.iter().map(|op| op.op_id).collect();
+        assert_eq!(rejected, b_ids);
+        assert!(report.changed);
+        assert_eq!(report.pending, 0);
+        let s = lock(&device);
+        assert!(s.state().task(*a).is_some());
+        assert!(s.state().task(*b).is_none(), "rolled back");
+        assert!(s.state().task(*c).is_some());
+        assert_eq!(s.state(), &server.state());
+    }
+}
+
+#[tokio::test]
+async fn other_server_errors_keep_the_changes_pending() {
+    let server = FakeServer::new();
+    let device = store();
+    let mut ui = Author::new("web-a");
+    let (_, ops) = ui.create(|b| b.create_task(NewTask::new("A")));
+    apply(&device, &ops);
+    server.refuse_pushes_with(503, ops.iter().map(|op| op.op_id));
+
+    let failure = sync_once(&device, &server, now()).await.unwrap_err();
+    assert!(matches!(failure.error, Error::Server { status: 503, .. }));
+    assert!(failure.report.rejected.is_empty());
+    assert_eq!(failure.report.pending, ops.len());
+    assert_eq!(server.push_sizes(), [ops.len()]);
+}
+
+#[tokio::test]
 async fn syncer_requires_a_configured_server() {
     let device = store();
     let err = Syncer::new().sync(&device, now()).await.unwrap_err();
