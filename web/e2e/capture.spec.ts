@@ -148,6 +148,30 @@ test("Schnellerfassung mit Kurzschreibweise setzt Fälligkeit, Erinnerung und Be
   expect(fields.remind_at).toBe(fields.due);
 });
 
+test("Schnellerfassung mit wartet:Name legt eine blockierte Aufgabe an, die auf jemanden wartet", async ({ page }) => {
+  const s = suffix();
+  await openApp(page, "#/lose");
+  await page.keyboard.press("n");
+  const input = page.getByLabel("Titel der neuen Aufgabe");
+  await input.fill(`Angebot ${s} wartet:Team_Einkauf @andere`);
+  await expect(page.locator(".capture-preview .chip-waiting-on")).toHaveText("wartet auf Team Einkauf");
+  await expect(page.locator(".capture-title")).toHaveText(`Angebot ${s}`);
+  await input.press("Enter");
+
+  // Handed back already: a plain confirmation, no commitment question.
+  await expect(page.locator(".toast:not(.toast-ask)", { hasText: "Erfasst in Lose, wartet auf Team Einkauf." })).toBeVisible();
+  await expect(page.locator(".toast-ask")).toHaveCount(0);
+  const taskRow = row(page, `Angebot ${s}`);
+  await expect(taskRow.locator(".chip-waiting-on")).toHaveText("wartet auf Team Einkauf");
+  const id = await taskRow.getAttribute("data-task-id");
+  await expect
+    .poll(async () => {
+      const f = await entityFields(page, "task", id!);
+      return [f.waiting_on, f.status, f.for_whom];
+    })
+    .toEqual(["Team Einkauf", "blocked", "andere"]);
+});
+
 test("Schnellerfassung mit Rhythmus legt eine wiederkehrende Aufgabe an, × lässt die Wörter im Titel", async ({ page }) => {
   const s = suffix();
   await openApp(page);

@@ -11,9 +11,12 @@
 // Mai", "alle paar Tage") stay in the title whole, with what follows their unit
 // ("jede 2. Woche am ersten Montag"), and set nothing. "!brand", "!glut", "!rauch", "!asche" set the weight, "@mich", "@uns",
 // "@andere" whom the task is for (the first of each counts; others stay in the title).
+// "wartet:Anna" sets whom the task waits on ("_" stands for a space: "wartet:Team_Einkauf";
+// the first counts, the task is then created blocked).
 
-import { describeRecurrence, FOR_WHOM_LABELS, WEIGHT_LABELS } from "../labels";
+import { describeRecurrence, FOR_WHOM_LABELS, waitingLabel, WEIGHT_LABELS } from "../labels";
 import { addDays, isValidCalendarDate, localDate, startOfDay, toRfc3339Local } from "../sync/dates";
+import { TITLE_MAX } from "../sync/validate";
 import { FOR_WHOMS, WEEKDAY_CODES, WEIGHTS, type ForWhom, type Location, type Recurrence, type WeekdayCode, type Weight } from "../sync/types";
 
 export interface CaptureTarget {
@@ -26,7 +29,7 @@ export interface CaptureStructure {
   projects: readonly CaptureTarget[];
 }
 
-export type CaptureTokenKind = "date" | "time" | "area" | "project" | "recurrence" | "weight" | "for_whom";
+export type CaptureTokenKind = "date" | "time" | "area" | "project" | "recurrence" | "weight" | "for_whom" | "waiting_on";
 
 export interface CaptureToken {
   kind: CaptureTokenKind;
@@ -46,6 +49,8 @@ export interface CaptureResult {
   recurrence: Recurrence | null;
   weight: Weight | null;
   for_whom: ForWhom | null;
+  /** Whom the task waits on ("wartet:Anna"); when set, the task is created blocked. */
+  waiting_on: string | null;
   tokens: CaptureToken[];
   unknownTags: string[];
 }
@@ -654,6 +659,19 @@ function matchRhythmBase(words: readonly string[], i: number): RhythmMatch | nul
   }
 }
 
+const WAITING_PREFIX = "wartet:";
+
+/** The name after "wartet:" ("Team_Einkauf." → "Team Einkauf"); null when empty or too long. */
+function waitingName(word: string): string | null {
+  const name = word
+    .slice(WAITING_PREFIX.length)
+    .replace(/[,;!?.]+$/, "")
+    .replace(/_+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+  return name && name.length <= TITLE_MAX ? name : null;
+}
+
 function resolveTag(slug: string, structure: CaptureStructure): { kind: "area" | "project"; target: CaptureTarget } | null {
   const project = structure.projects.find((p) => slugify(p.name) === slug);
   if (project) return { kind: "project", target: project };
@@ -678,6 +696,7 @@ export function parseCapture(input: string, now: Date, structure: CaptureStructu
   let rhythm: RecurrenceHit | null = null;
   let weight: Weight | null = null;
   let forWhom: ForWhom | null = null;
+  let waitingOn: string | null = null;
 
   for (let i = 0; i < words.length; i++) {
     if (!keep[i]) continue;
@@ -695,6 +714,13 @@ export function parseCapture(input: string, now: Date, structure: CaptureStructu
       forWhom = code as ForWhom;
       keep[i] = false;
       tokens.push({ kind: "for_whom", text: word, label: FOR_WHOM_LABELS[forWhom] });
+      continue;
+    }
+    const waiting: string | null = !waitingOn && lower.startsWith(WAITING_PREFIX) ? waitingName(word) : null;
+    if (waiting) {
+      waitingOn = waiting;
+      keep[i] = false;
+      tokens.push({ kind: "waiting_on", text: word, label: waitingLabel(waiting) });
       continue;
     }
 
@@ -792,5 +818,5 @@ export function parseCapture(input: string, now: Date, structure: CaptureStructu
 
   const location: Location | null = project ? { kind: "project", id: project.id } : area ? { kind: "area", id: area.id } : null;
   const title = words.filter((_, i) => keep[i]).join(" ") || input.trim();
-  return { title, due, remind_at: remindAt, location, recurrence, weight, for_whom: forWhom, tokens, unknownTags };
+  return { title, due, remind_at: remindAt, location, recurrence, weight, for_whom: forWhom, waiting_on: waitingOn, tokens, unknownTags };
 }

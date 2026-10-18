@@ -3,7 +3,7 @@ import { captureContext } from "../capture/context";
 import { parseCapture, slugify } from "../capture/parse";
 import { formatDue } from "../sync/dates";
 import { isDevLocation } from "../sync/derived";
-import { CAPTURE_SHORTHAND, COMMITMENT_QUESTION, describeRecurrence, FOR_WHOM_HINTS, FOR_WHOM_LABELS, locationLabel, WEIGHT_HINTS, WEIGHT_LABELS } from "../labels";
+import { CAPTURE_SHORTHAND, COMMITMENT_QUESTION, describeRecurrence, FOR_WHOM_HINTS, FOR_WHOM_LABELS, locationLabel, waitingLabel, WEIGHT_HINTS, WEIGHT_LABELS } from "../labels";
 import { createTask, selfCommitted, shorten } from "../state/actions";
 import { route } from "../state/router";
 import { areaList, data, now, projectList } from "../state/store";
@@ -87,10 +87,11 @@ export function QuickCapture() {
     const result = parsed();
     const location = target();
     // Quick capture only creates root tasks, so a rhythm is always allowed (contract 2.5).
-    const id = createTask({ title: result.title, location, due: result.due, remind_at: result.remind_at, recurrence: result.recurrence, weight: result.weight, for_whom: result.for_whom });
+    const id = createTask({ title: result.title, location, due: result.due, remind_at: result.remind_at, recurrence: result.recurrence, weight: result.weight, for_whom: result.for_whom, waiting_on: result.waiting_on });
     if (!id) return;
     // "Zugesagt oder selbst verpflichtet?" (contract 5.1), outside dev projects like the chips.
-    if (result.for_whom === "andere" && !isDevLocation(location, (pid) => data.projects[pid])) {
+    // A task that already waits on someone is handed back and no open commitment: no question.
+    if (result.for_whom === "andere" && !result.waiting_on && !isDevLocation(location, (pid) => data.projects[pid])) {
       // Asked after saving, not in the preview: Enter stays one keystroke, and the answer
       // belongs to the task that now exists. Ignoring it changes nothing.
       askToast(`Erfasst in ${locationLabel(location)}. ${COMMITMENT_QUESTION}`, [
@@ -102,7 +103,8 @@ export function QuickCapture() {
           },
         },
       ]);
-    } else toast(`Erfasst in ${locationLabel(location)}.`);
+    } else if (result.waiting_on) toast(`Erfasst in ${locationLabel(location)}, ${waitingLabel(result.waiting_on)}.`);
+    else toast(`Erfasst in ${locationLabel(location)}.`);
     setText("");
     setCaptureOpen(false);
   }
@@ -167,7 +169,7 @@ export function QuickCapture() {
               </button>
             </Show>
           </span>
-          <Show when={text().trim()} fallback={<span class="muted"><kbd>#</kbd> ordnet zu, „morgen 9:00“ setzt Fälligkeit, „jeden Freitag“ einen Rhythmus, <kbd>!glut</kbd> das Gewicht, <kbd>@andere</kbd> für wen. <kbd>Enter</kbd> speichert.</span>}>
+          <Show when={text().trim()} fallback={<span class="muted"><kbd>#</kbd> ordnet zu, „morgen 9:00“ setzt Fälligkeit, „jeden Freitag“ einen Rhythmus, <kbd>!glut</kbd> das Gewicht, <kbd>@andere</kbd> für wen, <kbd>wartet:Anna</kbd> auf wen es wartet. <kbd>Enter</kbd> speichert.</span>}>
             <Show when={parsed().due}>
               <span class="chip chip-accent">
                 <Icon name="calendar" size={12} />
@@ -186,6 +188,14 @@ export function QuickCapture() {
               {(f) => (
                 <span class={`chip chip-for chip-for-${f()}`} title={FOR_WHOM_HINTS[f()]}>
                   {FOR_WHOM_LABELS[f()]}
+                </span>
+              )}
+            </Show>
+            <Show when={parsed().waiting_on}>
+              {(name) => (
+                <span class="chip chip-waiting-on" title={`Die Entscheidung liegt bei ${name()}; die Aufgabe startet blockiert`}>
+                  <Icon name="user" size={12} />
+                  {waitingLabel(name())}
                 </span>
               )}
             </Show>
