@@ -2,7 +2,7 @@
 //! section away, and which Glut task they picked for which day when none
 //! was planned. Plain settings rows (`focus.*`), not synchronized
 //! entities: one value per account, last write wins, read and written over
-//! `/api/settings/focus`.
+//! `/api/settings/focus` by browser sessions and the app's devices.
 //!
 //! The days are calendar days of the client that writes them (its local
 //! time zone); the server stores them without interpreting them, so "today"
