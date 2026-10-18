@@ -1902,6 +1902,14 @@ async fn defer_task_moves_counts_and_asks_for_a_decision() {
     let (code, _) = mcp_err(&s, &t, "defer_task", json!({"task_id": id})).await;
     assert_eq!(code, "invalid_value");
 
+    // Back into the past, so "next week" moves even on a Sunday (tomorrow is Monday then).
+    mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": id, "due": "2020-01-06"}),
+    )
+    .await;
     let second = mcp_ok(
         &s,
         &t,
