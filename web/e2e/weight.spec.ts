@@ -80,8 +80,17 @@ test("Heute nicht: zweimal verschieben, beim dritten Mal ruhen lassen", async ({
     return [f.due, f.deferrals];
   }).toEqual([deferDay("tomorrow", today()), 1]);
 
+  // On a Sunday next week's Monday is tomorrow and "Nächste Woche" would have nothing left to
+  // move: the due date then goes back to yesterday, as if a day had passed.
+  const sunday = deferDay("tomorrow", today()) === deferDay("next_week", today());
+  if (sunday) {
+    const back = new Seeder();
+    back.raw("task", id, { due: yesterday() });
+    await back.push(page);
+  }
   await openApp(page, "#/lose");
   await row(page, `Keller ${s}`).locator(".task-main").click();
+  if (sunday) await expect(row(page, `Keller ${s}`)).toContainText("Gestern");
   await detail(page).getByRole("button", { name: "Nächste Woche" }).click();
   await expect(detail(page).locator(".deferral-count")).toHaveText("2-mal verschoben, beim nächsten Mal entscheiden");
   await expect(row(page, `Keller ${s}`).locator(".chip-deferred.chip-decision")).toHaveText("2");
