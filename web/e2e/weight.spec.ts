@@ -4,7 +4,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { localDate } from "../src/sync/dates";
 import { deferDay } from "../src/sync/defer";
-import { entityFields, openApp, prepare, row, Seeder, suffix } from "./fixtures";
+import { entityFields, openApp, prepare, reloadApp, row, Seeder, suffix } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
   await prepare(page);
@@ -80,6 +80,11 @@ test("Heute nicht: zweimal verschieben, beim dritten Mal ruhen lassen", async ({
     return [f.due, f.deferrals];
   }).toEqual([deferDay("tomorrow", today()), 1]);
 
+  // Back into the past, so "Nächste Woche" moves even on a Sunday (tomorrow is Monday then).
+  const back = new Seeder();
+  back.raw("task", id, { due: yesterday() });
+  await back.push(page);
+  await reloadApp(page);
   await openApp(page, "#/lose");
   await row(page, `Keller ${s}`).locator(".task-main").click();
   await detail(page).getByRole("button", { name: "Nächste Woche" }).click();
