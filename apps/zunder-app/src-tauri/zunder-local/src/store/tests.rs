@@ -51,7 +51,7 @@ fn local_ops_are_applied_and_queued() {
     assert_eq!(result.pending, ops.len());
     assert_eq!(title(&store, id).as_deref(), Some("Zahnarzt anrufen"));
     assert!(store.confirmed_state().is_empty());
-    assert_eq!(store.pending_batch(usize::MAX, usize::MAX), ops);
+    assert_eq!(store.pending_batch(usize::MAX, usize::MAX).ops, ops);
 
     let snapshot = store.snapshot();
     assert_eq!(snapshot.cursor, 0);
@@ -112,7 +112,7 @@ fn everything_survives_a_restart() {
     assert_eq!(store.node_id(), &node_id);
     assert!(store.node_id().as_str().starts_with("app-"));
     assert_eq!(store.cursor(), confirmed_ops.len() as i64);
-    assert_eq!(store.pending_batch(usize::MAX, usize::MAX), pending_ops);
+    assert_eq!(store.pending_batch(usize::MAX, usize::MAX).ops, pending_ops);
     assert!(store.confirmed_state().task(confirmed_id).is_some());
     assert!(store.confirmed_state().task(pending_id).is_none());
     assert_eq!(title(&store, pending_id).as_deref(), Some("Offen"));
@@ -203,7 +203,7 @@ fn rollback_keeps_other_pending_ops() {
     store.apply_push_response(&create_a, &response).unwrap();
     assert!(store.state().task(a).is_none());
     assert_eq!(title(&store, b_id).as_deref(), Some("B"));
-    assert_eq!(store.pending_batch(usize::MAX, usize::MAX), create_b);
+    assert_eq!(store.pending_batch(usize::MAX, usize::MAX).ops, create_b);
 }
 
 /// Creates an empty database at `path` with the schema of `version`, as an
@@ -247,10 +247,10 @@ fn a_change_larger_than_the_batch_limit_goes_whole() {
     store.apply_local(&small, now()).unwrap();
 
     // Above the operation limit and above the byte limit: still whole.
-    assert_eq!(store.pending_batch(10, usize::MAX), big);
-    assert_eq!(store.pending_batch(usize::MAX, 1), big);
+    assert_eq!(store.pending_batch(10, usize::MAX).ops, big);
+    assert_eq!(store.pending_batch(usize::MAX, 1).ops, big);
     push_accepted(&mut store, &big);
-    assert_eq!(store.pending_batch(10, usize::MAX), small);
+    assert_eq!(store.pending_batch(10, usize::MAX).ops, small);
 }
 
 #[test]
@@ -268,10 +268,10 @@ fn batches_hold_whole_changes_up_to_the_limits() {
 
     // Room for two and a half changes: two go, the third waits whole.
     let limit = 2 * n + n / 2;
-    let first = store.pending_batch(limit, usize::MAX);
+    let first = store.pending_batch(limit, usize::MAX).ops;
     assert_eq!(first, [changes[0].clone(), changes[1].clone()].concat());
     push_accepted(&mut store, &first);
-    assert_eq!(store.pending_batch(limit, usize::MAX), changes[2]);
+    assert_eq!(store.pending_batch(limit, usize::MAX).ops, changes[2]);
 
     // The byte limit cuts at change boundaries, too.
     let mut store = LocalStore::open_in_memory().unwrap();
@@ -280,10 +280,33 @@ fn batches_hold_whole_changes_up_to_the_limits() {
     }
     let bytes = serialized_len(&changes[0]) + serialized_len(&changes[1]);
     assert_eq!(
-        store.pending_batch(usize::MAX, bytes + 1),
+        store.pending_batch(usize::MAX, bytes + 1).ops,
         [changes[0].clone(), changes[1].clone()].concat()
     );
-    assert_eq!(store.pending_batch(usize::MAX, bytes - 1), changes[0]);
+    assert_eq!(store.pending_batch(usize::MAX, bytes - 1).ops, changes[0]);
+}
+
+#[test]
+fn a_batch_ends_before_a_change_to_an_entity_it_already_holds() {
+    let mut store = LocalStore::open_in_memory().unwrap();
+    let mut web = Author::new("web-a");
+    let (task, create) = web.create(|b| b.create_task(NewTask::new("A")));
+    let rename = web.ops(|b| {
+        b.set_task(task, f::TITLE, "B");
+    });
+    let other = tasks(&mut web, "Andere", 1);
+    for change in [&create, &rename, &other] {
+        store.apply_local(change, now()).unwrap();
+    }
+
+    // The rename touches the task of the first change: next push.
+    let first = store.pending_batch(usize::MAX, usize::MAX);
+    assert_eq!(first.ops, create);
+    assert_eq!(first.changes, 1);
+    push_accepted(&mut store, &first.ops);
+    let second = store.pending_batch(usize::MAX, usize::MAX);
+    assert_eq!(second.ops, [rename, other].concat());
+    assert_eq!(second.changes, 2);
 }
 
 #[test]
@@ -316,7 +339,7 @@ fn the_rest_of_a_partly_rejected_change_stays_together() {
         .filter(|op| op.entity_id != rejected_task)
         .cloned()
         .collect();
-    assert_eq!(store.pending_batch(1, usize::MAX), rest);
+    assert_eq!(store.pending_batch(1, usize::MAX).ops, rest);
 }
 
 #[test]
@@ -332,9 +355,9 @@ fn changes_survive_a_restart() {
         store.apply_local(&second, now()).unwrap();
     }
     let mut store = LocalStore::open(&path).unwrap();
-    assert_eq!(store.pending_batch(1, usize::MAX), first);
+    assert_eq!(store.pending_batch(1, usize::MAX).ops, first);
     push_accepted(&mut store, &first);
-    assert_eq!(store.pending_batch(1, usize::MAX), second);
+    assert_eq!(store.pending_batch(1, usize::MAX).ops, second);
 }
 
 #[test]
@@ -368,7 +391,7 @@ fn ops_pending_before_the_change_grouping_count_as_own_changes() {
 
     let mut store = LocalStore::open(&path).unwrap();
     assert_eq!(store.pending_count(), ops.len());
-    assert_eq!(store.pending_batch(1, usize::MAX), ops[..1]);
+    assert_eq!(store.pending_batch(1, usize::MAX).ops, ops[..1]);
     let version: i32 = store
         .conn
         .pragma_query_value(None, "user_version", |r| r.get(0))
@@ -381,7 +404,7 @@ fn ops_pending_before_the_change_grouping_count_as_own_changes() {
     for op in &ops {
         push_accepted(&mut store, std::slice::from_ref(op));
     }
-    assert_eq!(store.pending_batch(1, usize::MAX), new);
+    assert_eq!(store.pending_batch(1, usize::MAX).ops, new);
 }
 
 #[test]
@@ -944,11 +967,15 @@ fn legacy_uuids_are_rewritten_on_open() {
         store.view.task(new(child)).unwrap().parent_id,
         Some(new(parent))
     );
-    let pending = store.pending_batch(usize::MAX, usize::MAX);
-    assert_eq!(pending.len(), 2);
     // Pending from before the change grouping: each op is its own change.
-    assert_eq!(store.pending_batch(1, usize::MAX), pending[..1]);
-    assert!(pending.iter().all(|op| op.entity_id == new(child)));
+    assert_eq!(store.pending.len(), 2);
+    assert!(store.pending.iter().all(|change| change.len() == 1));
+    assert_eq!(store.pending_batch(1, usize::MAX).ops, store.pending[0]);
+    assert!(store
+        .pending
+        .iter()
+        .flatten()
+        .all(|op| op.entity_id == new(child)));
     assert_eq!(
         store.cursor_anchor().unwrap(),
         Some(new("0192a000-0000-7000-8000-0f0000000001"))

@@ -14,11 +14,12 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use serde::Serialize;
-use zunder_core::{Rejection, Warning};
+use zunder_core::{Op, RejectCode, Rejection, Warning};
 
 use crate::client::{HttpClient, SyncApi, PULL_LIMIT};
 use crate::error::{Error, Result};
 use crate::store::{LastSync, LocalStore, Remote};
+use crate::wire::PushResponse;
 
 /// Operations per push request. Whole local changes only: a change larger
 /// than this goes alone, but complete (see [`LocalStore::pending_batch`]).
@@ -171,19 +172,34 @@ async fn run<A: SyncApi>(
     generation: u64,
     report: &mut SyncReport,
 ) -> Result<()> {
+    // After a push refused as a whole: one change per push until the queue
+    // is empty, so only the change the server refuses on its own is lost.
+    let mut isolating = false;
     loop {
         let (batch, client_id) = {
             let s = current(store, generation)?;
-            (
-                s.pending_batch(PUSH_BATCH, PUSH_BATCH_BYTES),
-                s.node_id().to_string(),
-            )
+            let (max_ops, max_bytes) = if isolating {
+                (0, 0)
+            } else {
+                (PUSH_BATCH, PUSH_BATCH_BYTES)
+            };
+            (s.pending_batch(max_ops, max_bytes), s.node_id().to_string())
         };
-        if batch.is_empty() {
+        if batch.ops.is_empty() {
             break;
         }
-        let response = api.push(&client_id, &batch).await?;
-        let applied = current(store, generation)?.apply_push_response(&batch, &response)?;
+        let response = match api.push(&client_id, &batch.ops).await {
+            Ok(response) => response,
+            Err(error) => match refusal(&error) {
+                Some(_) if batch.changes > 1 => {
+                    isolating = true;
+                    continue;
+                }
+                Some(message) => refused(&batch.ops, &message),
+                None => return Err(error),
+            },
+        };
+        let applied = current(store, generation)?.apply_push_response(&batch.ops, &response)?;
         let progressed = applied.accepted > 0 || !applied.rejected.is_empty();
         report.pushed += applied.accepted;
         report.rejected.extend(applied.rejected);
@@ -214,6 +230,36 @@ async fn run<A: SyncApi>(
         current(store, generation)?.reset_confirmed()?;
         report.resynced = true;
         report.changed = true;
+    }
+}
+
+/// The server's message if it refused a push request as a whole because of
+/// its content (400 invalid request, 413 too large): a retry with the same
+/// operations fails again, smaller pushes may not.
+fn refusal(error: &Error) -> Option<String> {
+    match error {
+        Error::Server {
+            status: 400 | 413,
+            message,
+            ..
+        } => Some(message.clone()),
+        _ => None,
+    }
+}
+
+/// A push response rejecting all of `ops`: a single change the server
+/// refused as a whole can never go through, so it is rolled back.
+fn refused(ops: &[Op], message: &str) -> PushResponse {
+    PushResponse {
+        rejected: ops
+            .iter()
+            .map(|op| Rejection {
+                op_id: op.op_id,
+                code: RejectCode::InvalidValue,
+                message: format!("Vom Server abgelehnt: {message}"),
+            })
+            .collect(),
+        ..PushResponse::default()
     }
 }
 

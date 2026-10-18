@@ -131,6 +131,14 @@ pub struct ApplyResult {
     pub pending: usize,
 }
 
+/// The next push ([`LocalStore::pending_batch`]).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PushBatch {
+    pub ops: Vec<Op>,
+    /// Number of whole local changes in `ops`.
+    pub changes: usize,
+}
+
 /// Effect of a push response on the store.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PushApplied {
@@ -326,18 +334,31 @@ impl LocalStore {
     /// is never split; the first one goes whole even if it alone exceeds a
     /// limit (the server does not limit the number of operations, and
     /// [`MAX_CHANGE_BYTES`] keeps a change below its request size limit).
-    pub fn pending_batch(&self, max_ops: usize, max_bytes: usize) -> Vec<Op> {
-        let mut batch = Vec::new();
+    /// Limits of zero therefore yield the oldest change alone.
+    ///
+    /// The batch also ends before a change that touches an entity of an
+    /// earlier change in it: the server rejects all operations of an entity
+    /// in a push when one of them is invalid, so a later invalid change
+    /// would otherwise take down earlier, valid edits of that entity.
+    pub fn pending_batch(&self, max_ops: usize, max_bytes: usize) -> PushBatch {
+        let mut batch = PushBatch::default();
         let mut bytes = 0;
+        let mut touched = HashSet::new();
         for change in &self.pending {
             let size = serialized_len(change);
-            if !batch.is_empty()
-                && (batch.len() + change.len() > max_ops || bytes + size > max_bytes)
+            if batch.changes > 0
+                && (batch.ops.len() + change.len() > max_ops
+                    || bytes + size > max_bytes
+                    || change
+                        .iter()
+                        .any(|op| touched.contains(&(op.entity, op.entity_id))))
             {
                 break;
             }
-            batch.extend_from_slice(change);
+            batch.ops.extend_from_slice(change);
+            touched.extend(change.iter().map(|op| (op.entity, op.entity_id)));
             bytes += size;
+            batch.changes += 1;
         }
         batch
     }

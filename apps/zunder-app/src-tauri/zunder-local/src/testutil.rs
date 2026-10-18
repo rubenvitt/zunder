@@ -58,6 +58,9 @@ struct ServerState {
     pushes: usize,
     /// Number of operations in each push request, in order.
     push_sizes: Vec<usize>,
+    /// Push requests holding one of these operations fail as a whole with
+    /// this HTTP status.
+    refuse: Option<(u16, HashSet<Id>)>,
     snapshots: usize,
     pulls: usize,
 }
@@ -86,6 +89,13 @@ impl FakeServer {
 
     pub fn lose_next_push_response(&self) {
         self.inner.lock().unwrap().lose_push_response = true;
+    }
+
+    /// Every push request that holds one of `op_ids` fails as a whole with
+    /// `status` (400 invalid request, 413 too large …), like the real
+    /// server refusing the request body.
+    pub fn refuse_pushes_with(&self, status: u16, op_ids: impl IntoIterator<Item = Id>) {
+        self.inner.lock().unwrap().refuse = Some((status, op_ids.into_iter().collect()));
     }
 
     /// Lets the next `ok` pulls succeed and fails every pull after them
@@ -170,6 +180,15 @@ impl SyncApi for FakeServer {
         Self::check_online(&mut s)?;
         s.pushes += 1;
         s.push_sizes.push(ops.len());
+        if let Some((status, refused)) = &s.refuse {
+            if ops.iter().any(|op| refused.contains(&op.op_id)) {
+                return Err(Error::Server {
+                    status: *status,
+                    code: "invalid_request".into(),
+                    message: "Anfrage abgelehnt (Test)".into(),
+                });
+            }
+        }
         let response = s.push(ops);
         if std::mem::take(&mut s.lose_push_response) {
             return Err(Error::Network("Antwort verloren (Test)".into()));
