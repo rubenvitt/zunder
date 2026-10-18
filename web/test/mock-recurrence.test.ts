@@ -83,6 +83,15 @@ describe("time of day", () => {
     expect(next({ every: 1, unit: "day", from: "due" }, "2027-03-27T02:30:00+01:00", at(2027, 3, 27))?.due).toBe("2027-03-28T03:30:00+02:00");
   });
 
+  it("keeps fractional seconds like the core (no trailing zeros)", () => {
+    const daily: MockRecurrence = { every: 1, unit: "day", from: "due" };
+    expect(next(daily, "2026-10-24T09:00:00.500+02:00", at(2026, 10, 24))?.due).toBe("2026-10-25T09:00:00.5+01:00");
+    expect(next(daily, "2026-10-24T09:00:00.000+02:00", at(2026, 10, 24))?.due).toBe("2026-10-25T09:00:00+01:00");
+    expect(next(daily, "2026-10-24", at(2026, 10, 24), at(2026, 10, 24), "2026-10-23T18:00:00.123456789+02:00")?.remind_at).toBe(
+      "2026-10-24T18:00:00.123456789+02:00",
+    );
+  });
+
   it("moves the reminder by as many days as the due date", () => {
     const result = next({ every: 1, unit: "month", day: "last", from: "due" }, "2026-10-31", at(2026, 10, 31), at(2026, 10, 31), "2026-10-30T18:00:00+01:00");
     expect(result).toMatchObject({ due: "2026-11-30", remind_at: "2026-11-29T18:00:00+01:00" });

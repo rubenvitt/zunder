@@ -56,13 +56,23 @@ function localDays(at: Date): Days {
   return days(at.getFullYear(), at.getMonth() + 1, at.getDate());
 }
 
-/** RFC 3339 with the local offset of the mock process. */
-function rfc3339Local(d: Date): string {
+/**
+ * Fractional seconds of an RFC 3339 timestamp as the core writes them (time's Rfc3339): at
+ * most nine digits, no trailing zeros, "" for none. Taken from the text because a Date keeps
+ * only milliseconds; offsets are whole minutes, so the local time has the same fraction.
+ */
+function fraction(rfc3339: string): string {
+  const digits = (/\.(\d+)/.exec(rfc3339)?.[1] ?? "").slice(0, 9).replace(/0+$/, "");
+  return digits ? `.${digits}` : "";
+}
+
+/** RFC 3339 with the local offset of the mock process, `Z` for UTC like the core. */
+function rfc3339Local(d: Date, frac: string): string {
   const offset = -d.getTimezoneOffset();
   const abs = Math.abs(offset);
   return (
-    `${pad(d.getFullYear(), 4)}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}` +
-    `${offset >= 0 ? "+" : "-"}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
+    `${pad(d.getFullYear(), 4)}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${frac}` +
+    (offset === 0 ? "Z" : `${offset > 0 ? "+" : "-"}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`)
   );
 }
 
@@ -136,10 +146,10 @@ export function nextOccurrence(r: MockRecurrence, due: string, remindAt: string 
     if (!Number.isNaN(local.getTime())) {
       const shifted = atLocal(localDays(local) + (date - d0), local);
       if (shifted.getFullYear() > 9999) return null;
-      remind = rfc3339Local(shifted);
+      remind = rfc3339Local(shifted, fraction(remindAt));
     }
   }
   const recurrence: MockRecurrence = { ...r };
   if (r.from === "due" && (r.unit === "month" || r.unit === "year") && r.day === undefined) recurrence.day = civil(d0)[2];
-  return { due: dueAt ? rfc3339Local(atLocal(date, dueAt)) : isoDate(date), remind_at: remind, recurrence };
+  return { due: dueAt ? rfc3339Local(atLocal(date, dueAt), fraction(due)) : isoDate(date), remind_at: remind, recurrence };
 }
