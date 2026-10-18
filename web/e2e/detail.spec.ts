@@ -72,6 +72,32 @@ test("Beschreibung: Markdown wird formatiert angezeigt und als Markdown gespeich
   await expect(detail(page)).toBeVisible();
 });
 
+for (const tag of ["", " @mobile"]) {
+  test(`Beschreibung: Der Fokus verschiebt den Text nicht, die Leiste erscheint darunter${tag}`, async ({ page }) => {
+    const s = suffix();
+    const seeder = new Seeder();
+    seeder.task(`Ruhig ${s}`, { location: { kind: "loose" }, description: "Erste Zeile\n\nZweite Zeile" });
+    await seeder.push(page);
+    await openLoose(page, `Ruhig ${s}`);
+
+    const description = detail(page).getByRole("textbox", { name: "Beschreibung (Markdown)" });
+    const toolbar = detail(page).getByRole("toolbar", { name: "Beschreibung (Markdown): Formatierung" });
+    const first = description.locator("p").first();
+    await expect(toolbar).toBeHidden();
+    // The detail slides in: measure only once it stands still.
+    await detail(page).evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
+    const before = await first.boundingBox();
+
+    await description.locator("p").last().click();
+    await expect(toolbar).toBeVisible();
+    const after = await first.boundingBox();
+    expect(after?.y).toBe(before?.y);
+    const text = await description.boundingBox();
+    const bar = await toolbar.boundingBox();
+    expect(bar!.y).toBeGreaterThanOrEqual(text!.y + text!.height - 1);
+  });
+}
+
 test("Beschreibung: Links öffnen sich per Klick, beim Schreiben per Cmd/Ctrl+Klick", async ({ page, context }) => {
   await context.route("https://example.org/**", (route) => route.fulfill({ body: "Beispiel" }));
   const s = suffix();
