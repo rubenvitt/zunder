@@ -59,13 +59,30 @@ export class Seeder {
     return this.add(entity, id, fields);
   }
 
+  /** Op IDs of the collected ops for `field` of entity `id`, in order. */
+  opIds(id: string, field: string): string[] {
+    return this.ops.filter((op) => op.entity_id === id && op.field === field).map((op) => op.op_id);
+  }
+
   async push(page: Page): Promise<void> {
+    const body = await this.send(page);
+    expect(body.rejected).toEqual([]);
+  }
+
+  /** Pushes the collected ops like a client and returns the server's verdict (rejections allowed). */
+  async send(page: Page): Promise<PushResult> {
     const res = await page.request.post("/api/sync/push", { data: { client_id: "e2e", ops: this.ops }, headers: WEB_HEADERS });
     expect(res.ok(), await res.text()).toBe(true);
-    const body = (await res.json()) as { rejected: unknown[] };
-    expect(body.rejected).toEqual([]);
     this.ops = [];
+    return (await res.json()) as PushResult;
   }
+}
+
+export interface PushResult {
+  accepted: string[];
+  rejected: { op_id: string; code: string; message: string }[];
+  warnings: { entity_id: string; code: string; message: string }[];
+  cursor: number;
 }
 
 /** Fresh state (mock) or a logged-in session (real dev auth). */

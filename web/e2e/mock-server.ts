@@ -20,7 +20,8 @@
 // after 30 tasks per hour), follow-up instances of recurring tasks after each push
 // (3.1, calendar in mock-recurrence.ts, time zone of the mock process), the status rule
 // for `waiting_on` (not for `blocked_by`), and a subset of the core validation with the
-// core's rejection codes.
+// core's rejection codes (among them the recurrence rules of 2.5: shape of `recurrence`,
+// only with `due` and only on root tasks, `ref`/`recurrence_prev` only from the server).
 
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -29,6 +30,7 @@ import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
 import { createId } from "@paralleldrive/cuid2";
 import { nextOccurrence, type MockRecurrence } from "./mock-recurrence.ts";
+import { recurrenceProblem } from "./mock-recurrence-shape.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DIST = resolve(process.env.MOCK_DIST ?? join(here, "..", "dist"));
@@ -236,6 +238,10 @@ function checkOp(op: Op): [string, string] | null {
   if (op.value === null) {
     return REQUIRED[op.entity]!.includes(op.field) ? ["invalid_value", `Pflichtfeld „${op.field}“ kann nicht zurückgesetzt werden.`] : null;
   }
+  if (op.entity === "task" && op.field === "recurrence") {
+    const problem = recurrenceProblem(op.value);
+    if (problem) return ["invalid_value", problem];
+  }
   const allowed = ENUMS[`${op.entity}.${op.field}`];
   if (allowed && !allowed.includes(String(op.value))) return ["invalid_value", `Ungültiger Wert für „${op.field}“.`];
   if (["title", "name", "body", "author", "waiting_on"].includes(op.field) && (typeof op.value !== "string" || !op.value.trim())) {
@@ -319,6 +325,17 @@ function checkEntity(entity: EntityKind, id: string, pending: Map<string, Op[]>)
     if (parent && !aliveAfter("task", parent, pending)) return ["invalid_reference", "Die Aufgabe existiert nicht."];
     if (!parent && (loc?.kind === "area" || loc?.kind === "project") && !aliveAfter(loc.kind, String(loc.id), pending)) {
       return ["invalid_reference", loc.kind === "area" ? "Der Bereich existiert nicht." : "Das Projekt existiert nicht."];
+    }
+    // A recurring task needs a due date and must be a root task (core: Checker::check_recurring),
+    // checked when the push changes recurrence, due or parent_id or restores the task.
+    const written = new Set((pending.get(key(entity, id)) ?? []).map((op) => op.field));
+    if (fields.recurrence != null && ["recurrence", "due", "parent_id", "deleted"].some((f) => written.has(f))) {
+      if (fields.due == null) {
+        return written.has("recurrence")
+          ? ["invalid_value", "Ein Rhythmus braucht eine Fälligkeit. Bitte zusammen mit dem Rhythmus eine Fälligkeit setzen."]
+          : ["invalid_value", "Eine wiederkehrende Aufgabe braucht eine Fälligkeit. Bitte zuerst den Rhythmus entfernen."];
+      }
+      if (parent) return ["invalid_value", "Nur Aufgaben ohne übergeordnete Aufgabe können wiederkehren."];
     }
     if (fields.type === "bug" || fields.type === "feature" || fields.status === "review") {
       const project = effectiveProject(id, pending);

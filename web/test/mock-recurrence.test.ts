@@ -1,8 +1,12 @@
 // The mock server's calendar of follow-up instances (contract 3.1), checked with the
-// examples of the contract and zunder_core::recurrence. Runs in Europe/Berlin (vite.config).
+// examples of the contract and zunder_core::recurrence, and its shape check of
+// `recurrence` (contract 2.5). Runs in Europe/Berlin (vite.config).
 
 import { describe, expect, it } from "vitest";
 import { nextOccurrence, type MockRecurrence } from "../e2e/mock-recurrence";
+import { recurrenceProblem as mockProblem } from "../e2e/mock-recurrence-shape";
+import { recurrenceProblem as clientProblem } from "../src/sync/recurrence";
+import type { JsonValue } from "../src/sync/types";
 
 const at = (y: number, m: number, d: number, hh = 12) => new Date(y, m - 1, d, hh).getTime();
 const next = (r: MockRecurrence, due: string, completed: number, today = completed, remind: string | null = null) =>
@@ -96,5 +100,63 @@ describe("time of day", () => {
     const result = next({ every: 1, unit: "month", day: "last", from: "due" }, "2026-10-31", at(2026, 10, 31), at(2026, 10, 31), "2026-10-30T18:00:00+01:00");
     expect(result).toMatchObject({ due: "2026-11-30", remind_at: "2026-11-29T18:00:00+01:00" });
     expect(next({ every: 1, unit: "day", from: "due" }, "2026-10-31", at(2026, 10, 31))?.remind_at).toBeNull();
+  });
+});
+
+describe("shape of recurrence", () => {
+  // The samples of zunder_core::model's test `recurrences` (null is handled before the shape check).
+  const valid: JsonValue[] = [
+    { every: 1, unit: "day", from: "due" },
+    { from: "done", unit: "year", every: 999 },
+    { every: 2, unit: "week", weekdays: ["th", "mo"], from: "due" },
+    { every: 1, unit: "week", weekdays: ["mo", "tu", "we", "th", "fr", "sa", "su"], from: "done" },
+    { every: 1, unit: "month", day: "last", from: "due" },
+    { every: 3, unit: "month", day: 31, from: "done" },
+    { every: 1, unit: "month", day: 1, from: "due" },
+    { every: 1, unit: "year", day: 28, from: "due" },
+    { every: 2, unit: "year", day: "last", from: "done" },
+  ];
+  const invalid: JsonValue[] = [
+    "monatlich",
+    [],
+    {},
+    { every: 0, unit: "day", from: "due" },
+    { every: 1000, unit: "day", from: "due" },
+    { every: -1, unit: "day", from: "due" },
+    { every: 1.5, unit: "day", from: "due" },
+    { every: "1", unit: "day", from: "due" },
+    { unit: "day", from: "due" },
+    { every: 1, unit: "hour", from: "due" },
+    { every: 1, from: "due" },
+    { every: 1, unit: "day" },
+    { every: 1, unit: "day", from: "start" },
+    { every: 1, unit: "day", from: "due", until: "2027-01-01" },
+    { every: 1, unit: "week", weekdays: [], from: "due" },
+    { every: 1, unit: "week", weekdays: ["mo", "mo"], from: "due" },
+    { every: 1, unit: "week", weekdays: ["montag"], from: "due" },
+    { every: 1, unit: "week", weekdays: ["MO"], from: "due" },
+    { every: 1, unit: "week", weekdays: "mo", from: "due" },
+    { every: 1, unit: "week", weekdays: null, from: "due" },
+    { every: 1, unit: "day", weekdays: ["mo"], from: "due" },
+    { every: 1, unit: "month", weekdays: ["mo"], from: "due" },
+    { every: 1, unit: "month", day: 0, from: "due" },
+    { every: 1, unit: "month", day: 32, from: "due" },
+    { every: 1, unit: "month", day: "first", from: "due" },
+    { every: 1, unit: "month", day: "15", from: "due" },
+    { every: 1, unit: "month", day: null, from: "due" },
+    { every: 1, unit: "month", day: 15, weekdays: ["mo"], from: "due" },
+    { every: 1, unit: "day", day: 29, from: "due" },
+    { every: 1, unit: "week", day: "last", from: "due" },
+    { every: 1, unit: "year", day: 0, from: "due" },
+    { every: 1, unit: "year", weekdays: ["mo"], from: "due" },
+  ];
+
+  it("accepts and rejects like the core", () => {
+    for (const v of valid) expect(mockProblem(v), JSON.stringify(v)).toBeNull();
+    for (const v of invalid) expect(mockProblem(v), JSON.stringify(v)).not.toBeNull();
+  });
+
+  it("gives the same reason as the client (and so the core)", () => {
+    for (const v of [...valid, ...invalid]) expect(mockProblem(v), JSON.stringify(v)).toBe(clientProblem(v));
   });
 });
