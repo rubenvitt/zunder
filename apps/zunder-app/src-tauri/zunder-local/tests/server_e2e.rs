@@ -25,7 +25,7 @@ use zunder_core::{
     RejectCode, TaskStatus,
 };
 use zunder_local::reminders::ReminderKind;
-use zunder_local::sync::lock;
+use zunder_local::sync::{lock, PUSH_BATCH, PUSH_BATCH_BYTES};
 use zunder_local::{
     login, upcoming_reminders, ConfigUpdate, Error, FlameAction, LocalStore, Syncer,
 };
@@ -226,6 +226,44 @@ async fn devices_sync_through_the_real_server() {
         .unwrap_err()
         .error;
     assert_eq!(err.code(), "unauthorized");
+}
+
+#[tokio::test]
+#[ignore = "braucht ZUNDER_SERVER_BIN (gebautes zunder-server-Binary)"]
+async fn a_change_larger_than_a_push_batch_goes_through_in_one_push() {
+    let server = start_server().await;
+    let dir = tempfile::tempdir().unwrap();
+    let phone = device(&dir, "phone", &server, TOKEN);
+    let laptop = device(&dir, "laptop", &server, TOKEN);
+    let mut ui = Ui::new("web-phone");
+
+    // One local change with more operations than a push batch: an area
+    // with many tasks in it.
+    const TASKS: usize = PUSH_BATCH / 2 + 1;
+    let ((), big) = ui.ops(|b| {
+        let area = b.create_area(NewArea::new("Archiv"));
+        for i in 0..TASKS {
+            b.create_task(NewTask::new(format!("Altlast {i}")).at(Location::Area { id: area }));
+        }
+    });
+    assert!(big.len() > PUSH_BATCH);
+    apply(&phone, &big);
+    let (_, small) = ui.ops(|b| b.create_task(NewTask::new("Danach")));
+    apply(&phone, &small);
+    assert_eq!(
+        lock(&phone).pending_batch(PUSH_BATCH, PUSH_BATCH_BYTES),
+        big,
+        "the whole change is the first push"
+    );
+
+    let report = Syncer::new().sync(&phone, now()).await.unwrap();
+    assert!(report.rejected.is_empty(), "{:?}", report.rejected);
+    assert_eq!(report.pushed, big.len() + small.len());
+    assert_eq!(report.pending, 0);
+
+    Syncer::new().sync(&laptop, now()).await.unwrap();
+    assert_eq!(lock(&laptop).state(), lock(&phone).state());
+    assert_eq!(lock(&laptop).state().live_tasks().count(), TASKS + 1);
 }
 
 #[tokio::test]

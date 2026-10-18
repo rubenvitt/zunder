@@ -20,8 +20,13 @@ use crate::client::{HttpClient, SyncApi, PULL_LIMIT};
 use crate::error::{Error, Result};
 use crate::store::{LastSync, LocalStore, Remote};
 
-/// Operations per push request (well below the server's 8 MiB body limit).
+/// Operations per push request. Whole local changes only: a change larger
+/// than this goes alone, but complete (see [`LocalStore::pending_batch`]).
 pub const PUSH_BATCH: usize = 500;
+
+/// Serialized operations per push request, well below the server's 8 MiB
+/// body limit; like [`PUSH_BATCH`], a larger change goes alone.
+pub const PUSH_BATCH_BYTES: usize = 4 * 1024 * 1024;
 
 /// Regular interval of the background sync.
 pub const SYNC_INTERVAL: Duration = Duration::from_secs(30);
@@ -169,7 +174,10 @@ async fn run<A: SyncApi>(
     loop {
         let (batch, client_id) = {
             let s = current(store, generation)?;
-            (s.pending_batch(PUSH_BATCH), s.node_id().to_string())
+            (
+                s.pending_batch(PUSH_BATCH, PUSH_BATCH_BYTES),
+                s.node_id().to_string(),
+            )
         };
         if batch.is_empty() {
             break;

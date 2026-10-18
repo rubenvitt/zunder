@@ -13,6 +13,12 @@
 //! When the server rejects a pending operation, `view` is rebuilt from
 //! `confirmed` and the remaining pending operations (rollback).
 //!
+//! Pending operations are grouped by local change: all operations one
+//! [`LocalStore::apply_local`] call queues share a `change_id` and never go
+//! into two different pushes (see [`LocalStore::pending_batch`]), because
+//! server rules compare the state before and after a push (recurrence
+//! follow-ups, `blocked_by` status, numbering).
+//!
 //! The first sync of an empty store loads `GET /api/snapshot`; the log then
 //! starts at the snapshot's cursor.
 
@@ -25,14 +31,15 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use zunder_core::ids::Id;
 use zunder_core::{
-    validate_push, EntityKind, Hlc, NodeId, Op, Rejection, SnapshotEntity, State, Warning,
+    validate_push, EntityKind, Hlc, NodeId, Op, RejectCode, Rejection, SnapshotEntity, State,
+    Warning,
 };
 
 use crate::error::{Error, Result};
 use crate::reminders::{Reminder, ReminderKind, ScheduledReminder};
 use crate::wire::{PullPage, PushResponse, ServerSnapshot};
 
-const SCHEMA_VERSION: i32 = 3;
+const SCHEMA_VERSION: i32 = 4;
 
 const MIGRATIONS: &[&str] = &[
     r#"
@@ -72,6 +79,13 @@ CREATE TABLE reminders (
     "CREATE INDEX ops_server_seq ON ops (server_seq);",
     // IDs became CUID2; `upgrade_legacy_ids` rewrites the stored ones.
     "SELECT 1;",
+    // The local change a pending operation belongs to: the `local_seq` of
+    // the change's first operation. Operations pending from before had no
+    // grouping; each of them counts as a change of its own.
+    r#"
+ALTER TABLE ops ADD COLUMN change_id INTEGER;
+UPDATE ops SET change_id = local_seq WHERE status = 'pending';
+"#,
 ];
 
 /// The schema version whose migration rewrites legacy UUIDs.
@@ -92,6 +106,11 @@ const META_PENDING_LOGIN: &str = "pending_login";
 const META_REMINDERS_CHECKED_AT: &str = "reminders_checked_at";
 
 const API_TOKEN_MAX_LEN: usize = 512;
+
+/// Largest local change (serialized operations) [`LocalStore::apply_local`]
+/// accepts. A change always goes into one push, and the server takes at most
+/// 8 MiB per push request; the rest is left for the request envelope.
+pub const MAX_CHANGE_BYTES: usize = 7 * 1024 * 1024;
 
 /// Result of the `local_snapshot` command: the `/api/snapshot` shape plus the
 /// number of pending (not yet pushed) operations.
@@ -192,8 +211,9 @@ pub struct LocalStore {
     conn: Connection,
     confirmed: State,
     view: State,
-    /// Pending operations in local order.
-    pending: Vec<Op>,
+    /// Pending operations in local order, grouped by local change (no
+    /// empty groups).
+    pending: Vec<Vec<Op>>,
     cursor: i64,
     node_id: NodeId,
     /// Incremented whenever the local data is reset for another server; a
@@ -298,12 +318,28 @@ impl LocalStore {
     }
 
     pub fn pending_count(&self) -> usize {
-        self.pending.len()
+        self.pending.iter().map(Vec::len).sum()
     }
 
-    /// The oldest pending operations, at most `limit`.
-    pub fn pending_batch(&self, limit: usize) -> Vec<Op> {
-        self.pending.iter().take(limit).cloned().collect()
+    /// The next push: whole local changes from the oldest on, at most
+    /// `max_ops` operations and `max_bytes` serialized operations. A change
+    /// is never split; the first one goes whole even if it alone exceeds a
+    /// limit (the server does not limit the number of operations, and
+    /// [`MAX_CHANGE_BYTES`] keeps a change below its request size limit).
+    pub fn pending_batch(&self, max_ops: usize, max_bytes: usize) -> Vec<Op> {
+        let mut batch = Vec::new();
+        let mut bytes = 0;
+        for change in &self.pending {
+            let size = serialized_len(change);
+            if !batch.is_empty()
+                && (batch.len() + change.len() > max_ops || bytes + size > max_bytes)
+            {
+                break;
+            }
+            batch.extend_from_slice(change);
+            bytes += size;
+        }
+        batch
     }
 
     /// Whether the store has never received server data (first sync loads
@@ -334,32 +370,62 @@ impl LocalStore {
         LocalSnapshot {
             cursor: self.cursor,
             entities: self.view.to_snapshot(),
-            pending: self.pending.len(),
+            pending: self.pending_count(),
         }
     }
 
     // ----- local changes ------------------------------------------------------
 
     /// Validates `ops` against the visible state like the server would,
-    /// applies the accepted new ones optimistically and queues them for push.
+    /// applies the accepted new ones optimistically and queues them for push
+    /// as one local change (always pushed together, see
+    /// [`LocalStore::pending_batch`]).
+    ///
+    /// A change larger than [`MAX_CHANGE_BYTES`] could never be pushed; it
+    /// is rejected as a whole (`invalid_value`) and nothing is queued.
     pub fn apply_local(&mut self, ops: &[Op], now_ms: u64) -> Result<ApplyResult> {
+        if serialized_len(ops) > MAX_CHANGE_BYTES {
+            let message = format!(
+                "Die Änderung ist zu groß für den Server (mehr als {} MiB)",
+                MAX_CHANGE_BYTES / (1024 * 1024)
+            );
+            return Ok(ApplyResult {
+                rejected: ops
+                    .iter()
+                    .map(|op| Rejection {
+                        op_id: op.op_id,
+                        code: RejectCode::InvalidValue,
+                        message: message.clone(),
+                    })
+                    .collect(),
+                pending: self.pending_count(),
+                ..ApplyResult::default()
+            });
+        }
         let outcome = validate_push(&self.view, ops, now_ms);
         if !outcome.new_ops.is_empty() {
             let tx = self.conn.transaction()?;
+            let mut change_id = None;
             for op in &outcome.new_ops {
-                insert_op(&tx, op, OpStatus::Pending, None)?;
+                insert_op(&tx, op, OpStatus::Pending, None, change_id)?;
+                change_id.get_or_insert(tx.last_insert_rowid());
             }
+            // The first operation was inserted before its own ID was known.
+            tx.execute(
+                "UPDATE ops SET change_id = ?1 WHERE local_seq = ?1",
+                [change_id],
+            )?;
             tx.commit()?;
-            for op in outcome.new_ops {
-                self.view.apply(&op);
-                self.pending.push(op);
+            for op in &outcome.new_ops {
+                self.view.apply(op);
             }
+            self.pending.push(outcome.new_ops);
         }
         Ok(ApplyResult {
             accepted: outcome.accepted,
             rejected: outcome.rejected,
             warnings: outcome.warnings,
-            pending: self.pending.len(),
+            pending: self.pending_count(),
         })
     }
 
@@ -411,12 +477,21 @@ impl LocalStore {
         save_entities(&tx, &self.confirmed, &touched)?;
         tx.commit()?;
 
-        self.pending.retain(|op| !done.contains(&op.op_id));
+        self.forget_pending(&done);
         if !result.rejected.is_empty() {
             self.view = view_of(&self.confirmed, &self.pending);
             result.view_changed = true;
         }
         Ok(result)
+    }
+
+    /// Removes the operations in `op_ids` from the pending changes; what is
+    /// left of a change stays one change.
+    fn forget_pending(&mut self, op_ids: &HashSet<Id>) {
+        for change in &mut self.pending {
+            change.retain(|op| !op_ids.contains(&op.op_id));
+        }
+        self.pending.retain(|change| !change.is_empty());
     }
 
     /// Merges one page of `GET /api/sync/pull` and advances the cursor.
@@ -446,7 +521,7 @@ impl LocalStore {
         tx.commit()?;
 
         // An operation whose push response got lost comes back here.
-        self.pending.retain(|op| !confirmed_ids.contains(&op.op_id));
+        self.forget_pending(&confirmed_ids);
         self.cursor = cursor;
         Ok(view_changed)
     }
@@ -528,7 +603,7 @@ impl LocalStore {
             has_api_token: get_meta(&self.conn, META_API_TOKEN)?.is_some(),
             node_id: self.node_id.to_string(),
             cursor: self.cursor,
-            pending: self.pending.len(),
+            pending: self.pending_count(),
             last_sync: self.last_sync()?,
         })
     }
@@ -568,7 +643,7 @@ impl LocalStore {
             None => get_meta(&self.conn, META_SERVER_URL)?,
         };
         if data_url.is_some_and(|old| old != new) && !self.pending.is_empty() && !discard_pending {
-            return Err(Error::PendingOps(self.pending.len()));
+            return Err(Error::PendingOps(self.pending_count()));
         }
         Ok(())
     }
@@ -601,7 +676,7 @@ impl LocalStore {
             _ => false,
         };
         if switches_server && !self.pending.is_empty() && !update.discard_pending {
-            return Err(Error::PendingOps(self.pending.len()));
+            return Err(Error::PendingOps(self.pending_count()));
         }
 
         let tx = self.conn.transaction()?;
@@ -795,7 +870,7 @@ fn upgrade_legacy_ids(tx: &rusqlite::Transaction<'_>) -> Result<()> {
 /// IDs of all confirmed operations), the pending operations and the cursor.
 struct Loaded {
     confirmed: State,
-    pending: Vec<Op>,
+    pending: Vec<Vec<Op>>,
     cursor: i64,
 }
 
@@ -827,7 +902,7 @@ impl Loaded {
         }
         Ok(Self {
             confirmed,
-            pending: load_ops(conn, OpStatus::Pending)?,
+            pending: load_pending(conn)?,
             cursor,
         })
     }
@@ -867,12 +942,19 @@ fn file_error(path: &Path, e: &std::io::Error) -> Error {
     ))
 }
 
-fn view_of(confirmed: &State, pending: &[Op]) -> State {
+fn view_of(confirmed: &State, pending: &[Vec<Op>]) -> State {
     let mut view = confirmed.clone();
-    for op in pending {
+    for op in pending.iter().flatten() {
         view.apply(op);
     }
     view
+}
+
+/// Size of `ops` as elements of the JSON array in a push body.
+fn serialized_len(ops: &[Op]) -> usize {
+    ops.iter()
+        .map(|op| serde_json::to_vec(op).expect("ops serialize").len() + 1)
+        .sum()
 }
 
 /// `app-` plus 12 random hex digits (from the random tail of a UUIDv7).
@@ -906,10 +988,17 @@ fn put_meta(conn: &Connection, key: &str, value: Option<&str>) -> Result<()> {
     }
 }
 
-fn insert_op(tx: &Transaction<'_>, op: &Op, status: OpStatus, seq: Option<i64>) -> Result<()> {
+fn insert_op(
+    tx: &Transaction<'_>,
+    op: &Op,
+    status: OpStatus,
+    seq: Option<i64>,
+    change_id: Option<i64>,
+) -> Result<()> {
     tx.execute(
-        "INSERT INTO ops (op_id, entity, entity_id, field, value_json, hlc, status, server_seq)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO ops (op_id, entity, entity_id, field, value_json, hlc, status, server_seq,
+                          change_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
             op.op_id.to_string(),
             op.entity.as_str(),
@@ -918,7 +1007,8 @@ fn insert_op(tx: &Transaction<'_>, op: &Op, status: OpStatus, seq: Option<i64>) 
             op.value.to_string(),
             op.hlc.to_string(),
             status.as_str(),
-            seq
+            seq,
+            change_id
         ],
     )?;
     Ok(())
@@ -943,9 +1033,34 @@ fn upsert_confirmed_op(tx: &Transaction<'_>, op: &Op, seq: i64) -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
 fn load_ops(conn: &Connection, status: OpStatus) -> Result<Vec<Op>> {
+    Ok(load_rows(conn, status)?
+        .into_iter()
+        .map(|(_, op)| op)
+        .collect())
+}
+
+/// The pending operations in local order, grouped by local change. Ops of
+/// one change are consecutive (one transaction writes them).
+fn load_pending(conn: &Connection) -> Result<Vec<Vec<Op>>> {
+    let mut changes: Vec<Vec<Op>> = Vec::new();
+    let mut last_change = None;
+    for (change_id, op) in load_rows(conn, OpStatus::Pending)? {
+        match changes.last_mut() {
+            Some(change) if last_change == Some(change_id) => change.push(op),
+            _ => changes.push(vec![op]),
+        }
+        last_change = Some(change_id);
+    }
+    Ok(changes)
+}
+
+/// Operations with `status` in local order, each with its change ID (its
+/// own `local_seq` if it has none).
+fn load_rows(conn: &Connection, status: OpStatus) -> Result<Vec<(i64, Op)>> {
     let mut stmt = conn.prepare(
-        "SELECT op_id, entity, entity_id, field, value_json, hlc
+        "SELECT op_id, entity, entity_id, field, value_json, hlc, COALESCE(change_id, local_seq)
          FROM ops WHERE status = ?1 ORDER BY local_seq",
     )?;
     let rows = stmt.query_map([status.as_str()], |r| {
@@ -956,21 +1071,25 @@ fn load_ops(conn: &Connection, status: OpStatus) -> Result<Vec<Op>> {
             r.get::<_, String>(3)?,
             r.get::<_, String>(4)?,
             r.get::<_, String>(5)?,
+            r.get::<_, i64>(6)?,
         ))
     })?;
     let mut ops = Vec::new();
     for row in rows {
-        let (op_id, entity, entity_id, field, value_json, hlc) = row?;
-        ops.push(Op {
-            op_id: parse_id(&op_id)?,
-            entity: EntityKind::from_str(&entity)
-                .map_err(|_| Error::Corrupt(format!("Entitätsart {entity:?}")))?,
-            entity_id: parse_id(&entity_id)?,
-            field,
-            value: serde_json::from_str::<Value>(&value_json)
-                .map_err(|e| Error::Corrupt(format!("Wert: {e}")))?,
-            hlc: Hlc::parse(&hlc).map_err(|e| Error::Corrupt(format!("HLC: {e}")))?,
-        });
+        let (op_id, entity, entity_id, field, value_json, hlc, change_id) = row?;
+        ops.push((
+            change_id,
+            Op {
+                op_id: parse_id(&op_id)?,
+                entity: EntityKind::from_str(&entity)
+                    .map_err(|_| Error::Corrupt(format!("Entitätsart {entity:?}")))?,
+                entity_id: parse_id(&entity_id)?,
+                field,
+                value: serde_json::from_str::<Value>(&value_json)
+                    .map_err(|e| Error::Corrupt(format!("Wert: {e}")))?,
+                hlc: Hlc::parse(&hlc).map_err(|e| Error::Corrupt(format!("HLC: {e}")))?,
+            },
+        ));
     }
     Ok(ops)
 }
