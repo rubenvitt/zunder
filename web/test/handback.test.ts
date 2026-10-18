@@ -1,7 +1,7 @@
 // "Zurückgeben" (contract 5.1): sentence, second task and reminder in three working days.
 
 import { describe, expect, it } from "vitest";
-import { handbackRemindAt, handbackSentence, offersHandBack, pickAlternative, waitingNames, workdaysLater } from "../src/sync/handback";
+import { awaitsAnswer, followUpSentence, handbackRemindAt, handbackSentence, offersHandBack, pickAlternative, waitingNames, workdaysLater } from "../src/sync/handback";
 import type { Task } from "../src/sync/types";
 
 function task(id: string, extra: Partial<Task> = {}): Task {
@@ -98,5 +98,21 @@ describe("waitingNames", () => {
   it("lists each name once, sorted", () => {
     const tasks = [task("a", { waiting_on: "Ben" }), task("b", { waiting_on: "anna" }), task("c", { waiting_on: "Anna " }), task("d")];
     expect(waitingNames(tasks)).toEqual(["anna", "Ben"]);
+  });
+});
+
+describe("Wiedervorlage", () => {
+  it("is for tasks that still wait on someone, not closed, outside dev projects", () => {
+    expect(awaitsAnswer(task("t", { waiting_on: "Anna", status: "blocked" }), false)).toBe(true);
+    expect(awaitsAnswer(task("t", { waiting_on: "Anna", weight: null }), false)).toBe(true);
+    expect(awaitsAnswer(task("t"), false)).toBe(false);
+    expect(awaitsAnswer(task("t", { waiting_on: "  " }), false)).toBe(false);
+    expect(awaitsAnswer(task("t", { waiting_on: "Anna", status: "done" }), false)).toBe(false);
+    expect(awaitsAnswer(task("t", { waiting_on: "Anna", status: "dropped" }), false)).toBe(false);
+    expect(awaitsAnswer(task("t", { waiting_on: "Anna" }), true)).toBe(false);
+  });
+
+  it("asks again with the title", () => {
+    expect(followUpSentence("Bericht")).toBe("Kurze Nachfrage zu „Bericht“: Wie wichtig ist es dir?");
   });
 });

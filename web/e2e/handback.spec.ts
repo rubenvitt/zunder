@@ -2,6 +2,7 @@
 // with a sentence to copy, whom it waits on and a reminder in three working days.
 
 import { expect, test, type Page } from "@playwright/test";
+import { toRfc3339Local } from "../src/sync/dates";
 import { handbackRemindAt } from "../src/sync/handback";
 import { entityFields, openApp, prepare, row, Seeder, suffix } from "./fixtures";
 
@@ -71,6 +72,51 @@ test("Zurückgeben: Satz kopieren, auf jemanden warten, in drei Werktagen erinne
     }).toEqual([null, "open"]);
   } finally {
     await close(page, offer);
+  }
+});
+
+/** A reminder early today (local time), so it is due in Heute. */
+function todayEarly(): string {
+  const d = new Date();
+  return toRfc3339Local(new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 5));
+}
+
+test("Wiedervorlage in Heute: wartet noch, nachfragen oder Antwort ist da, Dev-Projekte nicht", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const s = suffix();
+  const seeder = new Seeder();
+  const remind_at = todayEarly();
+  const id = seeder.task(`Bericht ${s}`, { location: { kind: "loose" }, weight: "rauch", waiting_on: `Anna ${s}`, status: "blocked", remind_at });
+  const plain = seeder.task(`Anruf ${s}`, { location: { kind: "loose" }, remind_at });
+  const area = seeder.area(`Arbeit ${s}`);
+  const project = seeder.project(`App ${s}`, area, { kind: "dev", repo: "example/app", view: "list" });
+  const ticket = seeder.task(`Ticket ${s}`, { location: { kind: "project", id: project }, waiting_on: `Bob ${s}`, status: "blocked", remind_at });
+  await seeder.push(page);
+  try {
+    await openApp(page, "#/heute");
+    const followUps = page.getByRole("list", { name: "Wiedervorlage" });
+    const reminders = page.getByRole("list", { name: "Erinnerungen" });
+    await expect(followUps.locator(".task-title")).toHaveText([`Bericht ${s}`]);
+    await expect(row(page, `Bericht ${s}`).locator(".chip-waiting-on")).toHaveText(`wartet noch auf Anna ${s}`);
+    // Without a name and in dev projects it stays a plain reminder.
+    await expect(reminders.locator(".task-title", { hasText: `Anruf ${s}` })).toHaveCount(1);
+    await expect(reminders.locator(".task-title", { hasText: `Ticket ${s}` })).toHaveCount(1);
+
+    await followUps.getByRole("button", { name: "Nachfragen" }).click();
+    await expect.poll(() => clipboard(page)).toBe(`Kurze Nachfrage zu „Bericht ${s}“: Wie wichtig ist es dir?`);
+    await expect(page.locator(".toast")).toContainText(`Satz kopiert. „Bericht ${s}“ wartet weiter auf Anna ${s}.`);
+    expect((await entityFields(page, "task", id)).waiting_on).toBe(`Anna ${s}`);
+
+    await followUps.getByRole("button", { name: "Antwort ist da" }).click();
+    await expect(followUps).toHaveCount(0);
+    await expect.poll(async () => {
+      const f = await entityFields(page, "task", id);
+      return [f.waiting_on, f.status];
+    }).toEqual([null, "open"]);
+    // The reminder stays for today, now as a plain one.
+    await expect(reminders.locator(".task-title", { hasText: `Bericht ${s}` })).toHaveCount(1);
+  } finally {
+    await close(page, id, plain, ticket);
   }
 });
 
