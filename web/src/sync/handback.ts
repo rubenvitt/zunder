@@ -43,6 +43,19 @@ export function handbackSentence(title: string, alternative: string | null): str
 }
 
 /**
+ * Wiedervorlage in Heute: a task whose reminder came while it still waits on someone, not
+ * closed and not in a dev project (`inDevProject`, resolved by the caller).
+ */
+export function awaitsAnswer(task: Task, inDevProject: boolean): boolean {
+  return !!task.waiting_on?.trim() && !isClosed(task.status) && !inDevProject;
+}
+
+/** "Nachfragen": the sentence to ask again, as plain as the first one. */
+export function followUpSentence(title: string): string {
+  return `Kurze Nachfrage zu „${title}“: Wie wichtig ist es dir?`;
+}
+
+/**
  * The second task the sentence offers: open or in progress, weighed Rauch or Brand, waiting
  * on nobody, not the task itself and not `excluded` (deleted ones, dev projects). The one due
  * first wins; without due dates the oldest. Ties go by creation, then ID.

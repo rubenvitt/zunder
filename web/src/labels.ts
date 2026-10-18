@@ -119,8 +119,8 @@ export function commitmentsLabel(count: number): string {
 }
 
 /** "wartet auf Anna": whom a task waits on (waiting_on). */
-export function waitingLabel(name: string): string {
-  return `wartet auf ${name}`;
+export function waitingLabel(name: string, still = false): string {
+  return still ? `wartet noch auf ${name}` : `wartet auf ${name}`;
 }
 
 export function deferralsLabel(count: number): string {

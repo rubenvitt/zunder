@@ -17,6 +17,11 @@ export function deferDay(target: DeferTarget, today: string): string {
   return localDate(addDays(d, untilMonday));
 }
 
+/** Whether "Nächste Woche" names another day than "Morgen": not on a Sunday, where both are Monday. */
+export function offersNextWeek(today: string): boolean {
+  return deferDay("next_week", today) !== deferDay("tomorrow", today);
+}
+
 /** Whether putting the task off once more is a decision rather than a click. */
 export function needsDecision(task: Pick<Task, "deferrals">): boolean {
   return task.deferrals >= FREE_DEFERRALS;

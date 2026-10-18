@@ -9,7 +9,8 @@ import type { DeferTarget } from "../sync/defer";
 import type { Task } from "../sync/types";
 import { canHandBack, deferTask, dropTask, moveTask, setWaitingOn, shorten } from "../state/actions";
 import { commitmentTasks, inboxTasks, tasksAt, todayGroups, waitingGroups } from "../state/selectors";
-import { activeList, pickLocation, registerList, selectedId, setCaptureOpen, setHandBackRequest, setSelectedId, toast } from "../state/ui";
+import { activeList, copyText, pickLocation, registerList, selectedId, setCaptureOpen, setHandBackRequest, setSelectedId, toast } from "../state/ui";
+import { followUpSentence } from "../sync/handback";
 import { now } from "../state/store";
 import { refreshFocus } from "../state/focus";
 import { tooManyCommitments } from "../sync/commitments";
@@ -27,12 +28,32 @@ const todayRowActions = (task: Task) => [{ label: "Heute nicht", key: "s", run: 
 
 const todaySwipe = (task: Task) => ({ right: { label: "Heute nicht", run: () => todayActions.later(task) } });
 
+/** "Antwort ist da": clears whom it waits on; the server opens the task unless a blocker holds it. */
+function answered(task: Task): void {
+  selectNextAfter(task.id);
+  if (setWaitingOn(task.id, "")) toast(`„${shorten(task.title)}“ wartet nicht mehr.`);
+}
+
+/**
+ * Wiedervorlage (contract 5.1): the reminder is due, the answer is not. Both actions are
+ * offers; leaving the row alone is fine, it goes with the day.
+ */
+const followUpActions = (task: Task) => [
+  { label: "Antwort ist da", mobile: true, run: () => answered(task) },
+  {
+    label: "Nachfragen",
+    mobile: true,
+    run: () => copyText(followUpSentence(task.title), `Satz kopiert. „${shorten(task.title)}“ wartet weiter auf ${task.waiting_on?.trim()}.`),
+  },
+  { label: "Heute nicht", key: "s", run: () => todayActions.later(task) },
+];
+
 export function TodayView() {
   const groups = createMemo(todayGroups);
   const all = createMemo(() => {
     const g = groups();
     const seen = new Set<string>();
-    return [...g.flames, ...g.overdue, ...g.dueToday, ...g.reminders].filter((t) => !seen.has(t.id) && !!seen.add(t.id));
+    return [...g.flames, ...g.overdue, ...g.dueToday, ...g.reminders, ...g.followUps].filter((t) => !seen.has(t.id) && !!seen.add(t.id));
   });
   // Zusagen-Bremse: how many promises are open, shown before they press (contract 5.1).
   const commitments = createMemo(() => commitmentTasks().length);
@@ -84,6 +105,13 @@ export function TodayView() {
         <section class="group">
           <h2>Erinnerungen</h2>
           <TaskList tasks={groups().reminders} showLocation label="Erinnerungen" actions={todayRowActions} swipe={todaySwipe} />
+        </section>
+      </Show>
+      <Show when={groups().followUps.length > 0}>
+        <section class="group">
+          <h2>Wiedervorlage</h2>
+          <p class="muted group-hint">Noch keine Antwort. Nachfragen, wenn es dir hilft; sonst wartet es einfach weiter.</p>
+          <TaskList tasks={groups().followUps} showLocation waitingStill label="Wiedervorlage" actions={followUpActions} swipe={todaySwipe} />
         </section>
       </Show>
       <Show when={nothing()}>
@@ -190,10 +218,6 @@ export function WaitingView() {
   const groups = createMemo(waitingGroups);
   const all = createMemo(() => groups().flatMap((g) => g.tasks));
   onMount(() => registerList(all));
-  const answered = (task: Task) => {
-    selectNextAfter(task.id);
-    if (setWaitingOn(task.id, "")) toast(`„${shorten(task.title)}“ wartet nicht mehr.`);
-  };
   return (
     <div class="view">
       <header class="view-head">

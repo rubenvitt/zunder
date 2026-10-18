@@ -28,6 +28,8 @@ export interface TaskRowProps {
   showLocation?: boolean;
   actions?: RowAction[];
   swipe?: SwipeActions;
+  /** The chip reads "wartet noch auf <Name>" (Wiedervorlage in Heute). */
+  waitingStill?: boolean;
   onOpen: () => void;
   onSelect: () => void;
 }
@@ -72,7 +74,7 @@ function PersonalChips(props: { task: Task }) {
   );
 }
 
-export function TaskMeta(props: { task: Task; showLocation?: boolean; showRef?: boolean; showProgress?: boolean }) {
+export function TaskMeta(props: { task: Task; showLocation?: boolean; showRef?: boolean; showProgress?: boolean; waitingStill?: boolean }) {
   const progress = () => taskIndex().progress(props.task.id);
   return (
     <span class="task-meta">
@@ -101,7 +103,7 @@ export function TaskMeta(props: { task: Task; showLocation?: boolean; showRef?: 
         {(name) => (
           <span class="chip chip-waiting-on" title={`Die Entscheidung liegt bei ${name()}`}>
             <Icon name="user" size={12} />
-            {waitingLabel(name())}
+            {waitingLabel(name(), props.waitingStill)}
           </span>
         )}
       </Show>
@@ -213,7 +215,7 @@ export function TaskRow(props: TaskRowProps) {
           onFocus={() => props.onSelect()}
         >
           <span class="task-title">{props.task.title}</span>
-          <TaskMeta task={props.task} showLocation={props.showLocation} />
+          <TaskMeta task={props.task} showLocation={props.showLocation} waitingStill={props.waitingStill} />
         </button>
         <span class="row-side">
           <SubtaskToggle task={props.task} open={subtasksOpen()} onToggle={() => setSubtasksOpen((o) => !o)} />

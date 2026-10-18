@@ -4,6 +4,7 @@ import { localDate, parseDue } from "../sync/dates";
 import { weekBalance, type WeekBalance } from "../sync/balance";
 import { openCommitments } from "../sync/commitments";
 import { pickFocus, type Focus } from "../sync/focus";
+import { awaitsAnswer } from "../sync/handback";
 import { compareTasks, isClosed, isDevLocation, isFlameRunning, statusChangedMs, weightRank } from "../sync/derived";
 import type { Location, Task } from "../sync/types";
 import { data, now, taskIndex } from "./store";
@@ -63,15 +64,17 @@ export interface TodayGroups {
   overdue: Task[];
   dueToday: Task[];
   reminders: Task[];
+  /** Today's reminders of tasks that still wait on someone (Wiedervorlage), outside dev projects. */
+  followUps: Task[];
   flames: Task[];
 }
 
-/** Heute: overdue and due today, today's reminders, running flames (subtasks included). */
+/** Heute: overdue and due today, today's reminders and follow-ups, running flames (subtasks included). */
 export function todayGroups(): TodayGroups {
   const index = taskIndex();
   const nowMs = now();
   const today = localDate(new Date(nowMs));
-  const groups: TodayGroups = { overdue: [], dueToday: [], reminders: [], flames: [] };
+  const groups: TodayGroups = { overdue: [], dueToday: [], reminders: [], followUps: [], flames: [] };
   for (const t of index.byId.values()) {
     if (index.isDeleted(t)) continue;
     if (isFlameRunning(t)) groups.flames.push(t);
@@ -89,7 +92,10 @@ export function todayGroups(): TodayGroups {
     }
     if (t.remind_at) {
       const at = new Date(t.remind_at);
-      if (!Number.isNaN(at.getTime()) && localDate(at) === today) groups.reminders.push(t);
+      if (!Number.isNaN(at.getTime()) && localDate(at) === today) {
+        const dev = isDevLocation(index.location(t), (id) => data.projects[id]);
+        (awaitsAnswer(t, dev) ? groups.followUps : groups.reminders).push(t);
+      }
     }
   }
   // What matters first (Brand, Glut, unweighed, Rauch, Asche), then by due time.
@@ -97,7 +103,9 @@ export function todayGroups(): TodayGroups {
     weightRank(a.weight) - weightRank(b.weight) || (parseDue(a.due)?.at.getTime() ?? 0) - (parseDue(b.due)?.at.getTime() ?? 0) || compareTasks(a, b);
   groups.overdue.sort(byDue);
   groups.dueToday.sort(byDue);
-  groups.reminders.sort((a, b) => Date.parse(a.remind_at!) - Date.parse(b.remind_at!));
+  const byReminder = (a: Task, b: Task) => Date.parse(a.remind_at!) - Date.parse(b.remind_at!);
+  groups.reminders.sort(byReminder);
+  groups.followUps.sort(byReminder);
   return groups;
 }
 
