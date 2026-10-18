@@ -146,6 +146,27 @@ async fn flame(
     Ok(outcome)
 }
 
+/// `GET /api/settings/focus` with the stored token ("Erst für dich": day
+/// clicked away, task picked for a day), answer unchanged. Offline it fails
+/// with `network` and the web UI keeps its local value; with an API token
+/// instead of a device token it is `unsupported`.
+#[tauri::command]
+pub async fn focus_get(state: State<'_, AppState>) -> Result<serde_json::Value, Error> {
+    let client = state.syncer.client(&state.store)?;
+    client.focus_settings().await
+}
+
+/// `PUT /api/settings/focus` with the web UI's update unchanged (a missing
+/// field stays, `null` removes it); returns the server's new value.
+#[tauri::command]
+pub async fn focus_set(
+    state: State<'_, AppState>,
+    update: serde_json::Value,
+) -> Result<serde_json::Value, Error> {
+    let client = state.syncer.client(&state.store)?;
+    client.update_focus_settings(&update).await
+}
+
 // ----- app settings ----------------------------------------------------------
 
 #[cfg(mobile)]

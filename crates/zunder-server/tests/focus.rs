@@ -1,5 +1,6 @@
 //! "Erst für dich" in Heute: `/api/settings/focus` (day clicked away, task
-//! picked for a day), browser sessions only like the other settings.
+//! picked for a day), browser sessions and devices of the app (device tokens:
+//! `oauth.rs`), not API tokens.
 
 mod common;
 
@@ -89,7 +90,7 @@ async fn focus_settings_refuse_bad_values() {
 }
 
 #[tokio::test]
-async fn focus_settings_need_a_browser_session() {
+async fn focus_settings_refuse_api_tokens() {
     let s = TestServer::new().await;
     let t = api_token(&s, "claude").await;
     let session = s.session().await;

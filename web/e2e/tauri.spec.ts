@@ -25,6 +25,8 @@ interface FakeAppHandle {
   serverOp(entity: string, id: string, field: string, value: Json): void;
   /** The browser came back with a device token (deep link). */
   completeLogin(): void;
+  /** "Erst für dich" on the server (focus_get/focus_set). */
+  focus: { dismissed_on: string | null; chosen: { on: string; task_id: string } | null };
 }
 
 declare global {
@@ -65,6 +67,7 @@ function installFakeApp(seed: { serverOps: WireOp[]; validToken: string }) {
     calls: [] as { cmd: string; args: Record<string, unknown> }[],
     ops: [] as WireOp[],
     pending: 0,
+    focus: { dismissed_on: null, chosen: null } as FakeAppHandle["focus"],
     emit(event: string, payload: unknown) {
       for (const l of listeners.filter((x) => x.event === event)) callbacks.get(l.handler)?.({ event, id: l.id, payload });
     },
@@ -171,6 +174,12 @@ function installFakeApp(seed: { serverOps: WireOp[]; validToken: string }) {
         } else fake.serverOp("task", id, "flame_ended_at", new Date(Date.now() + 1000).toISOString());
         fake.emit("zunder://changed", { cursor: config.cursor, pending: fake.pending });
         return { running: cmd === "flame_start" };
+      }
+      case "focus_get":
+      case "focus_set": {
+        if (!config.server_url || !config.has_api_token) throw { code: "not_configured", message: "Es ist noch kein Server eingerichtet" };
+        if (cmd === "focus_set") fake.focus = { ...fake.focus, ...(args.update as Partial<FakeAppHandle["focus"]>) };
+        return fake.focus;
       }
       case "plugin:opener|open_url":
         return null;
@@ -291,6 +300,33 @@ test("App: Anmeldung im Browser statt Token", async ({ page }) => {
   await page.evaluate(() => window.__ZUNDER_FAKE_APP__.completeLogin());
   await expect(page.locator(".app")).toBeVisible();
   await expect(row(page, "Vom Server geladen")).toBeVisible();
+  expect(apiRequests).toEqual([]);
+});
+
+test("App: „Erst für dich“ gleicht über focus_get und focus_set mit dem Server ab", async ({ page }) => {
+  const apiRequests = await openInApp(page, serverOps(currentFire()).ops);
+  await page.getByLabel("Server-Adresse").fill("https://zunder.example.org");
+  await page.getByLabel("API-Token").fill("zt_richtig");
+  await page.getByRole("button", { name: "Speichern und verbinden" }).click();
+  await expect(row(page, "Vom Server geladen")).toBeVisible();
+
+  // Clicked away in the app: goes to the server, the browser sees it the same day.
+  await go(page, "#/heute");
+  const section = page.locator("section.focus");
+  await expect(section).toBeVisible();
+  await section.getByRole("button", { name: "Für heute ausblenden" }).click();
+  await expect(section).toHaveCount(0);
+  const today = await page.evaluate(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
+  await expect.poll(() => page.evaluate(() => window.__ZUNDER_FAKE_APP__.focus.dismissed_on)).toBe(today);
+
+  // Brought back in the browser: the app reads it when Heute opens again.
+  await page.evaluate(() => void (window.__ZUNDER_FAKE_APP__.focus.dismissed_on = null));
+  await go(page, "#/inbox");
+  await go(page, "#/heute");
+  await expect(section).toBeVisible();
   expect(apiRequests).toEqual([]);
 });
 

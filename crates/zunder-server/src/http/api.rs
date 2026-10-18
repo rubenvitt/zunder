@@ -20,7 +20,7 @@ use super::extract::{parse_id, parse_uuid, ApiJson, ApiQuery};
 use crate::app::{
     AgentLogPage, App, CreatedToken, HistoryEntry, PullPage, PushResult, Snapshot, TokenInfo,
 };
-use crate::auth::Principal;
+use crate::auth::{Principal, PrincipalKind};
 use crate::calendar::{CalendarSettings, CreatedCalendarFeed};
 use crate::error::{AppError, AppResult};
 use crate::flame::{self, FlameOutcome};
@@ -443,11 +443,25 @@ async fn timing_projects(
     Ok(Json(app.timing_projects().await?))
 }
 
+/// "Erst für dich" holds no credentials, only a day and a task ID, so
+/// besides browsers the app's devices may read and write it (contract 5.1);
+/// API and OAuth tokens may not.
+fn require_browser_or_device(principal: &Principal) -> AppResult<()> {
+    if principal.is_browser() || matches!(principal.kind, PrincipalKind::Device { .. }) {
+        Ok(())
+    } else {
+        Err(AppError::Forbidden(
+            "„Erst für dich“ gibt es nur mit einer Browser-Sitzung oder dem Geräte-Token der Zunder-App"
+                .into(),
+        ))
+    }
+}
+
 async fn focus_settings(
     State(app): State<App>,
     principal: Principal,
 ) -> AppResult<Json<FocusSettings>> {
-    require_browser_for_settings(&principal)?;
+    require_browser_or_device(&principal)?;
     Ok(Json(app.focus_settings().await?))
 }
 
@@ -456,7 +470,7 @@ async fn update_focus_settings(
     principal: Principal,
     ApiJson(body): ApiJson<FocusUpdate>,
 ) -> AppResult<Json<FocusSettings>> {
-    require_browser_for_settings(&principal)?;
+    require_browser_or_device(&principal)?;
     Ok(Json(app.update_focus_settings(body).await?))
 }
 

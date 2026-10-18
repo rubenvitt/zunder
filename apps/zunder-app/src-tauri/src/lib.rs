@@ -161,6 +161,8 @@ pub fn run() {
             commands::task_history,
             commands::flame_start,
             commands::flame_stop,
+            commands::focus_get,
+            commands::focus_set,
             commands::app_info,
             commands::set_autostart,
             commands::check_update,

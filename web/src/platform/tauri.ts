@@ -9,9 +9,9 @@
 //   push      → local_apply (validated locally, queued for the app's push)
 //   pull      → nothing; after each app sync with changes the app emits
 //               zunder://changed and the engine reloads the snapshot (onReset)
-// History and flames go through app commands that call the server with the
-// stored API token. Token management and server settings need a browser
-// session and are not available in the app.
+// History, flames and "Erst für dich" go through app commands that call the
+// server with the stored token. Token management and the other server
+// settings need a browser session and are not available in the app.
 
 import { MemoryLocalStore } from "../sync/local-store";
 import { asFlameResult, HttpError, NetworkError, type ApiClient, type SubscriptionHandlers, type SyncTransport } from "../sync/transport";
@@ -292,6 +292,15 @@ export class TauriApp {
     return this.call(action === "start" ? "flame_start" : "flame_stop", { task_id: taskId });
   }
 
+  /** "Erst für dich" from the server (needs the device token of a login, else `unsupported`). */
+  focusGet(): Promise<FocusSettings> {
+    return this.call("focus_get");
+  }
+
+  focusSet(update: FocusSettingsUpdate): Promise<FocusSettings> {
+    return this.call("focus_set", { update });
+  }
+
   appInfo(): Promise<AppInfo> {
     return this.call("app_info");
   }
@@ -415,13 +424,14 @@ export class TauriTransport implements SyncTransport, ApiClient {
     return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
   }
 
-  // "Erst für dich" stays on this device in the app: the settings need a browser session.
+  // "Erst für dich" goes through the app to the server; offline the web side keeps it on the
+  // device (state/focus). With an API token instead of a login the app answers `unsupported`.
   focusSettings(): Promise<FocusSettings> {
-    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+    return this.app.focusGet();
   }
 
-  updateFocusSettings(_update: FocusSettingsUpdate): Promise<FocusSettings> {
-    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+  updateFocusSettings(update: FocusSettingsUpdate): Promise<FocusSettings> {
+    return this.app.focusSet(update);
   }
 
   calendarSettings(): Promise<CalendarSettings> {
