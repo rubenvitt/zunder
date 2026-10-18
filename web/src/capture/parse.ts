@@ -1,15 +1,15 @@
 // Quick capture shorthand (contract section 5), e.g.
 //   "Zahnarzt anrufen morgen 9:00 #gesundheit"
 // Dates: heute, morgen, übermorgen, weekday names, "nächsten <Wochentag>",
-// 12.10., 12.10.2026 (optionally preceded by "am"). Times: 9:00, 9 Uhr, 9:30 Uhr
+// 12.10., 12.10.2026 (optionally preceded by "am"), "am Monatsende" (once). Times: 9:00, 9 Uhr, 9:30 Uhr
 // (optionally preceded by "um"). A time sets due and remind_at; a date alone
 // sets a date-only due. #slug resolves to an area or project (project wins on a tie).
 // Unresolved tags stay in the title. Rhythms ("jeden Freitag", "alle 2 Wochen",
-// "monatlich am 15.", "jeden Monatsletzten" …, contract 5.1) set `recurrence` and,
-// without a date, the first due date of the series. Unsupported rhythm-like phrases
-// ("jeden ersten Montag", "jeden 1. Werktag", "jeden 1. Mai", "alle zwei Wochen") stay in
-// the title whole, with what follows their unit ("jede zweite Woche montags"),
-// and set nothing. "!brand", "!glut", "!rauch", "!asche" set the weight, "@mich", "@uns",
+// "alle zwei Wochen", "jede zweite Woche", "monatlich am 15.", "jeden Monatsletzten" …,
+// contract 5.1) set `recurrence` and, without a date, the first due date of the series.
+// Unsupported rhythm-like phrases ("jeden ersten Montag", "jeden 1. Werktag", "jeden 1.
+// Mai", "alle paar Tage") stay in the title whole, with what follows their unit
+// ("jede 2. Woche am ersten Montag"), and set nothing. "!brand", "!glut", "!rauch", "!asche" set the weight, "@mich", "@uns",
 // "@andere" whom the task is for (the first of each counts; others stay in the title).
 
 import { describeRecurrence, FOR_WHOM_LABELS, WEIGHT_LABELS } from "../labels";
@@ -131,6 +131,12 @@ function matchDate(words: readonly string[], i: number, today: Date): DateHit | 
     }
   }
 
+  // "am Monatsende" is a single date, the last day of this month (today at the latest),
+  // not a rhythm (contract 5.1). Only after "am", so a "Monatsende" in a title stays.
+  if (word === "monatsende" && i > 0 && words[i - 1]!.toLowerCase() === "am") {
+    return { date: new Date(today.getFullYear(), today.getMonth() + 1, 0), consumed: 1, label: "Monatsende" };
+  }
+
   const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})?$/.exec(stripPunctuation(words[i]!));
   if (m) {
     const day = Number(m[1]);
@@ -236,10 +242,40 @@ const UNIT_SINGULARS = new Map<string, Recurrence["unit"]>([
   ["jahr", "year"],
 ]);
 
-/** Ordinals in words ("ersten", "letzte" …): not supported, they mark a phrase as unsupported. */
-const ORDINAL_WORDS = new Set(
-  ["erst", "zweit", "dritt", "viert", "fünft", "fuenft", "letzt", "vorletzt"].flatMap((stem) => ["e", "en", "er", "es"].map((end) => stem + end)),
+const ORDINAL_ENDINGS = ["e", "en", "er", "es"];
+
+/** Ordinals in words with their value, in every inflection ("ersten" → 1, "zweite" → 2 … "zwölftes" → 12). */
+const ORDINAL_NUMBERS = new Map<string, number>(
+  (
+    [
+      ["erst", 1],
+      ["zweit", 2],
+      ["dritt", 3],
+      ["viert", 4],
+      ["fünft", 5],
+      ["fuenft", 5],
+      ["sechst", 6],
+      ["siebt", 7],
+      ["siebent", 7],
+      ["acht", 8],
+      ["neunt", 9],
+      ["zehnt", 10],
+      ["elft", 11],
+      ["zwölft", 12],
+      ["zwoelft", 12],
+    ] as const
+  ).flatMap(([stem, n]) => ORDINAL_ENDINGS.map((end): [string, number] => [stem + end, n])),
 );
+
+/** "letzte", "letzten" …: the last day of the month before "des Monats"/"im Monat". */
+const LAST_WORDS = new Set(ORDINAL_ENDINGS.map((end) => `letzt${end}`));
+
+/**
+ * Ordinals in words ("ersten", "zweite", "letzte" …). In a list, before a weekday or
+ * after "am" they mark a phrase as unsupported; only "jede zweite Woche" (every n units)
+ * and "jeden ersten Tag des Monats" (a fixed day) are rhythms.
+ */
+const ORDINAL_WORDS = new Set([...ORDINAL_NUMBERS.keys(), ...LAST_WORDS, ...ORDINAL_ENDINGS.map((end) => `vorletzt${end}`)]);
 
 /** Units that may follow an ordinal in an unsupported phrase ("jeden letzten Werktag"). */
 const ORDINAL_UNITS = new Set(["tag", "werktag", "arbeitstag", "wochentag", "woche", "wochenende", "monat", "quartal", "jahr"]);
@@ -278,8 +314,22 @@ const MONTH_NAMES = new Set([
 /** A month number after a day ("jeden 1. 5."). */
 const MONTH_NUMBER = /^(0?[1-9]|1[0-2])\.$/;
 
-/** Cardinal numbers in words ("alle zwei Wochen"): not supported, they mark a phrase as unsupported. */
-const NUMBER_WORDS = new Set(["zwei", "drei", "vier", "fünf", "fuenf", "sechs", "sieben", "acht", "neun", "zehn", "elf", "zwölf", "zwoelf", "paar"]);
+/** Cardinal numbers in words after "alle" ("alle zwei Wochen"). */
+const CARDINAL_NUMBERS = new Map<string, number>([
+  ["zwei", 2],
+  ["drei", 3],
+  ["vier", 4],
+  ["fünf", 5],
+  ["fuenf", 5],
+  ["sechs", 6],
+  ["sieben", 7],
+  ["acht", 8],
+  ["neun", 9],
+  ["zehn", 10],
+  ["elf", 11],
+  ["zwölf", 12],
+  ["zwoelf", 12],
+]);
 
 /** A full date ("12.10.2027"). */
 const FULL_DATE = /^\d{1,2}\.\d{1,2}\.\d{4}$/;
@@ -328,16 +378,32 @@ function unsupportedTailEnd(words: readonly string[], k: number): number {
   return end;
 }
 
-/**
- * End of a fixed day of the month at word `k` ("15.", "1. des Monats", "1. Tag des
- * Monats"); null when a weekday, unit, month name or month number follows the day
- * ("1. Werktag", "1. Mai"), which makes the phrase unsupported.
- */
-function monthDayEnd(words: readonly string[], k: number): number | null {
+/** End of "des Monats" or "im Monat" at word `k`, else null. */
+function ofMonthEnd(words: readonly string[], k: number): number | null {
   const w = (j: number) => wordAt(words, j);
-  if (w(k + 1) === "des" && w(k + 2) === "monats") return k + 3;
-  if (w(k + 1) === "tag" && w(k + 2) === "des" && w(k + 3) === "monats") return k + 4;
-  return unsupportedEnd(words, k + 1) === k + 1 ? k + 1 : null;
+  return (w(k) === "des" && w(k + 1) === "monats") || (w(k) === "im" && w(k + 1) === "monat") ? k + 2 : null;
+}
+
+/** End of "des Monats", "im Monat", "Tag des Monats" or "Tag im Monat" after the day at word `k`, else null. */
+function ofMonthSuffixEnd(words: readonly string[], k: number): number | null {
+  return ofMonthEnd(words, k + 1) ?? (wordAt(words, k + 1) === "tag" ? ofMonthEnd(words, k + 2) : null);
+}
+
+/**
+ * A single fixed day of the month at word `k` and the end of the phrase: "15.", "15. des
+ * Monats", "15. im Monat", "1. Tag des Monats"; an ordinal in words only with "des
+ * Monats" or "im Monat" ("ersten Tag des Monats", "letzten im Monat"). null when a
+ * weekday, unit, month name or month number follows the day ("1. Werktag", "1. Mai"),
+ * which makes the phrase unsupported.
+ */
+function monthDay(words: readonly string[], k: number): { day: number | "last"; end: number } | null {
+  const w = wordAt(words, k);
+  const numeric = NUMERIC_ORDINAL.test(w);
+  const day = numeric ? Number(w.slice(0, -1)) : LAST_WORDS.has(w) ? "last" : ORDINAL_NUMBERS.get(w);
+  if (day === undefined || (typeof day === "number" && (day < 1 || day > 31))) return null;
+  const suffix = ofMonthSuffixEnd(words, k);
+  if (suffix !== null) return { day, end: suffix };
+  return numeric && unsupportedEnd(words, k + 1) === k + 1 ? { day, end: k + 1 } : null;
 }
 
 /**
@@ -487,9 +553,8 @@ function matchRhythmBase(words: readonly string[], i: number): RhythmMatch | nul
     if (prep === "zum" || DAY_MONTH.test(target)) return monthly(every, undefined, rel(end));
     const list = ordinalList(words, end + 1);
     if (!list) return monthly(every, undefined, rel(end));
-    const day = NUMERIC_ORDINAL.test(target) ? Number(target.slice(0, -1)) : 0;
-    const dayEnd = list.count === 1 ? monthDayEnd(words, end + 1) : null;
-    if (day >= 1 && day <= 31 && dayEnd !== null) return monthly(every, day, rel(dayEnd));
+    const fixed = list.count === 1 ? monthDay(words, end + 1) : null;
+    if (fixed) return monthly(every, fixed.day, rel(fixed.end));
     return unsupported(rel(unsupportedEnd(words, list.end)));
   };
 
@@ -506,11 +571,12 @@ function matchRhythmBase(words: readonly string[], i: number): RhythmMatch | nul
     return unsupported(rel(unsupportedEnd(words, list.end)));
   };
 
-  /** "jede"/"jeden"/"jedes" + "2." + unit: every n units. */
+  /** "jede"/"jeden"/"jedes" + "2." or "zweite" … "zwölfte" + unit: every n units. */
   const everyNth = (): RhythmMatch | null => {
-    const unit = NUMERIC_ORDINAL.test(next) ? UNIT_SINGULARS.get(word(i + 2)) : undefined;
-    if (!unit) return null;
-    const n = Number(next.slice(0, -1));
+    const inWords = ORDINAL_NUMBERS.get(next);
+    const n = NUMERIC_ORDINAL.test(next) ? Number(next.slice(0, -1)) : inWords !== undefined && inWords >= 2 ? inWords : null;
+    const unit = n === null ? undefined : UNIT_SINGULARS.get(word(i + 2));
+    if (!unit || n === null) return null;
     if (unit === "week") return weekWithDays(n, i + 3);
     if (unit === "month") return monthWithDay(n, i + 3);
     if (unit === "year") return yearWithDay(n, i + 3);
@@ -540,14 +606,12 @@ function matchRhythmBase(words: readonly string[], i: number): RhythmMatch | nul
       return everyNth() ?? unsupportedFrom(i + 1);
     case "jeder":
       return unsupportedFrom(i + 1);
-    case "am":
-      return next === "monatsende" ? monthly(1, "last", 2) : null;
     case "alle": {
       const unit = UNIT_PLURALS.get(word(i + 2));
       if (!unit) return null;
-      // "alle zwei Wochen am Montag": unsupported, like "jede zweite Woche am Montag".
-      if (NUMBER_WORDS.has(next)) return unsupported(rel(unsupportedTailEnd(words, i + 3)));
-      const n = /^[1-9]\d{0,2}$/.test(next) ? Number(next) : null;
+      // "alle paar Tage" has no number: unsupported, with what follows the unit.
+      if (next === "paar") return unsupported(rel(unsupportedTailEnd(words, i + 3)));
+      const n = /^[1-9]\d{0,2}$/.test(next) ? Number(next) : (CARDINAL_NUMBERS.get(next) ?? null);
       if (n === null) return null;
       if (unit === "week") return weekWithDays(n, i + 3);
       if (unit === "month") return monthWithDay(n, i + 3);
@@ -558,18 +622,15 @@ function matchRhythmBase(words: readonly string[], i: number): RhythmMatch | nul
       if (next === "tag") return simple(1, "day", 2);
       if (next === "monat") return monthWithDay(1, i + 2);
       if (next === "monatsletzten") return monthly(1, "last", 2);
-      if (next === "letzten") {
-        if (word(i + 2) === "des" && word(i + 3) === "monats") return monthly(1, "last", 4);
-        if (word(i + 2) === "tag" && word(i + 3) === "des" && word(i + 4) === "monats") return monthly(1, "last", 5);
-      }
       const named = weekdayList(words, i + 1, WEEKDAYS);
       if (named) return weeklyOn(1, named);
       // "jeden 2. Tag" is every 2 days, "jeden 2. Tag des Monats" day 2 of the month.
-      const dayOfMonth = word(i + 2) === "tag" && word(i + 3) === "des" && word(i + 4) === "monats";
+      const dayOfMonth = word(i + 2) === "tag" && ofMonthEnd(words, i + 3) !== null;
       const nth = dayOfMonth ? null : everyNth();
       if (nth) return nth;
-      // A single "jeden 12.10." (yearly) or "jeden 15." (monthly); lists, ordinals in
-      // words, "jeden 1. Montag", "jeden 1. Werktag" and "jeden 1. Mai" are unsupported.
+      // A single "jeden 12.10." (yearly), "jeden 15." or "jeden ersten des Monats"
+      // (monthly); lists, other ordinals in words, "jeden 1. Montag", "jeden 1. Werktag"
+      // and "jeden 1. Mai" are unsupported.
       const list = ordinalList(words, i + 1);
       if (!list) return null;
       if (list.count === 1) {
@@ -579,10 +640,9 @@ function matchRhythmBase(words: readonly string[], i: number): RhythmMatch | nul
           const month = Number(dm[2]);
           // 2000 is a leap year: 29.02. is a valid day of February.
           if (isValidCalendarDate(2000, month, day) && unsupportedEnd(words, i + 2) === i + 2) return yearlyOn(1, day, month, 2);
-        } else if (NUMERIC_ORDINAL.test(next)) {
-          const day = Number(next.slice(0, -1));
-          const dayEnd = monthDayEnd(words, i + 1);
-          if (day >= 1 && day <= 31 && dayEnd !== null) return monthly(1, day, rel(dayEnd));
+        } else {
+          const fixed = monthDay(words, i + 1);
+          if (fixed) return monthly(1, fixed.day, rel(fixed.end));
         }
       }
       return unsupported(rel(unsupportedEnd(words, list.end)));
@@ -610,6 +670,8 @@ export function parseCapture(input: string, now: Date, structure: CaptureStructu
   const today = startOfDay(now);
 
   let date: Date | null = null;
+  /** Words and token of the date, to put it back into the title (see below). */
+  let dateSpan: { start: number; end: number; token: CaptureToken } | null = null;
   let time: { hours: number; minutes: number } | null = null;
   let project: CaptureTarget | null = null;
   let area: CaptureTarget | null = null;
@@ -673,7 +735,9 @@ export function parseCapture(input: string, now: Date, structure: CaptureStructu
       if (hit) {
         date = hit.date;
         for (let k = i; k < at + hit.consumed; k++) keep[k] = false;
-        tokens.push({ kind: "date", text: words.slice(i, at + hit.consumed).join(" "), label: hit.label });
+        const token: CaptureToken = { kind: "date", text: words.slice(i, at + hit.consumed).join(" "), label: hit.label };
+        tokens.push(token);
+        dateSpan = { start: i, end: at + hit.consumed, token };
         i = at + hit.consumed - 1;
         continue;
       }
@@ -689,6 +753,16 @@ export function parseCapture(input: string, now: Date, structure: CaptureStructu
         continue;
       }
     }
+  }
+
+  // A fixed yearly day ("jährlich am 29.02.", "jeden 29.02.") applies in the month of the
+  // due date (contract 2.4). A date in another month ("jährlich am 29.02. morgen") cannot
+  // be the due date without losing the named month, so the fixed day wins: the date stays
+  // in the title, visible, and the series starts on its first day.
+  if (rhythm?.month !== undefined && date && dateSpan && date.getMonth() + 1 !== rhythm.month) {
+    for (let k = dateSpan.start; k < dateSpan.end; k++) keep[k] = true;
+    tokens.splice(tokens.indexOf(dateSpan.token), 1);
+    date = null;
   }
 
   // Without a date, a rhythm's series starts at its first day from today on.
@@ -711,14 +785,7 @@ export function parseCapture(input: string, now: Date, structure: CaptureStructu
     due = localDate(first(today));
   }
 
-  // A yearly day takes the month of the due date (contract 2.4). A date in another month
-  // ("jährlich am 29.02. morgen") stays the due date and the rhythm keeps no day, like
-  // "monatlich am 20.10."; otherwise the series would silently run on 29.10.
-  let recurrence = rhythm?.recurrence ?? null;
-  if (recurrence && rhythm?.month !== undefined && date && date.getMonth() + 1 !== rhythm.month) {
-    const { day: _day, ...rest } = recurrence;
-    recurrence = rest;
-  }
+  const recurrence = rhythm?.recurrence ?? null;
 
   // A yearly day names the month of the due date ("Jährlich am 28.02.").
   if (recurrence) for (const t of tokens) if (t.kind === "recurrence") t.label = describeRecurrence(recurrence, due);

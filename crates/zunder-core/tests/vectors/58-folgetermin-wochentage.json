@@ -1,0 +1,268 @@
+{
+  "name": "folgetermin-wochentage",
+  "description": "Wöchentliche und tägliche Serien ab Fälligkeit (3.1): Mit weekdays die genannten Tage in jeder Woche (Montag bis Sonntag), die k · every Wochen nach der Woche der alten Fälligkeit liegt, auch wenn diese auf keinem genannten Tag lag; die Reihenfolge der Liste spielt keine Rolle. Ohne weekdays every · 7 Tage, bei Tagen every Tage. Montag 12.10.2026.",
+  "kind": "next_occurrence",
+  "time_zone": "Europe/Berlin",
+  "cases": [
+    {
+      "description": "Mo+Do: Montag → Donnerstag derselben Woche",
+      "recurrence": {
+        "every": 1,
+        "unit": "week",
+        "weekdays": [
+          "mo",
+          "th"
+        ],
+        "from": "due"
+      },
+      "due": "2026-10-12",
+      "completed_at": "2026-10-12T18:00:00+02:00",
+      "today": "2026-10-12",
+      "expected": {
+        "due": "2026-10-15",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "week",
+          "weekdays": [
+            "mo",
+            "th"
+          ],
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "Mo+Do: Donnerstag → Montag der nächsten Woche",
+      "recurrence": {
+        "every": 1,
+        "unit": "week",
+        "weekdays": [
+          "mo",
+          "th"
+        ],
+        "from": "due"
+      },
+      "due": "2026-10-15",
+      "completed_at": "2026-10-15T18:00:00+02:00",
+      "today": "2026-10-15",
+      "expected": {
+        "due": "2026-10-19",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "week",
+          "weekdays": [
+            "mo",
+            "th"
+          ],
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "every 2, Mo+Do: Montag → Donnerstag derselben Woche",
+      "recurrence": {
+        "every": 2,
+        "unit": "week",
+        "weekdays": [
+          "mo",
+          "th"
+        ],
+        "from": "due"
+      },
+      "due": "2026-10-12",
+      "completed_at": "2026-10-12T18:00:00+02:00",
+      "today": "2026-10-12",
+      "expected": {
+        "due": "2026-10-15",
+        "remind_at": null,
+        "recurrence": {
+          "every": 2,
+          "unit": "week",
+          "weekdays": [
+            "mo",
+            "th"
+          ],
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "every 2, Mo+Do: Donnerstag → Montag zwei Wochen später",
+      "recurrence": {
+        "every": 2,
+        "unit": "week",
+        "weekdays": [
+          "mo",
+          "th"
+        ],
+        "from": "due"
+      },
+      "due": "2026-10-15",
+      "completed_at": "2026-10-15T18:00:00+02:00",
+      "today": "2026-10-15",
+      "expected": {
+        "due": "2026-10-26",
+        "remind_at": null,
+        "recurrence": {
+          "every": 2,
+          "unit": "week",
+          "weekdays": [
+            "mo",
+            "th"
+          ],
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "every 2, Liste [th, mo] wie [mo, th]",
+      "recurrence": {
+        "every": 2,
+        "unit": "week",
+        "weekdays": [
+          "th",
+          "mo"
+        ],
+        "from": "due"
+      },
+      "due": "2026-10-12",
+      "completed_at": "2026-10-12T18:00:00+02:00",
+      "today": "2026-10-12",
+      "expected": {
+        "due": "2026-10-15",
+        "remind_at": null,
+        "recurrence": {
+          "every": 2,
+          "unit": "week",
+          "weekdays": [
+            "th",
+            "mo"
+          ],
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "alte Fälligkeit auf keinem genannten Tag (Mittwoch) → Donnerstag",
+      "recurrence": {
+        "every": 1,
+        "unit": "week",
+        "weekdays": [
+          "mo",
+          "th"
+        ],
+        "from": "due"
+      },
+      "due": "2026-10-14",
+      "completed_at": "2026-10-14T18:00:00+02:00",
+      "today": "2026-10-14",
+      "expected": {
+        "due": "2026-10-15",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "week",
+          "weekdays": [
+            "mo",
+            "th"
+          ],
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "every 2, nur Mittwoch, alte Fälligkeit Freitag: Mittwoch der übernächsten Woche",
+      "recurrence": {
+        "every": 2,
+        "unit": "week",
+        "weekdays": [
+          "we"
+        ],
+        "from": "due"
+      },
+      "due": "2026-10-16",
+      "completed_at": "2026-10-16T18:00:00+02:00",
+      "today": "2026-10-16",
+      "expected": {
+        "due": "2026-10-28",
+        "remind_at": null,
+        "recurrence": {
+          "every": 2,
+          "unit": "week",
+          "weekdays": [
+            "we"
+          ],
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "nur Sonntag: Sonntag → Sonntag",
+      "recurrence": {
+        "every": 1,
+        "unit": "week",
+        "weekdays": [
+          "su"
+        ],
+        "from": "due"
+      },
+      "due": "2026-10-18",
+      "completed_at": "2026-10-18T18:00:00+02:00",
+      "today": "2026-10-18",
+      "expected": {
+        "due": "2026-10-25",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "week",
+          "weekdays": [
+            "su"
+          ],
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "every 3 Wochen ohne weekdays",
+      "recurrence": {
+        "every": 3,
+        "unit": "week",
+        "from": "due"
+      },
+      "due": "2026-10-12",
+      "completed_at": "2026-10-12T18:00:00+02:00",
+      "today": "2026-10-12",
+      "expected": {
+        "due": "2026-11-02",
+        "remind_at": null,
+        "recurrence": {
+          "every": 3,
+          "unit": "week",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "every 3 Tage",
+      "recurrence": {
+        "every": 3,
+        "unit": "day",
+        "from": "due"
+      },
+      "due": "2026-10-12",
+      "completed_at": "2026-10-12T18:00:00+02:00",
+      "today": "2026-10-12",
+      "expected": {
+        "due": "2026-10-15",
+        "remind_at": null,
+        "recurrence": {
+          "every": 3,
+          "unit": "day",
+          "from": "due"
+        }
+      }
+    }
+  ]
+}

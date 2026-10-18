@@ -85,6 +85,39 @@ test("Schnellerfassung in Lose und im Bereich", async ({ page }) => {
   await expect(row(page, `Rasen mähen ${s}`)).toBeVisible();
 });
 
+test("Schnellerfassung zeigt Beispiele der Kurzschreibweise, auch in den Tastenkürzeln", async ({ page }) => {
+  await openApp(page);
+  await page.keyboard.press("n");
+  const input = page.getByLabel("Titel der neuen Aufgabe");
+  const toggle = page.getByRole("button", { name: "Beispiele für die Kurzschreibweise" });
+  const help = page.locator(".capture-help");
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(help).toBeHidden();
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  for (const example of ["morgen 9:00", "#bereich", "jeden Freitag", "alle 2 Wochen", "monatlich am 15."]) {
+    await expect(help.getByText(example, { exact: true })).toBeVisible();
+  }
+  // The field keeps the focus: typing goes on.
+  await expect(input).toBeFocused();
+
+  // Remembered on this device: open again next time, until closed.
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("n");
+  await expect(help).toBeVisible();
+  await toggle.click();
+  await expect(help).toBeHidden();
+  await page.keyboard.press("Escape");
+
+  // The shortcut help lists them too.
+  await page.keyboard.press("?");
+  const dialog = page.getByRole("dialog", { name: "Tastenkürzel" });
+  await expect(dialog.getByRole("heading", { name: "Kurzschreibweise beim Erfassen" })).toBeVisible();
+  await expect(dialog.getByText("jeden Monatsletzten", { exact: true })).toBeVisible();
+});
+
 test("Schnellerfassung mit Kurzschreibweise setzt Fälligkeit, Erinnerung und Bereich", async ({ page }) => {
   const s = suffix();
   const seeder = new Seeder();

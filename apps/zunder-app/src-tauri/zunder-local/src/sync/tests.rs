@@ -172,6 +172,59 @@ async fn a_lost_push_response_is_harmless() {
     assert_eq!(lock(&device).state(), &server.state());
 }
 
+/// One local change with at least `min_ops` operations (new tasks).
+fn change(ui: &mut Author, prefix: &str, min_ops: usize) -> Vec<zunder_core::Op> {
+    let per_task = ui
+        .ops(|b| {
+            b.create_task(NewTask::new("Probe"));
+        })
+        .len();
+    ui.ops(|b| {
+        for i in 0..min_ops.div_ceil(per_task) {
+            b.create_task(NewTask::new(format!("{prefix} {i}")));
+        }
+    })
+}
+
+#[tokio::test]
+async fn a_change_larger_than_a_push_batch_goes_into_one_push() {
+    let server = FakeServer::new();
+    let device = store();
+    let mut ui = Author::new("web-a");
+    let big = change(&mut ui, "Groß", PUSH_BATCH + 1);
+    let small = change(&mut ui, "Klein", 1);
+    apply(&device, &big);
+    apply(&device, &small);
+
+    let report = sync_once(&device, &server, now()).await.unwrap();
+    assert_eq!(server.push_sizes(), vec![big.len(), small.len()]);
+    assert_eq!(report.pushed, big.len() + small.len());
+    assert_eq!(report.pending, 0);
+    assert_eq!(lock(&device).state(), &server.state());
+}
+
+#[tokio::test]
+async fn several_changes_share_a_push_without_being_split() {
+    let server = FakeServer::new();
+    let device = store();
+    let mut ui = Author::new("web-a");
+    // Three changes of 200+ ops: two fit into a push, the third would
+    // overflow it and waits for the next one instead of being cut.
+    let changes: Vec<_> = (0..3)
+        .map(|i| change(&mut ui, &format!("Änderung {i}"), 200))
+        .collect();
+    let [a, b, c] = [&changes[0], &changes[1], &changes[2]].map(Vec::len);
+    assert!(a + b <= PUSH_BATCH && a + b + c > PUSH_BATCH);
+    for ops in &changes {
+        apply(&device, ops);
+    }
+
+    let report = sync_once(&device, &server, now()).await.unwrap();
+    assert_eq!(server.push_sizes(), vec![a + b, c]);
+    assert_eq!(report.pushed, a + b + c);
+    assert_eq!(lock(&device).state(), &server.state());
+}
+
 #[tokio::test]
 async fn syncer_requires_a_configured_server() {
     let device = store();

@@ -51,7 +51,7 @@ fn local_ops_are_applied_and_queued() {
     assert_eq!(result.pending, ops.len());
     assert_eq!(title(&store, id).as_deref(), Some("Zahnarzt anrufen"));
     assert!(store.confirmed_state().is_empty());
-    assert_eq!(store.pending_batch(2), ops[..2].to_vec());
+    assert_eq!(store.pending_batch(usize::MAX, usize::MAX), ops);
 
     let snapshot = store.snapshot();
     assert_eq!(snapshot.cursor, 0);
@@ -112,7 +112,7 @@ fn everything_survives_a_restart() {
     assert_eq!(store.node_id(), &node_id);
     assert!(store.node_id().as_str().starts_with("app-"));
     assert_eq!(store.cursor(), confirmed_ops.len() as i64);
-    assert_eq!(store.pending_batch(usize::MAX), pending_ops);
+    assert_eq!(store.pending_batch(usize::MAX, usize::MAX), pending_ops);
     assert!(store.confirmed_state().task(confirmed_id).is_some());
     assert!(store.confirmed_state().task(pending_id).is_none());
     assert_eq!(title(&store, pending_id).as_deref(), Some("Offen"));
@@ -203,7 +203,206 @@ fn rollback_keeps_other_pending_ops() {
     store.apply_push_response(&create_a, &response).unwrap();
     assert!(store.state().task(a).is_none());
     assert_eq!(title(&store, b_id).as_deref(), Some("B"));
-    assert_eq!(store.pending_batch(usize::MAX), create_b);
+    assert_eq!(store.pending_batch(usize::MAX, usize::MAX), create_b);
+}
+
+/// Creates an empty database at `path` with the schema of `version`, as an
+/// older app version left it.
+fn schema_at(path: &Path, version: usize) {
+    let mut conn = Connection::open(path).unwrap();
+    let tx = conn.transaction().unwrap();
+    for sql in &MIGRATIONS[..version] {
+        tx.execute_batch(sql).unwrap();
+    }
+    tx.pragma_update(None, "user_version", version as i32)
+        .unwrap();
+    tx.commit().unwrap();
+}
+
+/// One local change: `count` new tasks.
+fn tasks(web: &mut Author, prefix: &str, count: usize) -> Vec<Op> {
+    web.ops(|b| {
+        for i in 0..count {
+            b.create_task(NewTask::new(format!("{prefix} {i}")));
+        }
+    })
+}
+
+/// Pushes `batch`, lets the server accept it and returns its length.
+fn push_accepted(store: &mut LocalStore, batch: &[Op]) -> usize {
+    store
+        .apply_push_response(batch, &accept_all(batch, 0))
+        .unwrap();
+    batch.len()
+}
+
+#[test]
+fn a_change_larger_than_the_batch_limit_goes_whole() {
+    let mut store = LocalStore::open_in_memory().unwrap();
+    let mut web = Author::new("web-a");
+    let big = tasks(&mut web, "Groß", 5);
+    let small = tasks(&mut web, "Klein", 1);
+    assert!(big.len() > 10);
+    store.apply_local(&big, now()).unwrap();
+    store.apply_local(&small, now()).unwrap();
+
+    // Above the operation limit and above the byte limit: still whole.
+    assert_eq!(store.pending_batch(10, usize::MAX), big);
+    assert_eq!(store.pending_batch(usize::MAX, 1), big);
+    push_accepted(&mut store, &big);
+    assert_eq!(store.pending_batch(10, usize::MAX), small);
+}
+
+#[test]
+fn batches_hold_whole_changes_up_to_the_limits() {
+    let mut store = LocalStore::open_in_memory().unwrap();
+    let mut web = Author::new("web-a");
+    let changes: Vec<Vec<Op>> = (0..3)
+        .map(|i| tasks(&mut web, &format!("Änderung {i}"), 1))
+        .collect();
+    for change in &changes {
+        store.apply_local(change, now()).unwrap();
+    }
+    let n = changes[0].len();
+    assert!(changes.iter().all(|c| c.len() == n));
+
+    // Room for two and a half changes: two go, the third waits whole.
+    let limit = 2 * n + n / 2;
+    let first = store.pending_batch(limit, usize::MAX);
+    assert_eq!(first, [changes[0].clone(), changes[1].clone()].concat());
+    push_accepted(&mut store, &first);
+    assert_eq!(store.pending_batch(limit, usize::MAX), changes[2]);
+
+    // The byte limit cuts at change boundaries, too.
+    let mut store = LocalStore::open_in_memory().unwrap();
+    for change in &changes {
+        store.apply_local(change, now()).unwrap();
+    }
+    let bytes = serialized_len(&changes[0]) + serialized_len(&changes[1]);
+    assert_eq!(
+        store.pending_batch(usize::MAX, bytes + 1),
+        [changes[0].clone(), changes[1].clone()].concat()
+    );
+    assert_eq!(store.pending_batch(usize::MAX, bytes - 1), changes[0]);
+}
+
+#[test]
+fn the_rest_of_a_partly_rejected_change_stays_together() {
+    let mut store = LocalStore::open_in_memory().unwrap();
+    let mut web = Author::new("web-a");
+    let first = tasks(&mut web, "Erste", 2);
+    let second = tasks(&mut web, "Zweite", 1);
+    store.apply_local(&first, now()).unwrap();
+    store.apply_local(&second, now()).unwrap();
+
+    // The server rejects the first task of the first change, but does not
+    // mention the rest (it stays pending).
+    let rejected_task = first[0].entity_id;
+    let response = PushResponse {
+        rejected: first
+            .iter()
+            .filter(|op| op.entity_id == rejected_task)
+            .map(|op| Rejection {
+                op_id: op.op_id,
+                code: RejectCode::InvalidValue,
+                message: "x".into(),
+            })
+            .collect(),
+        ..PushResponse::default()
+    };
+    store.apply_push_response(&first, &response).unwrap();
+    let rest: Vec<Op> = first
+        .iter()
+        .filter(|op| op.entity_id != rejected_task)
+        .cloned()
+        .collect();
+    assert_eq!(store.pending_batch(1, usize::MAX), rest);
+}
+
+#[test]
+fn changes_survive_a_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("zunder.db");
+    let mut web = Author::new("web-a");
+    let first = tasks(&mut web, "Erste", 2);
+    let second = tasks(&mut web, "Zweite", 1);
+    {
+        let mut store = LocalStore::open(&path).unwrap();
+        store.apply_local(&first, now()).unwrap();
+        store.apply_local(&second, now()).unwrap();
+    }
+    let mut store = LocalStore::open(&path).unwrap();
+    assert_eq!(store.pending_batch(1, usize::MAX), first);
+    push_accepted(&mut store, &first);
+    assert_eq!(store.pending_batch(1, usize::MAX), second);
+}
+
+#[test]
+fn ops_pending_before_the_change_grouping_count_as_own_changes() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("zunder.db");
+    let mut web = Author::new("web-a");
+    let ops = tasks(&mut web, "Alt", 1);
+    schema_at(&path, 3);
+    {
+        // A store at schema 3 (before `change_id`) with pending ops.
+        let mut conn = Connection::open(&path).unwrap();
+        let tx = conn.transaction().unwrap();
+        for op in &ops {
+            tx.execute(
+                "INSERT INTO ops (op_id, entity, entity_id, field, value_json, hlc, status)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending')",
+                params![
+                    op.op_id.to_string(),
+                    op.entity.as_str(),
+                    op.entity_id.to_string(),
+                    op.field,
+                    op.value.to_string(),
+                    op.hlc.to_string()
+                ],
+            )
+            .unwrap();
+        }
+        tx.commit().unwrap();
+    }
+
+    let mut store = LocalStore::open(&path).unwrap();
+    assert_eq!(store.pending_count(), ops.len());
+    assert_eq!(store.pending_batch(1, usize::MAX), ops[..1]);
+    let version: i32 = store
+        .conn
+        .pragma_query_value(None, "user_version", |r| r.get(0))
+        .unwrap();
+    assert_eq!(version, SCHEMA_VERSION);
+
+    // New changes after the migration are grouped again.
+    let new = tasks(&mut web, "Neu", 1);
+    store.apply_local(&new, now()).unwrap();
+    for op in &ops {
+        push_accepted(&mut store, std::slice::from_ref(op));
+    }
+    assert_eq!(store.pending_batch(1, usize::MAX), new);
+}
+
+#[test]
+fn a_change_too_large_for_the_server_is_rejected_whole() {
+    let mut store = LocalStore::open_in_memory().unwrap();
+    let mut web = Author::new("web-a");
+    let huge = "x".repeat(MAX_CHANGE_BYTES);
+    let (id, ops) = web.create(|b| {
+        let id = b.create_task(NewTask::new("Riesig"));
+        b.set_task(id, f::DESCRIPTION, huge.as_str());
+        id
+    });
+    let result = store.apply_local(&ops, now()).unwrap();
+    assert!(result.accepted.is_empty());
+    assert_eq!(result.rejected.len(), ops.len());
+    assert!(result
+        .rejected
+        .iter()
+        .all(|r| r.code == RejectCode::InvalidValue && r.message.contains("zu groß")));
+    assert_eq!(result.pending, 0);
+    assert!(store.state().task(id).is_none());
 }
 
 #[test]
@@ -673,7 +872,7 @@ fn plain_http_only_for_local_hosts() {
 fn legacy_uuids_are_rewritten_on_open() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("zunder.db");
-    drop(LocalStore::open(&path).unwrap());
+    schema_at(&path, 2);
     let parent = "0192a000-0000-7000-8000-0c0000000001";
     let child = "0192a000-0000-7000-8000-0c0000000002";
     let new = |s: &str| Id::parse_any(s).unwrap();
@@ -745,8 +944,10 @@ fn legacy_uuids_are_rewritten_on_open() {
         store.view.task(new(child)).unwrap().parent_id,
         Some(new(parent))
     );
-    let pending = store.pending_batch(usize::MAX);
+    let pending = store.pending_batch(usize::MAX, usize::MAX);
     assert_eq!(pending.len(), 2);
+    // Pending from before the change grouping: each op is its own change.
+    assert_eq!(store.pending_batch(1, usize::MAX), pending[..1]);
     assert!(pending.iter().all(|op| op.entity_id == new(child)));
     assert_eq!(
         store.cursor_anchor().unwrap(),

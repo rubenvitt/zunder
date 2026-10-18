@@ -56,6 +56,8 @@ struct ServerState {
     /// How many more pulls succeed before every pull fails (`None` = all).
     pull_budget: Option<usize>,
     pushes: usize,
+    /// Number of operations in each push request, in order.
+    push_sizes: Vec<usize>,
     snapshots: usize,
     pulls: usize,
 }
@@ -113,6 +115,11 @@ impl FakeServer {
         (s.pushes, s.snapshots, s.pulls)
     }
 
+    /// Number of operations in each push request so far, in order.
+    pub fn push_sizes(&self) -> Vec<usize> {
+        self.inner.lock().unwrap().push_sizes.clone()
+    }
+
     /// Writes operations directly (another client), panicking on rejection.
     pub fn accept(&self, ops: &[Op]) {
         let response = self.inner.lock().unwrap().push(ops);
@@ -162,6 +169,7 @@ impl SyncApi for FakeServer {
         let mut s = self.inner.lock().unwrap();
         Self::check_online(&mut s)?;
         s.pushes += 1;
+        s.push_sizes.push(ops.len());
         let response = s.push(ops);
         if std::mem::take(&mut s.lose_push_response) {
             return Err(Error::Network("Antwort verloren (Test)".into()));

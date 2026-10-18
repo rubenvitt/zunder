@@ -1,0 +1,225 @@
+{
+  "name": "folgetermin-jaehrlich",
+  "description": "Jährliche Serien ab Fälligkeit (3.1, Jahresanker ohne Drift): day gilt im Monat der alten Fälligkeit, mindestens ein Jahr später; ohne day schreibt der Server den Tag der alten Fälligkeit nach. Ein 28.02. bleibt ein 28.02., ein 29.02. fällt in Gemeinjahren auf den 28.02. und kehrt in Schaltjahren zurück, \"last\" im Februar ist jeder Februarletzte. Eine verschobene Instanz nimmt die Serie in ihren Monat mit.",
+  "kind": "next_occurrence",
+  "time_zone": "Europe/Berlin",
+  "cases": [
+    {
+      "description": "28.02.2027 ohne day → 28.02.2028 (nicht 29.02.), day 28 kommt in den Rhythmus",
+      "recurrence": {
+        "every": 1,
+        "unit": "year",
+        "from": "due"
+      },
+      "due": "2027-02-28",
+      "completed_at": "2027-02-28T09:00:00+01:00",
+      "today": "2027-02-28",
+      "expected": {
+        "due": "2028-02-28",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "year",
+          "day": 28,
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "29.02.2028 ohne day → 28.02.2029, day 29 kommt in den Rhythmus",
+      "recurrence": {
+        "every": 1,
+        "unit": "year",
+        "from": "due"
+      },
+      "due": "2028-02-29",
+      "completed_at": "2028-02-29T09:00:00+01:00",
+      "today": "2028-02-29",
+      "expected": {
+        "due": "2029-02-28",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "year",
+          "day": 29,
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "day 29 kehrt im Schaltjahr zurück: 28.02.2031 → 29.02.2032",
+      "recurrence": {
+        "every": 1,
+        "unit": "year",
+        "day": 29,
+        "from": "due"
+      },
+      "due": "2031-02-28",
+      "completed_at": "2031-02-28T09:00:00+01:00",
+      "today": "2031-02-28",
+      "expected": {
+        "due": "2032-02-29",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "year",
+          "day": 29,
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "\"last\" im Februar: 28.02.2027 → 29.02.2028",
+      "recurrence": {
+        "every": 1,
+        "unit": "year",
+        "day": "last",
+        "from": "due"
+      },
+      "due": "2027-02-28",
+      "completed_at": "2027-02-28T09:00:00+01:00",
+      "today": "2027-02-28",
+      "expected": {
+        "due": "2028-02-29",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "year",
+          "day": "last",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "\"last\" im Februar: 29.02.2028 → 28.02.2029",
+      "recurrence": {
+        "every": 1,
+        "unit": "year",
+        "day": "last",
+        "from": "due"
+      },
+      "due": "2028-02-29",
+      "completed_at": "2028-02-29T09:00:00+01:00",
+      "today": "2028-02-29",
+      "expected": {
+        "due": "2029-02-28",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "year",
+          "day": "last",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "every 2 ohne day: 12.10.2026 → 12.10.2028, day 12 kommt in den Rhythmus",
+      "recurrence": {
+        "every": 2,
+        "unit": "year",
+        "from": "due"
+      },
+      "due": "2026-10-12",
+      "completed_at": "2026-10-12T09:00:00+02:00",
+      "today": "2026-10-12",
+      "expected": {
+        "due": "2028-10-12",
+        "remind_at": null,
+        "recurrence": {
+          "every": 2,
+          "unit": "year",
+          "day": 12,
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "every 4 mit day 29: 29.02.2028 → 29.02.2032",
+      "recurrence": {
+        "every": 4,
+        "unit": "year",
+        "day": 29,
+        "from": "due"
+      },
+      "due": "2028-02-29",
+      "completed_at": "2028-02-29T09:00:00+01:00",
+      "today": "2028-02-29",
+      "expected": {
+        "due": "2032-02-29",
+        "remind_at": null,
+        "recurrence": {
+          "every": 4,
+          "unit": "year",
+          "day": 29,
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "verschobene Instanz vor day im selben Monat: erst im nächsten Jahr (10.03.2026 → 20.03.2027)",
+      "recurrence": {
+        "every": 1,
+        "unit": "year",
+        "day": 20,
+        "from": "due"
+      },
+      "due": "2026-03-10",
+      "completed_at": "2026-03-10T09:00:00+01:00",
+      "today": "2026-03-10",
+      "expected": {
+        "due": "2027-03-20",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "year",
+          "day": 20,
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "in einen anderen Monat verschoben: die Serie zieht mit (10.06.2027 → 30.06.2028)",
+      "recurrence": {
+        "every": 1,
+        "unit": "year",
+        "day": 31,
+        "from": "due"
+      },
+      "due": "2027-06-10",
+      "completed_at": "2027-06-10T09:00:00+02:00",
+      "today": "2027-06-10",
+      "expected": {
+        "due": "2028-06-30",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "year",
+          "day": 31,
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "verpasste Jahre werden übersprungen: 15.05.2024, erledigt am 12.10.2026 → 15.05.2027",
+      "recurrence": {
+        "every": 1,
+        "unit": "year",
+        "day": 15,
+        "from": "due"
+      },
+      "due": "2024-05-15",
+      "completed_at": "2026-10-12T09:00:00+02:00",
+      "today": "2026-10-12",
+      "expected": {
+        "due": "2027-05-15",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "year",
+          "day": 15,
+          "from": "due"
+        }
+      }
+    }
+  ]
+}

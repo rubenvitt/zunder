@@ -1,0 +1,226 @@
+{
+  "name": "folgetermin-ab-erledigung",
+  "description": "Ab Erledigung (3.1): Anker ist das Datum von completed_at in Ortszeit, die alte Fälligkeit zählt nicht, keine Anpassung an heute, der Server schreibt kein day nach. Ohne day am selben Tag des Monats (in kürzeren Monaten am letzten), mit day dieser Tag; mit weekdays der früheste genannte Tag der Woche every Wochen später.",
+  "kind": "next_occurrence",
+  "time_zone": "Europe/Berlin",
+  "cases": [
+    {
+      "description": "every 3 Monate: erledigt am 15.10.2026 → 15.01.2027",
+      "recurrence": {
+        "every": 3,
+        "unit": "month",
+        "from": "done"
+      },
+      "due": "2026-01-01",
+      "completed_at": "2026-10-15T12:00:00+02:00",
+      "today": "2026-10-15",
+      "expected": {
+        "due": "2027-01-15",
+        "remind_at": null,
+        "recurrence": {
+          "every": 3,
+          "unit": "month",
+          "from": "done"
+        }
+      }
+    },
+    {
+      "description": "Monatsletzter nach Erledigung: 15.10. → 30.11.",
+      "recurrence": {
+        "every": 1,
+        "unit": "month",
+        "day": "last",
+        "from": "done"
+      },
+      "due": "2026-01-01",
+      "completed_at": "2026-10-15T12:00:00+02:00",
+      "today": "2026-10-15",
+      "expected": {
+        "due": "2026-11-30",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "month",
+          "day": "last",
+          "from": "done"
+        }
+      }
+    },
+    {
+      "description": "monatlich ohne day, erledigt am 31.01. → 28.02., kein day im Rhythmus",
+      "recurrence": {
+        "every": 1,
+        "unit": "month",
+        "from": "done"
+      },
+      "due": "2027-01-15",
+      "completed_at": "2027-01-31T12:00:00+01:00",
+      "today": "2027-01-31",
+      "expected": {
+        "due": "2027-02-28",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "month",
+          "from": "done"
+        }
+      }
+    },
+    {
+      "description": "Mo+Do, erledigt am Mittwoch → Montag der nächsten Woche",
+      "recurrence": {
+        "every": 1,
+        "unit": "week",
+        "weekdays": [
+          "mo",
+          "th"
+        ],
+        "from": "done"
+      },
+      "due": "2026-01-01",
+      "completed_at": "2026-10-14T12:00:00+02:00",
+      "today": "2026-10-14",
+      "expected": {
+        "due": "2026-10-19",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "week",
+          "weekdays": [
+            "mo",
+            "th"
+          ],
+          "from": "done"
+        }
+      }
+    },
+    {
+      "description": "every 2 Wochen, Freitag, erledigt am Mittwoch 14.10. → Freitag 30.10.",
+      "recurrence": {
+        "every": 2,
+        "unit": "week",
+        "weekdays": [
+          "fr"
+        ],
+        "from": "done"
+      },
+      "due": "2026-01-01",
+      "completed_at": "2026-10-14T12:00:00+02:00",
+      "today": "2026-10-14",
+      "expected": {
+        "due": "2026-10-30",
+        "remind_at": null,
+        "recurrence": {
+          "every": 2,
+          "unit": "week",
+          "weekdays": [
+            "fr"
+          ],
+          "from": "done"
+        }
+      }
+    },
+    {
+      "description": "every 2 Tage: 14.10. → 16.10.",
+      "recurrence": {
+        "every": 2,
+        "unit": "day",
+        "from": "done"
+      },
+      "due": "2026-01-01",
+      "completed_at": "2026-10-14T12:00:00+02:00",
+      "today": "2026-10-14",
+      "expected": {
+        "due": "2026-10-16",
+        "remind_at": null,
+        "recurrence": {
+          "every": 2,
+          "unit": "day",
+          "from": "done"
+        }
+      }
+    },
+    {
+      "description": "jährlich ohne day, erledigt am 29.02.2028 → 28.02.2029, kein day im Rhythmus",
+      "recurrence": {
+        "every": 1,
+        "unit": "year",
+        "from": "done"
+      },
+      "due": "2026-01-01",
+      "completed_at": "2028-02-29T12:00:00+01:00",
+      "today": "2028-02-29",
+      "expected": {
+        "due": "2029-02-28",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "year",
+          "from": "done"
+        }
+      }
+    },
+    {
+      "description": "jährlich \"last\", erledigt am 10.02.2027 → 29.02.2028",
+      "recurrence": {
+        "every": 1,
+        "unit": "year",
+        "day": "last",
+        "from": "done"
+      },
+      "due": "2026-01-01",
+      "completed_at": "2027-02-10T12:00:00+01:00",
+      "today": "2027-02-10",
+      "expected": {
+        "due": "2028-02-29",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "year",
+          "day": "last",
+          "from": "done"
+        }
+      }
+    },
+    {
+      "description": "Erledigung kurz nach Mitternacht Ortszeit (23:30 UTC am Vortag) zählt für den neuen Tag",
+      "recurrence": {
+        "every": 1,
+        "unit": "day",
+        "from": "done"
+      },
+      "due": "2026-01-01",
+      "completed_at": "2026-10-14T23:30:00Z",
+      "today": "2026-10-15",
+      "expected": {
+        "due": "2026-10-16",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "day",
+          "from": "done"
+        }
+      }
+    },
+    {
+      "description": "offline erledigt und spät gepusht: keine Anpassung an heute",
+      "recurrence": {
+        "every": 1,
+        "unit": "week",
+        "from": "done"
+      },
+      "due": "2026-10-20",
+      "completed_at": "2026-10-01T09:00:00+02:00",
+      "today": "2026-10-12",
+      "expected": {
+        "due": "2026-10-08",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "week",
+          "from": "done"
+        }
+      }
+    }
+  ]
+}

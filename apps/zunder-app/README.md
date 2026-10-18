@@ -150,7 +150,7 @@ SQLite-Datei `zunder.db` im App-Datenverzeichnis (Linux: `~/.local/share/dev.rub
 
 | Tabelle | Inhalt |
 |---|---|
-| `ops` | Operations-Log: `pending` (lokal angewendet, noch nicht gepusht, in lokaler Reihenfolge) und `confirmed` (vom Server angenommen; `server_seq`, sobald gepullt) |
+| `ops` | Operations-Log: `pending` (lokal angewendet, noch nicht gepusht, in lokaler Reihenfolge; `change_id` fasst die Operationen eines `local_apply` zu einer Änderung zusammen) und `confirmed` (vom Server angenommen; `server_seq`, sobald gepullt) |
 | `entities` | materialisierter **bestätigter** Zustand, je Entität ein `SnapshotEntity` als JSON |
 | `meta` | `cursor`, `node_id`, `server_url`, `data_server_url` (Server, zu dem die lokalen Daten gehören; bleibt beim Löschen der Adresse), `api_token` (API- oder Geräte-Token), `last_sync`, `pending_login` (laufende Anmeldung im Browser), `reminders_checked_at` (letzte Prüfung des Erinnerungs-Timers, nur Desktop) |
 | `reminders` | an das Betriebssystem übergebene Benachrichtigungen (nur mobil genutzt) |
@@ -163,7 +163,7 @@ Der API-Token liegt im Klartext in `meta` (App-Sandbox bzw. Benutzerverzeichnis)
 
 ## Sync
 
-1. Ausstehende Operationen in Paketen zu 500 pushen (`POST /api/sync/push`, `client_id` = Knoten-ID des Geräts). Angenommene werden bestätigt, abgelehnte zurückgenommen.
+1. Ausstehende Operationen pushen (`POST /api/sync/push`, `client_id` = Knoten-ID des Geräts). Angenommene werden bestätigt, abgelehnte zurückgenommen. Ein Paket nimmt ganze Änderungen (je ein `local_apply`) von der ältesten an, bis zu 500 Operationen und 4 MiB. Eine Änderung landet nie in zwei Pushs, weil Serverregeln den Zustand vor und nach einem Push vergleichen (Folgeinstanzen wiederkehrender Aufgaben, Status nach `blocked_by`, Nummerierung); eine größere geht allein, aber vollständig. Der Server begrenzt nur den Body (8 MiB), deshalb lehnt `local_apply` Änderungen über 7 MiB ganz ab. Was vor dieser Gruppierung schon ausstand, zählt je Operation als eigene Änderung.
 2. Ist der Speicher noch leer (Cursor 0): `GET /api/snapshot` übernehmen. Das lokale Log beginnt dann beim Snapshot.
 3. `GET /api/sync/pull?since=<cursor>` seitenweise, bis `has_more` falsch ist.
 
@@ -186,7 +186,7 @@ Die Web-UI ruft sie mit `invoke` aus `@tauri-apps/api/core` auf (`TauriTransport
 | Befehl | Argumente | Ergebnis |
 |---|---|---|
 | `local_snapshot` | – | `{"cursor": N, "entities": [SnapshotEntity], "pending": N}` – Format wie `GET /api/snapshot`, aber mit der lokalen Sicht (inkl. Tombstones und ausstehender Änderungen) |
-| `local_apply` | `{"ops": [Op]}` | `{"accepted": [op_id], "rejected": [{"op_id","code","message"}], "warnings": [{"entity_id","code","message"}], "pending": N}` – lokal mit `zunder_core::validate_push` geprüft; angenommene neue Operationen sind sofort in der Sicht und warten auf den Push |
+| `local_apply` | `{"ops": [Op]}` | `{"accepted": [op_id], "rejected": [{"op_id","code","message"}], "warnings": [{"entity_id","code","message"}], "pending": N}` – lokal mit `zunder_core::validate_push` geprüft; angenommene neue Operationen sind sofort in der Sicht und warten als eine Änderung auf den Push (siehe [Sync](#sync)); über 7 MiB wird der ganze Aufruf mit `invalid_value` abgelehnt |
 | `sync_now` | – | `SyncReport`: `{"pushed": N, "rejected": [Rejection], "warnings": [Warning], "pulled": N, "cursor": N, "pending": N, "changed": bool, "resynced": bool}` (`resynced`: Server zurückgesetzt, bestätigte Daten neu geladen) |
 | `get_config` | – | `{"server_url": String\|null, "has_api_token": bool, "node_id": String, "cursor": N, "pending": N, "last_sync": {"at_ms": N, "ok": bool, "error"?: String}\|null}` – der Token selbst wird nie zurückgegeben |
 | `set_config` | `{"update": {"server_url"?: String\|null, "api_token"?: String\|null, "discard_pending"?: bool}}` | wie `get_config`. Fehlender Schlüssel = unverändert, `null` = löschen |

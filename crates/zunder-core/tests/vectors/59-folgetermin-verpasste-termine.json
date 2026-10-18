@@ -1,0 +1,204 @@
+{
+  "name": "folgetermin-verpasste-termine",
+  "description": "Ab Fälligkeit (3.1) ist die neue Fälligkeit der früheste Termin der Serie nach der alten Fälligkeit, der nicht vor heute liegt: Verpasste Termine werden übersprungen (genau eine Instanz), heute selbst ist erlaubt; wer vor der Fälligkeit erledigt, bekommt den nächsten Termin nach der alten. \"Heute\" ist das Datum, an dem der Server den Push verarbeitet, nicht das der Erledigung.",
+  "kind": "next_occurrence",
+  "time_zone": "Europe/Berlin",
+  "cases": [
+    {
+      "description": "Monatsletzter, alte Fälligkeit 31.07., erledigt am 15.10. → 31.10.",
+      "recurrence": {
+        "every": 1,
+        "unit": "month",
+        "day": "last",
+        "from": "due"
+      },
+      "due": "2026-07-31",
+      "completed_at": "2026-10-15T12:00:00+02:00",
+      "today": "2026-10-15",
+      "expected": {
+        "due": "2026-10-31",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "month",
+          "day": "last",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "täglich, eine Woche verpasst, erledigt heute → heute",
+      "recurrence": {
+        "every": 1,
+        "unit": "day",
+        "from": "due"
+      },
+      "due": "2026-10-08",
+      "completed_at": "2026-10-15T12:00:00+02:00",
+      "today": "2026-10-15",
+      "expected": {
+        "due": "2026-10-15",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "day",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "vor der Fälligkeit erledigt: Monatsletzter 31.10., erledigt am 20.10. → 30.11.",
+      "recurrence": {
+        "every": 1,
+        "unit": "month",
+        "day": "last",
+        "from": "due"
+      },
+      "due": "2026-10-31",
+      "completed_at": "2026-10-20T12:00:00+02:00",
+      "today": "2026-10-20",
+      "expected": {
+        "due": "2026-11-30",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "month",
+          "day": "last",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "every 2 Tage, im Takt der alten Fälligkeit: 01.10., heute 12.10. → 13.10.",
+      "recurrence": {
+        "every": 2,
+        "unit": "day",
+        "from": "due"
+      },
+      "due": "2026-10-01",
+      "completed_at": "2026-10-12T12:00:00+02:00",
+      "today": "2026-10-12",
+      "expected": {
+        "due": "2026-10-13",
+        "remind_at": null,
+        "recurrence": {
+          "every": 2,
+          "unit": "day",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "wöchentlich am Wochentag der alten Fälligkeit: Di 01.09., heute Mo 12.10. → Di 13.10.",
+      "recurrence": {
+        "every": 1,
+        "unit": "week",
+        "from": "due"
+      },
+      "due": "2026-09-01",
+      "completed_at": "2026-10-12T12:00:00+02:00",
+      "today": "2026-10-12",
+      "expected": {
+        "due": "2026-10-13",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "week",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "every 2, Mo+Do, heute Dienstag der Folgewoche: Donnerstag verpasst → Montag der übernächsten Woche",
+      "recurrence": {
+        "every": 2,
+        "unit": "week",
+        "weekdays": [
+          "mo",
+          "th"
+        ],
+        "from": "due"
+      },
+      "due": "2026-10-12",
+      "completed_at": "2026-10-20T12:00:00+02:00",
+      "today": "2026-10-20",
+      "expected": {
+        "due": "2026-10-26",
+        "remind_at": null,
+        "recurrence": {
+          "every": 2,
+          "unit": "week",
+          "weekdays": [
+            "mo",
+            "th"
+          ],
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "monatlich am 15., heute ist der 15. → heute",
+      "recurrence": {
+        "every": 1,
+        "unit": "month",
+        "day": 15,
+        "from": "due"
+      },
+      "due": "2026-06-15",
+      "completed_at": "2026-10-15T12:00:00+02:00",
+      "today": "2026-10-15",
+      "expected": {
+        "due": "2026-10-15",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "month",
+          "day": 15,
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "monatlich am 15., heute ist der 16. → nächster Monat",
+      "recurrence": {
+        "every": 1,
+        "unit": "month",
+        "day": 15,
+        "from": "due"
+      },
+      "due": "2026-06-15",
+      "completed_at": "2026-10-16T12:00:00+02:00",
+      "today": "2026-10-16",
+      "expected": {
+        "due": "2026-11-15",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "month",
+          "day": 15,
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "offline früh erledigt, erst später gepusht: zählt heute",
+      "recurrence": {
+        "every": 1,
+        "unit": "day",
+        "from": "due"
+      },
+      "due": "2026-10-10",
+      "completed_at": "2026-10-01T12:00:00+02:00",
+      "today": "2026-10-15",
+      "expected": {
+        "due": "2026-10-15",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "day",
+          "from": "due"
+        }
+      }
+    }
+  ]
+}
