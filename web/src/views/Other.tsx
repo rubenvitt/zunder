@@ -13,7 +13,7 @@ import type { ApiToken, CreatedIntakeChannel, CreatedToken, Device, IntakeChanne
 import { flame } from "../state/actions";
 import { navigate, route } from "../state/router";
 import { api, areaList, data, now, projectList, taskIndex } from "../state/store";
-import { devProjectIds, devTasks, phoenixTasks } from "../state/selectors";
+import { devArchive, devProjectIds, devTasks, phoenixTasks } from "../state/selectors";
 import { copyText, devProjectFilter, registerList, setDevProjectFilter, setStructureEdit, toast } from "../state/ui";
 
 /** A remembered filter may sit off-screen in the sideways-scrolling chip row (mobile). */
@@ -72,7 +72,7 @@ export function DevView() {
             </For>
           </div>
         </Show>
-        <Board tasks={tasks()} dev devDetails label="Dev-Board" />
+        <Board tasks={tasks()} dev devDetails label="Dev-Board" archive={() => devArchive(selected().size === 0 ? undefined : selected())} />
       </Show>
     </div>
   );

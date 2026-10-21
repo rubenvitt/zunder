@@ -1486,6 +1486,19 @@ html.resizing * {
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
+.board-column-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem;
+  padding-top: 0.45rem;
+}
+.board-column-foot .btn-ghost {
+  color: var(--muted);
+}
+.board-archive .task-list {
+  margin-top: 0.5rem;
+}
 .board-cards {
   list-style: none;
   margin: 0;

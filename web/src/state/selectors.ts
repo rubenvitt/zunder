@@ -5,7 +5,7 @@ import { weekBalance, type WeekBalance } from "../sync/balance";
 import { openCommitments } from "../sync/commitments";
 import { pickFocus, type Focus } from "../sync/focus";
 import { awaitsAnswer } from "../sync/handback";
-import { compareTasks, isClosed, isDevLocation, isFlameRunning, statusChangedMs, weightRank } from "../sync/derived";
+import { compareTasks, isClosed, isDevLocation, isFlameRunning, isHiddenByAge, statusChangedMs, weightRank } from "../sync/derived";
 import type { Location, Task } from "../sync/types";
 import { data, now, taskIndex } from "./store";
 
@@ -27,6 +27,18 @@ function visibleRoots(filter: (t: Task) => boolean): Task[] {
   return out;
 }
 
+/** Board archive: done roots past the 3-day window, most recently closed first. */
+function archivedDone(filter: (t: Task) => boolean): Task[] {
+  const index = taskIndex();
+  const nowMs = now();
+  const out: Task[] = [];
+  for (const t of index.byId.values()) {
+    if (t.status !== "done" || !index.isRoot(t) || index.isDeleted(t) || !isHiddenByAge(t, nowMs)) continue;
+    if (filter(t)) out.push(t);
+  }
+  return out.sort((a, b) => statusChangedMs(b) - statusChangedMs(a));
+}
+
 function atLocation(location: Location) {
   return (t: Task) => {
     const loc = taskIndex().location(t);
@@ -37,6 +49,10 @@ function atLocation(location: Location) {
 
 export function tasksAt(location: Location): Task[] {
   return sortForList(visibleRoots(atLocation(location)));
+}
+
+export function archivedAt(location: Location): Task[] {
+  return archivedDone(atLocation(location));
 }
 
 /** Inbox wants to reach zero: closed tasks leave it immediately. */
@@ -52,12 +68,20 @@ export function devProjectIds(): Set<string> {
   return ids;
 }
 
-export function devTasks(): Task[] {
-  const ids = devProjectIds();
-  return visibleRoots((t) => {
+function inDevProject(ids: Set<string>) {
+  return (t: Task) => {
     const loc = taskIndex().location(t);
     return loc.kind === "project" && ids.has(loc.id);
-  });
+  };
+}
+
+export function devTasks(): Task[] {
+  return visibleRoots(inDevProject(devProjectIds()));
+}
+
+/** Archive of the Dev board, limited to `projectIds` when given. */
+export function devArchive(projectIds?: Set<string>): Task[] {
+  return archivedDone(inDevProject(projectIds ?? devProjectIds()));
 }
 
 export interface TodayGroups {
