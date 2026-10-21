@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { card, entityFields, openApp, prepare, Seeder, suffix } from "./fixtures";
+import { card, entityFields, openApp, prepare, reloadApp, Seeder, suffix } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
   await prepare(page);
@@ -182,4 +182,34 @@ test("Board-Karte: mit erledigten Unteraufgaben direkt abschließen", async ({ p
   await expect.poll(async () => (await entityFields(page, "task", epic)).status).toBe("done");
   await expect(page.locator(".toast", { hasText: "noch offen" })).toHaveCount(0);
   await expect(close).toHaveCount(0);
+});
+
+test("Erledigt-Spalte zeigt die letzten fünf, Ältere im Archiv", async ({ page }) => {
+  const s = suffix();
+  const seeder = new Seeder();
+  const area = seeder.area(`Fluss ${s}`);
+  const project = seeder.project(`Werk ${s}`, area, { kind: "dev" });
+  const loc = { kind: "project", id: project };
+  // Seeded in order, so "Fertig 7" is the most recently closed.
+  for (let i = 1; i <= 7; i++) seeder.task(`Fertig ${i} ${s}`, { location: loc, status: "done" });
+  await seeder.push(page);
+
+  await openApp(page, `#/bereiche/project/${project}`);
+  const done = page.locator('.board-column[data-status="done"]');
+  await expect(done.locator(".card .task-title")).toHaveText([7, 6, 5, 4, 3].map((i) => `Fertig ${i} ${s}`));
+  await expect(done.locator(".board-column-head .count")).toHaveText("7");
+  await done.getByRole("button", { name: "2 weitere zeigen" }).click();
+  await expect(done.locator(".card")).toHaveCount(7);
+  await done.getByRole("button", { name: "Weniger zeigen" }).click();
+  await expect(done.locator(".card")).toHaveCount(5);
+
+  // Four days later they have left the board and wait in the archive, newest first.
+  await page.clock.install({ time: Date.now() + 4 * 24 * 60 * 60 * 1000 });
+  await reloadApp(page);
+  await expect(done.locator(".card")).toHaveCount(0);
+  await done.getByRole("button", { name: "Ältere erledigte" }).click();
+  const archive = page.getByRole("dialog", { name: "Ältere erledigte" });
+  await expect(archive.locator(".task-row .task-title")).toHaveText([7, 6, 5, 4, 3, 2, 1].map((i) => `Fertig ${i} ${s}`));
+  await archive.getByRole("button", { name: "Schließen" }).click();
+  await expect(archive).toBeHidden();
 });

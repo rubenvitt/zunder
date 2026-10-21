@@ -1,15 +1,21 @@
 // Status board with HTML5 drag & drop and keyboard moves (h/l, j/k, Shift+H/L/J/K).
 
-import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
-import { compareTasks, hasOpenChildren, isClaimActive, isClosed } from "../sync/derived";
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
+import { compareTasks, hasOpenChildren, isClaimActive, isClosed, statusChangedMs } from "../sync/derived";
 import type { Task, TaskStatus } from "../sync/types";
 import { boardStatuses, STATUS_LABELS } from "../labels";
 import { placeTask, setStatus, shorten } from "../state/actions";
 import { data, now, taskIndex } from "../state/store";
-import { registerList, selectedId, setActiveBoard, setDetailId, setSelectedId, toast } from "../state/ui";
+import { detailId, registerList, selectedId, setActiveBoard, setDetailId, setSelectedId, toast } from "../state/ui";
+import { EmptyState } from "./EmptyState";
 import { Icon } from "./Icon";
+import { Modal } from "./Modal";
 import { RefButton, SubtaskToggle, SubtaskTree } from "./TaskBits";
+import { TaskList } from "./TaskList";
 import { TaskMeta } from "./TaskRow";
+
+/** Done cards shown before the column folds; the rest stays one click away. */
+export const DONE_PREVIEW = 5;
 
 export interface BoardProps {
   tasks: Task[];
@@ -17,6 +23,8 @@ export interface BoardProps {
   /** Show project name, claim, branch and PR on cards (Dev view). */
   devDetails?: boolean;
   label: string;
+  /** Done tasks past the 3-day window in the board's scope, newest first ("Ältere erledigte"). */
+  archive?: () => Task[];
 }
 
 export function Board(props: BoardProps) {
@@ -25,10 +33,24 @@ export function Board(props: BoardProps) {
     const map = new Map<TaskStatus, Task[]>();
     for (const s of statuses()) map.set(s, []);
     for (const t of props.tasks) map.get(t.status)?.push(t);
-    for (const list of map.values()) list.sort(compareTasks);
+    for (const [status, list] of map) {
+      // Done reads as a log: most recently closed first, so the fold keeps what just happened.
+      if (status === "done") list.sort((a, b) => statusChangedMs(b) - statusChangedMs(a) || compareTasks(a, b));
+      else list.sort(compareTasks);
+    }
     return map;
   });
   const column = (status: TaskStatus) => columns().get(status) ?? [];
+  const [doneExpanded, setDoneExpanded] = createSignal(false);
+  const [archiveOpen, setArchiveOpen] = createSignal(false);
+  /** What the column shows: done folds to the newest few unless expanded. */
+  const shown = (status: TaskStatus) => {
+    const list = column(status);
+    return status === "done" && !doneExpanded() ? list.slice(0, DONE_PREVIEW) : list;
+  };
+  const hiddenDone = () => Math.max(0, column("done").length - DONE_PREVIEW);
+  // The detail panel sits beside the board; the archive dialog would cover it.
+  createEffect(on(detailId, (id) => id && setArchiveOpen(false), { defer: true }));
   const [dragId, setDragId] = createSignal<string | null>(null);
   const [dropTarget, setDropTarget] = createSignal<{ status: TaskStatus; index: number } | null>(null);
 
@@ -36,7 +58,7 @@ export function Board(props: BoardProps) {
     if (!id) return null;
     const list = statuses();
     for (let c = 0; c < list.length; c++) {
-      const row = column(list[c]!).findIndex((t) => t.id === id);
+      const row = shown(list[c]!).findIndex((t) => t.id === id);
       if (row >= 0) return { col: c, row };
     }
     return null;
@@ -54,15 +76,15 @@ export function Board(props: BoardProps) {
   }
 
   onMount(() => {
-    registerList(() => statuses().flatMap((s) => column(s)));
+    registerList(() => statuses().flatMap((s) => shown(s)));
     setActiveBoard({
       moveSelection(dx) {
         const pos = locate(selectedId());
         const list = statuses();
         let col = pos ? pos.col + dx : 0;
-        while (col >= 0 && col < list.length && column(list[col]!).length === 0) col += dx;
+        while (col >= 0 && col < list.length && shown(list[col]!).length === 0) col += dx;
         if (col < 0 || col >= list.length) return;
-        const target = column(list[col]!);
+        const target = shown(list[col]!);
         setSelectedId(target[Math.min(pos?.row ?? 0, target.length - 1)]!.id);
       },
       moveTask(dx) {
@@ -124,7 +146,7 @@ export function Board(props: BoardProps) {
               <span class="count">{column(status).length}</span>
             </header>
             <ul class="board-cards">
-              <For each={column(status)}>
+              <For each={shown(status)}>
                 {(task, i) => (
                   <>
                     <Show when={dropTarget()?.status === status && dropTarget()?.index === i() && dragId() !== task.id}>
@@ -148,14 +170,51 @@ export function Board(props: BoardProps) {
                   </>
                 )}
               </For>
-              <Show when={dropTarget()?.status === status && (dropTarget()?.index ?? -1) >= column(status).filter((t) => t.id !== dragId()).length}>
+              <Show when={dropTarget()?.status === status && (dropTarget()?.index ?? -1) >= shown(status).filter((t) => t.id !== dragId()).length}>
                 <li class="drop-indicator" aria-hidden="true" />
               </Show>
             </ul>
+            <Show when={status === "done" && (hiddenDone() > 0 || props.archive)}>
+              <div class="board-column-foot">
+                <Show when={hiddenDone() > 0}>
+                  <button class="btn btn-ghost btn-small" aria-expanded={doneExpanded()} onClick={() => setDoneExpanded(!doneExpanded())}>
+                    {doneExpanded() ? "Weniger zeigen" : `${hiddenDone()} weitere zeigen`}
+                  </button>
+                </Show>
+                <Show when={props.archive}>
+                  <button class="btn btn-ghost btn-small" onClick={() => setArchiveOpen(true)} title="Erledigt vor mehr als 3 Tagen">
+                    <Icon name="archive" size={14} /> Ältere erledigte
+                  </button>
+                </Show>
+              </div>
+            </Show>
           </section>
         )}
       </For>
+      <Show when={archiveOpen() && props.archive}>
+        {(archive) => <ArchiveDialog tasks={archive()()} showLocation={props.devDetails} onClose={() => setArchiveOpen(false)} />}
+      </Show>
     </div>
+  );
+}
+
+function ArchiveDialog(props: { tasks: Task[]; showLocation?: boolean; onClose: () => void }) {
+  return (
+    <Modal label="Ältere erledigte" onClose={props.onClose} class="board-archive">
+      <h2>Ältere erledigte</h2>
+      <p class="muted">Erledigt vor mehr als 3 Tagen, zuletzt erledigte zuerst.</p>
+      <TaskList
+        tasks={props.tasks}
+        showLocation={props.showLocation}
+        label="Ältere erledigte Aufgaben"
+        empty={<EmptyState compact icon="check" title="Noch nichts im Archiv." />}
+      />
+      <div class="modal-actions">
+        <button class="btn btn-small" onClick={props.onClose}>
+          Schließen
+        </button>
+      </div>
+    </Modal>
   );
 }
 

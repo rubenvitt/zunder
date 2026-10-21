@@ -10,7 +10,7 @@ import { PROJECT_STATUS_LABELS } from "../labels";
 import { createTask, updateProject } from "../state/actions";
 import { navigate, route } from "../state/router";
 import { areaList, data, projectList } from "../state/store";
-import { tasksAt } from "../state/selectors";
+import { archivedAt, tasksAt } from "../state/selectors";
 import { registerList, setStructureEdit, toggleTree, treeHidden } from "../state/ui";
 
 export function StructureView() {
@@ -241,7 +241,7 @@ function ProjectPanel(props: { project: Project }) {
       </header>
       <AddTaskInline label="Aufgabe im Projekt anlegen …" onAdd={(title) => createTask({ title, location: { kind: "project", id: props.project.id } })} />
       <Show when={props.project.view === "board"} fallback={<ProjectList tasks={tasks()} name={props.project.name} />}>
-        <Board tasks={boardTasks()} dev={dev()} label={`Board ${props.project.name}`} />
+        <Board tasks={boardTasks()} dev={dev()} label={`Board ${props.project.name}`} archive={() => archivedAt({ kind: "project", id: props.project.id })} />
       </Show>
     </>
   );
