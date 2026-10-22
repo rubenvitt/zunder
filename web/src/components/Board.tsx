@@ -1,7 +1,8 @@
 // Status board with HTML5 drag & drop and keyboard moves (h/l, j/k, Shift+H/L/J/K).
 
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
-import { compareTasks, hasOpenChildren, isClaimActive, isClosed, statusChangedMs } from "../sync/derived";
+import { compareTasks, hasOpenChildren, isClaimActive, isClosed } from "../sync/derived";
+import { compareHlc } from "../sync/hlc";
 import type { Task, TaskStatus } from "../sync/types";
 import { boardStatuses, STATUS_LABELS } from "../labels";
 import { placeTask, setStatus, shorten } from "../state/actions";
@@ -35,7 +36,7 @@ export function Board(props: BoardProps) {
     for (const t of props.tasks) map.get(t.status)?.push(t);
     for (const [status, list] of map) {
       // Done reads as a log: most recently closed first, so the fold keeps what just happened.
-      if (status === "done") list.sort((a, b) => statusChangedMs(b) - statusChangedMs(a) || compareTasks(a, b));
+      if (status === "done") list.sort((a, b) => compareHlc(b.status_hlc, a.status_hlc) || compareTasks(a, b));
       else list.sort(compareTasks);
     }
     return map;
@@ -201,18 +202,21 @@ export function Board(props: BoardProps) {
 function ArchiveDialog(props: { tasks: Task[]; showLocation?: boolean; onClose: () => void }) {
   return (
     <Modal label="Ältere erledigte" onClose={props.onClose} class="board-archive">
-      <h2>Ältere erledigte</h2>
-      <p class="muted">Erledigt vor mehr als 3 Tagen, zuletzt erledigte zuerst.</p>
-      <TaskList
-        tasks={props.tasks}
-        showLocation={props.showLocation}
-        label="Ältere erledigte Aufgaben"
-        empty={<EmptyState compact icon="check" title="Noch nichts im Archiv." />}
-      />
-      <div class="modal-actions">
+      {/* The head stays put while the list scrolls, so closing never needs a scroll back (mobile). */}
+      <header class="board-archive-head">
+        <h2>Ältere erledigte</h2>
         <button class="btn btn-small" onClick={props.onClose}>
           Schließen
         </button>
+      </header>
+      <div class="board-archive-body">
+        <p class="muted">Erledigt vor mehr als 3 Tagen, zuletzt erledigte zuerst.</p>
+        <TaskList
+          tasks={props.tasks}
+          showLocation={props.showLocation}
+          label="Ältere erledigte Aufgaben"
+          empty={<EmptyState compact icon="check" title="Noch nichts im Archiv." />}
+        />
       </div>
     </Modal>
   );
