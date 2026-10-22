@@ -213,3 +213,29 @@ test("Erledigt-Spalte zeigt die letzten fünf, Ältere im Archiv", async ({ page
   await archive.getByRole("button", { name: "Schließen" }).click();
   await expect(archive).toBeHidden();
 });
+
+test("Archiv mobil: Schließen bleibt beim Scrollen sichtbar @mobile", async ({ page }) => {
+  const s = suffix();
+  const seeder = new Seeder();
+  const area = seeder.area(`Fluss ${s}`);
+  const project = seeder.project(`Werk ${s}`, area, { kind: "dev" });
+  for (let i = 1; i <= 30; i++) seeder.task(`Alt ${i} ${s}`, { location: { kind: "project", id: project }, status: "done" });
+  await seeder.push(page);
+
+  await openApp(page, `#/bereiche/project/${project}`);
+  await page.clock.install({ time: Date.now() + 4 * 24 * 60 * 60 * 1000 });
+  await reloadApp(page);
+  await page.locator('.board-column[data-status="done"]').getByRole("button", { name: "Ältere erledigte" }).click();
+  const archive = page.getByRole("dialog", { name: "Ältere erledigte" });
+  const close = archive.getByRole("button", { name: "Schließen" });
+  // Right after opening, at the top of a long list …
+  await expect(archive.locator(".task-row").first()).toBeInViewport();
+  await expect(close).toBeInViewport();
+  // … and after scrolling to its end.
+  const last = archive.locator(".task-row", { hasText: `Alt 1 ${s}` });
+  await last.scrollIntoViewIfNeeded();
+  await expect(last).toBeInViewport();
+  await expect(close).toBeInViewport();
+  await close.click();
+  await expect(archive).toBeHidden();
+});

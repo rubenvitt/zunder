@@ -1,6 +1,7 @@
 // Task selections for the views. All functions are reactive (read the store).
 
 import { localDate, parseDue } from "../sync/dates";
+import { compareHlc } from "../sync/hlc";
 import { weekBalance, type WeekBalance } from "../sync/balance";
 import { openCommitments } from "../sync/commitments";
 import { pickFocus, type Focus } from "../sync/focus";
@@ -36,7 +37,8 @@ function archivedDone(filter: (t: Task) => boolean): Task[] {
     if (t.status !== "done" || !index.isRoot(t) || index.isDeleted(t) || !isHiddenByAge(t, nowMs)) continue;
     if (filter(t)) out.push(t);
   }
-  return out.sort((a, b) => statusChangedMs(b) - statusChangedMs(a));
+  // Full HLC, not just its wall time: tasks closed in the same millisecond keep their order.
+  return out.sort((a, b) => compareHlc(b.status_hlc, a.status_hlc) || compareTasks(a, b));
 }
 
 function atLocation(location: Location) {
