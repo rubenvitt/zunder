@@ -164,7 +164,7 @@ export function RecurrenceEditor(props: { task: Task; recurrence: Recurrence }) 
             aria-label="Tag im Monat"
             onChange={(e) => {
               const v = e.currentTarget.value;
-              write(withDay(r(), v === "" ? undefined : v === "last" ? "last" : Number(v)));
+              write(withDay(r(), v === "" ? undefined : v === "last" || v === "last_workday" ? v : Number(v)));
             }}
           >
             <option value="" selected={dayValue() === ""}>
@@ -179,6 +179,9 @@ export function RecurrenceEditor(props: { task: Task; recurrence: Recurrence }) 
             </For>
             <option value="last" selected={dayValue() === "last"}>
               am Monatsletzten
+            </option>
+            <option value="last_workday" selected={dayValue() === "last_workday"}>
+              am letzten Werktag (Mo–Fr)
             </option>
           </select>
         </div>

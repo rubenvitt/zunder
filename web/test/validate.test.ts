@@ -165,6 +165,10 @@ describe("recurrence", () => {
     expect(checkField("task", "recurrence", { every: 1, unit: "year", day: 28, from: "due" })).toBeNull();
     expect(checkField("task", "recurrence", { every: 1, unit: "year", day: "last", from: "done" })).toBeNull();
     expect(checkField("task", "recurrence", { every: 1, unit: "year", day: 32, from: "due" })?.message).toContain("„day“");
+    expect(checkField("task", "recurrence", { every: 1, unit: "month", day: "last_workday", from: "due" })).toBeNull();
+    expect(checkField("task", "recurrence", { every: 1, unit: "month", day: "last_weekday", from: "due" })?.message).toBe(
+      '„day“ im Rhythmus muss eine ganze Zahl von 1 bis 31, "last" oder "last_workday" sein.',
+    );
     expect(checkField("task", "recurrence", { every: 1000, unit: "day", from: "due" })?.message).toContain("1 bis 999");
     expect(checkField("task", "recurrence", { every: 1, unit: "day", from: "due", until: "x" })?.message).toContain("„until“");
     expect(checkField("task", "recurrence_prev", T1)).toBeNull();

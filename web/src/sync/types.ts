@@ -49,6 +49,9 @@ export interface Phoenix {
   fire: string;
 }
 
+/** Day of the month of a recurrence: a fixed day, the last day or the last workday (Monday to Friday, no holidays). */
+export type MonthDay = number | "last" | "last_workday";
+
 /**
  * Recurrence of a task (contract 2.4): every `every` units, optionally on given weekdays
  * (weekly) or a given day of the month (monthly, yearly), anchored at the due date or the completion.
@@ -58,8 +61,8 @@ export interface Recurrence {
   unit: RecurrenceUnit;
   /** Only with unit "week": non-empty, distinct, in stored order. */
   weekdays?: WeekdayCode[];
-  /** Only with unit "month" or "year" (yearly: in the month of the due date): 1–31 (shorter months: their last day) or "last". */
-  day?: number | "last";
+  /** Only with unit "month" or "year" (yearly: in the month of the due date): 1–31 (shorter months: their last day), "last" or "last_workday" (last Monday to Friday). */
+  day?: MonthDay;
   from: RecurrenceFrom;
 }
 

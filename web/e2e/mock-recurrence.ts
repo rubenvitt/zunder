@@ -8,7 +8,7 @@ export interface MockRecurrence {
   every: number;
   unit: "day" | "week" | "month" | "year";
   weekdays?: string[];
-  day?: number | "last";
+  day?: number | "last" | "last_workday";
   from: "due" | "done";
 }
 
@@ -43,12 +43,19 @@ const isoDate = (n: Days) => {
   return `${pad(y, 4)}-${pad(m)}-${pad(d)}`;
 };
 
-/** Day `day` in the month with index `year · 12 + month − 1`, clamped to its length; null beyond 9999. */
-function dayInMonth(index: number, day: number | "last"): Days | null {
+/**
+ * Day `day` in the month with index `year · 12 + month − 1`, clamped to its length; the last
+ * workday is the last Monday to Friday (a weekend falls back to Friday). Null beyond 9999.
+ */
+function dayInMonth(index: number, day: number | "last" | "last_workday"): Days | null {
   const y = Math.floor(index / 12);
   const m = (index % 12) + 1;
   if (y < 0 || y > 9999) return null;
   const length = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  if (day === "last_workday") {
+    const last = days(y, m, length);
+    return last - Math.max(0, weekday(last) - 4);
+  }
   return days(y, m, day === "last" ? length : Math.min(day, length));
 }
 

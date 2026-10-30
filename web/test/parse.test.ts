@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseCapture, slugify } from "../src/capture/parse";
-import type { Recurrence } from "../src/sync/types";
+import type { MonthDay, Recurrence } from "../src/sync/types";
 
 // Sunday, 11 Oct 2026, 14:30 in Europe/Berlin (CEST, +02:00); TZ is set in vite.config.ts.
 const NOW = new Date(2026, 9, 11, 14, 30);
@@ -407,10 +407,19 @@ describe("quick capture recurrence shorthand", () => {
 describe("quick capture recurrence shorthand: fixed days, ordinals, punctuation", () => {
   const week = (every: number, weekdays?: Recurrence["weekdays"]): Recurrence =>
     weekdays ? { every, unit: "week", weekdays, from: "due" } : { every, unit: "week", from: "due" };
-  const month = (every: number, day?: number | "last"): Recurrence =>
+  const month = (every: number, day?: MonthDay): Recurrence =>
     day === undefined ? { every, unit: "month", from: "due" } : { every, unit: "month", day, from: "due" };
 
   it.each<[string, Recurrence, string, string]>([
+    // Last workday (Monday to Friday): Saturday 31.10.2026 falls back to Friday 30.10.
+    ["monatlich am letzten Werktag", month(1, "last_workday"), "2026-10-30", "Monatlich am letzten Werktag"],
+    ["monatlich am letzten Werktag des Monats", month(1, "last_workday"), "2026-10-30", "Monatlich am letzten Werktag"],
+    ["jeden Monat am letzten Werktag", month(1, "last_workday"), "2026-10-30", "Monatlich am letzten Werktag"],
+    ["alle 3 Monate am letzten Werktag", month(3, "last_workday"), "2026-10-30", "Alle 3 Monate am letzten Werktag"],
+    ["jeden letzten Werktag des Monats", month(1, "last_workday"), "2026-10-30", "Monatlich am letzten Werktag"],
+    ["jeden letzten Werktag im Monat", month(1, "last_workday"), "2026-10-30", "Monatlich am letzten Werktag"],
+    ["jeden Monatsletzten Werktag", month(1, "last_workday"), "2026-10-30", "Monatlich am letzten Werktag"],
+    ["monatlich am monatsletzten Werktag", month(1, "last_workday"), "2026-10-30", "Monatlich am letzten Werktag"],
     // Monthly with a fixed day.
     ["monatlich am 15.", month(1, 15), "2026-10-15", "Monatlich am 15."],
     ["jeden Monat am 15.", month(1, 15), "2026-10-15", "Monatlich am 15."],
@@ -735,5 +744,15 @@ describe("quick capture recurrence shorthand: numbers in words", () => {
     expect(parse("Alle paar Tage lüften")).toMatchObject({ title: "Alle paar Tage lüften", recurrence: null, due: null });
     expect(parse("Auf alle acht Kinder achten")).toMatchObject({ title: "Auf alle acht Kinder achten", recurrence: null, due: null });
     expect(parse("Jede zweite Antwort prüfen")).toMatchObject({ title: "Jede zweite Antwort prüfen", recurrence: null, due: null });
+  });
+});
+
+describe("quick capture: last workday of the month", () => {
+  it("starts in the next month once this month's last workday has passed", () => {
+    // Saturday, 31 Oct 2026: the last workday (Friday 30.10.) is over, November's is Monday 30.11.
+    const r = parse("Stunden abrechnen monatlich am letzten Werktag", new Date(2026, 9, 31, 9, 0));
+    expect(r).toMatchObject({ title: "Stunden abrechnen", due: "2026-11-30", recurrence: { every: 1, unit: "month", day: "last_workday", from: "due" } });
+    // Sunday 31 Jan 2027 falls back to Friday 29.01.
+    expect(parse("Stunden abrechnen jeden letzten Werktag des Monats", new Date(2027, 0, 5)).due).toBe("2027-01-29");
   });
 });

@@ -10,7 +10,7 @@ const MAX_EVERY = 999;
 /** Why `v` is not a valid `recurrence`, or null when it is one (null itself is handled before). */
 export function recurrenceProblem(v: unknown): string | null {
   if (!v || typeof v !== "object" || Array.isArray(v)) {
-    return '„recurrence“ muss null oder ein Rhythmus {"every": 1–999, "unit": "day"|"week"|"month"|"year", "weekdays"?: […], "day"?: 1–31|"last", "from": "due"|"done"} sein.';
+    return '„recurrence“ muss null oder ein Rhythmus {"every": 1–999, "unit": "day"|"week"|"month"|"year", "weekdays"?: […], "day"?: 1–31|"last"|"last_workday", "from": "due"|"done"} sein.';
   }
   const o = v as Record<string, unknown>;
   const unknown = Object.keys(o).find((k) => !KEYS.includes(k));
@@ -30,8 +30,8 @@ export function recurrenceProblem(v: unknown): string | null {
     if (!ok) return "„weekdays“ im Rhythmus muss eine nicht leere Liste verschiedener Wochentage aus mo, tu, we, th, fr, sa, su sein.";
   }
   const d = o.day;
-  if ("day" in o && !(d === "last" || (typeof d === "number" && Number.isInteger(d) && d >= 1 && d <= 31))) {
-    return '„day“ im Rhythmus muss eine ganze Zahl von 1 bis 31 oder "last" sein.';
+  if ("day" in o && !(d === "last" || d === "last_workday" || (typeof d === "number" && Number.isInteger(d) && d >= 1 && d <= 31))) {
+    return '„day“ im Rhythmus muss eine ganze Zahl von 1 bis 31, "last" oder "last_workday" sein.';
   }
   if ("weekdays" in o && o.unit !== "week") return "Wochentage („weekdays“) gehen nur bei wöchentlichen Rhythmen.";
   if ("day" in o && o.unit !== "month" && o.unit !== "year") {

@@ -664,6 +664,41 @@ async fn mcp_month_end_series_continues_on_the_last_day() {
 }
 
 #[tokio::test]
+async fn mcp_last_workday_series_skips_the_weekend() {
+    let s = TestServer::new().await;
+    let t = api_token(&s, "claude").await;
+    let last_workday = json!({"every": 1, "unit": "month", "day": "last_workday", "from": "due"});
+    let created = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({
+            "title": "Stunden abrechnen",
+            "due": "2099-01-30",
+            "recurrence": last_workday,
+        }),
+    )
+    .await;
+    assert_eq!(created["task"]["recurrence"], last_workday);
+
+    // Saturday 28.02.2099 → Friday 27.02., then Tuesday 31.03.
+    let mut id = created["task"]["id"].clone();
+    for want in ["2099-02-27", "2099-03-31"] {
+        let done = mcp_ok(
+            &s,
+            &t,
+            "update_task",
+            json!({"task_id": id, "status": "done"}),
+        )
+        .await;
+        let next = &done["next_task"];
+        assert_eq!(next["due"], want);
+        assert_eq!(next["recurrence"], last_workday);
+        id = next["id"].clone();
+    }
+}
+
+#[tokio::test]
 async fn mcp_sets_and_ends_recurrence() {
     let s = TestServer::new().await;
     let t = api_token(&s, "claude").await;
@@ -1047,6 +1082,7 @@ async fn mcp_schema_describes_the_recurrence_precisely() {
             json!([
                 {"type": "integer", "minimum": 1, "maximum": 31},
                 {"type": "string", "const": "last"},
+                {"type": "string", "const": "last_workday"},
             ]),
             "{name}"
         );

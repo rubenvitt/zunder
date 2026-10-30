@@ -1,0 +1,207 @@
+{
+  "name": "folgetermin-letzter-werktag",
+  "description": "Monatliche und jährliche Serien mit day \"last_workday\" (3.1): der letzte Werktag Mo–Fr des Monats; fällt der Monatsletzte auf Samstag oder Sonntag, gilt der Freitag davor. Feiertage zählen nicht. Der Rhythmus bleibt, wie er ist.",
+  "kind": "next_occurrence",
+  "time_zone": "Europe/Berlin",
+  "cases": [
+    {
+      "description": "Freitag 30.10.2026 → Montag 30.11.2026",
+      "recurrence": {
+        "every": 1,
+        "unit": "month",
+        "day": "last_workday",
+        "from": "due"
+      },
+      "due": "2026-10-30",
+      "completed_at": "2026-10-30T10:00:00+01:00",
+      "today": "2026-10-30",
+      "expected": {
+        "due": "2026-11-30",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "month",
+          "day": "last_workday",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "Sonntag 31.01.2027 fällt zurück auf Freitag 29.01.",
+      "recurrence": {
+        "every": 1,
+        "unit": "month",
+        "day": "last_workday",
+        "from": "due"
+      },
+      "due": "2026-12-31",
+      "completed_at": "2026-12-31T10:00:00+01:00",
+      "today": "2026-12-31",
+      "expected": {
+        "due": "2027-01-29",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "month",
+          "day": "last_workday",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "Samstag 31.07.2027 fällt zurück auf Freitag 30.07.",
+      "recurrence": {
+        "every": 1,
+        "unit": "month",
+        "day": "last_workday",
+        "from": "due"
+      },
+      "due": "2027-06-30",
+      "completed_at": "2027-06-30T10:00:00+02:00",
+      "today": "2027-06-30",
+      "expected": {
+        "due": "2027-07-30",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "month",
+          "day": "last_workday",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "Fälligkeit mitten im Monat: der letzte Werktag desselben Monats (Sa 31.10. → Fr 30.10.)",
+      "recurrence": {
+        "every": 1,
+        "unit": "month",
+        "day": "last_workday",
+        "from": "due"
+      },
+      "due": "2026-10-15",
+      "completed_at": "2026-10-15T10:00:00+02:00",
+      "today": "2026-10-15",
+      "expected": {
+        "due": "2026-10-30",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "month",
+          "day": "last_workday",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "Fälligkeit auf den Samstag nach dem letzten Werktag verschoben: weiter im nächsten Monat",
+      "recurrence": {
+        "every": 1,
+        "unit": "month",
+        "day": "last_workday",
+        "from": "due"
+      },
+      "due": "2026-10-31",
+      "completed_at": "2026-10-31T10:00:00+01:00",
+      "today": "2026-10-31",
+      "expected": {
+        "due": "2026-11-30",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "month",
+          "day": "last_workday",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "Verpasste Termine werden übersprungen: heute 30.01.2027 nach dem Fr 29.01. → Fr 26.02.",
+      "recurrence": {
+        "every": 1,
+        "unit": "month",
+        "day": "last_workday",
+        "from": "due"
+      },
+      "due": "2026-11-30",
+      "completed_at": "2027-01-30T10:00:00+01:00",
+      "today": "2027-01-30",
+      "expected": {
+        "due": "2027-02-26",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "month",
+          "day": "last_workday",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "Ab Erledigung: im Monat nach der Erledigung",
+      "recurrence": {
+        "every": 1,
+        "unit": "month",
+        "day": "last_workday",
+        "from": "done"
+      },
+      "due": "2026-01-01",
+      "completed_at": "2026-12-03T10:00:00+01:00",
+      "today": "2026-12-03",
+      "expected": {
+        "due": "2027-01-29",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "month",
+          "day": "last_workday",
+          "from": "done"
+        }
+      }
+    },
+    {
+      "description": "Jährlich im Februar: Mi 28.02.2029 nach Di 29.02.2028",
+      "recurrence": {
+        "every": 1,
+        "unit": "year",
+        "day": "last_workday",
+        "from": "due"
+      },
+      "due": "2028-02-29",
+      "completed_at": "2028-02-29T10:00:00+01:00",
+      "today": "2028-02-29",
+      "expected": {
+        "due": "2029-02-28",
+        "remind_at": null,
+        "recurrence": {
+          "every": 1,
+          "unit": "year",
+          "day": "last_workday",
+          "from": "due"
+        }
+      }
+    },
+    {
+      "description": "Uhrzeit und Erinnerung wandern mit",
+      "recurrence": {
+        "every": 1,
+        "unit": "month",
+        "day": "last_workday",
+        "from": "due"
+      },
+      "due": "2027-01-29T17:00:00+01:00",
+      "completed_at": "2027-01-29T17:30:00+01:00",
+      "today": "2027-01-29",
+      "expected": {
+        "due": "2027-02-26T17:00:00+01:00",
+        "remind_at": "2027-02-26T09:00:00+01:00",
+        "recurrence": {
+          "every": 1,
+          "unit": "month",
+          "day": "last_workday",
+          "from": "due"
+        }
+      },
+      "remind_at": "2027-01-29T09:00:00+01:00"
+    }
+  ]
+}

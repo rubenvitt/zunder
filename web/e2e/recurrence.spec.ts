@@ -163,6 +163,11 @@ test("Eigener Rhythmus: Intervall, Wochentage, Monatstag und Anker", async ({ pa
   await editor.getByLabel("Anker").selectOption({ label: "nach Erledigung" });
   await expect.poll(recurrence).toEqual({ every: 2, unit: "month", day: "last", from: "done" });
   await expect(editor).toContainText("Alle 2 Monate am Monatsletzten nach Erledigung");
+  await editor.getByLabel("Tag im Monat").selectOption({ label: "am letzten Werktag (Mo–Fr)" });
+  await expect.poll(recurrence).toEqual({ every: 2, unit: "month", day: "last_workday", from: "done" });
+  await expect(editor).toContainText("Alle 2 Monate am letzten Werktag nach Erledigung");
+  await editor.getByLabel("Tag im Monat").selectOption({ label: "am Monatsletzten" });
+  await expect.poll(recurrence).toEqual({ every: 2, unit: "month", day: "last", from: "done" });
 
   // Years keep the day; after completion it lies in the month of the completion, so no month.
   await editor.getByLabel("Einheit").selectOption("year");
@@ -174,7 +179,7 @@ test("Eigener Rhythmus: Intervall, Wochentage, Monatstag und Anker", async ({ pa
   await editor.getByLabel("Anker").selectOption({ label: "ab Fälligkeit" });
   await expect.poll(recurrence).toEqual({ every: 2, unit: "year", day: 4, from: "due" });
   await expect(editor).toContainText("Alle 2 Jahre am 04.01.");
-  await expect(editor.getByLabel("Tag im Monat").locator("option")).toHaveCount(33);
+  await expect(editor.getByLabel("Tag im Monat").locator("option")).toHaveCount(34);
 
   await detail(page).getByRole("combobox", { name: "Wiederholen" }).selectOption({ label: "Nicht wiederholen" });
   await expect.poll(recurrence).toBeNull();
@@ -193,8 +198,8 @@ test("Jährlicher Tag: nur Tage des Fälligkeitsmonats, ein größerer gespeiche
   await detail(page).getByRole("button", { name: "Anpassen" }).click();
   const editor = detail(page).getByRole("group", { name: "Rhythmus anpassen" });
   const day = editor.getByLabel("Tag im Monat");
-  // February: 1–29 with the month, the stored 31 without, plus "Tag der Fälligkeit" and "Monatsletzten".
-  await expect(day.locator("option")).toHaveCount(32);
+  // February: 1–29 with the month, the stored 31 without, plus "Tag der Fälligkeit", "Monatsletzten" and "letzten Werktag".
+  await expect(day.locator("option")).toHaveCount(33);
   await expect(day.locator("option:checked")).toHaveText("am 31.");
   await expect(day.locator("option", { hasText: "am 30.02." })).toHaveCount(0);
   await expect(editor).toContainText("Jährlich am 29.02.");
