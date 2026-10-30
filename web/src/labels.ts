@@ -311,7 +311,7 @@ const WORKDAYS = "mo,tu,we,th,fr";
 
 /**
  * A rhythm in words: "Täglich", "Alle 3 Monate nach Erledigung", "Wöchentlich (Mo, Do)",
- * "Werktags", "Monatlich am Monatsletzten", "Jährlich am 28.02." (the month of `due`) …
+ * "Werktags", "Monatlich am Monatsletzten", "Monatlich am letzten Werktag", "Jährlich am 28.02." (the month of `due`) …
  */
 export function describeRecurrence(r: Recurrence, due?: string | null): string {
   const days = WEEKDAY_CODES.filter((d) => r.weekdays?.includes(d));
@@ -320,6 +320,7 @@ export function describeRecurrence(r: Recurrence, due?: string | null): string {
   if (!workdays && days.length > 0) text += ` (${days.map((d) => WEEKDAY_LABELS[d]).join(", ")})`;
   const month = yearlyDayMonth(r, due);
   if (r.day === "last") text += " am Monatsletzten";
+  else if (r.day === "last_workday") text += " am letzten Werktag";
   else if (r.day !== undefined) text += month ? ` ${yearlyDayLabel(r.day, month)}` : ` am ${r.day}.`;
   if (r.from === "done") text += " nach Erledigung";
   return text;
@@ -359,6 +360,7 @@ export function recurrencePresets(due: string | null): RecurrencePreset[] {
     { label: "Alle 2 Wochen", value: { every: 2, unit: "week", from: "due" } },
     { label: "Monatlich", value: { every: 1, unit: "month", from: "due" } },
     { label: "Monatlich am Monatsletzten", value: { every: 1, unit: "month", day: "last", from: "due" } },
+    { label: "Monatlich am letzten Werktag", value: { every: 1, unit: "month", day: "last_workday", from: "due" } },
     { label: "Jährlich", value: { every: 1, unit: "year", from: "due" } },
   );
   return out;

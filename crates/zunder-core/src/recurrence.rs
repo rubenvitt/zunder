@@ -16,7 +16,8 @@
 //! - A day of the month beyond the month's length gives its last day; the
 //!   configured day (`day`, or for monthly and yearly series without it the
 //!   day of D0, which the server then writes into the new instance's
-//!   recurrence) keeps the series from drifting. Yearly series use the month
+//!   recurrence) keeps the series from drifting. `"last_workday"` is the
+//!   month's last Monday to Friday (no public holidays). Yearly series use the month
 //!   of D0 and at least one year: a 28.02. stays a 28.02., a 29.02. falls
 //!   on the 28.02. in common years and comes back in leap years, `"last"`
 //!   is the February last. An instance moved into another month takes the
@@ -26,7 +27,7 @@
 //! Which tasks a push completed and what their next instance carries:
 //! [`CompletionsBefore`].
 
-use time::{Date, Duration, Month, OffsetDateTime, PrimitiveDateTime, UtcOffset};
+use time::{Date, Duration, Month, OffsetDateTime, PrimitiveDateTime, UtcOffset, Weekday};
 
 use crate::model::{Due, MonthDay, Recurrence, RecurrenceFrom, RecurrenceUnit};
 
@@ -235,7 +236,9 @@ fn months_per_step(r: &Recurrence) -> i64 {
 }
 
 /// The day `day` in the month with index `year · 12 + month − 1`, clamped
-/// to the month's length. `None` outside the years 0–9999.
+/// to the month's length; the last workday is the last Monday to Friday
+/// (Saturday and Sunday fall back to the Friday before). `None` outside the
+/// years 0–9999.
 fn day_in_month(index: i64, day: MonthDay) -> Option<Date> {
     let year = i32::try_from(index.div_euclid(12)).ok()?;
     if !(0..=9999).contains(&year) {
@@ -246,6 +249,14 @@ fn day_in_month(index: i64, day: MonthDay) -> Option<Date> {
     let day = match day {
         MonthDay::Last => length,
         MonthDay::Day(d) => d.min(length),
+        MonthDay::LastWorkday => {
+            let last = Date::from_calendar_date(year, month, length).ok()?;
+            match last.weekday() {
+                Weekday::Saturday => length - 1,
+                Weekday::Sunday => length - 2,
+                _ => length,
+            }
+        }
     };
     Date::from_calendar_date(year, month, day).ok()
 }

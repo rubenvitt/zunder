@@ -1,7 +1,7 @@
 // Shape of a task's `recurrence` (contract 2.4), mirroring zunder_core::model::Recurrence.
 // The messages match the core so the UI shows the same reason as the server.
 
-import { RECURRENCE_FROMS, RECURRENCE_UNITS, WEEKDAY_CODES, type JsonValue, type Recurrence, type WeekdayCode } from "./types";
+import { RECURRENCE_FROMS, RECURRENCE_UNITS, WEEKDAY_CODES, type JsonValue, type MonthDay, type Recurrence, type WeekdayCode } from "./types";
 
 /** Highest `every` of a recurrence (core: model::MAX_RECURRENCE_EVERY). */
 export const MAX_RECURRENCE_EVERY = 999;
@@ -14,7 +14,7 @@ function check(v: JsonValue | undefined): Result {
   if (!v || typeof v !== "object" || Array.isArray(v)) {
     return {
       error:
-        '„recurrence“ muss null oder ein Rhythmus {"every": 1–999, "unit": "day"|"week"|"month"|"year", "weekdays"?: […], "day"?: 1–31|"last", "from": "due"|"done"} sein.',
+        '„recurrence“ muss null oder ein Rhythmus {"every": 1–999, "unit": "day"|"week"|"month"|"year", "weekdays"?: […], "day"?: 1–31|"last"|"last_workday", "from": "due"|"done"} sein.',
     };
   }
   const unknown = Object.keys(v).find((k) => !KEYS.includes(k));
@@ -44,8 +44,8 @@ function check(v: JsonValue | undefined): Result {
   }
   if ("day" in v) {
     const d = v.day;
-    if (!(d === "last" || (typeof d === "number" && Number.isInteger(d) && d >= 1 && d <= 31))) {
-      return { error: '„day“ im Rhythmus muss eine ganze Zahl von 1 bis 31 oder "last" sein.' };
+    if (!(d === "last" || d === "last_workday" || (typeof d === "number" && Number.isInteger(d) && d >= 1 && d <= 31))) {
+      return { error: '„day“ im Rhythmus muss eine ganze Zahl von 1 bis 31, "last" oder "last_workday" sein.' };
     }
     out.day = d;
   }
@@ -81,7 +81,7 @@ export function recurrenceValue(r: Recurrence): JsonValue {
   return out;
 }
 
-function build(every: number, unit: Recurrence["unit"], from: Recurrence["from"], weekdays?: WeekdayCode[], day?: number | "last"): Recurrence {
+function build(every: number, unit: Recurrence["unit"], from: Recurrence["from"], weekdays?: WeekdayCode[], day?: MonthDay): Recurrence {
   const out: Recurrence = { every, unit, from };
   if (unit === "week" && weekdays && weekdays.length > 0) out.weekdays = weekdays;
   if ((unit === "month" || unit === "year") && day !== undefined) out.day = day;
@@ -102,7 +102,7 @@ export function withFrom(r: Recurrence, from: Recurrence["from"]): Recurrence {
 }
 
 /** Fixed day of the month, for years in the month of the due date (from done: of the completion; `undefined`: the day of the due date or completion). */
-export function withDay(r: Recurrence, day: number | "last" | undefined): Recurrence {
+export function withDay(r: Recurrence, day: MonthDay | undefined): Recurrence {
   return build(r.every, r.unit, r.from, r.weekdays, day);
 }
 

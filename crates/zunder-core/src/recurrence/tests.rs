@@ -195,6 +195,82 @@ fn month_last_from_a_due_in_mid_month_snaps_to_that_months_end() {
     assert_eq!(on_time(&r, date!(2026 - 10 - 15)), date!(2026 - 10 - 31));
 }
 
+// --- last workday -------------------------------------------------------
+
+#[test]
+fn last_workday_falls_back_from_the_weekend_to_friday() {
+    let r = monthly(1, Some(MonthDay::LastWorkday), FromDue);
+    assert_eq!(
+        chain(&r, date!(2026 - 10 - 30), 8),
+        [
+            date!(2026 - 11 - 30), // Monday
+            date!(2026 - 12 - 31), // Thursday
+            date!(2027 - 01 - 29), // Sunday 31st → Friday
+            date!(2027 - 02 - 26), // Sunday 28th → Friday
+            date!(2027 - 03 - 31), // Wednesday
+            date!(2027 - 04 - 30), // Friday
+            date!(2027 - 05 - 31), // Monday
+            date!(2027 - 06 - 30), // Wednesday
+        ]
+    );
+    // Saturday the 31st → Friday the 30th.
+    assert_eq!(on_time(&r, date!(2026 - 10 - 01)), date!(2026 - 10 - 30));
+    assert_eq!(on_time(&r, date!(2027 - 07 - 01)), date!(2027 - 07 - 30));
+}
+
+#[test]
+fn last_workday_after_the_last_workday_goes_to_the_next_month() {
+    // Due moved to Saturday 31.10.2026, after the last workday (Fr 30.).
+    let r = monthly(1, Some(MonthDay::LastWorkday), FromDue);
+    assert_eq!(on_time(&r, date!(2026 - 10 - 31)), date!(2026 - 11 - 30));
+    // Missed months are skipped: one instance, not before today.
+    assert_eq!(
+        next_due_date(
+            &r,
+            date!(2026 - 10 - 30),
+            date!(2027 - 01 - 30),
+            date!(2027 - 01 - 30)
+        ),
+        Some(date!(2027 - 02 - 26))
+    );
+}
+
+#[test]
+fn last_workday_from_done_and_yearly() {
+    let from_done = monthly(1, Some(MonthDay::LastWorkday), FromDone);
+    assert_eq!(
+        next_due_date(
+            &from_done,
+            date!(2026 - 01 - 01),
+            date!(2026 - 12 - 03),
+            date!(2026 - 12 - 03)
+        ),
+        Some(date!(2027 - 01 - 29))
+    );
+    // Yearly in the month of the due date: the last workday of February.
+    let yearly = yearly(1, Some(MonthDay::LastWorkday), FromDue);
+    assert_eq!(
+        chain(&yearly, date!(2027 - 02 - 26), 3),
+        [
+            date!(2028 - 02 - 29),
+            date!(2029 - 02 - 28),
+            date!(2030 - 02 - 28)
+        ]
+    );
+    // The recurrence stays as it is.
+    let d0 = date!(2026 - 10 - 30);
+    let next = next_occurrence(
+        &monthly(1, Some(MonthDay::LastWorkday), FromDue),
+        Due::Date(d0),
+        None,
+        at_noon(d0),
+        d0,
+        &UTC,
+    )
+    .unwrap();
+    assert_eq!(next.recurrence.day, Some(MonthDay::LastWorkday));
+}
+
 // --- 28 and 29 February -------------------------------------------------
 
 #[test]
@@ -911,6 +987,7 @@ mod props {
         prop_oneof![
             Just(None),
             Just(Some(MonthDay::Last)),
+            Just(Some(MonthDay::LastWorkday)),
             (1u8..=31).prop_map(|d| Some(MonthDay::Day(d))),
         ]
     }
@@ -937,11 +1014,25 @@ mod props {
         d.day() == d.month().length(d.year())
     }
 
+    /// Monday to Friday, and no later Monday to Friday in its month.
+    fn is_last_workday_of_month(d: Date) -> bool {
+        let workday = |x: Date| !matches!(x.weekday(), Weekday::Saturday | Weekday::Sunday);
+        let mut x = d;
+        while let Some(next) = x.next_day().filter(|n| n.month() == d.month()) {
+            if workday(next) {
+                return false;
+            }
+            x = next;
+        }
+        workday(d)
+    }
+
     /// Does `x` fall on the configured day (`day`, without it the day of
     /// `anchor`), clamped to the length of its month?
     fn day_ok(day: Option<MonthDay>, anchor: Date, x: Date) -> bool {
         match day.unwrap_or(MonthDay::Day(anchor.day())) {
             MonthDay::Last => is_last_of_month(x),
+            MonthDay::LastWorkday => is_last_workday_of_month(x),
             MonthDay::Day(d) => x.day() == d.min(x.month().length(x.year())),
         }
     }
@@ -1026,6 +1117,7 @@ mod props {
                 }
                 match want_day {
                     MonthDay::Last => prop_assert!(is_last_of_month(d)),
+                    MonthDay::LastWorkday => prop_assert!(is_last_workday_of_month(d)),
                     MonthDay::Day(n) => prop_assert_eq!(d.day(), n.min(d.month().length(d.year()))),
                 }
                 prev = d;

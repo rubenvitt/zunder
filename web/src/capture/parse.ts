@@ -5,7 +5,8 @@
 // (optionally preceded by "um"). A time sets due and remind_at; a date alone
 // sets a date-only due. #slug resolves to an area or project (project wins on a tie).
 // Unresolved tags stay in the title. Rhythms ("jeden Freitag", "alle 2 Wochen",
-// "alle zwei Wochen", "jede zweite Woche", "monatlich am 15.", "jeden Monatsletzten" …,
+// "alle zwei Wochen", "jede zweite Woche", "monatlich am 15.", "jeden Monatsletzten",
+// "jeden letzten Werktag des Monats" …,
 // contract 5.1) set `recurrence` and, without a date, the first due date of the series.
 // Unsupported rhythm-like phrases ("jeden ersten Montag", "jeden 1. Werktag", "jeden 1.
 // Mai", "alle paar Tage") stay in the title whole, with what follows their unit
@@ -17,7 +18,7 @@
 import { describeRecurrence, FOR_WHOM_LABELS, waitingLabel, WEIGHT_LABELS } from "../labels";
 import { addDays, isValidCalendarDate, localDate, startOfDay, toRfc3339Local } from "../sync/dates";
 import { TITLE_MAX } from "../sync/validate";
-import { FOR_WHOMS, WEEKDAY_CODES, WEIGHTS, type ForWhom, type Location, type Recurrence, type WeekdayCode, type Weight } from "../sync/types";
+import { FOR_WHOMS, WEEKDAY_CODES, WEIGHTS, type ForWhom, type Location, type MonthDay, type Recurrence, type WeekdayCode, type Weight } from "../sync/types";
 
 export interface CaptureTarget {
   id: string;
@@ -397,12 +398,18 @@ function ofMonthSuffixEnd(words: readonly string[], k: number): number | null {
 /**
  * A single fixed day of the month at word `k` and the end of the phrase: "15.", "15. des
  * Monats", "15. im Monat", "1. Tag des Monats"; an ordinal in words only with "des
- * Monats" or "im Monat" ("ersten Tag des Monats", "letzten im Monat"). null when a
- * weekday, unit, month name or month number follows the day ("1. Werktag", "1. Mai"),
- * which makes the phrase unsupported.
+ * Monats" or "im Monat" ("ersten Tag des Monats", "letzten im Monat"). "letzten Werktag"
+ * is the last workday: with "des Monats" or "im Monat", or without when the rhythm is
+ * already monthly (`monthly`: "monatlich am letzten Werktag"). null when a weekday, unit,
+ * month name or month number follows the day ("1. Werktag", "1. Mai"), which makes the
+ * phrase unsupported.
  */
-function monthDay(words: readonly string[], k: number): { day: number | "last"; end: number } | null {
+function monthDay(words: readonly string[], k: number, monthly = false): { day: MonthDay; end: number } | null {
   const w = wordAt(words, k);
+  if (LAST_WORDS.has(w) && wordAt(words, k + 1) === "werktag") {
+    const end = ofMonthEnd(words, k + 2) ?? (monthly ? k + 2 : null);
+    return end === null ? null : { day: "last_workday", end };
+  }
   const numeric = NUMERIC_ORDINAL.test(w);
   const day = numeric ? Number(w.slice(0, -1)) : LAST_WORDS.has(w) ? "last" : ORDINAL_NUMBERS.get(w);
   if (day === undefined || (typeof day === "number" && (day < 1 || day > 31))) return null;
@@ -464,7 +471,7 @@ function weekly(every: number, days: readonly number[] | null, consumed: number)
   };
 }
 
-function monthly(every: number, day: number | "last" | undefined, consumed: number): RecurrenceHit {
+function monthly(every: number, day: MonthDay | undefined, consumed: number): RecurrenceHit {
   if (day === undefined) return { recurrence: { every, unit: "month", from: "due" }, consumed, first: sameDay };
   return {
     recurrence: { every, unit: "month", day, from: "due" },
@@ -473,10 +480,21 @@ function monthly(every: number, day: number | "last" | undefined, consumed: numb
       const y = from.getFullYear();
       const m = from.getMonth();
       if (day === "last") return new Date(y, m + 1, 0);
+      if (day === "last_workday") {
+        const date = lastWorkday(y, m);
+        return date < from ? lastWorkday(y, m + 1) : date;
+      }
       const date = clampedDate(y, m, day);
       return date < from ? clampedDate(y, m + 1, day) : date;
     },
   };
+}
+
+/** Last Monday to Friday of month `m` (0-based) in `y`: a weekend falls back to Friday. */
+function lastWorkday(y: number, m: number): Date {
+  const last = new Date(y, m + 1, 0);
+  const back = last.getDay() === 6 ? 1 : last.getDay() === 0 ? 2 : 0;
+  return addDays(last, -back);
 }
 
 function simple(every: number, unit: "day" | "year", consumed: number): RecurrenceHit {
@@ -548,17 +566,21 @@ function matchRhythmBase(words: readonly string[], i: number): RhythmMatch | nul
     return weekly(every, null, rel(end));
   };
 
-  /** "monatlich"/"jeden Monat"/"alle n Monate" optionally followed by "am 15.", "am Monatsletzten", "zum Monatsende". */
+  /**
+   * "monatlich"/"jeden Monat"/"alle n Monate" optionally followed by "am 15.", "am
+   * Monatsletzten", "zum Monatsende", "am letzten Werktag", "am monatsletzten Werktag".
+   */
   const monthWithDay = (every: number, end: number): RhythmMatch => {
     const prep = word(end);
     if (prep !== "am" && prep !== "zum") return monthly(every, undefined, rel(end));
     const target = word(end + 1);
+    if (target === "monatsletzten" && word(end + 2) === "werktag") return monthly(every, "last_workday", rel(end + 3));
     if (target === "monatsletzten" || target === "monatsende") return monthly(every, "last", rel(end + 2));
     // "am 20.10." is a date: due on that day, the rhythm keeps no fixed day.
     if (prep === "zum" || DAY_MONTH.test(target)) return monthly(every, undefined, rel(end));
     const list = ordinalList(words, end + 1);
     if (!list) return monthly(every, undefined, rel(end));
-    const fixed = list.count === 1 ? monthDay(words, end + 1) : null;
+    const fixed = list.count === 1 ? monthDay(words, end + 1, true) : null;
     if (fixed) return monthly(every, fixed.day, rel(fixed.end));
     return unsupported(rel(unsupportedEnd(words, list.end)));
   };
@@ -626,7 +648,7 @@ function matchRhythmBase(words: readonly string[], i: number): RhythmMatch | nul
     case "jeden": {
       if (next === "tag") return simple(1, "day", 2);
       if (next === "monat") return monthWithDay(1, i + 2);
-      if (next === "monatsletzten") return monthly(1, "last", 2);
+      if (next === "monatsletzten") return word(i + 2) === "werktag" ? monthly(1, "last_workday", 3) : monthly(1, "last", 2);
       const named = weekdayList(words, i + 1, WEEKDAYS);
       if (named) return weeklyOn(1, named);
       // "jeden 2. Tag" is every 2 days, "jeden 2. Tag des Monats" day 2 of the month.

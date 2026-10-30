@@ -640,18 +640,22 @@ impl WeekdayCode {
 }
 
 /// Day of the month of a monthly recurrence: a fixed day (1–31; in shorter
-/// months the last day) or always the last day. Wire form: a number or
-/// `"last"`.
+/// months the last day), always the last day, or the last workday (Monday to
+/// Friday; a month ending on a weekend falls back to its Friday). Wire form:
+/// a number, `"last"` or `"last_workday"`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MonthDay {
     Day(u8),
     Last,
+    LastWorkday,
 }
 
 impl MonthDay {
     fn parse(value: &Value) -> Option<Self> {
-        if value.as_str() == Some("last") {
-            return Some(MonthDay::Last);
+        match value.as_str() {
+            Some("last") => return Some(MonthDay::Last),
+            Some("last_workday") => return Some(MonthDay::LastWorkday),
+            _ => {}
         }
         value
             .as_u64()
@@ -665,6 +669,7 @@ impl From<MonthDay> for Value {
         match d {
             MonthDay::Day(n) => Value::from(n),
             MonthDay::Last => Value::from("last"),
+            MonthDay::LastWorkday => Value::from("last_workday"),
         }
     }
 }
@@ -674,6 +679,7 @@ impl Serialize for MonthDay {
         match self {
             MonthDay::Day(n) => serializer.serialize_u8(*n),
             MonthDay::Last => serializer.serialize_str("last"),
+            MonthDay::LastWorkday => serializer.serialize_str("last_workday"),
         }
     }
 }
@@ -715,7 +721,7 @@ impl Recurrence {
         let Some(obj) = value.as_object() else {
             return Err(
                 "„recurrence“ muss null oder ein Rhythmus {\"every\": 1–999, \"unit\": \
-                 \"day\"|\"week\"|\"month\"|\"year\", \"weekdays\"?: […], \"day\"?: 1–31|\"last\", \
+                 \"day\"|\"week\"|\"month\"|\"year\", \"weekdays\"?: […], \"day\"?: 1–31|\"last\"|\"last_workday\", \
                  \"from\": \"due\"|\"done\"} sein."
                     .to_owned(),
             );
@@ -756,7 +762,7 @@ impl Recurrence {
         let day = match obj.get("day") {
             None => None,
             Some(v) => Some(MonthDay::parse(v).ok_or(
-                "„day“ im Rhythmus muss eine ganze Zahl von 1 bis 31 oder \"last\" sein.",
+                "„day“ im Rhythmus muss eine ganze Zahl von 1 bis 31, \"last\" oder \"last_workday\" sein.",
             )?),
         };
         if weekdays.is_some() && unit != RecurrenceUnit::Week {
@@ -1620,6 +1626,7 @@ mod tests {
             json!({"every": 1, "unit": "month", "day": 1, "from": "due"}),
             json!({"every": 1, "unit": "year", "day": 28, "from": "due"}),
             json!({"every": 2, "unit": "year", "day": "last", "from": "done"}),
+            json!({"every": 1, "unit": "month", "day": "last_workday", "from": "due"}),
         ] {
             ok(EntityKind::Task, r, value);
         }
@@ -1649,6 +1656,8 @@ mod tests {
             json!({"every": 1, "unit": "month", "day": 0, "from": "due"}),
             json!({"every": 1, "unit": "month", "day": 32, "from": "due"}),
             json!({"every": 1, "unit": "month", "day": "first", "from": "due"}),
+            json!({"every": 1, "unit": "month", "day": "last_weekday", "from": "due"}),
+            json!({"every": 1, "unit": "week", "day": "last_workday", "from": "due"}),
             json!({"every": 1, "unit": "month", "day": "15", "from": "due"}),
             json!({"every": 1, "unit": "month", "day": null, "from": "due"}),
             json!({"every": 1, "unit": "month", "day": 15, "weekdays": ["mo"], "from": "due"}),

@@ -115,6 +115,7 @@ describe("shape of recurrence", () => {
     { every: 1, unit: "month", day: 1, from: "due" },
     { every: 1, unit: "year", day: 28, from: "due" },
     { every: 2, unit: "year", day: "last", from: "done" },
+    { every: 1, unit: "month", day: "last_workday", from: "due" },
   ];
   const invalid: JsonValue[] = [
     "monatlich",
@@ -142,6 +143,8 @@ describe("shape of recurrence", () => {
     { every: 1, unit: "month", day: 0, from: "due" },
     { every: 1, unit: "month", day: 32, from: "due" },
     { every: 1, unit: "month", day: "first", from: "due" },
+    { every: 1, unit: "month", day: "last_weekday", from: "due" },
+    { every: 1, unit: "week", day: "last_workday", from: "due" },
     { every: 1, unit: "month", day: "15", from: "due" },
     { every: 1, unit: "month", day: null, from: "due" },
     { every: 1, unit: "month", day: 15, weekdays: ["mo"], from: "due" },

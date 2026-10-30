@@ -207,9 +207,12 @@ fn recurrence(nullable: bool) -> Value {
                 "oneOf": [
                     {"type": "integer", "minimum": 1, "maximum": 31},
                     {"type": "string", "const": "last"},
+                    {"type": "string", "const": "last_workday"},
                 ],
                 "description": "Nur bei unit month und year: Tag des Monats 1–31 (in kürzeren \
-                    Monaten der letzte) oder \"last\" (immer der Monatsletzte). Bei year gilt er \
+                    Monaten der letzte), \"last\" (immer der Monatsletzte) oder \"last_workday\" \
+                    (letzter Werktag Mo–Fr; fällt der Monatsletzte aufs Wochenende, der Freitag \
+                    davor; Feiertage zählen nicht). Bei year gilt er \
                     im Monat des Ankers: bei from due im Monat der Fälligkeit (etwa day 28 für \
                     jeden 28.02. oder \"last\" für jeden Februarletzten), bei from done im Monat \
                     der Erledigung. Fehlt er, gilt bei from due der Tag der Fälligkeit, bei from \

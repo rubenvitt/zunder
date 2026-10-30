@@ -34,6 +34,9 @@ describe("describeRecurrence (contract 5.1)", () => {
     expect(describeRecurrence(r({ every: 1, unit: "month", day: "last", from: "due" }))).toBe("Monatlich am Monatsletzten");
     expect(describeRecurrence(r({ every: 1, unit: "month", day: "last", from: "done" }))).toBe("Monatlich am Monatsletzten nach Erledigung");
     expect(describeRecurrence(r({ every: 2, unit: "month", day: 15, from: "due" }))).toBe("Alle 2 Monate am 15.");
+    expect(describeRecurrence(r({ every: 1, unit: "month", day: "last_workday", from: "due" }))).toBe("Monatlich am letzten Werktag");
+    expect(describeRecurrence(r({ every: 3, unit: "month", day: "last_workday", from: "done" }))).toBe("Alle 3 Monate am letzten Werktag nach Erledigung");
+    expect(describeRecurrence(r({ every: 1, unit: "year", day: "last_workday", from: "due" }), "2027-02-26")).toBe("Jährlich am letzten Werktag");
   });
 
   it("names the day of a yearly rhythm with the month of the due date", () => {
@@ -110,16 +113,19 @@ describe("presets", () => {
       "Alle 2 Wochen",
       "Monatlich",
       "Monatlich am Monatsletzten",
+      "Monatlich am letzten Werktag",
       "Jährlich",
     ]);
     expect(presets[1]!.value).toEqual({ every: 1, unit: "week", weekdays: ["fr"], from: "due" });
     expect(presets[4]!.value).toEqual({ every: 1, unit: "month", day: "last", from: "due" });
+    expect(presets[5]!.value).toEqual({ every: 1, unit: "month", day: "last_workday", from: "due" });
     for (const p of presets) expect(recurrenceProblem(recurrenceValue(p.value))).toBeNull();
   });
 
   it("matches a stored recurrence to its preset, otherwise none", () => {
     const presets = recurrencePresets("2026-10-30T09:00:00+01:00");
     expect(matchPreset(presets, { every: 1, unit: "month", day: "last", from: "due" })?.label).toBe("Monatlich am Monatsletzten");
+    expect(matchPreset(presets, { every: 1, unit: "month", day: "last_workday", from: "due" })?.label).toBe("Monatlich am letzten Werktag");
     expect(matchPreset(presets, { every: 1, unit: "week", weekdays: ["fr"], from: "due" })?.label).toBe("Wöchentlich am Freitag");
     expect(matchPreset(presets, { every: 1, unit: "week", weekdays: ["mo"], from: "due" })).toBeUndefined();
     expect(matchPreset(presets, { every: 1, unit: "month", day: "last", from: "done" })).toBeUndefined();

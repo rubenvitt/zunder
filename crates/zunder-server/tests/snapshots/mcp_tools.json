@@ -346,7 +346,7 @@
           "description": "Rhythmus einer wiederkehrenden Aufgabe; braucht due und geht nur an Aufgaben ohne parent_id. Beispiele: jeden Freitag {\"every\":1,\"unit\":\"week\",\"weekdays\":[\"fr\"],\"from\":\"due\"}, jeden Monatsletzten {\"every\":1,\"unit\":\"month\",\"day\":\"last\",\"from\":\"due\"}, 3 Monate nach Erledigung {\"every\":3,\"unit\":\"month\",\"from\":\"done\"}. Wird die Aufgabe erledigt oder verworfen, legt der Server die nächste Instanz an (mit neuer Fälligkeit, ohne Unteraufgaben und Kommentare).",
           "properties": {
             "day": {
-              "description": "Nur bei unit month und year: Tag des Monats 1–31 (in kürzeren Monaten der letzte) oder \"last\" (immer der Monatsletzte). Bei year gilt er im Monat des Ankers: bei from due im Monat der Fälligkeit (etwa day 28 für jeden 28.02. oder \"last\" für jeden Februarletzten), bei from done im Monat der Erledigung. Fehlt er, gilt bei from due der Tag der Fälligkeit, bei from done der Tag der Erledigung.",
+              "description": "Nur bei unit month und year: Tag des Monats 1–31 (in kürzeren Monaten der letzte), \"last\" (immer der Monatsletzte) oder \"last_workday\" (letzter Werktag Mo–Fr; fällt der Monatsletzte aufs Wochenende, der Freitag davor; Feiertage zählen nicht). Bei year gilt er im Monat des Ankers: bei from due im Monat der Fälligkeit (etwa day 28 für jeden 28.02. oder \"last\" für jeden Februarletzten), bei from done im Monat der Erledigung. Fehlt er, gilt bei from due der Tag der Fälligkeit, bei from done der Tag der Erledigung.",
               "oneOf": [
                 {
                   "maximum": 31,
@@ -355,6 +355,10 @@
                 },
                 {
                   "const": "last",
+                  "type": "string"
+                },
+                {
+                  "const": "last_workday",
                   "type": "string"
                 }
               ]
@@ -612,7 +616,7 @@
           "description": "Rhythmus einer wiederkehrenden Aufgabe; braucht due und geht nur an Aufgaben ohne parent_id. Beispiele: jeden Freitag {\"every\":1,\"unit\":\"week\",\"weekdays\":[\"fr\"],\"from\":\"due\"}, jeden Monatsletzten {\"every\":1,\"unit\":\"month\",\"day\":\"last\",\"from\":\"due\"}, 3 Monate nach Erledigung {\"every\":3,\"unit\":\"month\",\"from\":\"done\"}. Wird die Aufgabe erledigt oder verworfen, legt der Server die nächste Instanz an (mit neuer Fälligkeit, ohne Unteraufgaben und Kommentare). null beendet die Serie.",
           "properties": {
             "day": {
-              "description": "Nur bei unit month und year: Tag des Monats 1–31 (in kürzeren Monaten der letzte) oder \"last\" (immer der Monatsletzte). Bei year gilt er im Monat des Ankers: bei from due im Monat der Fälligkeit (etwa day 28 für jeden 28.02. oder \"last\" für jeden Februarletzten), bei from done im Monat der Erledigung. Fehlt er, gilt bei from due der Tag der Fälligkeit, bei from done der Tag der Erledigung.",
+              "description": "Nur bei unit month und year: Tag des Monats 1–31 (in kürzeren Monaten der letzte), \"last\" (immer der Monatsletzte) oder \"last_workday\" (letzter Werktag Mo–Fr; fällt der Monatsletzte aufs Wochenende, der Freitag davor; Feiertage zählen nicht). Bei year gilt er im Monat des Ankers: bei from due im Monat der Fälligkeit (etwa day 28 für jeden 28.02. oder \"last\" für jeden Februarletzten), bei from done im Monat der Erledigung. Fehlt er, gilt bei from due der Tag der Fälligkeit, bei from done der Tag der Erledigung.",
               "oneOf": [
                 {
                   "maximum": 31,
@@ -621,6 +625,10 @@
                 },
                 {
                   "const": "last",
+                  "type": "string"
+                },
+                {
+                  "const": "last_workday",
                   "type": "string"
                 }
               ]
