@@ -131,7 +131,7 @@ test("Wegklicken gilt für den Tag: bleibt nach Neuladen weg, morgen ist es wied
     await expect.poll(async () => (await serverFocus(page)).dismissed_on).toBe(today());
 
     await reloadApp(page);
-    await expect(page.getByRole("heading", { name: "Heute" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Heute", exact: true })).toBeVisible();
     await expect(section(page)).toHaveCount(0);
 
     // The next day it is back by itself (the stored day is yesterday's then).
@@ -202,7 +202,7 @@ test("Weggeklickt auf einem anderen Gerät: Heute liest es beim Wechsel", async 
     // Another browser clicks it away.
     await putFocus(page, { dismissed_on: today() });
     await page.locator(".sidebar").getByRole("link", { name: "Heute" }).click();
-    await expect(page.getByRole("heading", { name: "Heute" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Heute", exact: true })).toBeVisible();
     await expect(section(page)).toHaveCount(0);
   } finally {
     await cleanUp(page, id);
