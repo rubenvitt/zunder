@@ -8,8 +8,9 @@
 //! inbox tasks and then removes the files ([`ShareInbox::remove`]). Until
 //! then the items wait there, offline and across restarts.
 //!
-//! Files that cannot be read as an item (broken JSON, too large, nothing in
-//! them) are renamed to `<name>.invalid` so they are not read again.
+//! Files that cannot be an item (broken JSON, too large, nothing in them)
+//! are renamed to `<name>.invalid` so they are not read again; files that
+//! merely failed to read (permissions, I/O) stay for the next call.
 
 use std::fs;
 use std::io::ErrorKind;
@@ -104,7 +105,9 @@ impl ShareInbox {
                 Ok(Some(item)) => items.push(item),
                 // Removed in between (another call took it).
                 Ok(None) => {}
-                Err(()) => {
+                // Not readable right now (permissions, I/O): try again later.
+                Err(ReadFailure::Io) => {}
+                Err(ReadFailure::Invalid) => {
                     let mut aside = path.clone().into_os_string();
                     aside.push(".invalid");
                     let _ = fs::rename(&path, aside);
@@ -138,28 +141,36 @@ impl ShareInbox {
     }
 }
 
-/// `Ok(None)`: the file is gone; `Err(())`: not a usable item.
-fn read_item(path: &Path, id: &str) -> std::result::Result<Option<SharedItem>, ()> {
+/// Why a file did not yield an item.
+enum ReadFailure {
+    /// The content cannot be an item: set the file aside.
+    Invalid,
+    /// Reading failed for now: keep the file.
+    Io,
+}
+
+/// `Ok(None)`: the file is gone.
+fn read_item(path: &Path, id: &str) -> std::result::Result<Option<SharedItem>, ReadFailure> {
     let meta = match fs::metadata(path) {
         Ok(meta) => meta,
         Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(_) => return Err(()),
+        Err(_) => return Err(ReadFailure::Io),
     };
     if !meta.is_file() || meta.len() > MAX_FILE_BYTES {
-        return Err(());
+        return Err(ReadFailure::Invalid);
     }
     let bytes = match fs::read(path) {
         Ok(bytes) => bytes,
         Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(_) => return Err(()),
+        Err(_) => return Err(ReadFailure::Io),
     };
-    let mut item: SharedItem = serde_json::from_slice(&bytes).map_err(|_| ())?;
+    let mut item: SharedItem = serde_json::from_slice(&bytes).map_err(|_| ReadFailure::Invalid)?;
     // The file name is what `remove` deletes; it wins over the content.
     item.id = id.to_owned();
     if item.has_content() {
         Ok(Some(item))
     } else {
-        Err(())
+        Err(ReadFailure::Invalid)
     }
 }
 

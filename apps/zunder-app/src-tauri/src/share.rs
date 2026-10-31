@@ -4,8 +4,8 @@
 //! inbox tasks with `share_take` and `share_done`.
 //!
 //! The app tells the web UI with `zunder://share` when items wait: at
-//! start, on return to the foreground and when a check every few seconds
-//! finds new ones (on the desktop the app keeps running while someone
+//! start, on return to the foreground and on a check every few seconds
+//! while any wait (on the desktop the app keeps running while someone
 //! shares in Safari; on iOS it only runs in the foreground).
 
 use std::time::Duration;
@@ -84,22 +84,18 @@ fn emit(app: &AppHandle, count: usize) {
     }
 }
 
-/// Watches the inbox: an event whenever the set of waiting items changes
-/// and is not empty.
+/// Watches the inbox: an event on every check while items wait, so items
+/// whose removal failed are retried (the web UI skips what it already
+/// created or could not create in this session).
 pub fn start(app: AppHandle) {
     let Some(inbox) = app.state::<AppState>().share.clone() else {
         return;
     };
     tauri::async_runtime::spawn(async move {
-        let mut seen: Vec<String> = Vec::new();
         loop {
             match inbox.ids() {
-                Ok(ids) => {
-                    if !ids.is_empty() && ids != seen {
-                        emit(&app, ids.len());
-                    }
-                    seen = ids;
-                }
+                Ok(ids) if !ids.is_empty() => emit(&app, ids.len()),
+                Ok(_) => {}
                 Err(e) => log::warn!("share inbox not readable: {e}"),
             }
             tokio::time::sleep(POLL).await;
