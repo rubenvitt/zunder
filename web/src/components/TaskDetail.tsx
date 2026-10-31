@@ -55,6 +55,8 @@ import { MarkdownField } from "./MarkdownField";
 import { CheckButton, ProgressBar, SubtaskTree } from "./TaskBits";
 import { RecurrenceEditor, RecurrenceField, SeriesLinks } from "./RecurrenceField";
 import { Dependencies, taskHref } from "./TaskLinks";
+import { JevSuggestion } from "./JevSuggestion";
+import { jevConfigured } from "../state/jev";
 
 /** Only http(s) and mailto links become clickable; anything else (javascript:, data: …) is shown as text. */
 export function safeHref(url: string): string | undefined {
@@ -337,6 +339,11 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
 
           <Show when={t().status === "done" && hasOpenChildren(index().childrenOf(t().id))}>
             <p class="notice notice-warning">Hinweis: Diese Aufgabe ist erledigt, hat aber noch offene Unteraufgaben.</p>
+          </Show>
+
+          {/* Jev's proposal for inbox tasks (root tasks only; subtasks live with their root). */}
+          <Show when={location().kind === "inbox" && !t().parent_id && !isClosed(t().status) && jevConfigured()}>
+            <JevSuggestion task={t()} onForWhom={setForWhom} />
           </Show>
 
           <div class="props">

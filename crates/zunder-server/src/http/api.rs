@@ -28,6 +28,7 @@ use crate::focus::{FocusSettings, FocusUpdate};
 use crate::intake::{ChannelInfo, CreatedChannel};
 use crate::oauth;
 use crate::settings::{TimingCheck, TimingSettings, TimingUpdate};
+use crate::suggest::{JevSettings, JevUpdate, Suggestion};
 use crate::timing::TimingProject;
 
 /// Body limit of `/api` requests except push.
@@ -63,6 +64,16 @@ pub fn routes() -> Router<App> {
                 .delete(reset_timing_settings),
         )
         .route("/settings/timing/check", post(check_timing))
+        .route(
+            "/settings/jev",
+            get(jev_settings)
+                .put(update_jev_settings)
+                .delete(reset_jev_settings),
+        )
+        .route(
+            "/tasks/{id}/suggestion",
+            get(task_suggestion).post(suggest_task),
+        )
         .route("/settings/timing/projects", get(timing_projects))
         .route(
             "/settings/focus",
@@ -425,6 +436,57 @@ async fn reset_timing_settings(
 ) -> AppResult<Json<TimingSettings>> {
     require_browser_for_settings(&principal)?;
     Ok(Json(app.reset_timing_settings().await?))
+}
+
+async fn jev_settings(
+    State(app): State<App>,
+    principal: Principal,
+) -> AppResult<Json<JevSettings>> {
+    require_browser_for_settings(&principal)?;
+    Ok(Json(app.jev_settings().await?))
+}
+
+async fn update_jev_settings(
+    State(app): State<App>,
+    principal: Principal,
+    ApiJson(body): ApiJson<JevUpdate>,
+) -> AppResult<Json<JevSettings>> {
+    require_browser_for_settings(&principal)?;
+    Ok(Json(app.update_jev_settings(body).await?))
+}
+
+async fn reset_jev_settings(
+    State(app): State<App>,
+    principal: Principal,
+) -> AppResult<Json<JevSettings>> {
+    require_browser_for_settings(&principal)?;
+    Ok(Json(app.reset_jev_settings().await?))
+}
+
+/// The stored proposal (`null` when there is none).
+async fn task_suggestion(
+    State(app): State<App>,
+    _principal: Principal,
+    Path(id): Path<String>,
+) -> AppResult<Json<Option<Suggestion>>> {
+    let id = parse_id(&id)?;
+    Ok(Json(app.task_suggestion(id).await?))
+}
+
+/// Asks the decision model; only browser sessions and the app's devices,
+/// so an agent's token cannot send tasks out.
+async fn suggest_task(
+    State(app): State<App>,
+    principal: Principal,
+    Path(id): Path<String>,
+) -> AppResult<Json<Suggestion>> {
+    if !principal.is_browser() && !matches!(principal.kind, PrincipalKind::Device { .. }) {
+        return Err(AppError::Forbidden(
+            "Vorschläge holt nur die Oberfläche (Browser oder App)".into(),
+        ));
+    }
+    let id = parse_id(&id)?;
+    Ok(Json(app.suggest_task(id).await?))
 }
 
 async fn check_timing(

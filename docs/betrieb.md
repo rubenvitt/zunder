@@ -181,6 +181,16 @@ Gut zu wissen:
 - Ein Termin hängt fest an seiner Aufgabe: Verschieben ändert ihn, Erledigen setzt ein ✓ davor, Verwerfen oder Löschen entfernt ihn. Fälligkeiten nur mit Datum (ohne Uhrzeit) erscheinen nicht.
 - Für Skripte gibt es denselben Feed unter `/api/calendar.ics` mit einem API-Token.
 
+## Vorschläge mit Jev
+
+Optional schlägt das Entscheidungsmodell Jev (TypeSafe AI) für Inbox-Aufgaben Gewicht, „für wen“ und Ort vor. Details im [Vertrag, 4.5](superpowers/plans/2026-10-11-zunder-implementation.md#45-vorschläge-für-die-inbox-jev).
+
+1. In der Web-UI unter **Einstellungen → Jev** den API-Key von TypeSafe eintragen; Version leer lassen (fest `jev-1.14.0`) oder eine andere feste Version nennen.
+2. Bereiche, die nie hinausgehen sollen, als **privat** anhaken.
+3. In der Detailansicht einer Inbox-Aufgabe **Vorschlag holen**. Erst dann gehen Titel, Beschreibung und die Namen der aktiven, nicht privaten Projekte und Bereiche an Jev.
+
+Es gibt keine Umgebungsvariable dafür; der Key liegt in der Tabelle `settings` (Klartext, also auch in den Backups). Jede Anfrage kostet bei TypeSafe Tokens; die Einstellungen zeigen die Summe und wie oft du Vorschlägen gefolgt bist.
+
 ## MCP verbinden
 
 Endpoint: `https://zunder.rubeen.dev/mcp` (Streamable HTTP, JSON-RPC 2.0, Protokollversion `2025-06-18`). Werkzeuge: siehe Vertrag, Abschnitt 4, und [`umstieg.md`](umstieg.md) für die Zuordnung zu den ClickUp-Werkzeugen.

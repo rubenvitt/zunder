@@ -27,7 +27,7 @@ use uuid::Uuid;
 use zunder_core::blocking::BlockingBefore;
 use zunder_core::hlc::system_time_ms;
 use zunder_core::ids::Id;
-use zunder_core::model::fields;
+use zunder_core::model::{fields, Location};
 use zunder_core::numbering::{pending_refs, Scope};
 use zunder_core::recurrence::{CompletionsBefore, LocalZone};
 use zunder_core::{
@@ -48,6 +48,7 @@ use crate::settings::{
     EffectiveTiming, TimingCheck, TimingOverrides, TimingSettings, TimingUpdate, TIMING_PREFIX,
     TIMING_PROJECT_KEY, TIMING_TOKEN_KEY,
 };
+use crate::suggest::{self, JevSettings, JevStored, JevUpdate, Suggestion, JEV_PREFIX};
 use crate::timing::{TimingApi, TimingClient, TimingProject};
 
 /// Node ID of the server's own clock.
@@ -988,6 +989,111 @@ impl App {
             Ok(FocusSettings::from_rows(&db::settings(conn, FOCUS_PREFIX)?))
         })
         .await
+    }
+
+    // ----- proposals of the decision model (Jev, ZUN-52) -------------------------------
+
+    /// The stored Jev settings.
+    async fn jev_stored(&self) -> AppResult<JevStored> {
+        self.with_reader(|conn| Ok(JevStored::from_rows(&db::settings(conn, JEV_PREFIX)?)))
+            .await
+    }
+
+    /// The stored proposals.
+    async fn stored_suggestions(&self) -> AppResult<Vec<Suggestion>> {
+        self.with_reader(|conn| {
+            Ok(db::suggestions(conn)?
+                .iter()
+                .filter_map(|b| serde_json::from_str(b).ok())
+                .collect())
+        })
+        .await
+    }
+
+    /// The Jev settings with the follow rate of the stored proposals.
+    pub async fn jev_settings(&self) -> AppResult<JevSettings> {
+        let stored = self.jev_stored().await?;
+        let suggestions = self.stored_suggestions().await?;
+        let stats = self.read(|state| suggest::stats(state, &suggestions));
+        Ok(JevSettings::build(&stored, stats))
+    }
+
+    /// Stores changed Jev settings.
+    pub async fn update_jev_settings(&self, update: JevUpdate) -> AppResult<JevSettings> {
+        let rows = update.validated()?;
+        self.with_writer(move |conn| {
+            let now = now_ms();
+            let tx = conn.transaction()?;
+            for (key, value) in rows.0 {
+                match value {
+                    Some(v) => db::set_setting(&tx, key, &v, now)?,
+                    None => db::delete_setting(&tx, key)?,
+                }
+            }
+            tx.commit()?;
+            Ok(())
+        })
+        .await?;
+        self.jev_settings().await
+    }
+
+    /// Removes the Jev settings (proposals stay for the follow rate).
+    pub async fn reset_jev_settings(&self) -> AppResult<JevSettings> {
+        self.with_writer(|conn| {
+            db::delete_settings(conn, JEV_PREFIX)?;
+            Ok(())
+        })
+        .await?;
+        self.jev_settings().await
+    }
+
+    /// The stored proposal of a task, if any.
+    pub async fn task_suggestion(&self, task_id: Id) -> AppResult<Option<Suggestion>> {
+        let key = task_id.to_string();
+        self.with_reader(move |conn| {
+            Ok(db::suggestion(conn, &key)?.and_then(|b| serde_json::from_str(&b).ok()))
+        })
+        .await
+    }
+
+    /// Asks the decision model about an inbox task and stores the proposal.
+    /// Changes nothing on the task.
+    pub async fn suggest_task(&self, task_id: Id) -> AppResult<Suggestion> {
+        let stored = self.jev_stored().await?;
+        let token = stored.token.clone().ok_or_else(|| {
+            AppError::Conflict("Jev ist nicht eingerichtet (Einstellungen).".into())
+        })?;
+        let model = stored.model().to_owned();
+        let (body, places) = self.read(|state| {
+            let task = state
+                .task(task_id)
+                .filter(|t| !t.deleted)
+                .ok_or_else(|| AppError::NotFound("Aufgabe nicht gefunden".into()))?;
+            if state.effective_location(task_id) != Some(Location::Inbox) {
+                return Err(AppError::Conflict(
+                    "Vorschläge gibt es nur für Aufgaben in der Inbox".into(),
+                ));
+            }
+            let places = suggest::place_options(state, &stored.private_areas);
+            Ok((suggest::request_body(&model, &task, &places), places))
+        })?;
+        let answer = suggest::ask(
+            &self.inner.http,
+            &self.inner.config.jev_base_url,
+            &token,
+            &body,
+        )
+        .await?;
+        let suggestion =
+            suggest::parse_response(&answer, task_id, &model, &places, format_ms(now_ms()))?;
+        let json = serde_json::to_string(&suggestion).map_err(anyhow::Error::from)?;
+        let (key, model) = (task_id.to_string(), suggestion.model.clone());
+        self.with_writer(move |conn| {
+            db::upsert_suggestion(conn, &key, &model, &json, now_ms())?;
+            Ok(())
+        })
+        .await?;
+        Ok(suggestion)
     }
 
     // ----- calendar feed ---------------------------------------------------------------

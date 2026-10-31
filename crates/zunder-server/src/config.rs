@@ -54,6 +54,9 @@ pub struct Config {
     /// Base URL of the Timing API. Always [`crate::timing::DEFAULT_BASE_URL`]
     /// from the environment; tests point it at a mock server.
     pub timing_base_url: Url,
+    /// Endpoint of the decision model (`POST /v1/systemone`). Always
+    /// [`crate::suggest::DEFAULT_BASE_URL`]; tests point it at a mock server.
+    pub jev_base_url: Url,
     pub bootstrap_token: Option<String>,
     pub dev_auth: bool,
     /// Local hour (0–23) of the nightly backup.
@@ -182,6 +185,7 @@ impl Config {
             session_secret,
             timing,
             timing_base_url: default_timing_base_url(),
+            jev_base_url: default_jev_base_url(),
             bootstrap_token: get("ZUNDER_BOOTSTRAP_TOKEN"),
             dev_auth,
             backup_hour,
@@ -201,6 +205,7 @@ impl Config {
             session_secret: DEV_SESSION_SECRET.to_owned(),
             timing: None,
             timing_base_url: default_timing_base_url(),
+            jev_base_url: default_jev_base_url(),
             bootstrap_token: None,
             dev_auth: false,
             backup_hour: 3,
@@ -234,6 +239,10 @@ impl Config {
     pub fn public_origin(&self) -> String {
         self.public_url.origin().ascii_serialization()
     }
+}
+
+fn default_jev_base_url() -> Url {
+    Url::parse(crate::suggest::DEFAULT_BASE_URL).expect("static URL is valid")
 }
 
 fn default_timing_base_url() -> Url {

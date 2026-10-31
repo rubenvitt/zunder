@@ -1,13 +1,15 @@
 // Server settings (browser session only): the Timing bridge for flames (stored
 // settings override the server's environment variables field by field) and the
-// calendar feed of flames and timed tasks, plus the link to the agent log.
+// calendar feed of flames and timed tasks, Jev for inbox proposals, plus the
+// link to the agent log.
 
 import { createMemo, createResource, createSignal, For, Show } from "solid-js";
 import { Icon } from "../components/Icon";
 import { isTauri } from "../platform/runtime";
 import { formatInstant } from "../sync/dates";
-import type { CalendarSettings, CreatedCalendarFeed, SettingSource, TimingProject, TimingSettings, TimingSettingsUpdate } from "../sync/types";
-import { api, now } from "../state/store";
+import type { CalendarSettings, CreatedCalendarFeed, JevSettings, JevSettingsUpdate, SettingSource, SuggestionTally, TimingProject, TimingSettings, TimingSettingsUpdate } from "../sync/types";
+import { setJevConfigured } from "../state/jev";
+import { api, areaList, now } from "../state/store";
 import { copyText, toast } from "../state/ui";
 
 export function SettingsView() {
@@ -37,6 +39,7 @@ function ServerSettings() {
       </header>
       <p class="muted">Einstellungen dieses Zunder-Servers. Sie gelten sofort und haben Vorrang vor den Umgebungsvariablen des Servers.</p>
       <TimingSection />
+      <JevSection />
       <CalendarSection />
       <section class="group settings-section" aria-label="KI-Protokoll">
         <h2>KI-Protokoll</h2>
@@ -235,6 +238,163 @@ function TimingSection() {
                     </button>
                   </Show>
                   <Show when={s().overridden}>
+                    <button class="btn btn-ghost" type="button" disabled={busy()} onClick={() => void reset()}>
+                      Zurücksetzen
+                    </button>
+                  </Show>
+                </div>
+              </form>
+            </>
+          )}
+        </Show>
+      </Show>
+    </section>
+  );
+}
+
+function tallyText(label: string, t: SuggestionTally): string {
+  if (t.decided === 0) return `${label}: noch nichts entschieden`;
+  return `${label}: ${t.followed} von ${t.decided} übernommen`;
+}
+
+/** Jev: key, pinned version and the areas that never leave the server. */
+function JevSection() {
+  const [settings, { mutate }] = createResource(async (): Promise<JevSettings | null> => {
+    try {
+      return await api().jevSettings();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Jev-Einstellungen konnten nicht geladen werden.", "error");
+      return null;
+    }
+  });
+  const [token, setToken] = createSignal("");
+  // null: untouched, the value in effect applies.
+  const [model, setModel] = createSignal<string | null>(null);
+  const [privateIds, setPrivateIds] = createSignal<string[] | null>(null);
+  const [busy, setBusy] = createSignal(false);
+
+  const activeAreas = createMemo(() => areaList().filter((a) => a.state === "active"));
+  const privateValue = () => privateIds() ?? settings()?.private_area_ids ?? [];
+  const samePrivate = (a: string[], b: string[]) => a.length === b.length && a.every((id) => b.includes(id));
+  const update = (): JevSettingsUpdate => {
+    const next: JevSettingsUpdate = {};
+    const s = settings();
+    if (token().trim()) next.token = token().trim();
+    const m = model();
+    if (m !== null && m.trim() !== (s?.model ?? "")) next.model = m.trim();
+    const p = privateIds();
+    if (p !== null && !samePrivate(p, s?.private_area_ids ?? [])) next.private_area_ids = p;
+    return next;
+  };
+  const dirty = () => Object.keys(update()).length > 0;
+
+  function loaded(next: JevSettings) {
+    mutate(next);
+    setJevConfigured(next.configured);
+    setToken("");
+    setModel(null);
+    setPrivateIds(null);
+  }
+
+  function togglePrivate(id: string, on: boolean) {
+    const current = privateValue().filter((x) => x !== id);
+    setPrivateIds(on ? [...current, id] : current);
+  }
+
+  async function save(e: Event) {
+    e.preventDefault();
+    if (!dirty() || busy()) return;
+    setBusy(true);
+    try {
+      loaded(await api().updateJevSettings(update()));
+      toast("Jev-Einstellungen gespeichert.");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Speichern fehlgeschlagen.", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reset() {
+    if (!confirm("Jev-Key, Version und private Bereiche entfernen? Gespeicherte Vorschläge bleiben, neue gibt es erst mit neuem Key.")) return;
+    setBusy(true);
+    try {
+      loaded(await api().resetJevSettings());
+      toast("Jev ist aus.");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Zurücksetzen fehlgeschlagen.", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section class="group settings-section" aria-label="Jev">
+      <h2>Jev (Vorschläge für die Inbox)</h2>
+      <p class="muted">
+        Jev ist ein Entscheidungsmodell von TypeSafe AI. In der Detailansicht einer Inbox-Aufgabe holst du auf Knopfdruck einen Vorschlag für Gewicht, „für wen“ und Ort.
+        Dabei gehen Titel, Beschreibung und die Namen deiner aktiven Projekte und Bereiche an Jev; private Bereiche nie. Übernommen wird nur, was du anklickst.
+      </p>
+      <Show when={settings() !== null} fallback={<p class="muted">Jev-Einstellungen nicht verfügbar.</p>}>
+        <Show when={settings()} fallback={<p class="muted">Lädt …</p>}>
+          {(s) => (
+            <>
+              <p class="notice" classList={{ "notice-success": s().configured }} data-testid="jev-status">
+                <Show when={s().configured} fallback="Nicht eingerichtet: keine Vorschläge.">
+                  Eingerichtet mit Key <code>{s().token_hint}</code>, Version <code>{s().model}</code>.
+                </Show>
+              </p>
+              <Show when={s().stats.asked > 0}>
+                <p class="muted jev-stats" data-testid="jev-stats">
+                  {s().stats.asked} Vorschläge, {s().stats.input_tokens} Eingabe-Tokens. {tallyText("Gewicht", s().stats.weight)}; {tallyText("für wen", s().stats.for_whom)};{" "}
+                  {tallyText("Ort", s().stats.place)}.
+                </p>
+              </Show>
+              <form class="form settings-form" onSubmit={save}>
+                <label>
+                  Jev-Key
+                  <input
+                    class="field"
+                    type="password"
+                    name="jev-token"
+                    autocomplete="off"
+                    spellcheck={false}
+                    placeholder={s().configured ? `Leer lassen, um den Key ${s().token_hint ?? ""} zu behalten` : "API-Key von TypeSafe AI"}
+                    value={token()}
+                    onInput={(e) => setToken(e.currentTarget.value)}
+                  />
+                </label>
+                <label>
+                  Version
+                  <input
+                    class="field"
+                    name="jev-model"
+                    autocomplete="off"
+                    spellcheck={false}
+                    placeholder={s().default_model}
+                    value={model() ?? (s().model === s().default_model ? "" : s().model)}
+                    onInput={(e) => setModel(e.currentTarget.value)}
+                  />
+                  <span class="hint">Feste Version, leer = {s().default_model}. Aliase wie jev-latest lehnt der Server ab.</span>
+                </label>
+                <fieldset class="form-field jev-fieldset">
+                  <legend>Private Bereiche (gehen nie an Jev)</legend>
+                  <div class="jev-areas">
+                    <For each={activeAreas()} fallback={<span class="muted">Keine aktiven Bereiche.</span>}>
+                      {(a) => (
+                        <label class="toggle small">
+                          <input type="checkbox" checked={privateValue().includes(a.id)} onChange={(e) => togglePrivate(a.id, e.currentTarget.checked)} />
+                          {a.name}
+                        </label>
+                      )}
+                    </For>
+                  </div>
+                </fieldset>
+                <div class="inline-group">
+                  <button class="btn btn-primary" type="submit" disabled={!dirty() || busy()}>
+                    Speichern
+                  </button>
+                  <Show when={s().configured || s().private_area_ids.length > 0 || s().model !== s().default_model}>
                     <button class="btn btn-ghost" type="button" disabled={busy()} onClick={() => void reset()}>
                       Zurücksetzen
                     </button>

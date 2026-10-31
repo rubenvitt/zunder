@@ -167,7 +167,7 @@ test("Timing in den Einstellungen eintragen, ändern und zurücksetzen", async (
     await expect(page.getByRole("heading", { name: "Einstellungen" })).toBeVisible();
     const status = page.getByTestId("timing-status");
     await expect(status).toContainText("Nicht eingerichtet");
-    const save = page.getByRole("button", { name: "Speichern" });
+    const save = page.getByRole("region", { name: "Timing" }).getByRole("button", { name: "Speichern" });
     await expect(save).toBeDisabled();
 
     await page.getByLabel("Timing-Token").fill("e2e-timing-token-1234");
@@ -190,9 +190,9 @@ test("Timing in den Einstellungen eintragen, ändern und zurücksetzen", async (
     await expect(status).toContainText("…1234");
 
     page.once("dialog", (d) => void d.accept());
-    await page.getByRole("button", { name: "Zurücksetzen" }).click();
+    await page.getByRole("region", { name: "Timing" }).getByRole("button", { name: "Zurücksetzen" }).click();
     await expect(status).toContainText("Nicht eingerichtet");
-    await expect(page.getByRole("button", { name: "Zurücksetzen" })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Timing" }).getByRole("button", { name: "Zurücksetzen" })).toHaveCount(0);
   } finally {
     await page.request.delete("/api/settings/timing", { headers: WEB_HEADERS });
   }
@@ -204,7 +204,7 @@ test("Timing-Projekt aus der Liste wählen", async ({ page }) => {
     await openApp(page, "#/einstellungen");
     const status = page.getByTestId("timing-status");
     await page.getByLabel("Timing-Token").fill("e2e-timing-token-1234");
-    await page.getByRole("button", { name: "Speichern" }).click();
+    await page.getByRole("region", { name: "Timing" }).getByRole("button", { name: "Speichern" }).click();
     await expect(status).toContainText("ohne Projekt");
 
     // Typing filters the projects; choosing one stores its self link.
@@ -215,7 +215,7 @@ test("Timing-Projekt aus der Liste wählen", async ({ page }) => {
     await list.getByRole("option", { name: "Arbeit › Zunder" }).click();
     await expect(field).toHaveValue("Arbeit › Zunder");
     await expect(page.getByTestId("timing-project-hint")).toContainText("/projects/2");
-    await page.getByRole("button", { name: "Speichern" }).click();
+    await page.getByRole("region", { name: "Timing" }).getByRole("button", { name: "Speichern" }).click();
     await expect(status).toContainText("Arbeit › Zunder");
     expect((await (await page.request.get("/api/settings/timing", { headers: WEB_HEADERS })).json()).project).toBe("/projects/2");
 
@@ -231,7 +231,7 @@ test("Timing-Projekt aus der Liste wählen", async ({ page }) => {
     await expect(list).toContainText("als Projekttitel gespeichert");
     await field.press("Escape");
     await expect(list).toHaveCount(0);
-    await page.getByRole("button", { name: "Speichern" }).click();
+    await page.getByRole("region", { name: "Timing" }).getByRole("button", { name: "Speichern" }).click();
     await expect(status).toContainText("Neues Projekt");
   } finally {
     await page.request.delete("/api/settings/timing", { headers: WEB_HEADERS });
