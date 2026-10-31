@@ -225,6 +225,8 @@ Basis: `ZUNDER_PUBLIC_URL`. JSON, UTF-8. Fehler: `{"error":{"code":…,"message"
 | `GET` / `PUT` / `DELETE /api/settings/timing`, `POST /api/settings/timing/check`, `GET /api/settings/timing/projects` | Timing-Einstellungen (nur Session-Auth), Details in 4.2 |
 | `GET` / `PUT /api/settings/focus` | „Erst für dich“ in Heute: Tag des Wegklickens und für einen Tag gewählte Aufgabe (Session-Auth oder Geräte-Token der App), Details in 5.1 |
 | `GET` / `POST` / `DELETE /api/settings/calendar` | Kalender-Feed einrichten, ersetzen, abschalten (nur Session-Auth), Details in 4.4 |
+| `GET` / `PUT` / `DELETE /api/settings/jev` | Jev für Inbox-Vorschläge: Key, feste Version, private Bereiche, Übernahmequote (nur Session-Auth), Details in 4.5 |
+| `GET` / `POST /api/tasks/{id}/suggestion` | Vorschlag für eine Inbox-Aufgabe lesen bzw. bei Jev holen (`POST` nur Browser-Sitzung oder Geräte-Token), Details in 4.5 |
 | `GET /calendar/<feed-token>.ics` | Kalender-Feed (iCalendar) ohne weitere Auth, der Feed-Token im Pfad ist der Zugang (4.4) |
 | `GET /api/calendar.ics` | derselbe Feed mit der üblichen `/api`-Auth (z. B. API-Token) (4.4) |
 | `POST /intake/v1/tasks` | Eingang: Aufgabe in das feste Projekt eines Eingangs einwerfen, nur mit `Authorization: Bearer zi_…` (Details 3.3) |
@@ -457,6 +459,22 @@ Ein abonnierbarer iCalendar-Feed (RFC 5545) für Fantastical, Apple Kalender und
   - `GET /api/settings/calendar` → `{"enabled", "created_at"}` (`created_at` RFC 3339 UTC oder `null`); die Adresse selbst gibt es hier nie.
   - `POST /api/settings/calendar` (ohne Body) erzeugt einen neuen Token und ersetzt einen vorhandenen (dessen Adressen gelten danach nicht mehr) → `201` `{"enabled": true, "created_at", "url", "url_all"}` mit `url` = `<ZUNDER_PUBLIC_URL>/calendar/<token>.ics` und `url_all` = dieselbe Adresse mit `?scope=all`; nur in dieser Antwort.
   - `DELETE /api/settings/calendar` entfernt den Token → `200` `{"enabled": false, "created_at": null}`.
+
+### 4.5 Vorschläge für die Inbox (Jev)
+
+Ein Entscheidungsmodell schlägt für eine Inbox-Aufgabe Gewicht, „für wen“ und Ort (Projekt oder Bereich) vor (ZUN-52). Es sind nur Vorschläge: Nichts ändert eine Aufgabe, die Web-UI bietet jeden Vorschlag zum Übernehmen an. Umgesetzt in `zunder_server::suggest`.
+
+- **Modell:** TypeSafe Jev, `POST https://api.typesafe.ai/v1/systemone` mit `Authorization: Bearer <Key>`, eine Anfrage mit drei Fragen: `gewicht` (`brand`, `glut`, `rauch`, `asche`, `unklar`), `fuer_wen` (`mich`, `uns`, `andere`, `unklar`) und `ort` (Projekte, dann Bereiche, je mit Name und Bereich, plus `nichts`; höchstens 254 Orte). Jede Frage hat eine Ausweichantwort, sonst liest ein Modell mit festem Schema fehlende Information als Nein. `unklar`/`nichts` ergeben keinen Vorschlag. Die Version ist fest (Standard `jev-1.14.0`); Aliase wie `jev-latest` und `jev-preview` lehnt der Server ab, weil sie Antworten ohne Ankündigung verschieben.
+- **Was hinausgeht:** Titel, Beschreibung (höchstens 2000 Zeichen) und Typ der Aufgabe sowie die Namen der aktiven Projekte in aktiven Bereichen und der aktiven Bereiche. Private Bereiche (Einstellung) gehen nie hinaus, weder ihr Name noch ihre Projekte, und werden nie vorgeschlagen. Gefragt wird nur auf Knopfdruck pro Aufgabe, nie im Hintergrund.
+- **Vorschlag holen:** `POST /api/tasks/{id}/suggestion` (ohne Body; Browser-Sitzung mit `X-Zunder-Client` oder Geräte-Token, API- und OAuth-Tokens → `403`) für eine lebende Aufgabe, die (über ihre Wurzel) in der Inbox liegt → `200` mit dem Vorschlag. Ohne Key `409 conflict`, nicht in der Inbox `409`, unbekannt `404`; lehnt Jev den Key ab (`401`/`403`), antwortet es mit `429` oder ist es nicht erreichbar → `503 unavailable` mit deutscher Meldung. Ein neuer Vorschlag ersetzt den alten.
+- **Vorschlag:** `{"task_id", "model", "created_at", "weight", "weight_probabilities", "for_whom", "for_whom_probabilities", "place", "place_probabilities", "weight_probability", "for_whom_probability", "place_probability", "input_tokens"}`; `weight`/`for_whom` sind Werte aus 2.2 oder `null` (unklar), `place` ist `{"kind": "project"|"area", "id", "name"}` oder `null`, die `*_probabilities` sind die vollständigen Verteilungen (Orte nach ID bzw. `nichts`), `*_probability` die Wahrscheinlichkeit des Vorschlags. Die Konfidenz ist keine Trefferquote. `GET /api/tasks/{id}/suggestion` (jede `/api`-Auth) liefert den gespeicherten Vorschlag oder `null`.
+- **Einstellungen** (nur Browser-Sitzung, sonst `403`, schreibende mit `X-Zunder-Client`; keine Umgebungsvariable):
+  - `GET /api/settings/jev` → `{"configured", "token_hint", "model", "default_model", "private_area_ids", "stats"}`; der Key selbst kommt nie zurück, `token_hint` wie bei Timing (4.2).
+  - `stats` = `{"asked", "weight", "for_whom", "place", "input_tokens"}`, je Frage `{"decided", "followed"}`: Wie oft der Besitzer seit dem Vorschlag entschieden hat (die Aufgabe hat einen Wert bzw. liegt nicht mehr in der Inbox) und wie oft das dem Vorschlag entspricht. Abgeleitet aus den Aufgaben, also ohne Extra-Klick.
+  - `PUT /api/settings/jev` mit `{"token"?, "model"?, "private_area_ids"?}` (unbekannte Felder → `400`): fehlender oder leerer `token` behält den gespeicherten (höchstens 2048 Zeichen, ohne Leer- und Steuerzeichen), `model` `""` = Standard (Buchstaben, Ziffern, `.`, `-`, `_`, höchstens 64 Zeichen, keine Aliase), `private_area_ids` ersetzt die Liste (gültige IDs). Antwort wie `GET`.
+  - `DELETE /api/settings/jev` entfernt Key, Version und private Bereiche; gespeicherte Vorschläge bleiben. Antwort wie `GET`.
+- **Speicher (Migration 0008):** Einstellungen als `settings`-Zeilen `jev.token` (Klartext, also auch in den Backups), `jev.model`, `jev.private_areas` (JSON-Liste); Vorschläge in `suggestions` (task_id, model, body = Vorschlag als JSON, created_at in Unix-Millisekunden), ein Vorschlag pro Aufgabe.
+- **Web-UI:** Einstellungen → „Jev“ (Key, Version, private Bereiche als Häkchen, Übernahmequote, Zurücksetzen). In der Detailansicht einer offenen Inbox-Wurzelaufgabe erscheint, sobald Jev eingerichtet ist, „Vorschlag holen“; danach je Frage der Vorschlag mit Wahrscheinlichkeit und „Übernehmen“ bzw. „Verschieben“, dazu „Alles übernehmen“ (verschiebt zuletzt) und „Neu fragen“. In der App gibt es das noch nicht (kein App-Befehl, die Einstellungen brauchen ohnehin die Browser-Sitzung).
 
 ## 5. Web-UI
 

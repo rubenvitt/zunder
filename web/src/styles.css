@@ -3791,3 +3791,60 @@ a.sync {
   border-color: var(--warning);
   color: var(--text);
 }
+
+/* Jev's proposal for inbox tasks (TaskDetail). */
+.jev-suggestion {
+  margin: 0.4rem 0 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-small);
+  font-size: 0.86rem;
+}
+.jev-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+}
+.jev-rows {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+.jev-rows li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.5rem;
+  min-height: 1.6rem;
+}
+.jev-label {
+  min-width: 4.5rem;
+  color: var(--text-2);
+}
+.jev-areas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.jev-stats {
+  margin: 0.3rem 0 0;
+}
+.jev-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.jev-fieldset legend {
+  padding: 0;
+  margin-bottom: 0.3rem;
+}
+.form .jev-areas label.toggle {
+  flex-direction: row;
+  margin-top: 0;
+}

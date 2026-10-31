@@ -24,6 +24,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0005_cuid2.sql"),
     include_str!("../migrations/0006_comments.sql"),
     include_str!("../migrations/0007_intake.sql"),
+    include_str!("../migrations/0008_suggestions.sql"),
 ];
 
 /// The schema version this binary expects.
@@ -634,6 +635,41 @@ fn history_rows(mut rows: rusqlite::Rows<'_>) -> anyhow::Result<Vec<HistoryRow>>
 }
 
 // ----- settings ---------------------------------------------------------------
+
+/// Stores (or replaces) the suggestion for a task (`body` as JSON).
+pub fn upsert_suggestion(
+    conn: &Connection,
+    task_id: &str,
+    model: &str,
+    body: &str,
+    now: i64,
+) -> anyhow::Result<()> {
+    conn.execute(
+        "INSERT INTO suggestions (task_id, model, body, created_at) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT (task_id) DO UPDATE SET model = excluded.model, body = excluded.body,
+           created_at = excluded.created_at",
+        params![task_id, model, body, now],
+    )?;
+    Ok(())
+}
+
+/// The stored suggestion body (JSON) of a task.
+pub fn suggestion(conn: &Connection, task_id: &str) -> anyhow::Result<Option<String>> {
+    Ok(conn
+        .query_row(
+            "SELECT body FROM suggestions WHERE task_id = ?1",
+            [task_id],
+            |r| r.get(0),
+        )
+        .optional()?)
+}
+
+/// All stored suggestion bodies (JSON).
+pub fn suggestions(conn: &Connection) -> anyhow::Result<Vec<String>> {
+    let mut stmt = conn.prepare_cached("SELECT body FROM suggestions ORDER BY created_at")?;
+    let rows = stmt.query_map([], |r| r.get(0))?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
 
 /// All settings whose key starts with `prefix`, by key.
 pub fn settings(conn: &Connection, prefix: &str) -> anyhow::Result<BTreeMap<String, String>> {

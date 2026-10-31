@@ -429,3 +429,64 @@ export interface OAuthClient {
   created_at?: string;
   last_used_at?: string | null;
 }
+
+/** How often stored proposals were followed, per question. */
+export interface SuggestionTally {
+  /** Proposals the owner has decided on since (the task has a value now). */
+  decided: number;
+  /** Of those, how many equal the proposal. */
+  followed: number;
+}
+
+export interface SuggestionStats {
+  /** Tasks with a stored proposal. */
+  asked: number;
+  weight: SuggestionTally;
+  for_whom: SuggestionTally;
+  place: SuggestionTally;
+  input_tokens: number;
+}
+
+/** `GET /api/settings/jev`: the decision model for inbox proposals. Never contains the key. */
+export interface JevSettings {
+  configured: boolean;
+  token_hint: string | null;
+  /** Pinned version in effect, e.g. "jev-1.14.0". */
+  model: string;
+  default_model: string;
+  /** Areas whose tasks, projects and names never go to Jev. */
+  private_area_ids: string[];
+  stats: SuggestionStats;
+}
+
+/** `PUT /api/settings/jev`: missing/empty token keeps it; model "" = default; private_area_ids replaces the list. */
+export interface JevSettingsUpdate {
+  token?: string;
+  model?: string;
+  private_area_ids?: string[];
+}
+
+export interface PlaceProposal {
+  kind: "area" | "project";
+  id: string;
+  name: string;
+}
+
+/** `GET`/`POST /api/tasks/{id}/suggestion`: Jev's proposal for an inbox task. */
+export interface Suggestion {
+  task_id: string;
+  model: string;
+  created_at: string;
+  /** null: the model found it unclear. */
+  weight: Weight | null;
+  weight_probabilities: Record<string, number>;
+  for_whom: ForWhom | null;
+  for_whom_probabilities: Record<string, number>;
+  /** null: nothing fits. */
+  place: PlaceProposal | null;
+  place_probabilities: Record<string, number>;
+  weight_probability: number | null;
+  for_whom_probability: number | null;
+  place_probability: number | null;
+  input_tokens: number;
+}

@@ -14,12 +14,15 @@ import type {
   FlameResult,
   HistoryEntry,
   IntakeChannel,
+  JevSettings,
+  JevSettingsUpdate,
   Me,
   OAuthClient,
   PullResponse,
   PushRequest,
   PushResponse,
   Snapshot,
+  Suggestion,
   TimingCheck,
   TimingProject,
   TimingSettings,
@@ -98,6 +101,15 @@ export interface ApiClient {
   /** "Erst für dich": day clicked away and the task picked for a day. */
   focusSettings(): Promise<FocusSettings>;
   updateFocusSettings(update: FocusSettingsUpdate): Promise<FocusSettings>;
+  /** Jev, the decision model for inbox proposals. */
+  jevSettings(): Promise<JevSettings>;
+  updateJevSettings(update: JevSettingsUpdate): Promise<JevSettings>;
+  /** Removes key, version and private areas; stored proposals stay. */
+  resetJevSettings(): Promise<JevSettings>;
+  /** The stored proposal for a task (null: none yet). */
+  taskSuggestion(taskId: string): Promise<Suggestion | null>;
+  /** Asks Jev for an inbox task and stores the answer. */
+  suggestTask(taskId: string): Promise<Suggestion>;
   calendarSettings(): Promise<CalendarSettings>;
   /** Creates the feed token; an existing one stops working. */
   createCalendarFeed(): Promise<CreatedCalendarFeed>;
@@ -257,6 +269,26 @@ export class HttpTransport implements SyncTransport, ApiClient {
 
   updateFocusSettings(update: FocusSettingsUpdate): Promise<FocusSettings> {
     return this.request("PUT", "/api/settings/focus", update);
+  }
+
+  jevSettings(): Promise<JevSettings> {
+    return this.request("GET", "/api/settings/jev");
+  }
+
+  updateJevSettings(update: JevSettingsUpdate): Promise<JevSettings> {
+    return this.request("PUT", "/api/settings/jev", update);
+  }
+
+  resetJevSettings(): Promise<JevSettings> {
+    return this.request("DELETE", "/api/settings/jev");
+  }
+
+  taskSuggestion(taskId: string): Promise<Suggestion | null> {
+    return this.request<Suggestion | null>("GET", `/api/tasks/${encodeURIComponent(taskId)}/suggestion`).then((s) => s ?? null);
+  }
+
+  suggestTask(taskId: string): Promise<Suggestion> {
+    return this.request("POST", `/api/tasks/${encodeURIComponent(taskId)}/suggestion`);
   }
 
   calendarSettings(): Promise<CalendarSettings> {

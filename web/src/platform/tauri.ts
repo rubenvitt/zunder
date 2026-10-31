@@ -28,6 +28,8 @@ import type {
   FocusSettingsUpdate,
   HistoryEntry,
   IntakeChannel,
+  JevSettings,
+  JevSettingsUpdate,
   Me,
   OAuthClient,
   Op,
@@ -36,6 +38,7 @@ import type {
   PushResponse,
   Rejection,
   Snapshot,
+  Suggestion,
   TimingCheck,
   TimingProject,
   TimingSettings,
@@ -459,6 +462,27 @@ export class TauriTransport implements SyncTransport, ApiClient {
 
   updateFocusSettings(update: FocusSettingsUpdate): Promise<FocusSettings> {
     return this.app.focusSet(update);
+  }
+
+  jevSettings(): Promise<JevSettings> {
+    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+  }
+
+  updateJevSettings(_update: JevSettingsUpdate): Promise<JevSettings> {
+    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+  }
+
+  resetJevSettings(): Promise<JevSettings> {
+    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+  }
+
+  // Proposals need the server; the app has no command for them yet (the panel hides itself).
+  taskSuggestion(_taskId: string): Promise<Suggestion | null> {
+    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+  }
+
+  suggestTask(_taskId: string): Promise<Suggestion> {
+    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
   }
 
   calendarSettings(): Promise<CalendarSettings> {

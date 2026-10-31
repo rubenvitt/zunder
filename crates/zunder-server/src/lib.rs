@@ -13,6 +13,7 @@
 //! - [`focus`]: "Erst für dich" in Heute (day clicked away, task picked)
 //! - [`intake`]: intake channels (write-only task creation for other servers)
 //! - [`settings`]: settings changed in the web UI (Timing bridge)
+//! - [`suggest`]: proposals for inbox tasks from a decision model (Jev)
 //! - [`timing`]: client for the Timing web API
 //! - [`backup`]: nightly `VACUUM INTO` backups
 //! - [`healthcheck`]: client for the `healthcheck` subcommand
@@ -32,6 +33,7 @@ pub mod intake;
 pub mod mcp;
 pub mod oauth;
 pub mod settings;
+pub mod suggest;
 pub mod timing;
 pub mod views;
 

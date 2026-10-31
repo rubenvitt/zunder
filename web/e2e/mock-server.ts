@@ -14,7 +14,9 @@
 // format {"error":{"code","message"}}, CSRF header X-Zunder-Client: web for
 // state-changing requests, snapshot with created_hlc/op_id, history entries with
 // source/received_at, flame responses (409 without a running flame), token rules,
-// "Erst für dich" settings (/api/settings/focus, reset with the seed),
+// "Erst für dich" settings (/api/settings/focus, reset with the seed), Jev settings
+// and inbox proposals (/api/settings/jev, /api/tasks/{id}/suggestion: a fixed answer,
+// glut / für mich / first active project outside the private areas),
 // intake channels (management under /api/intake/channels, POST /intake/v1/tasks with
 // a zi_ token: idempotent per external_id, 409 for a dead or completed target, 429
 // after 30 tasks per hour), follow-up instances of recurring tasks after each push
@@ -143,6 +145,10 @@ let intakeChannels: IntakeChannel[] = [];
 let calendarCreatedAt: string | null = null;
 /** "Erst für dich" (GET/PUT /api/settings/focus): days as the client sends them. */
 let focus: { dismissed_on: string | null; chosen: { on: string; task_id: string } | null } = { dismissed_on: null, chosen: null };
+/** Jev (GET/PUT/DELETE /api/settings/jev) and the stored proposals by task ID. */
+let jev: { token: string | null; model: string | null; private_area_ids: string[] } = { token: null, model: null, private_area_ids: [] };
+let suggestions = new Map<string, Record<string, Json>>();
+const JEV_DEFAULT_MODEL = "jev-1.14.0";
 let authenticated = true;
 const sseClients = new Set<ServerResponse>();
 
@@ -626,6 +632,48 @@ function timingSettings() {
   };
 }
 
+function jevSettings() {
+  const tally = { decided: 0, followed: 0 };
+  return {
+    configured: jev.token !== null,
+    token_hint: jev.token !== null ? (jev.token.length >= 12 ? `…${jev.token.slice(-4)}` : "…") : null,
+    model: jev.model ?? JEV_DEFAULT_MODEL,
+    default_model: JEV_DEFAULT_MODEL,
+    private_area_ids: jev.private_area_ids,
+    stats: { asked: suggestions.size, weight: tally, for_whom: tally, place: tally, input_tokens: suggestions.size * 120 },
+  };
+}
+
+/** The mock's fixed proposal: first active project in a non-private, active area. */
+function mockSuggestion(taskId: string): Record<string, Json> {
+  const field = (e: Entity | undefined, f: string) => e?.fields[f]?.value;
+  let place: Record<string, Json> | null = null;
+  for (const e of state.values()) {
+    if (e.entity !== "project" || !alive("project", e.id)) continue;
+    const status = field(e, "status") ?? "active";
+    const areaId = field(e, "area_id") as string;
+    const area = state.get(key("area", areaId));
+    if (status !== "active" || !area || (field(area, "state") ?? "active") !== "active" || jev.private_area_ids.includes(areaId)) continue;
+    place = { kind: "project", id: e.id, name: String(field(e, "name") ?? "") };
+    break;
+  }
+  return {
+    task_id: taskId,
+    model: jev.model ?? JEV_DEFAULT_MODEL,
+    created_at: new Date().toISOString(),
+    weight: "glut",
+    weight_probabilities: { brand: 0.1, glut: 0.7, rauch: 0.1, asche: 0.05, unklar: 0.05 },
+    for_whom: "mich",
+    for_whom_probabilities: { mich: 0.8, uns: 0.1, andere: 0.05, unklar: 0.05 },
+    place,
+    place_probabilities: place ? { [place.id as string]: 0.6, nichts: 0.4 } : { nichts: 1 },
+    weight_probability: 0.7,
+    for_whom_probability: 0.8,
+    place_probability: place ? 0.6 : null,
+    input_tokens: 120,
+  };
+}
+
 function seed(kind: string) {
   log = [];
   state = new Map();
@@ -637,6 +685,8 @@ function seed(kind: string) {
   intakeChannels = [];
   calendarCreatedAt = null;
   focus = { dismissed_on: null, chosen: null };
+  jev = { token: null, model: null, private_area_ids: [] };
+  suggestions = new Map();
   if (kind === "empty") return;
   const base = Date.now() - 3600_000;
   let n = 0;
@@ -1017,6 +1067,35 @@ const server = createServer(async (req, res) => {
         if (!tokens.some((t) => t.id === tokenId)) return error(res, 404, "not_found", "Token nicht gefunden.");
         tokens = tokens.filter((t) => t.id !== tokenId);
         return send(res, 204);
+      }
+      if (path === "/api/settings/jev") {
+        if (method === "PUT") {
+          const body = await readJson(req);
+          const unknown = Object.keys(body).find((k) => !["token", "model", "private_area_ids"].includes(k));
+          if (unknown) return error(res, 400, "invalid_request", `Unbekanntes Feld „${unknown}“`);
+          const token = typeof body.token === "string" ? body.token.trim() : "";
+          if (/\s/.test(token)) return error(res, 400, "invalid_request", "Der Jev-Key darf keine Leer- oder Steuerzeichen enthalten");
+          if (typeof body.model === "string" && ["jev-latest", "jev-preview"].includes(body.model.trim().toLowerCase()))
+            return error(res, 400, "invalid_request", `Bitte eine feste Version wie ${JEV_DEFAULT_MODEL} statt ${body.model.trim()}: Aliase verschieben Antworten ohne Ankündigung`);
+          if (token) jev.token = token;
+          if (typeof body.model === "string") jev.model = body.model.trim() || null;
+          if (Array.isArray(body.private_area_ids)) jev.private_area_ids = [...new Set(body.private_area_ids.map(String))];
+        } else if (method === "DELETE") jev = { token: null, model: null, private_area_ids: [] };
+        else if (method !== "GET") return error(res, 405, "invalid_request", "Methode nicht erlaubt.");
+        return send(res, 200, jevSettings());
+      }
+      m = /^\/api\/tasks\/([^/]+)\/suggestion$/.exec(path);
+      if (m) {
+        const taskId = decodeURIComponent(m[1]!);
+        if (method === "GET") return send(res, 200, suggestions.get(taskId) ?? null);
+        if (method !== "POST") return error(res, 405, "invalid_request", "Methode nicht erlaubt.");
+        if (!jev.token) return error(res, 409, "conflict", "Jev ist nicht eingerichtet: den Key trägst du in den Einstellungen ein.");
+        if (!alive("task", taskId)) return error(res, 404, "not_found", "Aufgabe nicht gefunden.");
+        const loc = state.get(key("task", taskId))?.fields.location?.value as { kind?: string } | undefined;
+        if (loc && loc.kind !== "inbox") return error(res, 409, "conflict", "Vorschläge gibt es nur für Aufgaben in der Inbox.");
+        const proposal = mockSuggestion(taskId);
+        suggestions.set(taskId, proposal);
+        return send(res, 200, proposal);
       }
       if (path === "/api/settings/timing") {
         if (method === "PUT") {
