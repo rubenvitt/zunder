@@ -7,7 +7,7 @@ import { createSignal } from "solid-js";
 import type { AppConfig, AppInfo, ConfigUpdate, SyncEvent, TauriApp, TauriBackend, UpdateStatus } from "../platform/tauri";
 import { createTask } from "./actions";
 import { shareImporter, sharedMessage } from "./share";
-import { configureServices, getEngine, ready, reloadData, reportRejected, setAppPending } from "./store";
+import { configureServices, data, getEngine, ready, reloadData, reportRejected, setAppPending } from "./store";
 import { toast } from "./ui";
 
 const [config, setConfig] = createSignal<AppConfig | null>(null);
@@ -93,7 +93,8 @@ export async function initDesktop(backend?: TauriBackend): Promise<AppConfig> {
 
 /**
  * Waits (up to 10 s) until the engine has handed the changes to these tasks to the
- * app's local store (local_apply); resolves with those that got there.
+ * app's local store (local_apply); resolves with those that got there and were not
+ * rejected.
  */
 async function pushedToApp(taskIds: string[], timeoutMs = 10_000): Promise<Set<string>> {
   const pendingIds = () => new Set(getEngine().pendingOps.filter((op) => op.entity === "task").map((op) => op.entity_id));
@@ -103,7 +104,8 @@ async function pushedToApp(taskIds: string[], timeoutMs = 10_000): Promise<Set<s
     await new Promise((resolve) => setTimeout(resolve, 100));
     waiting = pendingIds();
   }
-  return new Set(taskIds.filter((id) => !waiting.has(id)));
+  // A rejected local_apply also leaves the queue, but rolls the task back.
+  return new Set(taskIds.filter((id) => !waiting.has(id) && !!data.tasks[id]));
 }
 
 /**
