@@ -14,8 +14,11 @@ build="$here/build/macos"
 
 rm -rf "$build"
 mkdir -p "$build"
-(cd "$here" && xcodegen generate --spec project-macos.yml --project "$build" --quiet) >&2
-xcodebuild -project "$build/ZunderShare.xcodeproj" -target ZunderShare \
+# The project lives next to the spec: its build settings (INFOPLIST_FILE,
+# CODE_SIGN_ENTITLEMENTS) are relative to it.
+rm -rf "$here/ZunderShare.xcodeproj"
+(cd "$here" && xcodegen generate --spec project-macos.yml --quiet) >&2
+xcodebuild -project "$here/ZunderShare.xcodeproj" -target ZunderShare \
   -configuration Release -sdk macosx \
   SYMROOT="$build/out" MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION="$version" \
   build >&2
