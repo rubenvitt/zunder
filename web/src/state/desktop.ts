@@ -5,7 +5,10 @@
 
 import { createSignal } from "solid-js";
 import type { AppConfig, AppInfo, ConfigUpdate, SyncEvent, TauriApp, TauriBackend, UpdateStatus } from "../platform/tauri";
-import { configureServices, reloadData, reportRejected, setAppPending } from "./store";
+import { createTask } from "./actions";
+import { shareImporter, sharedMessage } from "./share";
+import { configureServices, data, getEngine, ready, reloadData, reportRejected, setAppPending } from "./store";
+import { toast } from "./ui";
 
 const [config, setConfig] = createSignal<AppConfig | null>(null);
 const [lastEvent, setLastEvent] = createSignal<SyncEvent | null>(null);
@@ -18,6 +21,8 @@ const [login, setLogin] = createSignal<LoginState>({ state: "idle" });
 export { login as loginState };
 
 let app: TauriApp | null = null;
+/** Turns shared items into inbox tasks; set once the data is loaded (startShareImport). */
+let importShares: (() => Promise<void>) | null = null;
 let errorCode: (err: unknown) => string = () => "app";
 
 export { config as appConfig, syncing as appSyncing, info as appInfo };
@@ -49,7 +54,11 @@ export async function initDesktop(backend?: TauriBackend): Promise<AppConfig> {
   const mod = await import("../platform/tauri");
   errorCode = mod.appErrorCode;
   app?.close();
+  importShares = null;
   app = await mod.TauriApp.connect(backend);
+  app.on("share", () => {
+    if (importShares && ready()) void importShares();
+  });
   app.on("sync", (event) => {
     setLastEvent(event);
     // A failed round also reports what it did before the error.
@@ -80,6 +89,40 @@ export async function initDesktop(backend?: TauriBackend): Promise<AppConfig> {
   const transport = new mod.TauriTransport(app, { pending: setAppPending });
   configureServices({ transport, api: transport, localStore: mod.tauriLocalStore(initial) });
   return initial;
+}
+
+/**
+ * Waits (up to 10 s) until the engine has handed the changes to these tasks to the
+ * app's local store (local_apply); resolves with those that got there and were not
+ * rejected.
+ */
+async function pushedToApp(taskIds: string[], timeoutMs = 10_000): Promise<Set<string>> {
+  const pendingIds = () => new Set(getEngine().pendingOps.filter((op) => op.entity === "task").map((op) => op.entity_id));
+  const deadline = Date.now() + timeoutMs;
+  let waiting = pendingIds();
+  while (taskIds.some((id) => waiting.has(id)) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    waiting = pendingIds();
+  }
+  // A rejected local_apply also leaves the queue, but rolls the task back.
+  return new Set(taskIds.filter((id) => !waiting.has(id) && !!data.tasks[id]));
+}
+
+/**
+ * Starts turning links and texts shared from other apps (share extension on iOS
+ * and macOS) into inbox tasks: now and whenever the app reports new ones. Call
+ * once the local data is loaded (after startSync()).
+ */
+export function startShareImport(): Promise<void> {
+  const current = connected();
+  importShares ??= shareImporter({
+    take: () => current.shareTake(),
+    done: (ids) => current.shareDone(ids),
+    create: (task) => createTask({ title: task.title, description: task.description, location: { kind: "inbox" } }),
+    saved: (taskIds) => pushedToApp(taskIds),
+    created: (titles) => toast(sharedMessage(titles)),
+  });
+  return importShares();
 }
 
 export type DesktopSyncState = "ok" | "offline" | "unauthorized" | "unconfigured" | "error";
@@ -239,6 +282,7 @@ export async function testNotification(): Promise<ActionResult> {
 export function resetDesktopForTests(): void {
   app?.close();
   app = null;
+  importShares = null;
   setConfig(null);
   setLastEvent(null);
   setSyncing(false);

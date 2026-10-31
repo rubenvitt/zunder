@@ -31,6 +31,8 @@ function locationValue(location: Location): JsonValue {
 
 export interface NewTask {
   title: string;
+  /** Markdown. */
+  description?: string | null;
   location?: Location | null;
   parent_id?: string | null;
   due?: string | null;
@@ -49,6 +51,8 @@ export interface NewTask {
 export function createTask(input: NewTask): string | null {
   const id = newId();
   const fields: Record<string, JsonValue> = { title: input.title.trim() };
+  const description = input.description?.trim();
+  if (description) fields.description = description;
   if (input.location && input.location.kind !== "inbox") fields.location = locationValue(input.location);
   if (input.parent_id) fields.parent_id = input.parent_id;
   if (input.due) fields.due = input.due;

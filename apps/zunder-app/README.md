@@ -24,6 +24,9 @@ apps/zunder-app/
     src/notify.rs         Erinnerungen (mobil: OS-Planer, Desktop: Timer)
     src/update.rs         Selbstaktualisierung aus GitHub-Releases (nur Desktop)
     src/desktop.rs        Menüleisten-Symbol, Weiterlaufen bei geschlossenem Fenster, Autostart (nur Desktop)
+    src/share.rs          Teilen aus anderen Apps: Ordner der Teilen-Erweiterung lesen, zunder://share
+    Entitlements.macos.plist  App Group der macOS-App (gemeinsamer Ordner mit der Teilen-Erweiterung)
+  share/                  Teilen-Erweiterung (Swift) für iOS und macOS, siehe „Teilen aus anderen Apps“
     zunder-local/         Speicher, Sync, Anmeldung (OAuth), Erinnerungsplanung – ohne Webview testbar
 ```
 
@@ -200,13 +203,15 @@ Die Web-UI ruft sie mit `invoke` aus `@tauri-apps/api/core` auf (`TauriTransport
 | `flame_start`, `flame_stop` | `{"task_id": UUID}` | Antwort des Servers unverändert (`{task, running, stopped_task_ids, unchanged, timing, warnings}`). Vorher wird gepusht, falls Operationen ausstehen (der Server kennt sonst die Aufgabe nicht), danach synchronisiert, damit `flame_started_at`/`flame_ended_at` sofort per `zunder://changed` ankommen. Stopp ohne laufende Flamme: Fehler `server` („Server-Fehler (409): …“) |
 | `focus_get` | – | `{"dismissed_on": String\|null, "chosen": {"on","task_id"}\|null}` – „Erst für dich“ aus `GET /api/settings/focus` mit dem gespeicherten Token. Nur mit Geräte-Token (Anmeldung im Browser); mit einem API-Token Fehler `unsupported` |
 | `focus_set` | `{"update": {"dismissed_on"?, "chosen"?}}` | wie `focus_get`, nach `PUT /api/settings/focus` (fehlender Schlüssel = unverändert, `null` = entfernen; geprüft vom Server) |
+| `share_take` | – | `[{"id","text"?,"url"?,"created_at_ms"}]` – aus anderen Apps Geteiltes, das noch auf seine Aufgabe wartet, älteste zuerst; ohne Teilen-Erweiterung (Linux, Windows, Android, `tauri dev`) leer. Fehler `share` |
+| `share_done` | `{"ids": [String]}` | Zahl entfernter Einträge; die Aufgaben dazu existieren jetzt. Kennungen nur aus Buchstaben, Ziffern und `-`, sonst `share` |
 
 Regeln:
 
 - Operationen erzeugt die Web-UI selbst (wie im Browser). Als Knoten-ID ihrer HLC nimmt sie `node_id` aus `get_config` (Form `app-<12 hex>`), damit HLCs verschiedener Geräte nie kollidieren.
 - `server_url`: `http(s)://host[:port][/pfad]`, ohne Query, Fragment und Zugangsdaten; ein abschließender `/` wird entfernt; `http://` nur für lokale Adressen (siehe [Sync](#sync)). `api_token`: nicht leer, ohne Leerzeichen.
 - Ein **Wechsel auf einen anderen Server** löscht die lokalen Daten (Log, Zustand, Cursor). Gibt es ausstehende Operationen, schlägt er mit `pending_ops` fehl, außer `discard_pending` ist `true`. Maßgeblich ist der Server, von dem die lokalen Daten stammen: Wer die Adresse mit `null` löscht und dann eine andere setzt, wechselt ebenfalls.
-- Fehlercodes: `not_configured`, `invalid_config`, `pending_ops`, `network`, `unauthorized`, `server`, `protocol`, `db`, `corrupt`, `schema_too_new`, `notification`, `reconfigured` (Server während des Durchgangs gewechselt), `login`, `update`, `autostart`, `unsupported` (nicht auf dieser Plattform).
+- Fehlercodes: `not_configured`, `invalid_config`, `pending_ops`, `network`, `unauthorized`, `server`, `protocol`, `db`, `corrupt`, `schema_too_new`, `notification`, `reconfigured` (Server während des Durchgangs gewechselt), `login`, `update`, `autostart`, `share` (Ordner der Teilen-Erweiterung), `unsupported` (nicht auf dieser Plattform).
 
 Ereignisse (`listen` aus `@tauri-apps/api/event`):
 
@@ -216,6 +221,7 @@ Ereignisse (`listen` aus `@tauri-apps/api/event`):
 | `zunder://login` | `{"ok": true}` oder `{"ok": false, "error": {"code","message"}}` | Die Anmeldung im Browser ist abgeschlossen: Server-Adresse und Geräte-Token sind gespeichert, ein Sync läuft. Fehlercode `login` für abgelehnte, abgelaufene oder fremde Antworten |
 | `zunder://update` | `UpdateStatus` (wie `check_update`) | Eine neuere Version ist installiert und wartet auf den Neustart (nur Desktop) |
 | `zunder://sync` | `{"ok": true, "report": SyncReport}` oder `{"ok": false, "error": {"code","message"}, "report": SyncReport}` | Ein Sync-Versuch ist fertig; Ablehnungen stehen in `report.rejected` (auch bei `ok: false`: was der Durchgang vor dem Fehler getan hat) und sollten angezeigt werden. Nicht für `reconfigured` |
+| `zunder://share` | `{"count": N}` | Aus anderen Apps Geteiltes wartet (beim Start, bei Rückkehr in den Vordergrund, alle 3 s, solange Einträge warten) – `share_take` |
 
 `local_apply` sendet kein Ereignis; die aufrufende UI kennt das Ergebnis.
 
@@ -232,6 +238,25 @@ Die Web-UI erkennt die App an `window.__TAURI_INTERNALS__` und lädt erst dann p
 - Verlauf und Flammen laufen über `task_history`, `flame_start` und `flame_stop`, „Erst für dich“ über `focus_get` und `focus_set` (Wegklicken und Wahl gelten so auch im Browser; offline bleibt die Änderung im `localStorage` der Webview vorgemerkt).
 
 Geprüft wird das ohne Webview: Vitest mit nachgebautem `invoke`/`listen` (`web/test/tauri.test.ts`, `web/test/desktop.test.ts`) und ein Playwright-Test, der im Browser eine App-Attrappe als `__TAURI_INTERNALS__` einsetzt (`web/e2e/tauri.spec.ts`; prüft auch, dass keine einzige `/api`-Anfrage gestellt wird). Die HTTP-Seite der neuen Befehle testet `zunder-local` (`client.rs` gegen einen Testserver, `tests/server_e2e.rs` gegen den echten Server).
+
+## Teilen aus anderen Apps
+
+Zunder steht im Teilen-Menü von iOS und macOS: Ein geteilter Link oder Text wird eine Aufgabe in der Inbox, auch offline.
+
+- **Erweiterung** (`share/`, Swift): iOS nutzt das System-Formular (`SLComposeServiceViewController`), macOS ein kleines eigenes Fenster. Das Textfeld ist mit dem geteilten Text oder dem Seitentitel vorbelegt und änderbar; „Sichern“ bzw. „In die Inbox“ legt eine JSON-Datei `share-inbox/<id>.json` (`{"version":1,"id","text","url","created_at_ms"}`, Text höchstens 100 000 Zeichen) in den Container der App Group, die App und Erweiterung teilen: iOS `group.dev.rubeen.zunder`, macOS `H95J852PKP.dev.rubeen.zunder` (mit Team-ID als Präfix braucht macOS dafür kein Provisioning-Profil).
+- **App** (`src/share.rs`, `zunder_local::share`): liest den Ordner und meldet `zunder://share`, wenn etwas wartet: beim Start, bei Rückkehr in den Vordergrund und alle 3 s, solange Einträge warten (auf dem Mac läuft die App meist in der Menüleiste weiter). Unbrauchbare Dateien (kaputtes JSON, über 1 MiB, leer) benennt sie in `.invalid` um; scheitert nur das Lesen (Rechte, E/A), bleibt die Datei für den nächsten Versuch.
+- **Web-UI** (`web/src/state/share.ts`): Sobald die lokalen Daten geladen sind und bei jedem `zunder://share` holt sie die Einträge mit `share_take`, legt je eine Aufgabe in der Inbox an und entfernt die Einträge mit `share_done`; eine Meldung nennt, was angekommen ist. Titel ist die erste Zeile des Textes (über 200 Zeichen gekürzt), ohne Text der Link als `host/pfad`; die Beschreibung enthält den Link und die übrigen Zeilen. Ohne Server-Einrichtung bleiben die Einträge liegen, bis die App eingerichtet ist.
+- **Bauen:** macOS baut `share/build-macos.sh` (XcodeGen-Projekt `share/project-macos.yml`, signiert mit der Developer ID, in Pull Requests ad hoc), der Tauri-Bundler kopiert die Erweiterung über `bundle.macOS.files` (setzt die CI) nach `Contents/PlugIns` und signiert die App darum herum mit `Entitlements.macos.plist`. iOS: `share/add-ios-extension.rb` trägt die Erweiterung und die App Group nach `tauri ios init` ins XcodeGen-Projekt von `gen/apple` ein, danach `xcodegen generate`. Lokal genauso:
+
+  ```sh
+  npx tauri ios init && ruby share/add-ios-extension.rb src-tauri/gen/apple 0.0.0 \
+    && (cd src-tauri/gen/apple && xcodegen generate)
+  share/build-macos.sh 0.0.0   # ad hoc signiert, Pfad der .appex auf stdout
+  ```
+
+  Pull Requests bauen die iOS-App samt Erweiterung für den Simulator (Job `ios-check`).
+- **Einmalig bei Apple:** Die Signierung legt App-ID `dev.rubeen.zunder.share` und die App Group `group.dev.rubeen.zunder` normalerweise selbst an (automatische Signierung mit dem API-Schlüssel, Rolle Admin). Schlägt der TestFlight-Build mit einem Profilfehler fehl, beides im Developer-Portal anlegen und der App-ID `dev.rubeen.zunder` die App Group zuweisen.
+- **Grenzen:** Nur ein Link je Teilen, Dateien und Bilder werden ignoriert. Auf iOS kommt das Geteilte erst beim nächsten Öffnen der App an (die Erweiterung schreibt nur in den Ordner). Auf dem Mac erscheint Zunder im Teilen-Menü, sobald die App einmal aus `/Applications` gestartet wurde; sonst unter Systemeinstellungen → Allgemein → Anmeldeobjekte & Erweiterungen → Teilen einschalten.
 
 ## Erinnerungen
 
@@ -252,5 +277,6 @@ Titel ist der Aufgabentitel, der Text „Erinnerung“ bzw. „Jetzt fällig“,
 - Der Verlauf einer Aufgabe zeigt erst nach dem Push etwas; noch ausstehende Änderungen fehlen darin.
 - Kein SSE in der App: Änderungen anderer Geräte kommen mit dem 30-s-Takt (oder per `sync_now`).
 - API- bzw. Geräte-Token im Schlüsselbund statt in SQLite.
+- Teilen aus anderen Apps ist weder auf dem iPhone noch auf dem Mac von Hand durchgespielt; geprüft sind Ordner, Import und Titel (Tests) sowie der Simulator-Build.
 - Android-Build ist nicht eingerichtet; iOS nur lokal gebaut, nicht in der CI und nicht über TestFlight verteilt.
 - Desktop-Releases gibt es nur für macOS (Apple Silicon); Linux und Windows baut die CI nicht.

@@ -1,0 +1,33 @@
+# Share extension of the macOS app, built on its own (build-macos.sh) and
+# copied into Zunder.app/Contents/PlugIns by the Tauri bundler
+# (bundle.macOS.files, set by the CI). The iOS extension is added to the
+# Xcode project of `tauri ios init` instead (add-ios-extension.rb).
+name: ZunderShare
+options:
+  bundleIdPrefix: dev.rubeen.zunder
+  deploymentTarget:
+    macOS: "11.0"
+targets:
+  ZunderShare:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Shared
+      - path: macOS
+        excludes: ["*.plist", "*.entitlements"]
+    settings:
+      base:
+        PRODUCT_NAME: ZunderShare
+        PRODUCT_BUNDLE_IDENTIFIER: dev.rubeen.zunder.share
+        INFOPLIST_FILE: macOS/Info.plist
+        CODE_SIGN_ENTITLEMENTS: macOS/ZunderShare.entitlements
+        MARKETING_VERSION: "0.0.0"
+        CURRENT_PROJECT_VERSION: "0.0.0"
+        SWIFT_VERSION: "5.0"
+        ARCHS: arm64
+        ENABLE_HARDENED_RUNTIME: YES
+        # Signed by build-macos.sh (Developer ID or ad hoc).
+        CODE_SIGNING_ALLOWED: NO
+    dependencies:
+      - sdk: Cocoa.framework
+      - sdk: UniformTypeIdentifiers.framework

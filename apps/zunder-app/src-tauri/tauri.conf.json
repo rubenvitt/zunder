@@ -41,6 +41,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "macOS": {
+      "entitlements": "./Entitlements.macos.plist"
+    },
     "iOS": {
       "developmentTeam": "H95J852PKP"
     }

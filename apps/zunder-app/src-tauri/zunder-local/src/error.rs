@@ -46,6 +46,8 @@ pub enum Error {
     Update(String),
     #[error("Autostart: {0}")]
     Autostart(String),
+    #[error("Teilen: {0}")]
+    Share(String),
     #[error("{0}")]
     Unsupported(String),
 }
@@ -69,6 +71,7 @@ impl Error {
             Error::Login(_) => "login",
             Error::Update(_) => "update",
             Error::Autostart(_) => "autostart",
+            Error::Share(_) => "share",
             Error::Unsupported(_) => "unsupported",
         }
     }

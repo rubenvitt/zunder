@@ -127,11 +127,25 @@ export interface AppInfo {
   update: UpdateStatus | null;
 }
 
+/** A link or text shared from another app (share extension on iOS and macOS). */
+export interface SharedItem {
+  id: string;
+  /** What was kept in the extension's text field; the first line is the title. */
+  text?: string | null;
+  url?: string | null;
+  created_at_ms?: number;
+}
+
+export interface ShareEvent {
+  count: number;
+}
+
 export const EVENTS = {
   changed: "zunder://changed",
   sync: "zunder://sync",
   login: "zunder://login",
   update: "zunder://update",
+  share: "zunder://share",
 } as const;
 
 // ---- Backend: invoke + listen (real Tauri API or a test double) ----------
@@ -209,6 +223,7 @@ export class TauriApp {
     changed: new Set<Handler<ChangedEvent>>(),
     login: new Set<Handler<LoginEvent>>(),
     update: new Set<Handler<UpdateStatus>>(),
+    share: new Set<Handler<ShareEvent>>(),
   };
   private unlisten: UnlistenFn[] = [];
 
@@ -222,6 +237,7 @@ export class TauriApp {
       app.backend.listen<ChangedEvent>(EVENTS.changed, (e) => app.dispatch("changed", e.payload)),
       app.backend.listen<LoginEvent>(EVENTS.login, (e) => app.dispatch("login", e.payload)),
       app.backend.listen<UpdateStatus>(EVENTS.update, (e) => app.dispatch("update", e.payload)),
+      app.backend.listen<ShareEvent>(EVENTS.share, (e) => app.dispatch("share", e.payload)),
     ]);
     return app;
   }
@@ -230,6 +246,7 @@ export class TauriApp {
   on(event: "changed", handler: Handler<ChangedEvent>): () => void;
   on(event: "login", handler: Handler<LoginEvent>): () => void;
   on(event: "update", handler: Handler<UpdateStatus>): () => void;
+  on(event: "share", handler: Handler<ShareEvent>): () => void;
   on(event: AppEventName, handler: Handler<never>): () => void {
     const set = this.handlers[event] as Set<Handler<never>>;
     set.add(handler);
@@ -321,6 +338,16 @@ export class TauriApp {
 
   testNotification(): Promise<void> {
     return this.call("test_notification");
+  }
+
+  /** Items shared from other apps that wait for their inbox task, oldest first. */
+  shareTake(): Promise<SharedItem[]> {
+    return this.call("share_take");
+  }
+
+  /** Removes shared items whose tasks exist now. */
+  shareDone(ids: string[]): Promise<number> {
+    return this.call("share_done", { ids });
   }
 }
 

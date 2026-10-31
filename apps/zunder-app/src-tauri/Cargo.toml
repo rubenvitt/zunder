@@ -60,6 +60,10 @@ log = "0.4"
 tauri-plugin-updater = "2"
 tauri-plugin-autostart = "2"
 
+# App Group container shared with the share extension (src/share.rs).
+[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
+objc2-foundation = { version = "0.3", features = ["NSFileManager", "NSString", "NSURL"] }
+
 # The device's UTC offset for reminders on iOS (see src/notify.rs).
 [target.'cfg(target_os = "ios")'.dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
