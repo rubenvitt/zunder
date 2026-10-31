@@ -208,6 +208,47 @@ async fn suggestion_for_an_inbox_task() {
     let r = s.post(&path, Auth::Web(&session), json!({})).await;
     assert_eq!(r.status, StatusCode::CONFLICT);
 
+    // Only open root tasks: no subtasks, nothing closed.
+    let asked = mock.0.lock().unwrap().requests.len();
+    let root = mcp_ok(&s, &t, "create_task", json!({"title": "Umzug"})).await;
+    let root_id = root["task"]["id"].as_str().unwrap().to_owned();
+    let child = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Kartons", "parent_id": root_id}),
+    )
+    .await;
+    let r = s
+        .post(
+            &format!(
+                "/api/tasks/{}/suggestion",
+                child["task"]["id"].as_str().unwrap()
+            ),
+            Auth::Web(&session),
+            json!({}),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::CONFLICT, "{}", r.text());
+    let closed = mcp_ok(&s, &t, "create_task", json!({"title": "Erledigt"})).await;
+    let closed_id = closed["task"]["id"].as_str().unwrap().to_owned();
+    mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": closed_id, "status": "done"}),
+    )
+    .await;
+    let r = s
+        .post(
+            &format!("/api/tasks/{closed_id}/suggestion"),
+            Auth::Web(&session),
+            json!({}),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::CONFLICT, "{}", r.text());
+    assert_eq!(mock.0.lock().unwrap().requests.len(), asked);
+
     // Provider errors are German and change nothing.
     let other = mcp_ok(&s, &t, "create_task", json!({"title": "Noch was"})).await;
     let other_path = format!(

@@ -1074,6 +1074,11 @@ impl App {
                     "Vorschläge gibt es nur für Aufgaben in der Inbox".into(),
                 ));
             }
+            if task.status.is_closed() || task.parent_id.is_some() {
+                return Err(AppError::Conflict(
+                    "Vorschläge gibt es nur für offene Wurzelaufgaben in der Inbox".into(),
+                ));
+            }
             let places = suggest::place_options(state, &stored.private_areas);
             Ok((suggest::request_body(&model, &task, &places), places))
         })?;
