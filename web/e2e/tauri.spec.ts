@@ -27,6 +27,8 @@ interface FakeAppHandle {
   completeLogin(): void;
   /** "Erst für dich" on the server (focus_get/focus_set). */
   focus: { dismissed_on: string | null; chosen: { on: string; task_id: string } | null };
+  /** Items in the share extension's folder (share_take/share_done). */
+  shared: { id: string; text?: string; url?: string; created_at_ms: number }[];
 }
 
 declare global {
@@ -68,6 +70,7 @@ function installFakeApp(seed: { serverOps: WireOp[]; validToken: string }) {
     ops: [] as WireOp[],
     pending: 0,
     focus: { dismissed_on: null, chosen: null } as FakeAppHandle["focus"],
+    shared: [] as FakeAppHandle["shared"],
     emit(event: string, payload: unknown) {
       for (const l of listeners.filter((x) => x.event === event)) callbacks.get(l.handler)?.({ event, id: l.id, payload });
     },
@@ -194,6 +197,14 @@ function installFakeApp(seed: { serverOps: WireOp[]; validToken: string }) {
       case "restart_app":
       case "test_notification":
         return null;
+      case "share_take":
+        return fake.shared.map((item) => ({ ...item }));
+      case "share_done": {
+        const ids = args.ids as string[];
+        const before = fake.shared.length;
+        fake.shared = fake.shared.filter((item) => !ids.includes(item.id));
+        return before - fake.shared.length;
+      }
       default:
         throw `command ${cmd} not found`;
     }
@@ -423,5 +434,34 @@ test("App: Änderungen gehen an den lokalen Speicher, Sync-Ereignisse aktualisie
   await page.getByRole("button", { name: "Testbenachrichtigung senden" }).click();
   await expect(page.locator(".toast", { hasText: "Testbenachrichtigung gesendet." })).toBeVisible();
 
+  expect(apiRequests).toEqual([]);
+});
+
+test("App: Aus anderen Apps Geteiltes landet als Aufgabe in der Inbox", async ({ page }) => {
+  const seed = serverOps(currentFire());
+  const apiRequests = await openInApp(page, seed.ops);
+  // Shared while the app was closed: picked up once the data is loaded.
+  await page.evaluate(() => window.__ZUNDER_FAKE_APP__.shared.push({ id: "s-1", text: "Milch kaufen", created_at_ms: 1 }));
+  await page.getByLabel("Server-Adresse").fill("https://zunder.example.org");
+  await page.getByLabel("API-Token").fill("zt_richtig");
+  await page.getByRole("button", { name: "Speichern und verbinden" }).click();
+  await expect(row(page, "Milch kaufen")).toBeVisible();
+
+  // Shared while the app runs: the app announces it with zunder://share.
+  await page.evaluate(() => {
+    const fake = window.__ZUNDER_FAKE_APP__;
+    fake.shared.push({ id: "s-2", text: "Artikel über Zunder", url: "https://example.org/artikel", created_at_ms: 2 });
+    fake.emit("zunder://share", { count: 1 });
+  });
+  await expect(row(page, "Artikel über Zunder")).toBeVisible();
+  await expect(page.getByText("„Artikel über Zunder“ liegt jetzt in der Inbox.")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__ZUNDER_FAKE_APP__.shared.length)).toBe(0);
+
+  const applied = await page.evaluate(() =>
+    window.__ZUNDER_FAKE_APP__.calls.filter((c) => c.cmd === "local_apply").flatMap((c) => c.args.ops as { field: string; value: unknown }[]),
+  );
+  expect(applied).toContainEqual(expect.objectContaining({ field: "description", value: "https://example.org/artikel" }));
+  // Inbox tasks carry no location field.
+  expect(applied.some((o) => o.field === "location")).toBe(false);
   expect(apiRequests).toEqual([]);
 });

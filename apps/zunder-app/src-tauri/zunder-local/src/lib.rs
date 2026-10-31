@@ -9,6 +9,7 @@
 //!   (device token instead of a pasted API token)
 //! - [`reminders`]: which local notifications should be pending and how to
 //!   get there from what is scheduled
+//! - [`share`]: items the share extensions (iOS, macOS) left for the app
 //! - [`schedule`]: executes such a plan against an OS scheduler (mobile)
 //! - [`wire`]: request and response bodies of the sync API
 //!
@@ -20,6 +21,7 @@ pub mod error;
 pub mod login;
 pub mod reminders;
 pub mod schedule;
+pub mod share;
 pub mod store;
 pub mod sync;
 pub mod wire;
@@ -34,6 +36,7 @@ pub use reminders::{
     catch_up_notices, missed_reminders, plan_schedule, upcoming_reminders, Notice, Reminder,
     SchedulePlan, ScheduledReminder,
 };
+pub use share::{ShareInbox, SharedItem};
 pub use store::{
     ApplyResult, ConfigUpdate, ConfigView, LastSync, LocalSnapshot, LocalStore, Remote,
 };

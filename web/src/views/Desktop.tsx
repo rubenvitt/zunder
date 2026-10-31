@@ -22,6 +22,7 @@ import {
   saveConnection,
   setAutostart,
   startLogin,
+  startShareImport,
   syncNow,
   testNotification,
   type ActionResult,
@@ -43,6 +44,8 @@ export function DesktopApp(props: { shell: Component; onReady: () => void }) {
   async function open() {
     await startSync();
     setPhase("ready");
+    // Links and texts shared from other apps while Zunder was closed.
+    if (ready()) void startShareImport();
   }
 
   onMount(async () => {

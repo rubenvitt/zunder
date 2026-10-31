@@ -17,6 +17,8 @@
 //! - [`desktop`]: menu bar icon, keep running when the window is closed,
 //!   start at login (desktop only)
 //! - [`login`]: login in the system browser, back via deep link
+//! - [`share`]: links and texts shared from other apps (share extension on
+//!   iOS and macOS), handed to the web UI as inbox tasks
 
 use std::sync::Mutex;
 
@@ -30,6 +32,7 @@ pub mod commands;
 pub mod desktop;
 pub mod login;
 pub mod notify;
+pub mod share;
 #[cfg(desktop)]
 pub mod update;
 
@@ -49,6 +52,9 @@ pub mod events {
     /// A newer version was installed and waits for a restart (desktop);
     /// payload: the update status as returned by `app_info`.
     pub const UPDATE: &str = "zunder://update";
+    /// Items shared from other apps wait in the share inbox; payload
+    /// `{"count": N}`. Fetch them with `share_take`.
+    pub const SHARE: &str = "zunder://share";
 }
 
 /// File name of the local database in the app data directory.
@@ -61,6 +67,8 @@ pub struct AppState {
     /// Wakes the background sync loop early (after local changes etc.).
     pub sync_wake: Notify,
     pub reminders: notify::Reminders,
+    /// Items left by the share extension (`None` without one).
+    pub share: Option<zunder_local::ShareInbox>,
 }
 
 /// Re-runs the sync whenever the webview regains network access.
@@ -130,6 +138,7 @@ pub fn run() {
                 syncer: Syncer::new(),
                 sync_wake: Notify::new(),
                 reminders: notify::Reminders::default(),
+                share: share::inbox(),
             });
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
@@ -147,6 +156,7 @@ pub fn run() {
             }
             notify::start(app.handle().clone());
             background::start(app.handle().clone());
+            share::start(app.handle().clone());
             #[cfg(desktop)]
             update::start(app.handle().clone());
             Ok(())
@@ -168,6 +178,8 @@ pub fn run() {
             commands::check_update,
             commands::restart_app,
             commands::test_notification,
+            share::share_take,
+            share::share_done,
         ])
         .build(tauri::generate_context!())
         .expect("Zunder konnte nicht starten");
@@ -179,6 +191,7 @@ pub fn run() {
                 state.sync_wake.notify_one();
             }
             notify::refresh(handle);
+            share::announce(handle);
         }
         // Dock icon clicked (macOS) while the window is hidden.
         #[cfg(target_os = "macos")]

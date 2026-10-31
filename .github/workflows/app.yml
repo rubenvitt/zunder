@@ -76,10 +76,47 @@ jobs:
       - run: npm ci --no-audit --no-fund
         working-directory: web
 
+      # Share extension (apps/zunder-app/share): built and signed before the
+      # app, the Tauri bundler copies it into Contents/PlugIns
+      # (bundle.macOS.files) and signs only the app around it. Releases sign
+      # it with the Developer ID (own keychain, removed right after), pull
+      # requests ad hoc.
+      - name: Teilen-Erweiterung bauen
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        working-directory: apps/zunder-app
+        run: |
+          command -v xcodegen > /dev/null || brew install xcodegen
+          if [ -n "$TAG" ]; then
+            version="${TAG#v}"
+            identity="Developer ID Application: Ruben Vitt (H95J852PKP)"
+            export SHARE_KEYCHAIN="$RUNNER_TEMP/share.keychain-db"
+            password="$(uuidgen)"
+            security create-keychain -p "$password" "$SHARE_KEYCHAIN"
+            security set-keychain-settings -lut 3600 "$SHARE_KEYCHAIN"
+            security unlock-keychain -p "$password" "$SHARE_KEYCHAIN"
+            printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/share-cert.p12"
+            security import "$RUNNER_TEMP/share-cert.p12" -k "$SHARE_KEYCHAIN" \
+              -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+            rm "$RUNNER_TEMP/share-cert.p12"
+            security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$SHARE_KEYCHAIN" > /dev/null
+            # codesign finds the certificate chain only in the search list.
+            original=$(security list-keychains -d user | tr -d '"')
+            security list-keychains -d user -s "$SHARE_KEYCHAIN" $original
+            appex=$(share/build-macos.sh "$version" "$identity")
+            security list-keychains -d user -s $original
+            security delete-keychain "$SHARE_KEYCHAIN"
+          else
+            appex=$(share/build-macos.sh 0.0.0)
+          fi
+          printf '{"bundle":{"macOS":{"files":{"PlugIns/ZunderShare.appex":"%s"}}}}\n' "$appex" \
+            > "$RUNNER_TEMP/share.conf.json"
+
       - name: Bauen
         if: env.TAG == ''
         working-directory: apps/zunder-app
-        run: npm run build -- --bundles app
+        run: npm run build -- --bundles app --config "$RUNNER_TEMP/share.conf.json"
 
       - name: Release vorbereiten
         if: env.TAG != ''
@@ -117,7 +154,7 @@ jobs:
           APPLE_API_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
         with:
           projectPath: apps/zunder-app
-          args: --config ${{ runner.temp }}/release.conf.json
+          args: --config ${{ runner.temp }}/release.conf.json --config ${{ runner.temp }}/share.conf.json
           tagName: ${{ env.TAG }}
           releaseName: Zunder __VERSION__
           releaseBody: |
@@ -135,6 +172,54 @@ jobs:
         run: |
           gh api --method PATCH "repos/${{ github.repository }}/releases/$RELEASE_ID" \
             -F draft=false -f make_latest=true > /dev/null
+
+  # iOS on pull requests: builds the app with the share extension for the
+  # simulator, unsigned (the TestFlight build below needs the signing keys).
+  # Checks the generated Xcode project, the Swift code of the extension and
+  # the Rust code for iOS.
+  ios-check:
+    name: iOS (Simulator, unsigniert)
+    if: github.event_name == 'pull_request'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: ios-sim
+          workspaces: apps/zunder-app/src-tauri -> target
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            apps/zunder-app/package-lock.json
+            web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: apps/zunder-app
+      - run: npm ci --no-audit --no-fund
+        working-directory: web
+      - name: Xcode-Projekt erzeugen
+        working-directory: apps/zunder-app
+        run: |
+          command -v xcodegen > /dev/null || brew install xcodegen
+          npx tauri ios init --ci --skip-targets-install
+          ruby share/add-ios-extension.rb src-tauri/gen/apple 0.0.0
+          (cd src-tauri/gen/apple && xcodegen generate)
+      - name: Bauen (Simulator)
+        working-directory: apps/zunder-app
+        run: npx tauri ios build --ci --no-sign --target aarch64-sim
+      - name: Erweiterung eingebettet
+        working-directory: apps/zunder-app
+        run: |
+          app=$(find src-tauri/gen/apple/build -maxdepth 3 -name '*.app' -type d | head -1)
+          test -n "$app"
+          test -f "$app/PlugIns/ZunderShare.appex/ZunderShare"
+          plutil -p "$app/PlugIns/ZunderShare.appex/Info.plist" | grep -q com.apple.share-services
+          codesign -d --entitlements - "$app/PlugIns/ZunderShare.appex" 2>&1 | grep -q group.dev.rubeen.zunder
 
   # iOS app to TestFlight, releases only (the build needs signing). Xcode
   # signs automatically through the App Store Connect API key (Admin role:
@@ -193,6 +278,9 @@ jobs:
           npx tauri ios init --ci --skip-targets-install
           # init brings Tauri's placeholder icons; ours are opaque (App Store rule).
           cp src-tauri/icons/ios/*.png src-tauri/gen/apple/Assets.xcassets/AppIcon.appiconset/
+          # Share extension and App Group (apps/zunder-app/share).
+          ruby share/add-ios-extension.rb src-tauri/gen/apple "${TAG#v}"
+          (cd src-tauri/gen/apple && xcodegen generate)
 
       - name: Bauen und signieren
         working-directory: apps/zunder-app
