@@ -76,7 +76,7 @@ describe("shareImporter", () => {
     ]);
     await s.run();
     expect(s.deps.create.mock.calls.map(([t]) => t.title)).toEqual(["Eins", "example.org"]);
-    expect(s.done).toEqual([["a", "b", "c"]]);
+    expect(s.done).toEqual([["c", "a", "b"]]);
     expect(s.created).toEqual([["Eins", "example.org"]]);
     expect(s.waiting).toEqual([]);
   });
@@ -104,6 +104,19 @@ describe("shareImporter", () => {
     await s.run();
     await s.run();
     warn.mockRestore();
+    expect(s.deps.create).toHaveBeenCalledTimes(1);
+    expect(s.done).toEqual([["a"]]);
+  });
+
+  it("removes an item only once its task is stored", async () => {
+    const s = setup([{ id: "a", text: "Eins" }], () => "t1");
+    let stored = false;
+    const run = shareImporter({ ...s.deps, saved: async (ids) => new Set(stored ? ids : []) });
+    await run();
+    expect(s.done).toEqual([]);
+    expect(s.waiting).toHaveLength(1);
+    stored = true;
+    await run();
     expect(s.deps.create).toHaveBeenCalledTimes(1);
     expect(s.done).toEqual([["a"]]);
   });

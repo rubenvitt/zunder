@@ -16,12 +16,20 @@ enum ShareInbox {
     static let folder = "share-inbox"
     /// The app reads at most 1 MiB per file; long texts are cut well before.
     static let maxTextLength = 100_000
+    /// The app's limit per file (zunder_local::share::MAX_FILE_BYTES).
+    static let maxFileBytes = 1024 * 1024
 
     enum Failure: LocalizedError {
         case noContainer
+        case tooLarge
 
         var errorDescription: String? {
-            "Zunder konnte den gemeinsamen Ordner mit der App nicht öffnen."
+            switch self {
+            case .noContainer:
+                return "Zunder konnte den gemeinsamen Ordner mit der App nicht öffnen."
+            case .tooLarge:
+                return "Der geteilte Text ist zu lang für eine Aufgabe."
+            }
         }
     }
 
@@ -51,6 +59,8 @@ enum ShareInbox {
             created_at_ms: Int64(Date().timeIntervalSince1970 * 1000)
         )
         let data = try JSONEncoder().encode(item)
+        // Characters can take many bytes; the app would set a larger file aside.
+        guard data.count <= maxFileBytes else { throw Failure.tooLarge }
         // Atomic: the app never sees a half-written file under the final name.
         try data.write(to: dir.appendingPathComponent("\(id).json"), options: .atomic)
     }

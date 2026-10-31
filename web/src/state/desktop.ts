@@ -7,7 +7,7 @@ import { createSignal } from "solid-js";
 import type { AppConfig, AppInfo, ConfigUpdate, SyncEvent, TauriApp, TauriBackend, UpdateStatus } from "../platform/tauri";
 import { createTask } from "./actions";
 import { shareImporter, sharedMessage } from "./share";
-import { configureServices, ready, reloadData, reportRejected, setAppPending } from "./store";
+import { configureServices, getEngine, ready, reloadData, reportRejected, setAppPending } from "./store";
 import { toast } from "./ui";
 
 const [config, setConfig] = createSignal<AppConfig | null>(null);
@@ -92,6 +92,21 @@ export async function initDesktop(backend?: TauriBackend): Promise<AppConfig> {
 }
 
 /**
+ * Waits (up to 10 s) until the engine has handed the changes to these tasks to the
+ * app's local store (local_apply); resolves with those that got there.
+ */
+async function pushedToApp(taskIds: string[], timeoutMs = 10_000): Promise<Set<string>> {
+  const pendingIds = () => new Set(getEngine().pendingOps.filter((op) => op.entity === "task").map((op) => op.entity_id));
+  const deadline = Date.now() + timeoutMs;
+  let waiting = pendingIds();
+  while (taskIds.some((id) => waiting.has(id)) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    waiting = pendingIds();
+  }
+  return new Set(taskIds.filter((id) => !waiting.has(id)));
+}
+
+/**
  * Starts turning links and texts shared from other apps (share extension on iOS
  * and macOS) into inbox tasks: now and whenever the app reports new ones. Call
  * once the local data is loaded (after startSync()).
@@ -102,6 +117,7 @@ export function startShareImport(): Promise<void> {
     take: () => current.shareTake(),
     done: (ids) => current.shareDone(ids),
     create: (task) => createTask({ title: task.title, description: task.description, location: { kind: "inbox" } }),
+    saved: (taskIds) => pushedToApp(taskIds),
     created: (titles) => toast(sharedMessage(titles)),
   });
   return importShares();

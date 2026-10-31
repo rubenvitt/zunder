@@ -61,6 +61,12 @@ export interface ShareImportDeps {
   done(ids: string[]): Promise<unknown>;
   /** Creates the inbox task; the id or null when refused. */
   create(task: SharedTask): string | null;
+  /**
+   * Resolves with the tasks among `taskIds` that are stored for good (in the app: handed
+   * to local_apply). Only their items are removed; the others stay for the next round.
+   * Without it every created task counts as stored.
+   */
+  saved?(taskIds: string[]): Promise<Set<string>>;
   /** Called with the titles of the new tasks (at least one). */
   created?(titles: string[]): void;
 }
@@ -68,11 +74,13 @@ export interface ShareImportDeps {
 /**
  * Turns waiting shared items into inbox tasks, one round at a time: calls while a
  * round runs start another one afterwards (an event during the round may announce
- * new items). Items whose task was created are not created again, even if removing
- * them failed; refused ones stay for the next start.
+ * new items). An item is removed only once its task is stored, and its task is never
+ * created twice in a session, even if removing failed; refused ones stay for the next
+ * start.
  */
 export function shareImporter(deps: ShareImportDeps): () => Promise<void> {
-  const handled = new Set<string>();
+  /** Shared item → the task created for it. */
+  const handled = new Map<string, string>();
   const refused = new Set<string>();
   let running: Promise<void> | null = null;
   let again = false;
@@ -82,25 +90,27 @@ export function shareImporter(deps: ShareImportDeps): () => Promise<void> {
     const done: string[] = [];
     const titles: string[] = [];
     for (const item of items) {
-      if (handled.has(item.id)) {
-        done.push(item.id);
-        continue;
-      }
-      if (refused.has(item.id)) continue;
+      if (handled.has(item.id) || refused.has(item.id)) continue;
       const task = sharedTask(item);
       if (!task) {
         done.push(item.id);
         continue;
       }
-      if (deps.create(task)) {
-        handled.add(item.id);
-        done.push(item.id);
+      const taskId = deps.create(task);
+      if (taskId) {
+        handled.set(item.id, taskId);
         titles.push(task.title);
       } else {
         refused.add(item.id);
       }
     }
     if (titles.length > 0) deps.created?.(titles);
+    const waiting = items.filter((item) => handled.has(item.id));
+    if (waiting.length > 0) {
+      const taskIds = waiting.map((item) => handled.get(item.id)!);
+      const saved = deps.saved ? await deps.saved(taskIds) : new Set(taskIds);
+      for (const item of waiting) if (saved.has(handled.get(item.id)!)) done.push(item.id);
+    }
     if (done.length > 0) await deps.done(done);
   }
 
