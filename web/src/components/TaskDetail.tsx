@@ -1,13 +1,15 @@
 // Task detail side panel: everything inline editable, subtask tree, change history.
 
-import { createEffect, createResource, createSignal, createUniqueId, For, on, onCleanup, onMount, Show, type JSX } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal, createUniqueId, For, on, onCleanup, onMount, Show, type JSX } from "solid-js";
 import { fireOf, formatDateLabel, formatInstant, fromDatetimeLocalInput, localDate, parseDue, toDatetimeLocalInput, toRfc3339Local } from "../sync/dates";
 import { hasOpenChildren, isClaimActive, isClosed, isDevLocation, isFlameRunning, isRecurring } from "../sync/derived";
 import { needsDecision, offersNextWeek } from "../sync/defer";
+import { isCrowded } from "../sync/dayload";
 import { hlcWallMs } from "../sync/hlc";
 import { FOR_WHOMS, PHOENIX_ROLES, TASK_STATUSES, TASK_TYPES, WEIGHTS, type ForWhom, type HistoryEntry, type JsonValue, type Link, type Task, type TaskStatus, type TaskType } from "../sync/types";
 import {
   COMMITMENT_QUESTION,
+  crowdedPickHint,
   deferralsLabel,
   describeValue,
   FIELD_LABELS,
@@ -47,6 +49,7 @@ import { detailBack, NARROW_LAYOUT } from "../state/back";
 import { appConfig } from "../state/desktop";
 import { isTauri } from "../platform/runtime";
 import { api, commentsOf, data, now, pendingCount, taskIndex } from "../state/store";
+import { dueCountOn } from "../state/selectors";
 import { copyTaskId, copyText, detailWide, pickLocation, pickTask, selectedId, setDetailId, setDetailWide, setDetailWidth, setHandBackRequest, setSelectedId } from "../state/ui";
 import { waitingNames } from "../sync/handback";
 import { TextField } from "./Fields";
@@ -447,6 +450,9 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
                 </DateSlot>
                 <UndatedAck task={t()} />
               </span>
+              <Show when={personal()}>
+                <CrowdedDueHint task={t()} />
+              </Show>
             </Prop>
 
             <Show when={!isClosed(t().status) && (personal() || t().deferrals > 0)}>
@@ -875,6 +881,25 @@ function UndatedAck(props: { task: Task }) {
           </button>
         </span>
       </Show>
+    </Show>
+  );
+}
+
+/**
+ * Tagesvorschau (contract 5.1): the due day of an open task is crowded already. Shown while the
+ * day is today or later, so picking a day says what else lands there.
+ */
+function CrowdedDueHint(props: { task: Task }) {
+  const others = createMemo(() => {
+    const info = parseDue(props.task.due);
+    if (!info || isClosed(props.task.status) || info.date < localDate(new Date(now()))) return 0;
+    return dueCountOn(info.date, props.task.id);
+  });
+  return (
+    <Show when={isCrowded(others() + 1)}>
+      <span class="due-crowded" role="status">
+        {crowdedPickHint(others())}
+      </span>
     </Show>
   );
 }

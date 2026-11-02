@@ -3,7 +3,7 @@
 import type { AreaState, ForWhom, JsonValue, Location, PhoenixRole, ProjectKind, ProjectStatus, Recurrence, RecurrenceFrom, RecurrenceUnit, Task, TaskStatus, TaskType, WeekdayCode, Weight } from "./sync/types";
 import { WEEKDAY_CODES } from "./sync/types";
 import { FOR_WHOM_KEYS, WEIGHT_KEYS, type ForWhomKey, type WeekBalance, type WeightKey } from "./sync/balance";
-import { formatDateLabel, parseDue } from "./sync/dates";
+import { dateFromLocal, formatDateLabel, parseDue } from "./sync/dates";
 import { parseRecurrence, sameRecurrence, weekdayOf } from "./sync/recurrence";
 import { data } from "./state/store";
 
@@ -116,6 +116,30 @@ export const COMMITMENT_HINT = "Viele Zusagen offen. Eine zurückgeben?";
 /** "1 offene Zusage", "3 offene Zusagen": Heute's count of open commitments. */
 export function commitmentsLabel(count: number): string {
   return count === 1 ? "1 offene Zusage" : `${count} offene Zusagen`;
+}
+
+/** Tagesvorschau: "1 fällig", "9 fällig" (sync/dayload). */
+export function dueCountLabel(count: number): string {
+  return `${count} fällig`;
+}
+
+/** "Freitag, 6.11.": a day of the Tagesvorschau, spelled out. */
+export function longDayLabel(date: string): string {
+  const d = dateFromLocal(date);
+  return d ? d.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "numeric" }) : date;
+}
+
+/** Tagesvorschau, a crowded day: "Freitag, 6.11.: 9 Aufgaben fällig." */
+export function crowdedDayLine(date: string, count: number): string {
+  return `${longDayLabel(date)}: ${count} Aufgaben fällig.`;
+}
+
+/** Quiet hint under a crowded day in Heute. */
+export const CROWDED_HINT = "Da staut sich etwas. Lieber jetzt ein paar verteilen?";
+
+/** Picking a due day that is crowded already: "An diesem Tag sind schon 5 Aufgaben fällig." */
+export function crowdedPickHint(others: number): string {
+  return others === 1 ? "An diesem Tag ist schon 1 Aufgabe fällig." : `An diesem Tag sind schon ${others} Aufgaben fällig.`;
 }
 
 /** "wartet auf Anna": whom a task waits on (waiting_on). */
