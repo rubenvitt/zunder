@@ -69,9 +69,8 @@ export function DayPreview(props: { loads: DayLoad[] }) {
         {(load) => (
           <p class="day-crowded-line" data-date={load.date}>
             <button type="button" class="link-button" onClick={() => setOpenDay(load.date)}>
-              {crowdedDayLine(load.date, load.tasks.length)}
-            </button>{" "}
-            <span class="muted">{CROWDED_HINT}</span>
+              <strong>{crowdedDayLine(load.date, load.tasks.length)}</strong> <span class="muted">{CROWDED_HINT}</span>
+            </button>
           </p>
         )}
       </For>

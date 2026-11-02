@@ -3924,7 +3924,7 @@ a.sync {
   margin: 0.5rem 0 0;
   font-size: 0.88rem;
 }
-.day-crowded-line .link-button {
+.day-crowded-line .link-button strong {
   color: var(--warning);
   font-weight: 600;
 }
