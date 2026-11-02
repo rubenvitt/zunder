@@ -505,6 +505,10 @@ input[type="checkbox"] {
   background: var(--accent-soft);
   color: var(--accent-fg);
 }
+.chip-warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
 .chip-danger {
   background: var(--danger-soft);
   color: var(--danger);
@@ -3847,4 +3851,89 @@ a.sync {
 .form .jev-areas label.toggle {
   flex-direction: row;
   margin-top: 0;
+}
+
+/* ---- Tagesvorschau (contract 5.1) -------------------------------------------------------- */
+
+.day-preview {
+  margin-top: 1.5rem;
+}
+.day-strip {
+  list-style: none;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.3rem;
+  max-width: 34rem;
+}
+.day-cell {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.05rem;
+  padding: 0.3rem 0.1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  cursor: pointer;
+}
+.day-cell:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+.day-cell:disabled {
+  cursor: default;
+}
+.day-weekday {
+  font-size: 0.72rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.day-date {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.day-count {
+  font-size: 1rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.day-empty .day-count {
+  color: var(--muted);
+  font-weight: 400;
+}
+/* A crowded day: warning colour and a thicker outline, the line below says it in words. */
+.day-crowded {
+  background: var(--warning-soft);
+  border-color: var(--warning);
+  box-shadow: inset 0 0 0 1px var(--warning);
+}
+.day-crowded .day-count {
+  color: var(--warning);
+}
+.day-open {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.day-crowded-line {
+  margin: 0.5rem 0 0;
+  font-size: 0.88rem;
+}
+.day-crowded-line .link-button strong {
+  color: var(--warning);
+  font-weight: 600;
+}
+.day-preview .task-list {
+  margin-top: 0.5rem;
+}
+.due-crowded {
+  display: block;
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: var(--warning);
 }

@@ -1,11 +1,13 @@
 import { createMemo, createSignal, createUniqueId, For, onMount, Show, untrack } from "solid-js";
 import { captureContext } from "../capture/context";
 import { parseCapture, slugify } from "../capture/parse";
-import { formatDue } from "../sync/dates";
+import { formatDue, localDate, parseDue } from "../sync/dates";
+import { isCrowded } from "../sync/dayload";
 import { isDevLocation } from "../sync/derived";
-import { CAPTURE_SHORTHAND, COMMITMENT_QUESTION, describeRecurrence, FOR_WHOM_HINTS, FOR_WHOM_LABELS, locationLabel, waitingLabel, WEIGHT_HINTS, WEIGHT_LABELS } from "../labels";
+import { CAPTURE_SHORTHAND, COMMITMENT_QUESTION, crowdedPickHint, describeRecurrence, FOR_WHOM_HINTS, FOR_WHOM_LABELS, locationLabel, waitingLabel, WEIGHT_HINTS, WEIGHT_LABELS } from "../labels";
 import { createTask, selfCommitted, shorten } from "../state/actions";
 import { route } from "../state/router";
+import { dueCountOn } from "../state/selectors";
 import { areaList, data, now, projectList } from "../state/store";
 import { askToast, captureHelpShown, setCaptureOpen, toast, toggleCaptureHelp } from "../state/ui";
 import { Icon } from "./Icon";
@@ -52,6 +54,14 @@ export function QuickCapture() {
   const parsed = createMemo(() => parseCapture(text(), new Date(now()), structure(), { recurrence: !rhythmDismissed() }));
   const target = () => parsed().location ?? preset() ?? { kind: "inbox" as const };
   const fromPreset = () => !parsed().location && preset() !== null;
+
+  // Tagesvorschau (contract 5.1): the picked day is crowded already (outside dev projects).
+  const dueCrowd = createMemo(() => {
+    const info = parseDue(parsed().due);
+    if (!info || info.date < localDate(new Date(now())) || isDevLocation(target(), (pid) => data.projects[pid])) return 0;
+    const others = dueCountOn(info.date);
+    return isCrowded(others + 1) ? others : 0;
+  });
 
   function dismissRhythm() {
     setRhythmDismissed(true);
@@ -175,6 +185,11 @@ export function QuickCapture() {
                 <Icon name="calendar" size={12} />
                 Fällig {formatDue(parsed().due, new Date(now()))}
               </span>
+              <Show when={dueCrowd() > 0}>
+                <span class="chip chip-warning capture-crowded" title={crowdedPickHint(dueCrowd())}>
+                  dort schon {dueCrowd()} fällig
+                </span>
+              </Show>
             </Show>
             <Show when={parsed().weight}>
               {(w) => (

@@ -5,6 +5,7 @@ import { EmptyState } from "../components/EmptyState";
 import { TaskList } from "../components/TaskList";
 import { FocusSection } from "../components/FocusSection";
 import { WeekMirror } from "../components/WeekMirror";
+import { DayPreview, openDayTasks, previewLoads } from "../components/DayPreview";
 import type { DeferTarget } from "../sync/defer";
 import type { Task } from "../sync/types";
 import { canHandBack, deferTask, dropTask, moveTask, setWaitingOn, shorten } from "../state/actions";
@@ -50,10 +51,12 @@ const followUpActions = (task: Task) => [
 
 export function TodayView() {
   const groups = createMemo(todayGroups);
+  // Tagesvorschau: the next days and their due tasks (contract 5.1).
+  const loads = createMemo(previewLoads);
   const all = createMemo(() => {
     const g = groups();
     const seen = new Set<string>();
-    return [...g.flames, ...g.overdue, ...g.dueToday, ...g.reminders, ...g.followUps].filter((t) => !seen.has(t.id) && !!seen.add(t.id));
+    return [...g.flames, ...g.overdue, ...g.dueToday, ...g.reminders, ...g.followUps, ...openDayTasks(loads())].filter((t) => !seen.has(t.id) && !!seen.add(t.id));
   });
   // Zusagen-Bremse: how many promises are open, shown before they press (contract 5.1).
   const commitments = createMemo(() => commitmentTasks().length);
@@ -62,7 +65,10 @@ export function TodayView() {
     // Another device may have clicked "Erst für dich" away or picked a task today.
     void refreshFocus();
   });
-  const nothing = () => all().length === 0;
+  const nothing = () => {
+    const g = groups();
+    return g.flames.length + g.overdue.length + g.dueToday.length + g.reminders.length + g.followUps.length === 0;
+  };
   return (
     <div class="view">
       <header class="view-head">
@@ -121,6 +127,7 @@ export function TodayView() {
           </a>
         </EmptyState>
       </Show>
+      <DayPreview loads={loads()} />
       <WeekMirror />
     </div>
   );

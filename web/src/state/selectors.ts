@@ -4,6 +4,7 @@ import { localDate, parseDue } from "../sync/dates";
 import { compareHlc } from "../sync/hlc";
 import { weekBalance, type WeekBalance } from "../sync/balance";
 import { openCommitments } from "../sync/commitments";
+import { dayLoads, dueOnDay, type DayLoad } from "../sync/dayload";
 import { pickFocus, type Focus } from "../sync/focus";
 import { awaitsAnswer } from "../sync/handback";
 import { compareTasks, isClosed, isDevLocation, isFlameRunning, isHiddenByAge, statusChangedMs, weightRank } from "../sync/derived";
@@ -184,6 +185,20 @@ export function focusOf(today: string, chosenId: string | null): Focus {
 /** Wochenspiegel: the balance of `week` (rule in sync/balance, one pass over the tasks). */
 export function weekBalanceOf(week: string): WeekBalance {
   return weekBalance(taskIndex().byId.values(), week, notPersonal);
+}
+
+/** Tagesvorschau: the next `days` days after `today` with their due tasks, weight first, then due time. */
+export function dayLoadsAhead(today: string, days: number): DayLoad[] {
+  const loads = dayLoads(taskIndex().byId.values(), today, days, notPersonal);
+  const byDue = (a: Task, b: Task) =>
+    weightRank(a.weight) - weightRank(b.weight) || (parseDue(a.due)?.at.getTime() ?? 0) - (parseDue(b.due)?.at.getTime() ?? 0) || compareTasks(a, b);
+  for (const load of loads) load.tasks.sort(byDue);
+  return loads;
+}
+
+/** Tasks besides `exceptId` due on `date`, outside dev projects (hint when picking a day). */
+export function dueCountOn(date: string, exceptId?: string): number {
+  return dueOnDay(taskIndex().byId.values(), date, notPersonal, exceptId);
 }
 
 export function phoenixTasks(fire: string): { steps: Task[]; flames: Task[] } {
