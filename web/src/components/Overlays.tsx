@@ -101,9 +101,15 @@ export function ShortcutHelp() {
       <h3 class="help-section">Kurzschreibweise beim Erfassen</h3>
       <ShorthandList />
       <div class="modal-actions">
-        <a class="small muted credit" href="https://icons8.com" target="_blank" rel="noopener noreferrer">
-          Icons von Icons8
-        </a>
+        <span class="small muted credit">
+          <a class="credit" href="https://icons8.com" target="_blank" rel="noopener noreferrer">
+            Icons von Icons8
+          </a>
+          {" · "}
+          <a class="credit" href="https://hairline.lucasmarkes.com" target="_blank" rel="noopener noreferrer">
+            Figuren von hairline
+          </a>
+        </span>
         <span class="spacer" />
         <button class="btn btn-primary" onClick={() => setHelpOpen(false)}>
           Schließen

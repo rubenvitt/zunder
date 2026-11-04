@@ -61,7 +61,7 @@ cargo build -p zunder-server
 
 - Backend: Rust (axum), SQLite
 - Gemeinsamer Kern: Rust-Crate `zunder-core` (Domäne, Sync)
-- Web-UI: TypeScript (SolidJS), Markdown-Editor mit TipTap, Icons von [Icons8](https://icons8.com) (Fluency Systems Regular)
+- Web-UI: TypeScript (SolidJS), Markdown-Editor mit TipTap, Icons von [Icons8](https://icons8.com) (Fluency Systems Regular), Linienfiguren in Leerzuständen von [hairline](https://hairline.lucasmarkes.com) (MIT, Hinweis in `web/public/THIRD_PARTY_NOTICES.txt`)
 - Desktop und Mobile: Tauri 2
 - Agenten-Schnittstelle: MCP (Streamable HTTP) im Server
 - Betrieb: ein Container (amd64/arm64) hinter Traefik, Image auf GHCR

@@ -1008,6 +1008,29 @@ html.resizing * {
     0 0 0 6px var(--accent-softer),
     inset 0 0 0 1px color-mix(in srgb, var(--accent) 14%, transparent);
 }
+/* hairline figures (components/Figure.tsx), drawn in our colors so they follow light and dark. */
+.figure {
+  width: clamp(160px, 40vw, 220px);
+  --hairline-plate: var(--bg);
+  --hairline-hi: var(--text-2);
+  --hairline-edge: var(--muted);
+  --hairline-mid: var(--border-strong);
+  --hairline-lo: var(--border);
+}
+.figure.reward {
+  --hairline-hi: var(--accent-fg);
+}
+/* Under reduced motion hairline jumps instead of tweening, but Slow's belt would still run on
+   hover: the playing figure (the only one with .reward) takes no pointer then. */
+@media (prefers-reduced-motion: reduce) {
+  .figure.reward {
+    pointer-events: none;
+  }
+}
+.figure:focus-visible {
+  outline-color: var(--focus);
+  border-radius: var(--radius-small);
+}
 .empty-text {
   display: flex;
   flex-direction: column;

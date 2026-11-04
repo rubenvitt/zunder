@@ -100,21 +100,21 @@ export function StructureView() {
             <Show
               when={areaList().length > 0}
               fallback={
-                <EmptyState icon="folder" title="Noch keine Bereiche." hint="Bereiche bündeln Projekte und Aufgaben, etwa Arbeit, Zuhause oder Gesundheit.">
+                <EmptyState icon="folder" figure={{ name: "drawer", label: "Ein Schrank mit leeren Schubladen" }} title="Noch keine Bereiche." hint="Bereiche bündeln Projekte und Aufgaben, etwa Arbeit, Zuhause oder Gesundheit.">
                   <button class="btn btn-small" onClick={() => setStructureEdit({ kind: "area" })}>
                     Bereich anlegen
                   </button>
                 </EmptyState>
               }
             >
-              <EmptyState icon="folderOpen" title="Bereich oder Projekt links auswählen." />
+              <EmptyState icon="folderOpen" figure={{ name: "hub", label: "Ein Knoten mit Kacheln drumherum" }} title="Bereich oder Projekt links auswählen." />
             </Show>
           }
         >
           <Show
             when={current()!.kind === "project" ? data.projects[current()!.id!] : undefined}
             fallback={
-              <Show when={data.areas[current()!.id!]} fallback={<EmptyState icon="search" title="Nicht gefunden." hint="Der Bereich oder das Projekt existiert nicht mehr." />}>
+              <Show when={data.areas[current()!.id!]} fallback={<EmptyState icon="search" figure={{ name: "query", label: "Ein Fragezeichen" }} title="Nicht gefunden." hint="Der Bereich oder das Projekt existiert nicht mehr." />}>
                 {(area) => <AreaPanel area={area()} />}
               </Show>
             }
