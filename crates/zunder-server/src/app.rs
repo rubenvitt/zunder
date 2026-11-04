@@ -1128,6 +1128,11 @@ impl App {
             format_ms(now_ms()),
         )?;
         suggestion.mark_auto(task.weight, task.for_whom);
+        // Asking again replaces the stored proposal, which is also the follow
+        // rate's baseline: keep what the new one cannot know.
+        if let Some(previous) = self.task_suggestion(task_id).await? {
+            suggestion.keep_from(&previous);
+        }
         let json = serde_json::to_string(&suggestion).map_err(anyhow::Error::from)?;
         let (key, model) = (task_id.to_string(), suggestion.model.clone());
         self.with_writer(move |conn| {

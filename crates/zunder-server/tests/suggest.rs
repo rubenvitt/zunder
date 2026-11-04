@@ -235,10 +235,13 @@ async fn suggestion_for_an_unsorted_task() {
         json!({"asked": 1, "weight": tally(1, 1, 0.6), "for_whom": tally(1, 0, 0.7), "place": tally(1, 1, 0.8), "input_tokens": 321})
     );
 
-    // Outside the inbox too, but without the place question.
+    // Outside the inbox too, but without the place question; the place asked
+    // in the inbox stays the follow rate's baseline.
     let r = s.post(&path, Auth::Web(&session), json!({})).await;
     assert_eq!(r.status, StatusCode::OK, "{}", r.text());
-    assert_eq!(r.json()["place"], Value::Null);
+    assert_eq!(r.json()["place"]["id"], project_id);
+    let stats = s.get("/api/settings/jev", Auth::Web(&session)).await.json()["stats"].clone();
+    assert_eq!(stats["place"], tally(1, 1, 0.8));
     let (_, body) = mock.0.lock().unwrap().requests.pop().unwrap();
     assert!(body["questions"].get("ort").is_none(), "{body}");
     assert!(!body.to_string().contains("Steuer 2026"));
@@ -559,7 +562,30 @@ async fn sure_proposals_are_marked_and_kept_apart() {
     let stats = s.get("/api/settings/jev", Auth::Web(&session)).await.json()["stats"].clone();
     assert_eq!(stats["weight"], tally_auto(0, 0, 0.95, 1, 1));
 
-    // A field that is set already is never marked.
+    // Asking again keeps the mark while Jev proposes the same value, so the
+    // correction still counts as one.
     let r = s.post(&path, Auth::Web(&session), json!({})).await;
+    assert_eq!(r.json()["auto"], json!(["weight"]));
+    let stats = s.get("/api/settings/jev", Auth::Web(&session)).await.json()["stats"].clone();
+    assert_eq!(stats["weight"], tally_auto(0, 0, 0.95, 1, 1));
+
+    // A field that is set already is never newly marked.
+    let other = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Zahnarzt", "location": {"kind": "loose"}, "weight": "brand"}),
+    )
+    .await;
+    let r = s
+        .post(
+            &format!(
+                "/api/tasks/{}/suggestion",
+                other["task"]["id"].as_str().unwrap()
+            ),
+            Auth::Web(&session),
+            json!({}),
+        )
+        .await;
     assert_eq!(r.json()["auto"], json!([]));
 }

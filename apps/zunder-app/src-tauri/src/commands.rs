@@ -184,14 +184,15 @@ pub async fn task_suggestion(
     client.task_suggestion(task_id).await
 }
 
-/// Asks Jev about a task. Pushes first: the server only knows tasks it
-/// has received, and a task created a moment ago may still be pending.
-/// Tasks Jev may not see answer `unsupported`.
+/// Asks Jev about a task. Pushes first and only asks once that worked: the
+/// server only knows tasks it has received, and it decides what may leave
+/// (private areas) from its own state, so a local move into a private area
+/// must have arrived. Tasks Jev may not see answer `unsupported`.
 #[tauri::command(rename_all = "snake_case")]
 pub async fn task_suggest(app: AppHandle, task_id: Id) -> Result<serde_json::Value, Error> {
     let state = app.state::<AppState>();
     if lock(&state.store).pending_count() > 0 {
-        let _ = background::sync(&app).await;
+        background::sync(&app).await?;
     }
     let client = state.syncer.client(&state.store)?;
     client.suggest_task(task_id).await

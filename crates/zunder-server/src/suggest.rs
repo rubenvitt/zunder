@@ -350,6 +350,27 @@ impl Suggestion {
         }
     }
 
+    /// Takes over from the proposal this one replaces what it cannot know
+    /// itself: the place asked while the task was in the inbox (when this
+    /// one had no place question), and the marks of values the UI set by
+    /// itself, as long as this one proposes the same value.
+    pub fn keep_from(&mut self, previous: &Suggestion) {
+        if self.place_probabilities.is_empty() && !previous.place_probabilities.is_empty() {
+            self.place = previous.place.clone();
+            self.place_probabilities = previous.place_probabilities.clone();
+            self.place_probability = previous.place_probability;
+        }
+        let same_weight = previous.auto_weight().is_some() && previous.weight == self.weight;
+        if same_weight && self.auto_weight().is_none() {
+            self.auto.push(AUTO_WEIGHT.into());
+        }
+        let same_for_whom =
+            previous.auto_for_whom().is_some() && previous.for_whom == self.for_whom;
+        if same_for_whom && self.auto_for_whom().is_none() {
+            self.auto.push(AUTO_FOR_WHOM.into());
+        }
+    }
+
     /// The weight the UI set by itself, if any.
     pub fn auto_weight(&self) -> Option<Weight> {
         self.weight
@@ -1066,6 +1087,23 @@ mod tests {
         let mut s = suggestion(Some((Weight::Glut, 0.99)), Some((ForWhom::Mich, 0.95)));
         s.mark_auto(Some(Weight::Brand), None);
         assert_eq!(s.auto, vec![AUTO_FOR_WHOM.to_owned()]);
+
+        // Asking again keeps the inbox place and the marks of unchanged values.
+        let mut previous = suggestion(Some((Weight::Glut, 0.95)), Some((ForWhom::Mich, 0.95)));
+        previous.mark_auto(None, None);
+        previous.place = Some(place("project", "Zunder").proposal);
+        previous.place_probability = Some(0.7);
+        previous.place_probabilities.insert("x".into(), 0.7);
+        let mut again = suggestion(Some((Weight::Glut, 0.95)), Some((ForWhom::Uns, 0.95)));
+        again.mark_auto(Some(Weight::Glut), Some(ForWhom::Mich));
+        again.keep_from(&previous);
+        assert_eq!(
+            again.auto,
+            vec![AUTO_WEIGHT.to_owned()],
+            "for whom changed: no mark"
+        );
+        assert_eq!(again.place, previous.place);
+        assert_eq!(again.place_probability, Some(0.7));
 
         // Stored proposals from before ZUN-56 read without `auto`.
         let mut old = serde_json::to_value(suggestion(Some((Weight::Glut, 0.99)), None)).unwrap();

@@ -4,7 +4,7 @@
 // about (Suggestion.auto) is set right away and can be undone here. No numbers,
 // no model names: the owner decides at a glance.
 
-import { createEffect, createResource, createSignal, For, on, Show } from "solid-js";
+import { createEffect, createResource, createSignal, For, on, onCleanup, Show } from "solid-js";
 import { FOR_WHOM_LABELS, WEIGHT_LABELS } from "../labels";
 import { moveTask, updateTask } from "../state/actions";
 import { api, data, pendingCount } from "../state/store";
@@ -59,6 +59,12 @@ export function JevSuggestion(props: { task: Task; inInbox: boolean; onForWhom: 
   // Fields Jev set by itself in this view, with the value to undo to (always empty).
   const [autoSet, setAutoSet] = createSignal<SuggestionAuto[]>([]);
   let askedFor: string | null = null;
+  // An answer that arrives after the panel is gone (task moved into a dev project, detail
+  // closed) must not set anything: its "Rückgängig" would be gone too.
+  let disposed = false;
+  onCleanup(() => {
+    disposed = true;
+  });
 
   createEffect(
     on(taskId, () => {
@@ -75,11 +81,11 @@ export function JevSuggestion(props: { task: Task; inInbox: boolean; onForWhom: 
     setFailed(false);
     try {
       const s = await api().suggestTask(id);
-      if (id !== taskId()) return;
+      if (disposed || id !== taskId()) return;
       mutate(s);
       applySure(s);
     } catch (err) {
-      if (id !== taskId()) return;
+      if (disposed || id !== taskId()) return;
       if (refused(err)) setHidden(true);
       else if (manual) toast(err instanceof Error ? err.message : "Jev hat nicht geantwortet.", "error");
       else setFailed(true);
