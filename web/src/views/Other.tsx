@@ -51,7 +51,7 @@ export function DevView() {
         <span class="muted">{devProjectIds().size} Dev-Projekte</span>
       </header>
       <Show when={devProjectIds().size > 0} fallback={
-          <EmptyState icon="code" title="Noch keine Dev-Projekte." hint="Ein Projekt mit der Art „Dev“ bekommt Board, Bugs, Features und Review.">
+          <EmptyState icon="code" figure={{ name: "branches", label: "Ein Commit-Graph mit einem Zweig" }} title="Noch keine Dev-Projekte." hint="Ein Projekt mit der Art „Dev“ bekommt Board, Bugs, Features und Review.">
             <button class="btn btn-small" onClick={() => setStructureEdit({ kind: "project", projectKind: "dev" })}>
               Dev-Projekt anlegen
             </button>

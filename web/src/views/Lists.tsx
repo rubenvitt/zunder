@@ -121,7 +121,10 @@ export function TodayView() {
         </section>
       </Show>
       <Show when={nothing()}>
-        <EmptyState icon="sun" title="Nichts fällig." hint="Kein Termin drängt. Ein guter Tag für eine Flamme.">
+        <EmptyState
+          icon="sun"
+          figure={{ name: "slow", label: "Kisten auf einem Förderband, das gemächlich läuft", play: true }}
+          title="Nichts fällig." hint="Kein Termin drängt. Ein guter Tag für eine Flamme.">
           <a class="btn btn-small" href="#/phoenix">
             Zu Phönix
           </a>
@@ -175,7 +178,10 @@ export function InboxView() {
         tasks={tasks()}
         label="Inbox"
         empty={
-          <EmptyState icon="checkCircle" title="Inbox leer." hint="Alles eingeordnet. Neue Gedanken landen hier, bis du sie zuordnest.">
+          <EmptyState
+            icon="checkCircle"
+            figure={{ name: "basket", label: "Ein leerer Drahtkorb" }}
+            title="Inbox leer." hint="Alles eingeordnet. Neue Gedanken landen hier, bis du sie zuordnest.">
             {/* Phones have the big plus button instead. */}
             <button class="btn btn-small hide-mobile" onClick={() => setCaptureOpen(true)}>
               Aufgabe erfassen <kbd>n</kbd>
@@ -210,7 +216,7 @@ export function LooseView() {
       <TaskList
         tasks={tasks()}
         label="Lose Aufgaben"
-        empty={<EmptyState icon="loose" title="Keine losen Aufgaben." hint="Hier liegt, was bewusst zu keinem Bereich gehört. Aus der Inbox mit l hierher schieben." />}
+        empty={<EmptyState icon="loose" figure={{ name: "rail", label: "Eine Kleiderstange mit leeren Bügeln" }} title="Keine losen Aufgaben." hint="Hier liegt, was bewusst zu keinem Bereich gehört. Aus der Inbox mit l hierher schieben." />}
       />
     </div>
   );
@@ -247,6 +253,7 @@ export function WaitingView() {
       <Show when={all().length === 0}>
         <EmptyState
           icon="user"
+          figure={{ name: "elevator", label: "Ein Aufzug, auf den niemand wartet" }}
           title="Niemand ist am Zug."
           hint="Hier steht, was du zurückgegeben hast oder wo jemand anderes entscheidet. Im Detail unter „Wartet auf“ eintragen."
         />
@@ -275,7 +282,7 @@ export function CommitmentsView() {
         tasks={tasks()}
         showLocation
         label="Offene Zusagen"
-        empty={<EmptyState icon="user" title="Keine offenen Zusagen." hint="Hier steht, was du anderen zugesagt hast: Für wen „andere“, noch nicht erledigt." />}
+        empty={<EmptyState icon="user" figure={{ name: "padlock", label: "Ein geöffnetes Vorhängeschloss" }} title="Keine offenen Zusagen." hint="Hier steht, was du anderen zugesagt hast: Für wen „andere“, noch nicht erledigt." />}
         actions={(task) => (canHandBack(task) ? [{ label: "Zurückgeben", mobile: true, run: () => setHandBackRequest({ taskId: task.id }) }] : [])}
       />
     </div>
