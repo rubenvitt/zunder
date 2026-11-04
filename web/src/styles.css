@@ -1020,9 +1020,10 @@ html.resizing * {
 .figure.reward {
   --hairline-hi: var(--accent-fg);
 }
-/* hairline rests under reduced motion only without a pointer (Slow's belt would run on hover). */
+/* Under reduced motion hairline jumps instead of tweening, but Slow's belt would still run on
+   hover: the playing figure (the only one with .reward) takes no pointer then. */
 @media (prefers-reduced-motion: reduce) {
-  .figure {
+  .figure.reward {
     pointer-events: none;
   }
 }
