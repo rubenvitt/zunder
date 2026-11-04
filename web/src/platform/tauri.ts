@@ -30,6 +30,7 @@ import type {
   IntakeChannel,
   JevEval,
   JevSettings,
+  JevStatus,
   JevSettingsUpdate,
   Me,
   OAuthClient,
@@ -322,6 +323,20 @@ export class TauriApp {
     return this.call("focus_set", { update });
   }
 
+  /** Jev through the app (the webview may not talk to the server itself). */
+  jevStatus(): Promise<JevStatus> {
+    return this.call("jev_status");
+  }
+
+  taskSuggestion(taskId: string): Promise<Suggestion | null> {
+    return this.call("task_suggestion", { task_id: taskId });
+  }
+
+  /** Pushes pending changes first; tasks Jev may not see answer `unsupported`. */
+  taskSuggest(taskId: string): Promise<Suggestion> {
+    return this.call("task_suggest", { task_id: taskId });
+  }
+
   appInfo(): Promise<AppInfo> {
     return this.call("app_info");
   }
@@ -465,6 +480,10 @@ export class TauriTransport implements SyncTransport, ApiClient {
     return this.app.focusSet(update);
   }
 
+  jevStatus(): Promise<JevStatus> {
+    return this.app.jevStatus();
+  }
+
   jevSettings(): Promise<JevSettings> {
     return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
   }
@@ -481,13 +500,13 @@ export class TauriTransport implements SyncTransport, ApiClient {
     return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
   }
 
-  // Proposals need the server; the app has no command for them yet (the panel hides itself).
-  taskSuggestion(_taskId: string): Promise<Suggestion | null> {
-    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+  // Proposals go through the app to the server; offline they fail with `network`.
+  taskSuggestion(taskId: string): Promise<Suggestion | null> {
+    return this.app.taskSuggestion(taskId);
   }
 
-  suggestTask(_taskId: string): Promise<Suggestion> {
-    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+  suggestTask(taskId: string): Promise<Suggestion> {
+    return this.app.taskSuggest(taskId);
   }
 
   calendarSettings(): Promise<CalendarSettings> {

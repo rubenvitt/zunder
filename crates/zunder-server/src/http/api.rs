@@ -71,6 +71,7 @@ pub fn routes() -> Router<App> {
                 .delete(reset_jev_settings),
         )
         .route("/settings/jev/eval", post(eval_jev))
+        .route("/jev", get(jev_status))
         .route(
             "/tasks/{id}/suggestion",
             get(task_suggestion).post(suggest_task),
@@ -473,6 +474,14 @@ async fn eval_jev(
 ) -> AppResult<Json<JevEval>> {
     require_browser_for_settings(&principal)?;
     Ok(Json(app.jev_eval(body).await?))
+}
+
+/// Whether Jev is set up (no key, no settings): for the browser and the app.
+async fn jev_status(
+    State(app): State<App>,
+    _principal: Principal,
+) -> AppResult<Json<crate::suggest::JevStatus>> {
+    Ok(Json(app.jev_status().await?))
 }
 
 /// The stored proposal (`null` when there is none).

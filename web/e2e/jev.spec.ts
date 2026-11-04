@@ -5,7 +5,7 @@ test.beforeEach(async ({ page }) => {
   await prepare(page);
 });
 
-test("Jev einrichten und einen Vorschlag für eine Inbox-Aufgabe übernehmen", async ({ page }) => {
+test("Jev einrichten; Vorschläge kommen von selbst und gelten mit einem Tipp", async ({ page }) => {
   test.skip(!isMock, "Der echte Server würde Jev wirklich fragen; nur der Mock antwortet fest");
   const s = suffix();
   const seeder = new Seeder();
@@ -15,6 +15,8 @@ test("Jev einrichten und einen Vorschlag für eine Inbox-Aufgabe übernehmen", a
   const site = seeder.project(`Website ${s}`, work);
   const task = seeder.task(`Impressum prüfen ${s}`);
   seeder.task(`Rechnung bezahlen ${s}`, { weight: "rauch", for_whom: "andere", location: { kind: "project", id: site } });
+  const sure = seeder.task(`Domain eindeutig verlängern ${s}`, { location: { kind: "project", id: site } });
+  const hidden = seeder.task(`Brief schreiben ${s}`, { location: { kind: "area", id: privateArea } });
   await seeder.push(page);
 
   try {
@@ -46,19 +48,39 @@ test("Jev einrichten und einen Vorschlag für eine Inbox-Aufgabe übernehmen", a
     await openApp(page, "#/inbox");
     await row(page, `Impressum prüfen ${s}`).locator(".task-main").click();
     const detail = page.getByRole("complementary", { name: "Aufgabendetail" });
+    // No click: the proposals come by themselves, as chips without numbers.
     const panel = detail.getByTestId("jev-suggestion");
-    await panel.getByRole("button", { name: "Vorschlag holen" }).click();
-    await expect(panel).toContainText("Vorschlag von Jev");
-    await expect(panel).toContainText("70 %");
-    // The private area's project is never proposed.
-    await expect(panel).toContainText(`Website ${s}`);
+    await expect(panel.getByRole("button", { name: "Glut" })).toBeVisible();
+    await expect(panel.getByRole("button", { name: "für mich" })).toBeVisible();
+    // The private area's project is never proposed; the unsure place says "?".
+    await expect(panel.getByRole("button", { name: `Website ${s}` })).toContainText("?");
     await expect(panel).not.toContainText(`Tagebuch ${s}`);
+    await expect(panel).not.toContainText("%");
+    // 0.7 and 0.8 are not sure enough to be set without a tap.
+    expect((await entityFields(page, "task", task)).weight ?? null).toBeNull();
 
-    await panel.getByRole("button", { name: "Alles übernehmen" }).click();
+    await panel.getByRole("button", { name: "Alle übernehmen" }).click();
     await expect.poll(async () => (await entityFields(page, "task", task)).weight).toBe("glut");
     await expect.poll(async () => (await entityFields(page, "task", task)).for_whom).toBe("mich");
     await expect.poll(async () => (await entityFields(page, "task", task)).location).toEqual({ kind: "project", id: site });
-    // Out of the inbox: no proposal panel any more.
+    // Everything taken: nothing left to propose.
+    await expect(detail.getByTestId("jev-suggestion")).toHaveCount(0);
+
+    // Outside the inbox too; what Jev is sure about is set right away and can be undone.
+    await openApp(page, `#/aufgabe/${sure}`);
+    const surePanel = detail.getByTestId("jev-suggestion");
+    await expect(surePanel.getByTestId("jev-auto")).toContainText("Glut");
+    await expect.poll(async () => (await entityFields(page, "task", sure)).weight).toBe("glut");
+    await expect(surePanel).not.toContainText(`Website ${s}`);
+    await surePanel.getByRole("button", { name: "Rückgängig" }).click();
+    await expect.poll(async () => (await entityFields(page, "task", sure)).weight ?? null).toBeNull();
+    await surePanel.getByRole("button", { name: "für mich" }).click();
+    await expect.poll(async () => (await entityFields(page, "task", sure)).for_whom).toBe("mich");
+
+    // Private areas never go to Jev: no panel.
+    await openApp(page, `#/aufgabe/${hidden}`);
+    await expect(detail.getByRole("group", { name: "Gewicht" })).toBeVisible();
+    await page.waitForTimeout(500);
     await expect(detail.getByTestId("jev-suggestion")).toHaveCount(0);
   } finally {
     await page.request.delete("/api/settings/jev", { headers: WEB_HEADERS });

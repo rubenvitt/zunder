@@ -3796,37 +3796,81 @@ a.sync {
   color: var(--text);
 }
 
-/* Jev's proposal for inbox tasks (TaskDetail). */
+/* Jev's proposal as chips (TaskDetail): one tap takes it over. */
 .jev-suggestion {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
   margin: 0.4rem 0 0.6rem;
-  padding: 0.5rem 0.7rem;
-  border: 1px dashed var(--border);
+  padding: 0.45rem 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
   border-radius: var(--radius-small);
-  font-size: 0.86rem;
+  font-size: 0.88rem;
 }
-.jev-head {
-  display: flex;
+.jev-title {
+  display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0.35rem 0.5rem;
+  gap: 0.25rem;
+  font-weight: 600;
+  color: var(--accent-fg);
 }
-.jev-rows {
-  list-style: none;
-  margin: 0.4rem 0 0;
-  padding: 0;
-  display: grid;
-  gap: 0.2rem;
+.jev-thinking {
+  animation: jev-pulse 1.4s ease-in-out infinite;
 }
-.jev-rows li {
-  display: flex;
+@keyframes jev-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .jev-thinking {
+    animation: none;
+  }
+}
+.jev-chip {
+  display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0.2rem 0.5rem;
-  min-height: 1.6rem;
+  gap: 0.25rem;
+  min-height: 2rem;
+  padding: 0.2rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border));
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
 }
-.jev-label {
-  min-width: 4.5rem;
+button.jev-chip:hover,
+button.jev-chip:focus-visible {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+}
+.jev-chip-unsure {
+  border-style: dashed;
   color: var(--text-2);
+}
+.jev-maybe {
+  color: var(--text-2);
+}
+.jev-chip-set {
+  cursor: default;
+  border-style: solid;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+}
+.jev-undo {
+  margin-left: 0.2rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 0.8rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.jev-all {
+  margin-left: auto;
 }
 .jev-areas {
   display: flex;

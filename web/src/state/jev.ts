@@ -1,9 +1,9 @@
-// Whether Jev (decision model for inbox proposals) is set up on the server.
-// Loaded once per session on first use; the settings view updates it. Unknown
-// (app, error, not loaded yet) counts as "not set up", so the panel stays away.
+// Whether Jev (decision model for task proposals) is set up on the server.
+// Loaded once per session on first use through `GET /api/jev`, which the
+// browser and the app may read; the settings view updates it. Unknown (offline,
+// error, not loaded yet) counts as "not set up", so the panel stays away.
 
 import { createSignal } from "solid-js";
-import { isTauri } from "../platform/runtime";
 import { api } from "./store";
 
 const [configured, setConfigured] = createSignal(false);
@@ -14,10 +14,10 @@ let generation = 0;
 
 /** True once the server reported a stored Jev key. */
 export function jevConfigured(): boolean {
-  if (!loading && !isTauri()) {
+  if (!loading) {
     const mine = ++generation;
     loading = api()
-      .jevSettings()
+      .jevStatus()
       .then((s) => {
         if (mine === generation) setConfigured(s.configured);
       })

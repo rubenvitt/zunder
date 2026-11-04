@@ -1,22 +1,27 @@
-//! Proposals for inbox tasks from a decision model (ZUN-52, contract 4.5):
-//! weight, for whom and place (project or area), asked in one request to
-//! `POST /v1/systemone` (TypeSafe Jev; other providers serve the same
-//! contract). Only proposals: nothing here changes a task, the web UI offers
-//! each one to take over with a click.
+//! Proposals for unsorted tasks from a decision model (ZUN-52, contract
+//! 4.5): weight, for whom and, for inbox tasks, the place (project or
+//! area), asked in one request to `POST /v1/systemone` (TypeSafe Jev; other
+//! providers serve the same contract). Nothing here changes a task: the UI
+//! offers each proposal with a tap and sets the ones marked [`Suggestion::auto`]
+//! (empty field, probability ≥ [`AUTO_APPLY_MIN_PROBABILITY`]) by itself.
 //!
 //! - Settings rows `jev.*` (web UI only, no environment variable): the API
 //!   token, a pinned model version (aliases such as `jev-latest` shift
 //!   answers without notice and are refused) and the private areas, whose
 //!   names and projects are never sent and never proposed.
-//! - Asked on request only (`POST /api/tasks/{id}/suggestion`), for tasks in
-//!   the inbox: the owner decides per task what leaves the server. Only the
-//!   task's title, description (shortened) and type go out, plus the names
-//!   of the active, non-private projects and areas as options.
+//! - Asked by the UI (`POST /api/tasks/{id}/suggestion`), which does so on
+//!   its own when an open root task's weight, for whom or place is still
+//!   open (ZUN-56). Never for tasks in private areas (also via their
+//!   project) or in dev projects. Only the task's title, description
+//!   (shortened) and type go out, for inbox tasks also the names of the
+//!   active, non-private projects and areas as options.
 //! - Every question has an "unklar"/"nichts" option, because a model with a
 //!   fixed schema otherwise reads missing information as a no.
 //! - Stored with the full distributions and the model version (`suggestions`
 //!   table). Whether the owner followed a proposal is derived from the
-//!   task's values ([`SuggestionStats`]), so nothing extra is clicked.
+//!   task's values ([`SuggestionStats`]), so nothing extra is clicked;
+//!   values the UI set by itself are counted apart (`auto_set`,
+//!   `auto_changed`) and left out of eval runs, so Jev never grades itself.
 
 use std::collections::BTreeMap;
 
@@ -50,6 +55,14 @@ const MAX_PLACES: usize = 254;
 const UNCLEAR: &str = "unklar";
 const NOTHING: &str = "nichts";
 const TOKEN_HINT_CHARS: usize = 4;
+/// From this probability on, a proposal for an empty weight or for-whom is
+/// set without a tap (marked in [`Suggestion::auto`]). Deliberately high
+/// until the pilot's follow rate (ZUN-55) says otherwise; the place is
+/// never set automatically.
+pub const AUTO_APPLY_MIN_PROBABILITY: f64 = 0.9;
+/// [`Suggestion::auto`] entries.
+pub const AUTO_WEIGHT: &str = "weight";
+pub const AUTO_FOR_WHOM: &str = "for_whom";
 
 /// Jev settings stored in the database.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -102,6 +115,10 @@ pub struct Tally {
     /// The same, counted only for proposals with at least the threshold's
     /// probability; one row per [`THRESHOLDS`] entry.
     pub by_threshold: Vec<ThresholdTally>,
+    /// Proposals the UI set by itself (not in `decided`).
+    pub auto_set: u64,
+    /// Of those, how many the owner has changed since.
+    pub auto_changed: u64,
 }
 
 impl Default for Tally {
@@ -116,6 +133,8 @@ impl Default for Tally {
                     ..ThresholdTally::default()
                 })
                 .collect(),
+            auto_set: 0,
+            auto_changed: 0,
         }
     }
 }
@@ -134,6 +153,13 @@ impl Tally {
             }
         }
     }
+
+    /// Counts one proposal the UI set by itself; `changed`: the task's
+    /// value differs from it now (also when it was cleared).
+    pub fn add_auto(&mut self, changed: bool) {
+        self.auto_set += 1;
+        self.auto_changed += u64::from(changed);
+    }
 }
 
 /// Follow rate of the stored proposals (`GET /api/settings/jev`).
@@ -145,6 +171,14 @@ pub struct SuggestionStats {
     pub for_whom: Tally,
     pub place: Tally,
     pub input_tokens: u64,
+}
+
+/// `GET /api/jev`: what every UI (browser and app) needs to know.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct JevStatus {
+    pub configured: bool,
+    /// [`AUTO_APPLY_MIN_PROBABILITY`], for the UI's wording.
+    pub auto_apply_min_probability: f64,
 }
 
 /// `GET /api/settings/jev`. Never contains the token.
@@ -294,6 +328,39 @@ pub struct Suggestion {
     pub for_whom_probability: Option<f64>,
     pub place_probability: Option<f64>,
     pub input_tokens: u64,
+    /// Proposals the UI sets without a tap ([`AUTO_WEIGHT`],
+    /// [`AUTO_FOR_WHOM`]): the field was empty when asked and the
+    /// probability is at least [`AUTO_APPLY_MIN_PROBABILITY`].
+    #[serde(default)]
+    pub auto: Vec<String>,
+}
+
+impl Suggestion {
+    /// Marks the proposals for fields that are still empty on the task
+    /// (its current `weight` and `for_whom`) and sure enough to be set
+    /// without a tap.
+    pub fn mark_auto(&mut self, weight: Option<Weight>, for_whom: Option<ForWhom>) {
+        let sure = |p: Option<f64>| p.is_some_and(|p| p >= AUTO_APPLY_MIN_PROBABILITY);
+        self.auto.clear();
+        if weight.is_none() && self.weight.is_some() && sure(self.weight_probability) {
+            self.auto.push(AUTO_WEIGHT.into());
+        }
+        if for_whom.is_none() && self.for_whom.is_some() && sure(self.for_whom_probability) {
+            self.auto.push(AUTO_FOR_WHOM.into());
+        }
+    }
+
+    /// The weight the UI set by itself, if any.
+    pub fn auto_weight(&self) -> Option<Weight> {
+        self.weight
+            .filter(|_| self.auto.iter().any(|a| a == AUTO_WEIGHT))
+    }
+
+    /// The for-whom the UI set by itself, if any.
+    pub fn auto_for_whom(&self) -> Option<ForWhom> {
+        self.for_whom
+            .filter(|_| self.auto.iter().any(|a| a == AUTO_FOR_WHOM))
+    }
 }
 
 /// One option of the place question.
@@ -338,7 +405,9 @@ pub fn place_options(state: &State, private: &[Id]) -> Vec<PlaceOption> {
 }
 
 /// The request body for `POST /v1/systemone`.
-pub fn request_body(model: &str, task: &Task, places: &[PlaceOption]) -> Value {
+/// The request for `task`; `places: None` leaves the place question out
+/// (tasks that already have a place).
+pub fn request_body(model: &str, task: &Task, places: Option<&[PlaceOption]>) -> Value {
     request_body_for(
         model,
         &task.title,
@@ -353,22 +422,11 @@ fn request_body_for(
     title: &str,
     description: Option<&str>,
     task_type: &str,
-    places: &[PlaceOption],
+    places: Option<&[PlaceOption]>,
 ) -> Value {
     let description: Option<String> =
         description.map(|d| d.chars().take(MAX_DESCRIPTION_CHARS).collect());
-    let mut place_criteria = serde_json::Map::new();
-    for p in places {
-        place_criteria.insert(
-            p.proposal.id.to_string(),
-            Value::String(p.description.clone()),
-        );
-    }
-    place_criteria.insert(
-        NOTHING.into(),
-        Value::String("Nichts davon passt, oder es ist aus der Aufgabe nicht zu erkennen".into()),
-    );
-    json!({
+    let mut body = json!({
         "state": {
             "titel": title,
             "beschreibung": description,
@@ -397,13 +455,29 @@ fn request_body_for(
                     UNCLEAR: "Aus der Aufgabe nicht zu erkennen",
                 },
             },
-            "ort": {
-                "type": "choice",
-                "instructions": "Wohin gehört die Aufgabe?",
-                "criteria": place_criteria,
-            },
         },
-    })
+    });
+    if let Some(places) = places {
+        let mut place_criteria = serde_json::Map::new();
+        for p in places {
+            place_criteria.insert(
+                p.proposal.id.to_string(),
+                Value::String(p.description.clone()),
+            );
+        }
+        place_criteria.insert(
+            NOTHING.into(),
+            Value::String(
+                "Nichts davon passt, oder es ist aus der Aufgabe nicht zu erkennen".into(),
+            ),
+        );
+        body["questions"]["ort"] = json!({
+            "type": "choice",
+            "instructions": "Wohin gehört die Aufgabe?",
+            "criteria": place_criteria,
+        });
+    }
+    body
 }
 
 #[derive(Deserialize)]
@@ -454,7 +528,7 @@ pub fn parse_response(
     body: &[u8],
     task_id: Id,
     requested_model: &str,
-    places: &[PlaceOption],
+    places: Option<&[PlaceOption]>,
     created_at: String,
 ) -> AppResult<Suggestion> {
     let r: Response = serde_json::from_slice(body)
@@ -472,18 +546,24 @@ pub fn parse_response(
     };
     let weight_keys = codes(Weight::codes());
     let for_whom_keys = codes(ForWhom::codes());
-    let mut place_keys: Vec<String> = places.iter().map(|p| p.proposal.id.to_string()).collect();
-    place_keys.push(NOTHING.into());
-
     let w = answer("gewicht")?;
     let f = answer("fuer_wen")?;
-    let o = answer("ort")?;
     let weight_choice = chosen(w, &weight_keys);
     let for_whom_choice = chosen(f, &for_whom_keys);
-    let place_choice = chosen(o, &place_keys);
     let weight_probabilities = known(&w.probabilities, &weight_keys);
     let for_whom_probabilities = known(&f.probabilities, &for_whom_keys);
-    let place_probabilities = known(&o.probabilities, &place_keys);
+    // Without the place question: no place, no distribution.
+    let (place_choice, place_probabilities) = match places {
+        Some(places) => {
+            let mut place_keys: Vec<String> =
+                places.iter().map(|p| p.proposal.id.to_string()).collect();
+            place_keys.push(NOTHING.into());
+            let o = answer("ort")?;
+            (chosen(o, &place_keys), known(&o.probabilities, &place_keys))
+        }
+        None => (None, BTreeMap::new()),
+    };
+    let places = places.unwrap_or_default();
     let weight = weight_choice
         .as_deref()
         .and_then(|c| c.parse::<Weight>().ok());
@@ -512,6 +592,7 @@ pub fn parse_response(
         place,
         place_probabilities,
         input_tokens: r.usage.input_tokens,
+        auto: Vec::new(),
     })
 }
 
@@ -562,10 +643,14 @@ pub fn stats(state: &State, suggestions: &[Suggestion]) -> SuggestionStats {
         let Some(task) = state.task(sug.task_id) else {
             continue;
         };
-        if let (Some(p), Some(v)) = (sug.weight, task.weight) {
+        if let Some(p) = sug.auto_weight() {
+            s.weight.add_auto(task.weight != Some(p));
+        } else if let (Some(p), Some(v)) = (sug.weight, task.weight) {
             s.weight.add(sug.weight_probability, p == v);
         }
-        if let (Some(p), Some(v)) = (sug.for_whom, task.for_whom) {
+        if let Some(p) = sug.auto_for_whom() {
+            s.for_whom.add_auto(task.for_whom != Some(p));
+        } else if let (Some(p), Some(v)) = (sug.for_whom, task.for_whom) {
             s.for_whom.add(sug.for_whom_probability, p == v);
         }
         let location = state.effective_location(task.id).unwrap_or(task.location);
@@ -620,19 +705,22 @@ pub struct EvalCase {
 /// The eval set: live root tasks outside the inbox with at least one known
 /// answer (weight, for whom, or a place among the options), most known
 /// answers first, then most recently changed. Tasks in private areas (also
-/// via their project) never go out.
+/// via their project) never go out. A weight or for-whom the UI set from a
+/// proposal by itself (`auto`, by task) and still unchanged is no known
+/// answer: Jev would grade itself.
 pub fn eval_cases(
     state: &State,
     model: &str,
     private: &[Id],
     places: &[PlaceOption],
+    auto: &BTreeMap<Id, (Option<Weight>, Option<ForWhom>)>,
     limit: usize,
 ) -> Vec<EvalCase> {
     // Request bodies (with up to 254 places each) only for the cases kept.
     let mut found: Vec<(usize, zunder_core::Hlc, Task, Option<PlaceProposal>)> = state
         .live_tasks()
         .filter(|t| t.parent_id.is_none())
-        .filter_map(|t| {
+        .filter_map(|mut t| {
             let location = state.effective_location(t.id)?;
             let area = match location {
                 Location::Inbox => return None,
@@ -642,6 +730,14 @@ pub fn eval_cases(
             };
             if area.is_some_and(|a| private.contains(&a)) {
                 return None;
+            }
+            if let Some((weight, for_whom)) = auto.get(&t.id) {
+                if weight.is_some() && t.weight == *weight {
+                    t.weight = None;
+                }
+                if for_whom.is_some() && t.for_whom == *for_whom {
+                    t.for_whom = None;
+                }
             }
             let place = places
                 .iter()
@@ -665,7 +761,7 @@ pub fn eval_cases(
         .take(limit)
         .map(|(_, _, t, place)| EvalCase {
             task_id: t.id,
-            body: request_body(model, &t, places),
+            body: request_body(model, &t, Some(places)),
             title: t.title,
             weight: t.weight,
             for_whom: t.for_whom,
@@ -898,7 +994,14 @@ mod tests {
             "usage": {"input_tokens": 512, "output_tokens": 9}
         });
         let id = Id::new();
-        let s = parse_response(body.to_string().as_bytes(), id, "x", &places, "t".into()).unwrap();
+        let s = parse_response(
+            body.to_string().as_bytes(),
+            id,
+            "x",
+            Some(&places),
+            "t".into(),
+        )
+        .unwrap();
         assert_eq!(s.weight, Some(Weight::Glut));
         assert_eq!(s.weight_probability, Some(0.7));
         assert_eq!(s.for_whom, None, "unklar is no proposal");
@@ -908,17 +1011,80 @@ mod tests {
         assert_eq!(s.model, "jev-1.14.0");
         assert_eq!(s.input_tokens, 512);
 
+        assert!(s.auto.is_empty());
+
         let missing = json!({"answers": {"gewicht": {"choice": "glut"}}});
-        assert!(
-            parse_response(missing.to_string().as_bytes(), id, "x", &places, "t".into()).is_err()
+        assert!(parse_response(
+            missing.to_string().as_bytes(),
+            id,
+            "x",
+            Some(&places),
+            "t".into()
+        )
+        .is_err());
+
+        // Without the place question no "ort" is needed and no place comes back.
+        let mut no_place = body.clone();
+        no_place["answers"].as_object_mut().unwrap().remove("ort");
+        let s = parse_response(no_place.to_string().as_bytes(), id, "x", None, "t".into()).unwrap();
+        assert_eq!(s.weight, Some(Weight::Glut));
+        assert_eq!(s.place, None);
+        assert!(s.place_probabilities.is_empty());
+    }
+
+    fn suggestion(weight: Option<(Weight, f64)>, for_whom: Option<(ForWhom, f64)>) -> Suggestion {
+        Suggestion {
+            task_id: Id::new(),
+            model: "jev-1.14.0".into(),
+            created_at: "t".into(),
+            weight: weight.map(|w| w.0),
+            weight_probabilities: BTreeMap::new(),
+            for_whom: for_whom.map(|f| f.0),
+            for_whom_probabilities: BTreeMap::new(),
+            place: None,
+            place_probabilities: BTreeMap::new(),
+            weight_probability: weight.map(|w| w.1),
+            for_whom_probability: for_whom.map(|f| f.1),
+            place_probability: None,
+            input_tokens: 0,
+            auto: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn only_sure_proposals_for_empty_fields_are_set_by_themselves() {
+        let mut s = suggestion(
+            Some((Weight::Glut, AUTO_APPLY_MIN_PROBABILITY)),
+            Some((ForWhom::Mich, 0.89)),
         );
+        s.mark_auto(None, None);
+        assert_eq!(s.auto, vec![AUTO_WEIGHT.to_owned()]);
+        assert_eq!(s.auto_weight(), Some(Weight::Glut));
+        assert_eq!(s.auto_for_whom(), None);
+
+        // A field that is already set is never overwritten.
+        let mut s = suggestion(Some((Weight::Glut, 0.99)), Some((ForWhom::Mich, 0.95)));
+        s.mark_auto(Some(Weight::Brand), None);
+        assert_eq!(s.auto, vec![AUTO_FOR_WHOM.to_owned()]);
+
+        // Stored proposals from before ZUN-56 read without `auto`.
+        let mut old = serde_json::to_value(suggestion(Some((Weight::Glut, 0.99)), None)).unwrap();
+        old.as_object_mut().unwrap().remove("auto");
+        let old: Suggestion = serde_json::from_value(old).unwrap();
+        assert!(old.auto.is_empty());
     }
 
     #[test]
     fn request_contains_only_title_description_type_and_places() {
         let places = vec![place("project", "Zunder")];
         let long = "x".repeat(5000);
-        let body = request_body_for("jev-1.14.0", "Steuer", Some(&long), "aufgabe", &places);
+        let body = request_body_for(
+            "jev-1.14.0",
+            "Steuer",
+            Some(&long),
+            "aufgabe",
+            Some(&places),
+        );
         let state = body["state"].as_object().unwrap();
         assert_eq!(
             state.keys().collect::<Vec<_>>(),
@@ -938,5 +1104,9 @@ mod tests {
         assert!(body["questions"]["fuer_wen"]["criteria"]
             .get(UNCLEAR)
             .is_some());
+
+        let body = request_body_for("jev-1.14.0", "Steuer", None, "aufgabe", None);
+        assert!(body["questions"].get("ort").is_none());
+        assert!(body["questions"].get("gewicht").is_some());
     }
 }

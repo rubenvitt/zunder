@@ -183,11 +183,11 @@ Gut zu wissen:
 
 ## Vorschläge mit Jev
 
-Optional schlägt das Entscheidungsmodell Jev (TypeSafe AI) für Inbox-Aufgaben Gewicht, „für wen“ und Ort vor. Details im [Vertrag, 4.5](superpowers/plans/2026-10-11-zunder-implementation.md#45-vorschläge-für-die-inbox-jev).
+Optional schlägt das Entscheidungsmodell Jev (TypeSafe AI) für offene Aufgaben Gewicht, „für wen“ und, in der Inbox, den Ort vor. Details im [Vertrag, 4.5](superpowers/plans/2026-10-11-zunder-implementation.md#45-vorschläge-zum-einordnen-jev).
 
 1. In der Web-UI unter **Einstellungen → Jev** den API-Key von TypeSafe eintragen; Version leer lassen (fest `jev-1.14.0`) oder eine andere feste Version nennen.
 2. Bereiche, die nie hinausgehen sollen, als **privat** anhaken.
-3. In der Detailansicht einer Inbox-Aufgabe **Vorschlag holen**. Erst dann gehen Titel, Beschreibung und die Namen der aktiven, nicht privaten Projekte und Bereiche an Jev.
+3. Fertig: Öffnest du eine Aufgabe, bei der Gewicht oder „für wen“ fehlt (oder die in der Inbox liegt), fragt Zunder Jev von selbst, im Browser wie in der App, und zeigt die Vorschläge oben als Chips; ein Tipp übernimmt. Was Jev zu mindestens 90 % sicher weiß, steht gleich im leeren Feld (mit **Rückgängig**). Dabei gehen Titel, Beschreibung und, bei Inbox-Aufgaben, die Namen der aktiven, nicht privaten Projekte und Bereiche an Jev; Aufgaben aus privaten Bereichen und Dev-Projekten nie.
 
 4. Optional vorab **Probelauf** (unter den Einstellungen): Jev beantwortet bis zu 100 Aufgaben, die du schon eingeordnet hast, und die Tabelle zeigt je Frage, wie oft es richtig lag, auch nur für Vorschläge ab einer Wahrscheinlichkeit (p ≥ 0,5 … 0,9). Gespeichert wird dabei nichts, Tokens kostet es trotzdem. Die Übernahmequote im Alltag zeigt dieselbe Aufteilung nach Schwellen.
 
