@@ -445,6 +445,10 @@ export interface SuggestionTally {
   followed: number;
   /** The same per threshold (p ≥ 0, 0.5, 0.6, 0.7, 0.8, 0.9). */
   by_threshold: ThresholdTally[];
+  /** Proposals the UI set by itself (not in `decided`). */
+  auto_set: number;
+  /** Of those, how many the owner has changed since. */
+  auto_changed: number;
 }
 
 export interface SuggestionStats {
@@ -456,7 +460,14 @@ export interface SuggestionStats {
   input_tokens: number;
 }
 
-/** `GET /api/settings/jev`: the decision model for inbox proposals. Never contains the key. */
+/** `GET /api/jev`: whether Jev is set up, for every UI (browser and app). */
+export interface JevStatus {
+  configured: boolean;
+  /** From this probability on, a proposal for an empty field is set without a tap. */
+  auto_apply_min_probability: number;
+}
+
+/** `GET /api/settings/jev`: the decision model for proposals. Never contains the key. */
 export interface JevSettings {
   configured: boolean;
   token_hint: string | null;
@@ -481,7 +492,10 @@ export interface PlaceProposal {
   name: string;
 }
 
-/** `GET`/`POST /api/tasks/{id}/suggestion`: Jev's proposal for an inbox task. */
+/** Fields the UI sets from a proposal without a tap. */
+export type SuggestionAuto = "weight" | "for_whom";
+
+/** `GET`/`POST /api/tasks/{id}/suggestion`: Jev's proposal for an open root task (place only in the inbox). */
 export interface Suggestion {
   task_id: string;
   model: string;
@@ -498,6 +512,8 @@ export interface Suggestion {
   for_whom_probability: number | null;
   place_probability: number | null;
   input_tokens: number;
+  /** Set without a tap: the field was empty when asked and the proposal is sure enough. Missing in old proposals. */
+  auto?: SuggestionAuto[];
 }
 
 /** One question of a Jev eval run: `hits.decided` = proposals, `hits.followed` = correct. */

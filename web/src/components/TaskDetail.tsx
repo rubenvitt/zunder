@@ -58,7 +58,7 @@ import { MarkdownField } from "./MarkdownField";
 import { CheckButton, ProgressBar, SubtaskTree } from "./TaskBits";
 import { RecurrenceEditor, RecurrenceField, SeriesLinks } from "./RecurrenceField";
 import { Dependencies, taskHref } from "./TaskLinks";
-import { JevSuggestion } from "./JevSuggestion";
+import { JevSuggestion, wantsSuggestion } from "./JevSuggestion";
 import { jevConfigured } from "../state/jev";
 
 /** Only http(s) and mailto links become clickable; anything else (javascript:, data: …) is shown as text. */
@@ -282,6 +282,11 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
     const asks = for_whom === "andere" && t().for_whom !== "andere" && personal();
     if (set({ for_whom })) setAskCommitment(asks);
   };
+  // Jev stays for the task once something was open, so "Rückgängig" survives the fields it set.
+  const [jevTask, setJevTask] = createSignal<string | null>(null);
+  createEffect(() => {
+    if (wantsSuggestion(t(), location().kind === "inbox")) setJevTask(t().id);
+  });
 
   return (
     <div class="detail-body">
@@ -344,9 +349,10 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
             <p class="notice notice-warning">Hinweis: Diese Aufgabe ist erledigt, hat aber noch offene Unteraufgaben.</p>
           </Show>
 
-          {/* Jev's proposal for inbox tasks (root tasks only; subtasks live with their root). */}
-          <Show when={location().kind === "inbox" && !t().parent_id && !isClosed(t().status) && jevConfigured()}>
-            <JevSuggestion task={t()} onForWhom={setForWhom} />
+          {/* Jev's proposal while weight, for whom or (in the inbox) the place is open; root tasks
+              outside dev projects only (subtasks live with their root). */}
+          <Show when={personal() && !t().parent_id && !isClosed(t().status) && jevTask() === t().id && jevConfigured()}>
+            <JevSuggestion task={t()} inInbox={location().kind === "inbox"} onForWhom={setForWhom} />
           </Show>
 
           <div class="props">

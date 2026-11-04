@@ -16,6 +16,7 @@ import type {
   IntakeChannel,
   JevEval,
   JevSettings,
+  JevStatus,
   JevSettingsUpdate,
   Me,
   OAuthClient,
@@ -102,7 +103,9 @@ export interface ApiClient {
   /** "Erst für dich": day clicked away and the task picked for a day. */
   focusSettings(): Promise<FocusSettings>;
   updateFocusSettings(update: FocusSettingsUpdate): Promise<FocusSettings>;
-  /** Jev, the decision model for inbox proposals. */
+  /** Whether Jev is set up (browser and app). */
+  jevStatus(): Promise<JevStatus>;
+  /** Jev, the decision model for proposals. */
   jevSettings(): Promise<JevSettings>;
   updateJevSettings(update: JevSettingsUpdate): Promise<JevSettings>;
   /** Removes key, version and private areas; stored proposals stay. */
@@ -111,7 +114,7 @@ export interface ApiClient {
   evalJev(limit: number): Promise<JevEval>;
   /** The stored proposal for a task (null: none yet). */
   taskSuggestion(taskId: string): Promise<Suggestion | null>;
-  /** Asks Jev for an inbox task and stores the answer. */
+  /** Asks Jev for an open root task and stores the answer; 409 for tasks Jev may not see. */
   suggestTask(taskId: string): Promise<Suggestion>;
   calendarSettings(): Promise<CalendarSettings>;
   /** Creates the feed token; an existing one stops working. */
@@ -272,6 +275,10 @@ export class HttpTransport implements SyncTransport, ApiClient {
 
   updateFocusSettings(update: FocusSettingsUpdate): Promise<FocusSettings> {
     return this.request("PUT", "/api/settings/focus", update);
+  }
+
+  jevStatus(): Promise<JevStatus> {
+    return this.request("GET", "/api/jev");
   }
 
   jevSettings(): Promise<JevSettings> {

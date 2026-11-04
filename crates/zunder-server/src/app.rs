@@ -27,7 +27,7 @@ use uuid::Uuid;
 use zunder_core::blocking::BlockingBefore;
 use zunder_core::hlc::system_time_ms;
 use zunder_core::ids::Id;
-use zunder_core::model::{fields, Location};
+use zunder_core::model::{fields, Location, ProjectKind};
 use zunder_core::numbering::{pending_refs, Scope};
 use zunder_core::recurrence::{CompletionsBefore, LocalZone};
 use zunder_core::{
@@ -1059,31 +1059,59 @@ impl App {
         .await
     }
 
-    /// Asks the decision model about an inbox task and stores the proposal.
-    /// Changes nothing on the task.
+    /// Whether Jev is set up, for every UI (browser and app).
+    pub async fn jev_status(&self) -> AppResult<suggest::JevStatus> {
+        let stored = self.jev_stored().await?;
+        Ok(suggest::JevStatus {
+            configured: stored.token.is_some(),
+            auto_apply_min_probability: suggest::AUTO_APPLY_MIN_PROBABILITY,
+        })
+    }
+
+    /// Asks the decision model about an open root task and stores the
+    /// proposal; the place only for inbox tasks. Changes nothing on the
+    /// task, but marks the proposals the UI may set by itself.
     pub async fn suggest_task(&self, task_id: Id) -> AppResult<Suggestion> {
         let stored = self.jev_stored().await?;
         let token = stored.token.clone().ok_or_else(|| {
             AppError::Conflict("Jev ist nicht eingerichtet (Einstellungen).".into())
         })?;
         let model = stored.model().to_owned();
-        let (body, places) = self.read(|state| {
+        let (body, places, task) = self.read(|state| {
             let task = state
                 .task(task_id)
                 .filter(|t| !t.deleted)
                 .ok_or_else(|| AppError::NotFound("Aufgabe nicht gefunden".into()))?;
-            if state.effective_location(task_id) != Some(Location::Inbox) {
-                return Err(AppError::Conflict(
-                    "Vorschläge gibt es nur für Aufgaben in der Inbox".into(),
-                ));
-            }
             if task.status.is_closed() || task.parent_id.is_some() {
                 return Err(AppError::Conflict(
-                    "Vorschläge gibt es nur für offene Wurzelaufgaben in der Inbox".into(),
+                    "Vorschläge gibt es nur für offene Wurzelaufgaben".into(),
                 ));
             }
-            let places = suggest::place_options(state, &stored.private_areas);
-            Ok((suggest::request_body(&model, &task, &places), places))
+            let location = state.effective_location(task_id).unwrap_or(task.location);
+            let area = match location {
+                Location::Inbox | Location::Loose => None,
+                Location::Area { id } => Some(id),
+                Location::Project { id } => {
+                    let project = state
+                        .project(id)
+                        .ok_or_else(|| AppError::NotFound("Projekt nicht gefunden".into()))?;
+                    if project.kind == ProjectKind::Dev {
+                        return Err(AppError::Conflict(
+                            "Für Aufgaben in Dev-Projekten gibt es keine Vorschläge".into(),
+                        ));
+                    }
+                    Some(project.area_id)
+                }
+            };
+            if area.is_some_and(|a| stored.private_areas.contains(&a)) {
+                return Err(AppError::Conflict(
+                    "Aufgaben aus privaten Bereichen gehen nicht an Jev".into(),
+                ));
+            }
+            let places = (location == Location::Inbox)
+                .then(|| suggest::place_options(state, &stored.private_areas));
+            let body = suggest::request_body(&model, &task, places.as_deref());
+            Ok((body, places, task))
         })?;
         let answer = suggest::ask(
             &self.inner.http,
@@ -1092,8 +1120,19 @@ impl App {
             &body,
         )
         .await?;
-        let suggestion =
-            suggest::parse_response(&answer, task_id, &model, &places, format_ms(now_ms()))?;
+        let mut suggestion = suggest::parse_response(
+            &answer,
+            task_id,
+            &model,
+            places.as_deref(),
+            format_ms(now_ms()),
+        )?;
+        suggestion.mark_auto(task.weight, task.for_whom);
+        // Asking again replaces the stored proposal, which is also the follow
+        // rate's baseline: keep what the new one cannot know.
+        if let Some(previous) = self.task_suggestion(task_id).await? {
+            suggestion.keep_from(&previous);
+        }
         let json = serde_json::to_string(&suggestion).map_err(anyhow::Error::from)?;
         let (key, model) = (task_id.to_string(), suggestion.model.clone());
         self.with_writer(move |conn| {
@@ -1117,9 +1156,18 @@ impl App {
             AppError::Conflict("Jev ist nicht eingerichtet (Einstellungen).".into())
         })?;
         let model = stored.model().to_owned();
+        // Values the UI set from a proposal by itself are no known answers.
+        let auto: std::collections::BTreeMap<Id, _> = self
+            .stored_suggestions()
+            .await?
+            .iter()
+            .filter(|s| !s.auto.is_empty())
+            .map(|s| (s.task_id, (s.auto_weight(), s.auto_for_whom())))
+            .collect();
         let (cases, places) = self.read(|state| {
             let places = suggest::place_options(state, &stored.private_areas);
-            let cases = suggest::eval_cases(state, &model, &stored.private_areas, &places, limit);
+            let cases =
+                suggest::eval_cases(state, &model, &stored.private_areas, &places, &auto, limit);
             (cases, places)
         });
         if cases.is_empty() {
@@ -1165,7 +1213,7 @@ impl App {
         )
         .await
         .map_err(|e| e.to_string())?;
-        suggest::parse_response(&raw, case.task_id, model, places, format_ms(now_ms()))
+        suggest::parse_response(&raw, case.task_id, model, Some(places), format_ms(now_ms()))
             .map_err(|e| e.to_string())
     }
 

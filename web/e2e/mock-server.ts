@@ -15,8 +15,10 @@
 // state-changing requests, snapshot with created_hlc/op_id, history entries with
 // source/received_at, flame responses (409 without a running flame), token rules,
 // "Erst für dich" settings (/api/settings/focus, reset with the seed), Jev settings
-// and inbox proposals (/api/settings/jev, /api/tasks/{id}/suggestion: a fixed answer,
-// glut / für mich / first active project outside the private areas; an eval run under
+// and proposals (/api/jev, /api/settings/jev, /api/tasks/{id}/suggestion: a fixed answer,
+// glut / für mich / for inbox tasks the first active project outside the private areas;
+// "eindeutig" in the title makes the weight sure (0.95, set by the UI itself); 409 for
+// private areas and dev projects; an eval run under
 // /api/settings/jev/eval with the same answers against sorted tasks),
 // intake channels (management under /api/intake/channels, POST /intake/v1/tasks with
 // a zi_ token: idempotent per external_id, 409 for a dead or completed target, 429
@@ -150,6 +152,7 @@ let focus: { dismissed_on: string | null; chosen: { on: string; task_id: string 
 let jev: { token: string | null; model: string | null; private_area_ids: string[] } = { token: null, model: null, private_area_ids: [] };
 let suggestions = new Map<string, Record<string, Json>>();
 const JEV_DEFAULT_MODEL = "jev-1.14.0";
+const JEV_AUTO_MIN = 0.9;
 let authenticated = true;
 const sseClients = new Set<ServerResponse>();
 
@@ -636,7 +639,7 @@ function timingSettings() {
 const JEV_THRESHOLDS = [0, 0.5, 0.6, 0.7, 0.8, 0.9];
 
 function emptyTally() {
-  return { decided: 0, followed: 0, by_threshold: JEV_THRESHOLDS.map((min_probability) => ({ min_probability, decided: 0, followed: 0 })) };
+  return { decided: 0, followed: 0, by_threshold: JEV_THRESHOLDS.map((min_probability) => ({ min_probability, decided: 0, followed: 0 })), auto_set: 0, auto_changed: 0 };
 }
 
 function addTally(t: ReturnType<typeof emptyTally>, p: number, hit: boolean) {
@@ -694,11 +697,12 @@ function jevSettings() {
   };
 }
 
-/** The mock's fixed proposal: first active project in a non-private, active area. */
-function mockSuggestion(taskId: string): Record<string, Json> {
+/** The mock's fixed proposal: for inbox tasks the first active project in a non-private, active area. */
+function mockSuggestion(taskId: string, inInbox: boolean): Record<string, Json> {
   const field = (e: Entity | undefined, f: string) => e?.fields[f]?.value;
+  const task = state.get(key("task", taskId));
   let place: Record<string, Json> | null = null;
-  for (const e of state.values()) {
+  for (const e of inInbox ? state.values() : []) {
     if (e.entity !== "project" || !alive("project", e.id)) continue;
     const status = field(e, "status") ?? "active";
     const areaId = field(e, "area_id") as string;
@@ -707,20 +711,24 @@ function mockSuggestion(taskId: string): Record<string, Json> {
     place = { kind: "project", id: e.id, name: String(field(e, "name") ?? "") };
     break;
   }
+  const glut = String(field(task, "title") ?? "").includes("eindeutig") ? 0.95 : 0.7;
+  const auto: string[] = [];
+  if (glut >= JEV_AUTO_MIN && field(task, "weight") == null) auto.push("weight");
   return {
     task_id: taskId,
     model: jev.model ?? JEV_DEFAULT_MODEL,
     created_at: new Date().toISOString(),
     weight: "glut",
-    weight_probabilities: { brand: 0.1, glut: 0.7, rauch: 0.1, asche: 0.05, unklar: 0.05 },
+    weight_probabilities: { brand: 0.05, glut, rauch: 0.05, asche: 0.05, unklar: 0.05 },
     for_whom: "mich",
     for_whom_probabilities: { mich: 0.8, uns: 0.1, andere: 0.05, unklar: 0.05 },
     place,
-    place_probabilities: place ? { [place.id as string]: 0.6, nichts: 0.4 } : { nichts: 1 },
-    weight_probability: 0.7,
+    place_probabilities: !inInbox ? {} : place ? { [place.id as string]: 0.55, nichts: 0.45 } : { nichts: 1 },
+    weight_probability: glut,
     for_whom_probability: 0.8,
-    place_probability: place ? 0.6 : null,
+    place_probability: place ? 0.55 : null,
     input_tokens: 120,
+    auto,
   };
 }
 
@@ -1144,6 +1152,7 @@ const server = createServer(async (req, res) => {
         if (report.asked === 0) return error(res, 409, "conflict", "Keine eingeordneten Aufgaben für einen Probelauf (Gewicht, „für wen“ oder Ort fehlen überall).");
         return send(res, 200, report);
       }
+      if (path === "/api/jev" && method === "GET") return send(res, 200, { configured: jev.token !== null, auto_apply_min_probability: JEV_AUTO_MIN });
       m = /^\/api\/tasks\/([^/]+)\/suggestion$/.exec(path);
       if (m) {
         const taskId = decodeURIComponent(m[1]!);
@@ -1151,9 +1160,15 @@ const server = createServer(async (req, res) => {
         if (method !== "POST") return error(res, 405, "invalid_request", "Methode nicht erlaubt.");
         if (!jev.token) return error(res, 409, "conflict", "Jev ist nicht eingerichtet: den Key trägst du in den Einstellungen ein.");
         if (!alive("task", taskId)) return error(res, 404, "not_found", "Aufgabe nicht gefunden.");
-        const loc = state.get(key("task", taskId))?.fields.location?.value as { kind?: string } | undefined;
-        if (loc && loc.kind !== "inbox") return error(res, 409, "conflict", "Vorschläge gibt es nur für Aufgaben in der Inbox.");
-        const proposal = mockSuggestion(taskId);
+        const loc = (state.get(key("task", taskId))?.fields.location?.value ?? { kind: "inbox" }) as { kind?: string; id?: string };
+        let areaId: string | undefined = loc.kind === "area" ? loc.id : undefined;
+        if (loc.kind === "project") {
+          const project = state.get(key("project", loc.id ?? ""));
+          if (project?.fields.kind?.value === "dev") return error(res, 409, "conflict", "Für Aufgaben in Dev-Projekten gibt es keine Vorschläge");
+          areaId = project?.fields.area_id?.value as string | undefined;
+        }
+        if (areaId && jev.private_area_ids.includes(areaId)) return error(res, 409, "conflict", "Aufgaben aus privaten Bereichen gehen nicht an Jev");
+        const proposal = mockSuggestion(taskId, loc.kind === "inbox");
         suggestions.set(taskId, proposal);
         return send(res, 200, proposal);
       }

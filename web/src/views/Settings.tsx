@@ -1,6 +1,6 @@
 // Server settings (browser session only): the Timing bridge for flames (stored
 // settings override the server's environment variables field by field) and the
-// calendar feed of flames and timed tasks, Jev for inbox proposals, plus the
+// calendar feed of flames and timed tasks, Jev for task proposals, plus the
 // link to the agent log.
 
 import { createMemo, createResource, createSignal, For, Show } from "solid-js";
@@ -253,8 +253,9 @@ function TimingSection() {
 }
 
 function tallyText(label: string, t: SuggestionTally): string {
-  if (t.decided === 0) return `${label}: noch nichts entschieden`;
-  return `${label}: ${t.followed} von ${t.decided} übernommen`;
+  const auto = t.auto_set > 0 ? `, ${t.auto_set} selbst gesetzt (${t.auto_changed} davon geändert)` : "";
+  if (t.decided === 0) return `${label}: noch nichts entschieden${auto}`;
+  return `${label}: ${t.followed} von ${t.decided} übernommen${auto}`;
 }
 
 const percent = (part: number, whole: number) => `${Math.round((part / whole) * 100)} %`;
@@ -459,10 +460,11 @@ function JevSection() {
 
   return (
     <section class="group settings-section" aria-label="Jev">
-      <h2>Jev (Vorschläge für die Inbox)</h2>
+      <h2>Jev (Vorschläge zum Einordnen)</h2>
       <p class="muted">
-        Jev ist ein Entscheidungsmodell von TypeSafe AI. In der Detailansicht einer Inbox-Aufgabe holst du auf Knopfdruck einen Vorschlag für Gewicht, „für wen“ und Ort.
-        Dabei gehen Titel, Beschreibung und die Namen deiner aktiven Projekte und Bereiche an Jev; private Bereiche nie. Übernommen wird nur, was du anklickst.
+        Jev ist ein Entscheidungsmodell von TypeSafe AI. Öffnest du eine offene Aufgabe, bei der Gewicht oder „für wen“ fehlt (in der Inbox auch der Ort), fragt Zunder Jev von selbst, im Browser wie in der App.
+        Die Vorschläge stehen oben in der Detailansicht und gelten mit einem Tipp; was Jev zu mindestens 90 % sicher weiß, setzt Zunder gleich selbst in leere Felder (zurücknehmbar), den Ort nie.
+        Dabei gehen Titel, Beschreibung und, für Inbox-Aufgaben, die Namen deiner aktiven Projekte und Bereiche an Jev. Aufgaben aus privaten Bereichen und Dev-Projekten gehen nie an Jev.
       </p>
       <Show when={settings() !== null} fallback={<p class="muted">Jev-Einstellungen nicht verfügbar.</p>}>
         <Show when={settings()} fallback={<p class="muted">Lädt …</p>}>

@@ -167,6 +167,37 @@ pub async fn focus_set(
     client.update_focus_settings(&update).await
 }
 
+/// `GET /api/jev` with the stored token: whether Jev is set up.
+#[tauri::command]
+pub async fn jev_status(state: State<'_, AppState>) -> Result<serde_json::Value, Error> {
+    let client = state.syncer.client(&state.store)?;
+    client.jev_status().await
+}
+
+/// `GET /api/tasks/{id}/suggestion`: Jev's stored proposal or `null`.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn task_suggestion(
+    state: State<'_, AppState>,
+    task_id: Id,
+) -> Result<serde_json::Value, Error> {
+    let client = state.syncer.client(&state.store)?;
+    client.task_suggestion(task_id).await
+}
+
+/// Asks Jev about a task. Pushes first and only asks once that worked: the
+/// server only knows tasks it has received, and it decides what may leave
+/// (private areas) from its own state, so a local move into a private area
+/// must have arrived. Tasks Jev may not see answer `unsupported`.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn task_suggest(app: AppHandle, task_id: Id) -> Result<serde_json::Value, Error> {
+    let state = app.state::<AppState>();
+    if lock(&state.store).pending_count() > 0 {
+        background::sync(&app).await?;
+    }
+    let client = state.syncer.client(&state.store)?;
+    client.suggest_task(task_id).await
+}
+
 // ----- app settings ----------------------------------------------------------
 
 #[cfg(mobile)]

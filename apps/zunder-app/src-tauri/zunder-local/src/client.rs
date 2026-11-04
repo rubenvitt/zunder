@@ -146,6 +146,38 @@ impl HttpClient {
     }
 }
 
+/// Jev's proposals (contract 4.5): the web UI asks on its own when an open
+/// task's weight, for whom or place is still empty.
+impl HttpClient {
+    /// `GET /api/jev`: whether Jev is set up on the server, answer unchanged.
+    pub async fn jev_status(&self) -> Result<serde_json::Value> {
+        self.send(self.http.get(self.url("api/jev")?)).await
+    }
+
+    /// `GET /api/tasks/{id}/suggestion`: the stored proposal or `null`.
+    pub async fn task_suggestion(&self, task_id: Id) -> Result<serde_json::Value> {
+        let path = format!("api/tasks/{task_id}/suggestion");
+        self.send(self.http.get(self.url(&path)?)).await
+    }
+
+    /// `POST /api/tasks/{id}/suggestion`: asks Jev and returns the stored
+    /// proposal. A task Jev may not see (private area, dev project, closed,
+    /// subtask) or a server without a key (409), or an API token instead of
+    /// a device token (403), is `Error::Unsupported`: the web UI then stays
+    /// quiet instead of reporting an error.
+    pub async fn suggest_task(&self, task_id: Id) -> Result<serde_json::Value> {
+        let path = format!("api/tasks/{task_id}/suggestion");
+        match self.send(self.http.post(self.url(&path)?)).await {
+            Err(Error::Server {
+                status: 403 | 409,
+                message,
+                ..
+            }) => Err(Error::Unsupported(message)),
+            other => other,
+        }
+    }
+}
+
 const FOCUS_PATH: &str = "api/settings/focus";
 
 fn focus_only_for_devices(result: Result<serde_json::Value>) -> Result<serde_json::Value> {
@@ -356,6 +388,52 @@ mod tests {
         // An API token instead of a device token: stays on the device.
         let err = client.focus_settings().await.unwrap_err();
         assert_eq!(err.code(), "unsupported", "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn suggestions_pass_through_and_409_is_unsupported() {
+        let proposal = r#"{"task_id":"x","weight":"glut","auto":["weight"]}"#;
+        let (url, seen) = canned(vec![
+            (
+                200,
+                r#"{"configured":true,"auto_apply_min_probability":0.9}"#,
+            ),
+            (200, "null"),
+            (200, proposal),
+            (
+                409,
+                r#"{"error":{"code":"conflict","message":"privater Bereich"}}"#,
+            ),
+        ]);
+        let client = client(&url);
+        let id = Id::new();
+
+        let got = client.jev_status().await.unwrap();
+        assert_eq!(got["configured"], true);
+        assert_eq!(
+            seen.recv().unwrap().request_line,
+            "GET /zunder/api/jev HTTP/1.1"
+        );
+
+        let got = client.task_suggestion(id).await.unwrap();
+        assert!(got.is_null());
+        assert_eq!(
+            seen.recv().unwrap().request_line,
+            format!("GET /zunder/api/tasks/{id}/suggestion HTTP/1.1")
+        );
+
+        let got = client.suggest_task(id).await.unwrap();
+        assert_eq!(got["auto"][0], "weight");
+        let request = seen.recv().unwrap();
+        assert_eq!(
+            request.request_line,
+            format!("POST /zunder/api/tasks/{id}/suggestion HTTP/1.1")
+        );
+        assert_eq!(request.authorization.as_deref(), Some("Bearer zt_secret"));
+
+        let err = client.suggest_task(id).await.unwrap_err();
+        assert_eq!(err.code(), "unsupported", "{err:?}");
+        assert_eq!(err.to_string(), "privater Bereich");
     }
 
     #[tokio::test]
