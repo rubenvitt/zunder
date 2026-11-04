@@ -28,6 +28,7 @@ import type {
   FocusSettingsUpdate,
   HistoryEntry,
   IntakeChannel,
+  JevEval,
   JevSettings,
   JevSettingsUpdate,
   Me,
@@ -473,6 +474,10 @@ export class TauriTransport implements SyncTransport, ApiClient {
   }
 
   resetJevSettings(): Promise<JevSettings> {
+    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+  }
+
+  evalJev(_limit: number): Promise<JevEval> {
     return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
   }
 

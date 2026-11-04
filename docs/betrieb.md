@@ -189,6 +189,8 @@ Optional schlägt das Entscheidungsmodell Jev (TypeSafe AI) für Inbox-Aufgaben 
 2. Bereiche, die nie hinausgehen sollen, als **privat** anhaken.
 3. In der Detailansicht einer Inbox-Aufgabe **Vorschlag holen**. Erst dann gehen Titel, Beschreibung und die Namen der aktiven, nicht privaten Projekte und Bereiche an Jev.
 
+4. Optional vorab **Probelauf** (unter den Einstellungen): Jev beantwortet bis zu 100 Aufgaben, die du schon eingeordnet hast, und die Tabelle zeigt je Frage, wie oft es richtig lag, auch nur für Vorschläge ab einer Wahrscheinlichkeit (p ≥ 0,5 … 0,9). Gespeichert wird dabei nichts, Tokens kostet es trotzdem. Die Übernahmequote im Alltag zeigt dieselbe Aufteilung nach Schwellen.
+
 Es gibt keine Umgebungsvariable dafür; der Key liegt in der Tabelle `settings` (Klartext, also auch in den Backups). Jede Anfrage kostet bei TypeSafe Tokens; die Einstellungen zeigen die Summe und wie oft du Vorschlägen gefolgt bist.
 
 ## MCP verbinden

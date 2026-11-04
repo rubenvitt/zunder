@@ -3852,6 +3852,46 @@ a.sync {
   flex-direction: row;
   margin-top: 0;
 }
+.jev-eval {
+  margin-top: 1.2rem;
+}
+.jev-eval h3 {
+  margin: 0 0 0.3rem;
+  font-size: 1rem;
+}
+.jev-eval-limit {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.jev-eval-limit .field {
+  width: 5rem;
+}
+.table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.jev-table {
+  margin-top: 0.5rem;
+  font-size: 0.86rem;
+}
+.jev-table th,
+.jev-table td {
+  white-space: nowrap;
+}
+.jev-thresholds,
+.jev-misses {
+  margin-top: 0.5rem;
+  font-size: 0.88rem;
+}
+.jev-misses ul,
+.jev-errors {
+  margin: 0.4rem 0 0;
+  padding-left: 1.2rem;
+}
+.jev-misses li .muted {
+  display: block;
+}
 
 /* ---- Tagesvorschau (contract 5.1) -------------------------------------------------------- */
 

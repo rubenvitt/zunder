@@ -80,17 +80,64 @@ impl JevStored {
     }
 }
 
+/// Probability thresholds of the follow rate: "would a proposal only from
+/// p ≥ x have been better?" (ZUN-53). The first row is every proposal.
+pub const THRESHOLDS: [f64; 6] = [0.0, 0.5, 0.6, 0.7, 0.8, 0.9];
+
+/// Proposals at or above one threshold.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
+pub struct ThresholdTally {
+    pub min_probability: f64,
+    pub decided: u64,
+    pub followed: u64,
+}
+
 /// How often a proposal was followed, per question.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Tally {
     /// Proposals the owner has decided on since (the task has a value now).
     pub decided: u64,
     /// Of those, how many equal the proposal.
     pub followed: u64,
+    /// The same, counted only for proposals with at least the threshold's
+    /// probability; one row per [`THRESHOLDS`] entry.
+    pub by_threshold: Vec<ThresholdTally>,
+}
+
+impl Default for Tally {
+    fn default() -> Self {
+        Self {
+            decided: 0,
+            followed: 0,
+            by_threshold: THRESHOLDS
+                .iter()
+                .map(|&min_probability| ThresholdTally {
+                    min_probability,
+                    ..ThresholdTally::default()
+                })
+                .collect(),
+        }
+    }
+}
+
+impl Tally {
+    /// Counts one decided proposal with its probability (`None` counts only
+    /// in the first row).
+    pub fn add(&mut self, probability: Option<f64>, followed: bool) {
+        self.decided += 1;
+        self.followed += u64::from(followed);
+        let p = probability.unwrap_or(0.0);
+        for row in &mut self.by_threshold {
+            if p >= row.min_probability {
+                row.decided += 1;
+                row.followed += u64::from(followed);
+            }
+        }
+    }
 }
 
 /// Follow rate of the stored proposals (`GET /api/settings/jev`).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct SuggestionStats {
     /// Tasks with a stored proposal.
     pub asked: u64,
@@ -101,7 +148,7 @@ pub struct SuggestionStats {
 }
 
 /// `GET /api/settings/jev`. Never contains the token.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct JevSettings {
     pub configured: bool,
     pub token_hint: Option<String>,
@@ -516,22 +563,240 @@ pub fn stats(state: &State, suggestions: &[Suggestion]) -> SuggestionStats {
             continue;
         };
         if let (Some(p), Some(v)) = (sug.weight, task.weight) {
-            s.weight.decided += 1;
-            s.weight.followed += u64::from(p == v);
+            s.weight.add(sug.weight_probability, p == v);
         }
         if let (Some(p), Some(v)) = (sug.for_whom, task.for_whom) {
-            s.for_whom.decided += 1;
-            s.for_whom.followed += u64::from(p == v);
+            s.for_whom.add(sug.for_whom_probability, p == v);
         }
         let location = state.effective_location(task.id).unwrap_or(task.location);
         if let Some(p) = &sug.place {
             if location != Location::Inbox {
-                s.place.decided += 1;
-                s.place.followed += u64::from(p.location() == location);
+                s.place.add(sug.place_probability, p.location() == location);
             }
         }
     }
     s
+}
+
+// ----- eval run (ZUN-53) -------------------------------------------------------------
+
+/// Tasks per eval run without `limit`.
+pub const EVAL_DEFAULT_LIMIT: usize = 25;
+/// Upper bound of `limit`: every case costs tokens at TypeSafe.
+pub const EVAL_MAX_LIMIT: usize = 100;
+
+/// `POST /api/settings/jev/eval`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EvalRequest {
+    #[serde(default)]
+    pub limit: Option<usize>,
+}
+
+impl EvalRequest {
+    pub fn limit(&self) -> AppResult<usize> {
+        match self.limit {
+            None => Ok(EVAL_DEFAULT_LIMIT),
+            Some(n) if (1..=EVAL_MAX_LIMIT).contains(&n) => Ok(n),
+            Some(_) => Err(AppError::bad_request(format!(
+                "Ein Probelauf umfasst 1 bis {EVAL_MAX_LIMIT} Aufgaben"
+            ))),
+        }
+    }
+}
+
+/// One already sorted task with its known answers.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EvalCase {
+    pub task_id: Id,
+    pub title: String,
+    pub weight: Option<Weight>,
+    pub for_whom: Option<ForWhom>,
+    /// The task's place, if it is one of the options.
+    pub place: Option<PlaceProposal>,
+    pub body: Value,
+}
+
+/// The eval set: live root tasks outside the inbox with at least one known
+/// answer (weight, for whom, or a place among the options), most known
+/// answers first, then most recently changed. Tasks in private areas (also
+/// via their project) never go out.
+pub fn eval_cases(
+    state: &State,
+    model: &str,
+    private: &[Id],
+    places: &[PlaceOption],
+    limit: usize,
+) -> Vec<EvalCase> {
+    // Request bodies (with up to 254 places each) only for the cases kept.
+    let mut found: Vec<(usize, zunder_core::Hlc, Task, Option<PlaceProposal>)> = state
+        .live_tasks()
+        .filter(|t| t.parent_id.is_none())
+        .filter_map(|t| {
+            let location = state.effective_location(t.id)?;
+            let area = match location {
+                Location::Inbox => return None,
+                Location::Loose => None,
+                Location::Area { id } => Some(id),
+                Location::Project { id } => Some(state.project(id)?.area_id),
+            };
+            if area.is_some_and(|a| private.contains(&a)) {
+                return None;
+            }
+            let place = places
+                .iter()
+                .find(|p| p.proposal.location() == location)
+                .map(|p| p.proposal.clone());
+            let known = usize::from(t.weight.is_some())
+                + usize::from(t.for_whom.is_some())
+                + usize::from(place.is_some());
+            if known == 0 {
+                return None;
+            }
+            let updated = state
+                .updated_at(zunder_core::EntityKind::Task, t.id)?
+                .clone();
+            Some((known, updated, t, place))
+        })
+        .collect();
+    found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
+    found
+        .into_iter()
+        .take(limit)
+        .map(|(_, _, t, place)| EvalCase {
+            task_id: t.id,
+            body: request_body(model, &t, places),
+            title: t.title,
+            weight: t.weight,
+            for_whom: t.for_whom,
+            place,
+        })
+        .collect()
+}
+
+/// One question of the eval run.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct EvalQuestion {
+    /// Answered cases whose answer is known.
+    pub known: u64,
+    /// Of those, how often the model answered "unklar"/"nichts".
+    pub unclear: u64,
+    /// Proposals (`decided`) and hits (`followed`), also per threshold.
+    pub hits: Tally,
+}
+
+/// Expected and proposed answer of one question (codes, place names).
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct EvalAnswer {
+    pub expected: Option<String>,
+    pub proposed: Option<String>,
+    pub probability: Option<f64>,
+}
+
+/// One answered case.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct EvalRow {
+    pub task_id: Id,
+    pub title: String,
+    pub weight: EvalAnswer,
+    pub for_whom: EvalAnswer,
+    pub place: EvalAnswer,
+}
+
+/// Result of `POST /api/settings/jev/eval`. Nothing is stored.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct JevEval {
+    pub model: String,
+    /// Cases sent.
+    pub asked: u64,
+    /// Of those, without a usable answer.
+    pub failed: u64,
+    /// Distinct error messages of the failed cases (at most 5).
+    pub errors: Vec<String>,
+    pub input_tokens: u64,
+    pub weight: EvalQuestion,
+    pub for_whom: EvalQuestion,
+    pub place: EvalQuestion,
+    /// Answered cases in eval-set order.
+    pub cases: Vec<EvalRow>,
+}
+
+fn score<T: PartialEq>(
+    q: &mut EvalQuestion,
+    expected: Option<T>,
+    proposed: Option<T>,
+    probability: Option<f64>,
+) {
+    let Some(expected) = expected else { return };
+    q.known += 1;
+    match proposed {
+        None => q.unclear += 1,
+        Some(p) => q.hits.add(probability, p == expected),
+    }
+}
+
+impl JevEval {
+    pub fn new(model: &str) -> Self {
+        Self {
+            model: model.to_owned(),
+            ..Self::default()
+        }
+    }
+
+    /// Counts one case: its answer or its error.
+    pub fn record(&mut self, case: &EvalCase, answer: Result<Suggestion, String>) {
+        self.asked += 1;
+        let s = match answer {
+            Ok(s) => s,
+            Err(e) => {
+                self.failed += 1;
+                if self.errors.len() < 5 && !self.errors.contains(&e) {
+                    self.errors.push(e);
+                }
+                return;
+            }
+        };
+        self.model.clone_from(&s.model);
+        self.input_tokens += s.input_tokens;
+        score(
+            &mut self.weight,
+            case.weight,
+            s.weight,
+            s.weight_probability,
+        );
+        score(
+            &mut self.for_whom,
+            case.for_whom,
+            s.for_whom,
+            s.for_whom_probability,
+        );
+        score(
+            &mut self.place,
+            case.place.as_ref().map(|p| p.id),
+            s.place.as_ref().map(|p| p.id),
+            s.place_probability,
+        );
+        let code = |v: Option<&str>| v.map(str::to_owned);
+        self.cases.push(EvalRow {
+            task_id: case.task_id,
+            title: case.title.clone(),
+            weight: EvalAnswer {
+                expected: code(case.weight.map(Weight::as_str)),
+                proposed: code(s.weight.map(Weight::as_str)),
+                probability: s.weight_probability,
+            },
+            for_whom: EvalAnswer {
+                expected: code(case.for_whom.map(ForWhom::as_str)),
+                proposed: code(s.for_whom.map(ForWhom::as_str)),
+                probability: s.for_whom_probability,
+            },
+            place: EvalAnswer {
+                expected: case.place.as_ref().map(|p| p.name.clone()),
+                proposed: s.place.as_ref().map(|p| p.name.clone()),
+                probability: s.place_probability,
+            },
+        });
+    }
 }
 
 #[cfg(test)]

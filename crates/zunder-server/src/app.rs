@@ -291,6 +291,9 @@ pub fn format_ms(ms: i64) -> String {
     zunder_core::model::format_rfc3339(t)
 }
 
+/// Parallel requests of a Jev eval run.
+const EVAL_CONCURRENCY: usize = 4;
+
 impl App {
     /// Opens (and migrates) the database in `config.data_dir`, loads the
     /// state and resumes the server clock. The Timing bridge is built from
@@ -1099,6 +1102,71 @@ impl App {
         })
         .await?;
         Ok(suggestion)
+    }
+
+    /// Eval run (ZUN-53): asks the decision model about already sorted
+    /// tasks and compares with their values. Stores nothing, changes no
+    /// task; at most [`EVAL_CONCURRENCY`] requests at a time. Fails only if
+    /// no case got a usable answer.
+    pub async fn jev_eval(&self, request: suggest::EvalRequest) -> AppResult<suggest::JevEval> {
+        use futures_util::stream::{self, StreamExt};
+
+        let limit = request.limit()?;
+        let stored = self.jev_stored().await?;
+        let token = stored.token.clone().ok_or_else(|| {
+            AppError::Conflict("Jev ist nicht eingerichtet (Einstellungen).".into())
+        })?;
+        let model = stored.model().to_owned();
+        let (cases, places) = self.read(|state| {
+            let places = suggest::place_options(state, &stored.private_areas);
+            let cases = suggest::eval_cases(state, &model, &stored.private_areas, &places, limit);
+            (cases, places)
+        });
+        if cases.is_empty() {
+            return Err(AppError::Conflict(
+                "Keine eingeordneten Aufgaben für einen Probelauf (Gewicht, „für wen“ oder Ort fehlen überall).".into(),
+            ));
+        }
+        // Futures collected first: a closure inside the stream trips the
+        // `Send` check of the handler (higher-ranked lifetimes).
+        let pending: Vec<_> = cases
+            .iter()
+            .map(|case| self.eval_one(case, &token, &model, &places))
+            .collect();
+        let answers: Vec<Result<Suggestion, String>> = stream::iter(pending)
+            .buffered(EVAL_CONCURRENCY)
+            .collect()
+            .await;
+        let mut eval = suggest::JevEval::new(&model);
+        for (case, answer) in cases.iter().zip(answers) {
+            eval.record(case, answer);
+        }
+        if eval.failed == eval.asked {
+            return Err(AppError::Unavailable(format!(
+                "Probelauf ohne verwertbare Antwort: {}",
+                eval.errors.join("; ")
+            )));
+        }
+        Ok(eval)
+    }
+
+    async fn eval_one(
+        &self,
+        case: &suggest::EvalCase,
+        token: &str,
+        model: &str,
+        places: &[suggest::PlaceOption],
+    ) -> Result<Suggestion, String> {
+        let raw = suggest::ask(
+            &self.inner.http,
+            &self.inner.config.jev_base_url,
+            token,
+            &case.body,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+        suggest::parse_response(&raw, case.task_id, model, places, format_ms(now_ms()))
+            .map_err(|e| e.to_string())
     }
 
     // ----- calendar feed ---------------------------------------------------------------

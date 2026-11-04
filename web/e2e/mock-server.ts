@@ -16,7 +16,8 @@
 // source/received_at, flame responses (409 without a running flame), token rules,
 // "Erst für dich" settings (/api/settings/focus, reset with the seed), Jev settings
 // and inbox proposals (/api/settings/jev, /api/tasks/{id}/suggestion: a fixed answer,
-// glut / für mich / first active project outside the private areas),
+// glut / für mich / first active project outside the private areas; an eval run under
+// /api/settings/jev/eval with the same answers against sorted tasks),
 // intake channels (management under /api/intake/channels, POST /intake/v1/tasks with
 // a zi_ token: idempotent per external_id, 409 for a dead or completed target, 429
 // after 30 tasks per hour), follow-up instances of recurring tasks after each push
@@ -632,8 +633,57 @@ function timingSettings() {
   };
 }
 
+const JEV_THRESHOLDS = [0, 0.5, 0.6, 0.7, 0.8, 0.9];
+
+function emptyTally() {
+  return { decided: 0, followed: 0, by_threshold: JEV_THRESHOLDS.map((min_probability) => ({ min_probability, decided: 0, followed: 0 })) };
+}
+
+function addTally(t: ReturnType<typeof emptyTally>, p: number, hit: boolean) {
+  t.decided += 1;
+  t.followed += hit ? 1 : 0;
+  for (const row of t.by_threshold) {
+    if (p < row.min_probability) continue;
+    row.decided += 1;
+    row.followed += hit ? 1 : 0;
+  }
+}
+
+/** Eval run with the mock's fixed answers (glut 0.7, mich 0.8): sorted root tasks outside the inbox; places are not compared. */
+function jevEval(limit: number) {
+  const field = (e: Entity, f: string) => e.fields[f]?.value;
+  const q = () => ({ known: 0, unclear: 0, hits: emptyTally() });
+  const out = { model: jev.model ?? JEV_DEFAULT_MODEL, asked: 0, failed: 0, errors: [] as string[], input_tokens: 0, weight: q(), for_whom: q(), place: q(), cases: [] as Json[] };
+  for (const e of state.values()) {
+    if (out.asked >= limit) break;
+    if (e.entity !== "task" || !alive("task", e.id) || field(e, "parent_id")) continue;
+    const loc = field(e, "location") as { kind?: string } | undefined;
+    const weight = (field(e, "weight") as string | null | undefined) ?? null;
+    const forWhom = (field(e, "for_whom") as string | null | undefined) ?? null;
+    if (!loc || loc.kind === "inbox" || (weight === null && forWhom === null)) continue;
+    out.asked += 1;
+    out.input_tokens += 120;
+    if (weight !== null) {
+      out.weight.known += 1;
+      addTally(out.weight.hits, 0.7, weight === "glut");
+    }
+    if (forWhom !== null) {
+      out.for_whom.known += 1;
+      addTally(out.for_whom.hits, 0.8, forWhom === "mich");
+    }
+    out.cases.push({
+      task_id: e.id,
+      title: String(field(e, "title") ?? ""),
+      weight: { expected: weight, proposed: "glut", probability: 0.7 },
+      for_whom: { expected: forWhom, proposed: "mich", probability: 0.8 },
+      place: { expected: null, proposed: null, probability: null },
+    });
+  }
+  return out;
+}
+
 function jevSettings() {
-  const tally = { decided: 0, followed: 0 };
+  const tally = emptyTally();
   return {
     configured: jev.token !== null,
     token_hint: jev.token !== null ? (jev.token.length >= 12 ? `…${jev.token.slice(-4)}` : "…") : null,
@@ -1083,6 +1133,16 @@ const server = createServer(async (req, res) => {
         } else if (method === "DELETE") jev = { token: null, model: null, private_area_ids: [] };
         else if (method !== "GET") return error(res, 405, "invalid_request", "Methode nicht erlaubt.");
         return send(res, 200, jevSettings());
+      }
+      if (path === "/api/settings/jev/eval") {
+        if (method !== "POST") return error(res, 405, "invalid_request", "Methode nicht erlaubt.");
+        const body = await readJson(req);
+        const limit = body.limit === undefined ? 25 : Number(body.limit);
+        if (!Number.isInteger(limit) || limit < 1 || limit > 100) return error(res, 400, "invalid_request", "Ein Probelauf umfasst 1 bis 100 Aufgaben");
+        if (!jev.token) return error(res, 409, "conflict", "Jev ist nicht eingerichtet (Einstellungen).");
+        const report = jevEval(limit);
+        if (report.asked === 0) return error(res, 409, "conflict", "Keine eingeordneten Aufgaben für einen Probelauf (Gewicht, „für wen“ oder Ort fehlen überall).");
+        return send(res, 200, report);
       }
       m = /^\/api\/tasks\/([^/]+)\/suggestion$/.exec(path);
       if (m) {

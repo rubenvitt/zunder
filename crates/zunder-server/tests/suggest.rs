@@ -77,6 +77,18 @@ async fn server() -> (TestServer, JevMock) {
     (s, mock)
 }
 
+/// A tally with one proposal of probability `p`, as `stats` shows it.
+fn tally(decided: u64, followed: u64, p: f64) -> Value {
+    let rows: Vec<Value> = [0.0, 0.5, 0.6, 0.7, 0.8, 0.9]
+        .iter()
+        .map(|&min: &f64| {
+            let n = u64::from(p >= min);
+            json!({"min_probability": min, "decided": n * decided, "followed": n * followed})
+        })
+        .collect();
+    json!({"decided": decided, "followed": followed, "by_threshold": rows})
+}
+
 async fn put_jev(s: &TestServer, session: &str, body: Value) -> common::TestResponse {
     s.request(
         Method::PUT,
@@ -199,9 +211,10 @@ async fn suggestion_for_an_inbox_task() {
     )
     .await;
     let stats = s.get("/api/settings/jev", Auth::Web(&session)).await.json()["stats"].clone();
+    // Mock probabilities: weight 0.6, for whom 0.7, place 0.8.
     assert_eq!(
         stats,
-        json!({"asked": 1, "weight": {"decided": 1, "followed": 1}, "for_whom": {"decided": 1, "followed": 0}, "place": {"decided": 1, "followed": 1}, "input_tokens": 321})
+        json!({"asked": 1, "weight": tally(1, 1, 0.6), "for_whom": tally(1, 0, 0.7), "place": tally(1, 1, 0.8), "input_tokens": 321})
     );
 
     // Only inbox tasks.
@@ -274,4 +287,148 @@ async fn suggestion_for_an_inbox_task() {
         )
         .await;
     assert_eq!(r.json()["configured"], false);
+}
+
+#[tokio::test]
+async fn eval_run_against_sorted_tasks() {
+    let (s, mock) = server().await;
+    let t = api_token(&s, "claude").await;
+    let session = s.session().await;
+    let eval = |body: Value| {
+        let (s, session) = (&s, &session);
+        async move {
+            s.post("/api/settings/jev/eval", Auth::Web(session), body)
+                .await
+        }
+    };
+
+    let private = mcp_ok(&s, &t, "create_area", json!({"name": "Meine Liebste"})).await;
+    let private_id = private["area"]["id"].as_str().unwrap().to_owned();
+    let area = mcp_ok(&s, &t, "create_area", json!({"name": "Finanzen"})).await;
+    let area_id = area["area"]["id"].as_str().unwrap().to_owned();
+    let project = mcp_ok(
+        &s,
+        &t,
+        "create_project",
+        json!({"name": "Steuer 2026", "area_id": area_id}),
+    )
+    .await;
+    let project_id = project["project"]["id"].as_str().unwrap().to_owned();
+    let create = |body: Value| {
+        let (s, t) = (&s, &t);
+        async move {
+            mcp_ok(s, t, "create_task", body).await["task"]["id"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        }
+    };
+    // All three known; the mock answers glut, mich and the project: 3 hits.
+    let full = create(
+        json!({"title": "Belege sammeln", "weight": "glut", "for_whom": "mich",
+        "location": {"kind": "project", "id": project_id}}),
+    )
+    .await;
+    // Weight and place known, both missed (rauch, area instead of project).
+    create(json!({"title": "Konto kündigen", "weight": "rauch",
+        "location": {"kind": "area", "id": area_id}}))
+    .await;
+    // Never sent: private area, inbox, nothing known, subtask.
+    create(json!({"title": "Jahrestag planen", "weight": "glut",
+        "location": {"kind": "area", "id": private_id}}))
+    .await;
+    create(json!({"title": "Inbox-Sache", "weight": "glut"})).await;
+    create(json!({"title": "Lose Sache", "location": {"kind": "loose"}})).await;
+    create(json!({"title": "Teilschritt", "weight": "asche", "parent_id": full})).await;
+
+    // Without a key: conflict; agents may not run it.
+    assert_eq!(eval(json!({})).await.status, StatusCode::CONFLICT);
+    put_jev(
+        &s,
+        &session,
+        json!({"token": "tsk_secret_0123456789", "private_area_ids": [private_id]}),
+    )
+    .await;
+    assert_eq!(
+        s.post("/api/settings/jev/eval", Auth::Bearer(&t), json!({}))
+            .await
+            .status,
+        StatusCode::FORBIDDEN
+    );
+    for bad in [
+        json!({"limit": 0}),
+        json!({"limit": 101}),
+        json!({"anzahl": 3}),
+    ] {
+        assert_eq!(eval(bad).await.status, StatusCode::BAD_REQUEST);
+    }
+
+    // limit 1: the case with the most known answers.
+    let r = eval(json!({"limit": 1})).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    let report = r.json();
+    assert_eq!(report["asked"], 1);
+    assert_eq!(report["cases"][0]["title"], "Belege sammeln");
+    assert_eq!(report["weight"]["hits"], tally(1, 1, 0.6));
+
+    let r = eval(json!({})).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    let report = r.json();
+    assert_eq!(report["model"], "jev-1.14.0");
+    assert_eq!(report["asked"], 2);
+    assert_eq!(report["failed"], 0);
+    assert_eq!(report["input_tokens"], 642);
+    assert_eq!(report["weight"]["known"], 2);
+    assert_eq!(report["weight"]["unclear"], 0);
+    assert_eq!(report["weight"]["hits"], tally(2, 1, 0.6));
+    assert_eq!(report["for_whom"]["known"], 1);
+    assert_eq!(report["for_whom"]["hits"], tally(1, 1, 0.7));
+    assert_eq!(report["place"]["known"], 2);
+    assert_eq!(report["place"]["hits"], tally(2, 1, 0.8));
+    let miss = &report["cases"][1];
+    assert_eq!(miss["title"], "Konto kündigen");
+    assert_eq!(
+        miss["weight"],
+        json!({"expected": "rauch", "proposed": "glut", "probability": 0.6})
+    );
+    assert_eq!(miss["place"]["expected"], "Finanzen");
+    assert_eq!(miss["place"]["proposed"], "Steuer 2026");
+    assert_eq!(miss["for_whom"]["expected"], Value::Null);
+
+    let sent: Vec<String> = mock
+        .0
+        .lock()
+        .unwrap()
+        .requests
+        .iter()
+        .map(|(_, b)| b.to_string())
+        .collect();
+    assert_eq!(sent.len(), 3);
+    for body in &sent {
+        assert!(
+            !body.contains("Meine Liebste") && !body.contains("Jahrestag"),
+            "{body}"
+        );
+        assert!(
+            !body.contains("Inbox-Sache") && !body.contains("Teilschritt"),
+            "{body}"
+        );
+    }
+
+    // Nothing stored: no proposal, no follow rate.
+    let stored = s
+        .get(
+            &format!("/api/tasks/{full}/suggestion"),
+            Auth::Web(&session),
+        )
+        .await;
+    assert_eq!(stored.json(), Value::Null);
+    let settings = s.get("/api/settings/jev", Auth::Web(&session)).await.json();
+    assert_eq!(settings["stats"]["asked"], 0);
+
+    // Every case failing: one German error.
+    mock.0.lock().unwrap().status = 401;
+    let r = eval(json!({})).await;
+    assert_eq!(r.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(r.text().contains("lehnt den Key ab"), "{}", r.text());
 }

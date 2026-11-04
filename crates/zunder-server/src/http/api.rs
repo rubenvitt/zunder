@@ -28,7 +28,7 @@ use crate::focus::{FocusSettings, FocusUpdate};
 use crate::intake::{ChannelInfo, CreatedChannel};
 use crate::oauth;
 use crate::settings::{TimingCheck, TimingSettings, TimingUpdate};
-use crate::suggest::{JevSettings, JevUpdate, Suggestion};
+use crate::suggest::{EvalRequest, JevEval, JevSettings, JevUpdate, Suggestion};
 use crate::timing::TimingProject;
 
 /// Body limit of `/api` requests except push.
@@ -70,6 +70,7 @@ pub fn routes() -> Router<App> {
                 .put(update_jev_settings)
                 .delete(reset_jev_settings),
         )
+        .route("/settings/jev/eval", post(eval_jev))
         .route(
             "/tasks/{id}/suggestion",
             get(task_suggestion).post(suggest_task),
@@ -461,6 +462,17 @@ async fn reset_jev_settings(
 ) -> AppResult<Json<JevSettings>> {
     require_browser_for_settings(&principal)?;
     Ok(Json(app.reset_jev_settings().await?))
+}
+
+/// Eval run against already sorted tasks (ZUN-53); like the settings only
+/// for the browser session, because it sends tasks out.
+async fn eval_jev(
+    State(app): State<App>,
+    principal: Principal,
+    ApiJson(body): ApiJson<EvalRequest>,
+) -> AppResult<Json<JevEval>> {
+    require_browser_for_settings(&principal)?;
+    Ok(Json(app.jev_eval(body).await?))
 }
 
 /// The stored proposal (`null` when there is none).
