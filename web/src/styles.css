@@ -1020,6 +1020,12 @@ html.resizing * {
 .figure.reward {
   --hairline-hi: var(--accent-fg);
 }
+/* hairline rests under reduced motion only without a pointer (Slow's belt would run on hover). */
+@media (prefers-reduced-motion: reduce) {
+  .figure {
+    pointer-events: none;
+  }
+}
 .figure:focus-visible {
   outline-color: var(--focus);
   border-radius: var(--radius-small);
