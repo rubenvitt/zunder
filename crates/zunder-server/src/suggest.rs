@@ -628,7 +628,8 @@ pub fn eval_cases(
     places: &[PlaceOption],
     limit: usize,
 ) -> Vec<EvalCase> {
-    let mut found: Vec<(usize, zunder_core::Hlc, EvalCase)> = state
+    // Request bodies (with up to 254 places each) only for the cases kept.
+    let mut found: Vec<(usize, zunder_core::Hlc, Task, Option<PlaceProposal>)> = state
         .live_tasks()
         .filter(|t| t.parent_id.is_none())
         .filter_map(|t| {
@@ -655,22 +656,22 @@ pub fn eval_cases(
             let updated = state
                 .updated_at(zunder_core::EntityKind::Task, t.id)?
                 .clone();
-            Some((
-                known,
-                updated,
-                EvalCase {
-                    task_id: t.id,
-                    body: request_body(model, &t, places),
-                    title: t.title,
-                    weight: t.weight,
-                    for_whom: t.for_whom,
-                    place,
-                },
-            ))
+            Some((known, updated, t, place))
         })
         .collect();
     found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
-    found.into_iter().take(limit).map(|(_, _, c)| c).collect()
+    found
+        .into_iter()
+        .take(limit)
+        .map(|(_, _, t, place)| EvalCase {
+            task_id: t.id,
+            body: request_body(model, &t, places),
+            title: t.title,
+            weight: t.weight,
+            for_whom: t.for_whom,
+            place,
+        })
+        .collect()
 }
 
 /// One question of the eval run.
