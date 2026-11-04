@@ -14,6 +14,7 @@ test("Jev einrichten und einen Vorschlag für eine Inbox-Aufgabe übernehmen", a
   const work = seeder.area(`Arbeit ${s}`);
   const site = seeder.project(`Website ${s}`, work);
   const task = seeder.task(`Impressum prüfen ${s}`);
+  seeder.task(`Rechnung bezahlen ${s}`, { weight: "rauch", for_whom: "andere", location: { kind: "project", id: site } });
   await seeder.push(page);
 
   try {
@@ -31,6 +32,16 @@ test("Jev einrichten und einen Vorschlag für eine Inbox-Aufgabe übernehmen", a
     await section.getByRole("button", { name: "Speichern" }).click();
     await expect(page.getByText("Bitte eine feste Version")).toBeVisible();
     await section.getByLabel("Version").fill("");
+
+    // Eval run against sorted tasks: the mock answers glut / für mich, so the sorted task is a miss.
+    page.once("dialog", (d) => void d.accept());
+    await section.getByLabel("Aufgaben").fill("100");
+    await section.getByRole("button", { name: "Probelauf starten" }).click();
+    const report = section.getByTestId("jev-eval");
+    await expect(report.getByTestId("jev-eval-table")).toContainText("Gewicht");
+    await report.getByText("Aufgaben mit Abweichungen").click();
+    await expect(report).toContainText(`Rechnung bezahlen ${s}`);
+    await expect(report).toContainText("Gewicht rauch → glut (70 %)");
 
     await openApp(page, "#/inbox");
     await row(page, `Impressum prüfen ${s}`).locator(".task-main").click();

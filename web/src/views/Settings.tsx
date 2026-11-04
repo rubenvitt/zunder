@@ -7,7 +7,7 @@ import { createMemo, createResource, createSignal, For, Show } from "solid-js";
 import { Icon } from "../components/Icon";
 import { isTauri } from "../platform/runtime";
 import { formatInstant } from "../sync/dates";
-import type { CalendarSettings, CreatedCalendarFeed, JevSettings, JevSettingsUpdate, SettingSource, SuggestionTally, TimingProject, TimingSettings, TimingSettingsUpdate } from "../sync/types";
+import type { CalendarSettings, CreatedCalendarFeed, JevEval, JevEvalAnswer, JevEvalRow, JevSettings, JevSettingsUpdate, SettingSource, SuggestionTally, TimingProject, TimingSettings, TimingSettingsUpdate } from "../sync/types";
 import { setJevConfigured } from "../state/jev";
 import { api, areaList, now } from "../state/store";
 import { copyText, toast } from "../state/ui";
@@ -257,6 +257,135 @@ function tallyText(label: string, t: SuggestionTally): string {
   return `${label}: ${t.followed} von ${t.decided} übernommen`;
 }
 
+const percent = (part: number, whole: number) => `${Math.round((part / whole) * 100)} %`;
+
+/** "7 von 9 (78 %)" or a dash. */
+function hitText(followed: number, decided: number): string {
+  return decided === 0 ? "–" : `${followed} von ${decided} (${percent(followed, decided)})`;
+}
+
+/** Hits per probability threshold, one row per question (ZUN-53). */
+function ThresholdTable(props: { rows: { label: string; tally: SuggestionTally; note?: string }[]; testId: string }) {
+  const thresholds = () => props.rows[0]?.tally.by_threshold.map((t) => t.min_probability) ?? [];
+  return (
+    <div class="table-scroll">
+      <table class="table jev-table" data-testid={props.testId}>
+        <thead>
+          <tr>
+            <th>Frage</th>
+            <For each={thresholds()}>{(min) => <th>{min === 0 ? "alle" : `p ≥ ${min.toLocaleString("de-DE")}`}</th>}</For>
+          </tr>
+        </thead>
+        <tbody>
+          <For each={props.rows}>
+            {(r) => (
+              <tr>
+                <td>
+                  {r.label}
+                  <Show when={r.note}>
+                    <span class="muted"> ({r.note})</span>
+                  </Show>
+                </td>
+                <For each={r.tally.by_threshold}>{(t) => <td>{hitText(t.followed, t.decided)}</td>}</For>
+              </tr>
+            )}
+          </For>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const answerText = (a: JevEvalAnswer) => {
+  const p = a.probability === null ? "" : ` (${Math.round(a.probability * 100)} %)`;
+  return `${a.expected ?? "?"} → ${a.proposed ?? "unklar"}${p}`;
+};
+/** A known answer the model got wrong or left open. */
+const missed = (a: JevEvalAnswer) => a.expected !== null && a.proposed !== a.expected;
+
+/** Eval run: Jev against tasks the owner has already sorted; nothing is stored. */
+function JevEvalPanel(props: { configured: boolean }) {
+  const [limit, setLimit] = createSignal(25);
+  const [result, setResult] = createSignal<JevEval | null>(null);
+  const [running, setRunning] = createSignal(false);
+
+  async function run() {
+    if (running()) return;
+    const n = Math.min(100, Math.max(1, Math.round(limit()) || 25));
+    if (!confirm(`Probelauf mit bis zu ${n} schon eingeordneten Aufgaben? Ihre Titel und Beschreibungen gehen an Jev (private Bereiche nie), jede kostet Tokens. Gespeichert und geändert wird nichts.`)) return;
+    setRunning(true);
+    try {
+      setResult(await api().evalJev(n));
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Probelauf fehlgeschlagen.", "error");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const misses = (r: JevEval): JevEvalRow[] => r.cases.filter((c) => missed(c.weight) || missed(c.for_whom) || missed(c.place));
+  const note = (q: JevEval["weight"]) => `${q.known} bekannt, ${q.unclear} unklar`;
+
+  return (
+    <div class="jev-eval">
+      <h3>Probelauf</h3>
+      <p class="muted">
+        Fragt Jev nach Aufgaben, die du schon eingeordnet hast (Gewicht, „für wen“ oder Ort gesetzt, nicht in der Inbox), und vergleicht mit deiner Einordnung. So siehst du vorab, ab welcher Wahrscheinlichkeit ein Vorschlag trägt.
+      </p>
+      <div class="inline-group">
+        <label class="jev-eval-limit">
+          Aufgaben
+          <input class="field" type="number" name="jev-eval-limit" min={1} max={100} value={limit()} onInput={(e) => setLimit(e.currentTarget.valueAsNumber)} />
+        </label>
+        <button class="btn" type="button" disabled={!props.configured || running()} onClick={() => void run()}>
+          {running() ? "Läuft …" : "Probelauf starten"}
+        </button>
+      </div>
+      <Show when={result()}>
+        {(r) => (
+          <div data-testid="jev-eval">
+            <p class="muted jev-stats">
+              {r().asked} Aufgaben gefragt{r().failed > 0 ? `, ${r().failed} ohne Antwort` : ""}, {r().input_tokens} Eingabe-Tokens, Version <code>{r().model}</code>.
+            </p>
+            <Show when={r().errors.length > 0}>
+              <ul class="notice notice-warning jev-errors">
+                <For each={r().errors}>{(e) => <li>{e}</li>}</For>
+              </ul>
+            </Show>
+            <ThresholdTable
+              testId="jev-eval-table"
+              rows={[
+                { label: "Gewicht", tally: r().weight.hits, note: note(r().weight) },
+                { label: "für wen", tally: r().for_whom.hits, note: note(r().for_whom) },
+                { label: "Ort", tally: r().place.hits, note: note(r().place) },
+              ]}
+            />
+            <Show when={misses(r()).length > 0}>
+              <details class="jev-misses">
+                <summary>{misses(r()).length} Aufgaben mit Abweichungen (deine Einordnung → Jev)</summary>
+                <ul>
+                  <For each={misses(r())}>
+                    {(c) => (
+                      <li>
+                        <a href={`#/aufgabe/${c.task_id}`}>{c.title}</a>
+                        <span class="muted">
+                          {[missed(c.weight) && `Gewicht ${answerText(c.weight)}`, missed(c.for_whom) && `für wen ${answerText(c.for_whom)}`, missed(c.place) && `Ort ${answerText(c.place)}`]
+                            .filter(Boolean)
+                            .join("; ")}
+                        </span>
+                      </li>
+                    )}
+                  </For>
+                </ul>
+              </details>
+            </Show>
+          </div>
+        )}
+      </Show>
+    </div>
+  );
+}
+
 /** Jev: key, pinned version and the areas that never leave the server. */
 function JevSection() {
   const [settings, { mutate }] = createResource(async (): Promise<JevSettings | null> => {
@@ -349,6 +478,19 @@ function JevSection() {
                   {s().stats.asked} Vorschläge, {s().stats.input_tokens} Eingabe-Tokens. {tallyText("Gewicht", s().stats.weight)}; {tallyText("für wen", s().stats.for_whom)};{" "}
                   {tallyText("Ort", s().stats.place)}.
                 </p>
+                <Show when={s().stats.weight.decided + s().stats.for_whom.decided + s().stats.place.decided > 0}>
+                  <details class="jev-thresholds">
+                    <summary>Übernommen je Wahrscheinlichkeit des Vorschlags</summary>
+                    <ThresholdTable
+                      testId="jev-stats-table"
+                      rows={[
+                        { label: "Gewicht", tally: s().stats.weight },
+                        { label: "für wen", tally: s().stats.for_whom },
+                        { label: "Ort", tally: s().stats.place },
+                      ]}
+                    />
+                  </details>
+                </Show>
               </Show>
               <form class="form settings-form" onSubmit={save}>
                 <label>
@@ -401,6 +543,7 @@ function JevSection() {
                   </Show>
                 </div>
               </form>
+              <JevEvalPanel configured={s().configured} />
             </>
           )}
         </Show>

@@ -430,12 +430,21 @@ export interface OAuthClient {
   last_used_at?: string | null;
 }
 
+/** Proposals at or above one probability threshold. */
+export interface ThresholdTally {
+  min_probability: number;
+  decided: number;
+  followed: number;
+}
+
 /** How often stored proposals were followed, per question. */
 export interface SuggestionTally {
   /** Proposals the owner has decided on since (the task has a value now). */
   decided: number;
   /** Of those, how many equal the proposal. */
   followed: number;
+  /** The same per threshold (p ≥ 0, 0.5, 0.6, 0.7, 0.8, 0.9). */
+  by_threshold: ThresholdTally[];
 }
 
 export interface SuggestionStats {
@@ -489,4 +498,40 @@ export interface Suggestion {
   for_whom_probability: number | null;
   place_probability: number | null;
   input_tokens: number;
+}
+
+/** One question of a Jev eval run: `hits.decided` = proposals, `hits.followed` = correct. */
+export interface JevEvalQuestion {
+  /** Answered cases whose answer is known. */
+  known: number;
+  /** Of those, answered "unklar"/"nichts". */
+  unclear: number;
+  hits: SuggestionTally;
+}
+
+export interface JevEvalAnswer {
+  expected: string | null;
+  proposed: string | null;
+  probability: number | null;
+}
+
+export interface JevEvalRow {
+  task_id: string;
+  title: string;
+  weight: JevEvalAnswer;
+  for_whom: JevEvalAnswer;
+  place: JevEvalAnswer;
+}
+
+/** `POST /api/settings/jev/eval`: Jev against already sorted tasks; nothing is stored. */
+export interface JevEval {
+  model: string;
+  asked: number;
+  failed: number;
+  errors: string[];
+  input_tokens: number;
+  weight: JevEvalQuestion;
+  for_whom: JevEvalQuestion;
+  place: JevEvalQuestion;
+  cases: JevEvalRow[];
 }

@@ -14,6 +14,7 @@ import type {
   FlameResult,
   HistoryEntry,
   IntakeChannel,
+  JevEval,
   JevSettings,
   JevSettingsUpdate,
   Me,
@@ -106,6 +107,8 @@ export interface ApiClient {
   updateJevSettings(update: JevSettingsUpdate): Promise<JevSettings>;
   /** Removes key, version and private areas; stored proposals stay. */
   resetJevSettings(): Promise<JevSettings>;
+  /** Eval run: asks Jev about up to `limit` already sorted tasks, stores nothing. */
+  evalJev(limit: number): Promise<JevEval>;
   /** The stored proposal for a task (null: none yet). */
   taskSuggestion(taskId: string): Promise<Suggestion | null>;
   /** Asks Jev for an inbox task and stores the answer. */
@@ -281,6 +284,10 @@ export class HttpTransport implements SyncTransport, ApiClient {
 
   resetJevSettings(): Promise<JevSettings> {
     return this.request("DELETE", "/api/settings/jev");
+  }
+
+  evalJev(limit: number): Promise<JevEval> {
+    return this.request("POST", "/api/settings/jev/eval", { limit });
   }
 
   taskSuggestion(taskId: string): Promise<Suggestion | null> {
