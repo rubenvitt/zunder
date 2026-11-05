@@ -13,13 +13,13 @@ serde_json.workspace = true
 uuid.workspace = true
 thiserror.workspace = true
 time.workspace = true
-rusqlite = { version = "0.37", features = ["bundled"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "form", "rustls"] }
 url = "2"
 # Login (PKCE): verifier, state and challenge.
-getrandom = "0.3"
-sha2 = "0.10"
-base64 = "0.22"
+getrandom = "0.4"
+sha2 = "0.11"
+base64 = "0.23"
 tokio = { workspace = true }
 
 [dev-dependencies]

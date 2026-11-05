@@ -16,11 +16,11 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use aws_lc_rs::aead::{Aad, LessSafeKey, Nonce, UnboundKey, CHACHA20_POLY1305, NONCE_LEN};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use jsonwebtoken::jwk::{Jwk, JwkSet};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
-use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, CHACHA20_POLY1305, NONCE_LEN};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -146,7 +146,7 @@ impl OidcClient {
         session_secret: &str,
         http: reqwest::Client,
     ) -> Self {
-        use hmac::{Hmac, Mac};
+        use hmac::{Hmac, KeyInit, Mac};
         let mut mac = Hmac::<sha2::Sha256>::new_from_slice(session_secret.as_bytes())
             .expect("HMAC accepts any key length");
         mac.update(b"zunder-oidc-login-cookie");

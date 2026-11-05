@@ -20,21 +20,21 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 tokio-util = "0.7"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.6", features = ["fs", "compression-gzip", "compression-br", "trace", "set-header", "timeout"] }
+tower-http = { version = "0.7", features = ["fs", "compression-gzip", "compression-br", "trace", "set-header", "timeout"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-rusqlite = { version = "0.37", features = ["bundled"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-jsonwebtoken = "9"
-sha2 = "0.10"
-hmac = "0.12"
-base64 = "0.22"
-getrandom = "0.3"
+rusqlite = { version = "0.41", features = ["bundled"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "form", "rustls"] }
+jsonwebtoken = { version = "11", features = ["aws_lc_rs"] }
+sha2 = "0.11"
+hmac = "0.13"
+base64 = "0.23"
+getrandom = "0.4"
 cookie = "0.18"
 brotli = { version = "9", default-features = false, features = ["std"] }
 flate2 = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
-ring = "0.17"
+aws-lc-rs = "1"
 
 [dev-dependencies]
 tempfile = "3"
