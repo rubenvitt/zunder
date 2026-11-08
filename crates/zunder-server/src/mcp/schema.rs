@@ -289,6 +289,22 @@ fn task_ref() -> Vec<(&'static str, Value)> {
     ]
 }
 
+/// The idempotency key of create_task.
+fn client_ref() -> Value {
+    json!({
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9_.:-]+$",
+        "description": "Optionaler Idempotenzschlüssel des Aufrufers (1–128 Zeichen aus \
+            A–Z, a–z, 0–9, _, ., : und -), z. B. „cockpit-capture:mail:42“. Eindeutig je Nutzer \
+            und auf Dauer: Ein zweiter create_task mit demselben Schlüssel legt nichts an, sondern \
+            liefert die zuerst angelegte Aufgabe (existing: true, die übrigen Parameter werden \
+            dann nicht beachtet; deleted: true, falls sie inzwischen gelöscht ist). Ohne \
+            client_ref legt jeder Aufruf eine neue Aufgabe an.",
+    })
+}
+
 /// Settable task fields shared by create_task and update_task.
 fn task_fields(nullable: bool) -> Vec<(&'static str, Value)> {
     let text = |d: &str| {
@@ -523,7 +539,9 @@ pub fn definitions() -> Vec<ToolDef> {
             description: "Legt eine Aufgabe an. Nur title ist Pflicht; ohne location landet sie in \
                 der Inbox. Mit parent_id entsteht eine Unteraufgabe (ihre Stelle ist die der Wurzelaufgabe). \
                 Mit recurrence (und due) wird sie wiederkehrend: Erledigen oder Verwerfen legt die \
-                nächste Instanz an.",
+                nächste Instanz an. Mit client_ref lässt sich der Aufruf gefahrlos wiederholen (etwa \
+                nach einem Timeout): Ist der Schlüssel schon bekannt, wird nichts geschrieben und die \
+                damals angelegte Aufgabe kommt zurück (existing: true).",
             input_schema: object(
                 with(
                     vec![
@@ -533,6 +551,7 @@ pub fn definitions() -> Vec<ToolDef> {
                             "parent_id",
                             string("Elternaufgabe für eine Unteraufgabe: ID, Kennung wie „ZUN-42“ oder ClickUp-ID einer importierten Aufgabe."),
                         ),
+                        ("client_ref", client_ref()),
                     ],
                     task_fields(false),
                 ),

@@ -25,6 +25,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0006_comments.sql"),
     include_str!("../migrations/0007_intake.sql"),
     include_str!("../migrations/0008_suggestions.sql"),
+    include_str!("../migrations/0009_client_refs.sql"),
 ];
 
 /// The schema version this binary expects.
@@ -1467,6 +1468,40 @@ pub fn insert_intake_submission(
             task_id.to_string(),
             now
         ],
+    )?;
+    Ok(())
+}
+
+// ----- client refs of create_task ----------------------------------------------------
+
+/// The task an earlier `create_task` of the user with this `client_ref`
+/// created.
+pub fn task_client_ref(
+    conn: &Connection,
+    user_id: Uuid,
+    client_ref: &str,
+) -> anyhow::Result<Option<Id>> {
+    let task_id: Option<String> = conn
+        .query_row(
+            "SELECT task_id FROM task_client_refs WHERE user_id = ?1 AND client_ref = ?2",
+            params![user_id.to_string(), client_ref],
+            |r| r.get(0),
+        )
+        .optional()?;
+    task_id.map(|s| parse_entity_id(&s)).transpose()
+}
+
+pub fn insert_task_client_ref(
+    conn: &Connection,
+    user_id: Uuid,
+    client_ref: &str,
+    task_id: Id,
+    now: i64,
+) -> anyhow::Result<()> {
+    conn.execute(
+        "INSERT INTO task_client_refs (user_id, client_ref, task_id, created_at)
+         VALUES (?1, ?2, ?3, ?4)",
+        params![user_id.to_string(), client_ref, task_id.to_string(), now],
     )?;
     Ok(())
 }

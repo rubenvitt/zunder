@@ -1306,6 +1306,133 @@ async fn move_and_delete() {
 }
 
 #[tokio::test]
+async fn create_task_with_client_ref_is_idempotent() {
+    let (s, t) = setup().await;
+    let key = "cockpit-capture:mail.inbox:42_a-b";
+
+    let first = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Rechnung prüfen", "client_ref": key}),
+    )
+    .await;
+    assert_eq!(first["existing"], false);
+    assert_eq!(first["deleted"], false);
+    let id = first["task"]["id"].as_str().unwrap().to_owned();
+
+    // The repeat writes nothing and returns the task created first, even
+    // with other parameters.
+    let cursor = s.app.cursor();
+    let again = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Anders", "status": "done", "client_ref": key}),
+    )
+    .await;
+    assert_eq!(again["existing"], true);
+    assert_eq!(again["deleted"], false);
+    assert_eq!(again["task"]["id"], id.as_str());
+    assert_eq!(again["task"]["title"], "Rechnung prüfen");
+    assert_eq!(again["task"]["status"], "open");
+    assert_eq!(again["warnings"], json!([]));
+    assert_eq!(s.app.cursor(), cursor);
+
+    // Two calls at the same time create one task.
+    let (a, b) = tokio::join!(
+        mcp_ok(
+            &s,
+            &t,
+            "create_task",
+            json!({"title": "Parallel", "client_ref": "p"})
+        ),
+        mcp_ok(
+            &s,
+            &t,
+            "create_task",
+            json!({"title": "Parallel", "client_ref": "p"})
+        ),
+    );
+    assert_eq!(a["task"]["id"], b["task"]["id"]);
+    assert_ne!(a["existing"], b["existing"]);
+
+    // Without a key nothing changes: every call creates, no extra fields.
+    let plain = mcp_ok(&s, &t, "create_task", json!({"title": "Rechnung prüfen"})).await;
+    assert_ne!(plain["task"]["id"], id.as_str());
+    assert!(plain.get("existing").is_none());
+    assert!(plain.get("deleted").is_none());
+    let nulled = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Rechnung prüfen", "client_ref": null}),
+    )
+    .await;
+    assert!(nulled.get("existing").is_none());
+    let r = mcp_ok(&s, &t, "filter_tasks", json!({})).await;
+    assert_eq!(r["count"], 4);
+
+    // A rejected call keeps the key free.
+    let (code, _) = mcp_err(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "   ", "client_ref": "frei"}),
+    )
+    .await;
+    assert_eq!(code, "invalid_value");
+    let r = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Jetzt", "client_ref": "frei"}),
+    )
+    .await;
+    assert_eq!(r["existing"], false);
+
+    // A deleted task stays the answer to its key.
+    mcp_ok(&s, &t, "delete_task", json!({"task_id": id})).await;
+    let r = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Rechnung prüfen", "client_ref": key}),
+    )
+    .await;
+    assert_eq!(r["existing"], true);
+    assert_eq!(r["deleted"], true);
+    assert_eq!(r["task"]["id"], id.as_str());
+
+    let long = "a".repeat(129);
+    for bad in [
+        json!(""),
+        json!("a b"),
+        json!("ä"),
+        json!("a/b"),
+        json!(long),
+        json!(3),
+    ] {
+        let (code, _) = mcp_err(
+            &s,
+            &t,
+            "create_task",
+            json!({"title": "X", "client_ref": bad}),
+        )
+        .await;
+        assert_eq!(code, "invalid_arguments", "{bad}");
+    }
+    let r = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "Lang", "client_ref": "a".repeat(128)}),
+    )
+    .await;
+    assert_eq!(r["existing"], false);
+}
+
+#[tokio::test]
 async fn mcp_changes_reach_sync_clients() {
     let (s, t) = setup().await;
     let before = s.app.cursor();
