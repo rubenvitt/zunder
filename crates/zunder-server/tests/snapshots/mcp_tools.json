@@ -227,7 +227,7 @@
       "readOnlyHint": false,
       "title": "Aufgabe anlegen"
     },
-    "description": "Legt eine Aufgabe an. Nur title ist Pflicht; ohne location landet sie in der Inbox. Mit parent_id entsteht eine Unteraufgabe (ihre Stelle ist die der Wurzelaufgabe). Mit recurrence (und due) wird sie wiederkehrend: Erledigen oder Verwerfen legt die nächste Instanz an.",
+    "description": "Legt eine Aufgabe an. Nur title ist Pflicht; ohne location landet sie in der Inbox. Mit parent_id entsteht eine Unteraufgabe (ihre Stelle ist die der Wurzelaufgabe). Mit recurrence (und due) wird sie wiederkehrend: Erledigen oder Verwerfen legt die nächste Instanz an. Mit client_ref lässt sich der Aufruf gefahrlos wiederholen (etwa nach einem Timeout): Ist der Schlüssel schon bekannt, wird nichts geschrieben und die damals angelegte Aufgabe kommt zurück (existing: true).",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -241,6 +241,13 @@
         },
         "branch": {
           "description": "Git-Branch der Umsetzung.",
+          "type": "string"
+        },
+        "client_ref": {
+          "description": "Optionaler Idempotenzschlüssel des Aufrufers (1–128 Zeichen aus A–Z, a–z, 0–9, _, ., : und -), z. B. „cockpit-capture:mail:42“. Eindeutig je Nutzer und auf Dauer: Ein zweiter create_task mit demselben Schlüssel legt nichts an, sondern liefert die zuerst angelegte Aufgabe (existing: true, die übrigen Parameter werden dann nicht beachtet; deleted: true, falls sie inzwischen gelöscht ist). Ohne client_ref legt jeder Aufruf eine neue Aufgabe an.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
           "type": "string"
         },
         "description": {

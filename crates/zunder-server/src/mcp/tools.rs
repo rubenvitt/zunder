@@ -19,9 +19,12 @@ use zunder_core::{
     State, TaskStatus, TaskType, Weight,
 };
 
+use rusqlite::Connection;
+
 use super::args::Args;
 use super::schema::{definitions, ToolDef};
-use crate::app::{format_ms, App, ServerZone, Source};
+use crate::app::{format_ms, now_ms, App, ServerZone, Source};
+use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::flame;
 use crate::views::{
@@ -64,6 +67,10 @@ const MAX_UNDATED_ACK_WEEKS: u64 = 520;
 
 const MAX_SUBTASKS: usize = 50;
 const MAX_AGENT_CHARS: usize = 200;
+
+/// Idempotency key of create_task (ZUN-57) and its maximum length.
+const CLIENT_REF: &str = "client_ref";
+const MAX_CLIENT_REF_CHARS: usize = 128;
 
 fn tools() -> &'static [ToolDef] {
     static TOOLS: OnceLock<Vec<ToolDef>> = OnceLock::new();
@@ -787,27 +794,71 @@ async fn create_task(app: &App, source: Source, args: &Args) -> AppResult<Value>
     let task_type = take(&mut fields, ft::TYPE).unwrap_or_else(|| TaskType::Aufgabe.into());
     let status = take(&mut fields, ft::STATUS).unwrap_or_else(|| TaskStatus::Open.into());
     let blockers = args.task_links(ft::BLOCKED_BY)?.flatten();
+    let client_ref = client_ref_value(args)?;
     refuse_invalid_recurrence(&fields, None, parent.is_some())?;
-    let (id, warnings) = app
-        .mutate_atomic(source, move |state, batch| {
+    let owner = app.owner_id();
+    let keyed = client_ref.is_some();
+    // Under the write lock: the lookup of the key, the push and the key's row
+    // in the push's transaction, so two calls with the same key cannot both
+    // create a task.
+    let ((id, existing), warnings) = app
+        .locked(move |locked| {
+            if let Some(key) = &client_ref {
+                if let Some(id) = db::task_client_ref(locked.conn(), owner, key)? {
+                    return Ok(((id, true), Vec::new()));
+                }
+            }
             let id = zunder_core::ids::new_id();
-            if let Some(blockers) = blockers {
-                batch.set_task(id, ft::BLOCKED_BY, blocked_by_value(state, &blockers)?);
-            }
-            batch.set_task(id, ft::TITLE, title);
-            batch.set_task(id, ft::TYPE, task_type);
-            batch.set_task(id, ft::STATUS, status);
-            batch.set_task(id, ft::LOCATION, location);
-            if let Some(parent) = parent {
-                batch.set_task(id, ft::PARENT_ID, parent_value(state, &parent)?);
-            }
-            for (field, value) in fields {
-                batch.set_task(id, field, value);
-            }
-            Ok(id)
+            let record = |conn: &Connection| match &client_ref {
+                Some(key) => db::insert_task_client_ref(conn, owner, key, id, now_ms()),
+                None => Ok(()),
+            };
+            let extra: Option<db::ExtraWrite<'_>> = keyed.then_some(&record);
+            locked.commit_atomic(
+                &source,
+                move |state, batch| {
+                    if let Some(blockers) = blockers {
+                        batch.set_task(id, ft::BLOCKED_BY, blocked_by_value(state, &blockers)?);
+                    }
+                    batch.set_task(id, ft::TITLE, title);
+                    batch.set_task(id, ft::TYPE, task_type);
+                    batch.set_task(id, ft::STATUS, status);
+                    batch.set_task(id, ft::LOCATION, location);
+                    if let Some(parent) = parent {
+                        batch.set_task(id, ft::PARENT_ID, parent_value(state, &parent)?);
+                    }
+                    for (field, value) in fields {
+                        batch.set_task(id, field, value);
+                    }
+                    Ok((id, false))
+                },
+                extra,
+            )
         })
         .await?;
-    task_result(app, id, &warnings)
+    let mut result = task_result(app, id, &warnings)?;
+    if keyed {
+        let deleted = app.read(|s| s.task(id).is_some_and(|t| t.deleted));
+        result["existing"] = Value::Bool(existing);
+        result["deleted"] = Value::Bool(deleted);
+    }
+    Ok(result)
+}
+
+/// `client_ref` of create_task: 1–128 characters from `A–Z`, `a–z`, `0–9`
+/// and `_ . : -`; `null` counts as absent.
+fn client_ref_value(args: &Args) -> AppResult<Option<String>> {
+    let Some(key) = args.str(CLIENT_REF)? else {
+        return Ok(None);
+    };
+    let len = key.chars().count();
+    let allowed = |c: char| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | ':' | '-');
+    if len == 0 || len > MAX_CLIENT_REF_CHARS || !key.chars().all(allowed) {
+        return Err(invalid(format!(
+            "„{CLIENT_REF}“ muss 1 bis {MAX_CLIENT_REF_CHARS} Zeichen aus A–Z, a–z, 0–9, _, ., : und - haben."
+        )));
+    }
+    Ok(Some(key.to_owned()))
 }
 
 /// The value written to `parent_id`: a UUID as given (the core checks the
