@@ -316,7 +316,7 @@ export function ConnectionView(props: { setup?: boolean; onConnected?: () => voi
         </main>
       }
     >
-      <div class="view">
+      <div class="view view-settings">
         <header class="view-head">
           <h1>Einstellungen</h1>
         </header>

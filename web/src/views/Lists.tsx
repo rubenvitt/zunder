@@ -2,6 +2,7 @@
 
 import { createMemo, For, onMount, Show } from "solid-js";
 import { EmptyState } from "../components/EmptyState";
+import { Icon } from "../components/Icon";
 import { TaskList } from "../components/TaskList";
 import { FocusSection } from "../components/FocusSection";
 import { WeekMirror } from "../components/WeekMirror";
@@ -71,11 +72,10 @@ export function TodayView() {
   };
   return (
     <div class="view">
-      <header class="view-head">
+      <header class="view-head today-head">
         <h1>Heute</h1>
         <span class="muted">{new Date(now()).toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })}</span>
         <Show when={commitments() > 0}>
-          <span class="spacer" />
           <span class="commitments">
             <a class="commitments-count" href="#/zusagen" title="Jemand wartet auf deine Zusage: Liste öffnen">
               {commitmentsLabel(commitments())}
@@ -91,31 +91,41 @@ export function TodayView() {
       <FocusSection />
       <Show when={groups().flames.length > 0}>
         <section class="group group-flame">
-          <h2>Laufende Flamme</h2>
+          <h2>
+            <Icon name="flame" size={15} /> Laufende Flamme
+          </h2>
           <TaskList tasks={groups().flames} showLocation label="Laufende Flamme" />
         </section>
       </Show>
       <Show when={groups().overdue.length > 0}>
         <section class="group">
-          <h2 class="danger">Überfällig</h2>
+          <h2 class="tone tone-danger">
+            Überfällig <span class="count">{groups().overdue.length}</span>
+          </h2>
           <TaskList tasks={groups().overdue} showLocation label="Überfällig" actions={todayRowActions} swipe={todaySwipe} />
         </section>
       </Show>
       <Show when={groups().dueToday.length > 0}>
         <section class="group">
-          <h2>Heute fällig</h2>
+          <h2 class="tone tone-accent">
+            Heute fällig <span class="count">{groups().dueToday.length}</span>
+          </h2>
           <TaskList tasks={groups().dueToday} showLocation label="Heute fällig" actions={todayRowActions} swipe={todaySwipe} />
         </section>
       </Show>
       <Show when={groups().reminders.length > 0}>
         <section class="group">
-          <h2>Erinnerungen</h2>
+          <h2 class="tone tone-violet">
+            Erinnerungen <span class="count">{groups().reminders.length}</span>
+          </h2>
           <TaskList tasks={groups().reminders} showLocation label="Erinnerungen" actions={todayRowActions} swipe={todaySwipe} />
         </section>
       </Show>
       <Show when={groups().followUps.length > 0}>
         <section class="group">
-          <h2>Wiedervorlage</h2>
+          <h2 class="tone tone-info">
+            Wiedervorlage <span class="count">{groups().followUps.length}</span>
+          </h2>
           <p class="muted group-hint">Noch keine Antwort. Nachfragen, wenn es dir hilft; sonst wartet es einfach weiter.</p>
           <TaskList tasks={groups().followUps} showLocation waitingStill label="Wiedervorlage" actions={followUpActions} swipe={todaySwipe} />
         </section>
@@ -172,7 +182,17 @@ export function InboxView() {
       <header class="view-head">
         <h1>Inbox</h1>
         <span class="count-badge">{tasks().length}</span>
-        <span class="muted hide-mobile">a zuordnen · l lose · d verwerfen</span>
+        <span class="key-hints hide-mobile">
+          <span>
+            <kbd>a</kbd> zuordnen
+          </span>
+          <span>
+            <kbd>l</kbd> lose
+          </span>
+          <span>
+            <kbd>d</kbd> verwerfen
+          </span>
+        </span>
       </header>
       <TaskList
         tasks={tasks()}
@@ -240,7 +260,9 @@ export function WaitingView() {
       <For each={groups()}>
         {(group) => (
           <section class="group">
-            <h2>{group.name}</h2>
+            <h2 class="tone tone-info">
+              {group.name} <span class="count">{group.tasks.length}</span>
+            </h2>
             <TaskList
               tasks={group.tasks}
               showLocation

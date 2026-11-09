@@ -26,13 +26,17 @@ import {
   treeHidden,
   type PaletteRequest,
 } from "../state/ui";
+import { Icon, type IconName } from "./Icon";
 import { Modal } from "./Modal";
 
 interface Item {
   key: string;
   group: string;
   label: string;
+  icon: IconName;
   detail?: string;
+  /** Shortcut of an action, shown as keys ("g h"). */
+  keys?: string;
   hay: string;
   rank: number;
   dim?: boolean;
@@ -72,55 +76,64 @@ export function CommandPalette(props: { request: PaletteRequest }) {
   const close = () => setPalette(null);
 
   const actions = (): Item[] => {
-    const go = (label: string, run: () => void, detail?: string): Item => ({
+    const go = (label: string, run: () => void, icon: IconName, extra: { detail?: string; keys?: string } = {}): Item => ({
       key: `action:${label}`,
       group: "Aktionen",
       label,
-      detail,
-      hay: normalize(`${label} ${detail ?? ""}`),
+      icon,
+      ...extra,
+      hay: normalize(`${label} ${extra.detail ?? ""} ${extra.keys ?? ""}`),
       rank: 0,
       run,
     });
     // In the Tauri app there is no session: tokens and logout give way to the connection settings.
     const account = isTauri()
       ? [
-          go("Einstellungen", () => navigate({ view: "verbindung" }), "Verbindung, Autostart, Updates"),
-          go("Jetzt abgleichen", () => {
-            void import("../state/desktop")
-              .then((m) => m.syncNow())
-              .then((r) => toast(r.ok ? "Abgeglichen." : (r.message ?? "Abgleich fehlgeschlagen."), r.ok ? "info" : "error"));
-          }),
+          go("Einstellungen", () => navigate({ view: "verbindung" }), "settings", { detail: "Verbindung, Autostart, Updates" }),
+          go(
+            "Jetzt abgleichen",
+            () => {
+              void import("../state/desktop")
+                .then((m) => m.syncNow())
+                .then((r) => toast(r.ok ? "Abgeglichen." : (r.message ?? "Abgleich fehlgeschlagen."), r.ok ? "info" : "error"));
+            },
+            "sync",
+          ),
         ]
       : [
-          go("API-Tokens verwalten", () => navigate({ view: "tokens" })),
-          go("Einstellungen", () => navigate({ view: "einstellungen" }), "Timing"),
-          go("KI-Protokoll", () => navigate({ view: "ki-protokoll" }), "Was Agenten geändert haben"),
-          go("Abmelden", () => {
-            void api()
-              .logout()
-              .catch(() => undefined)
-              .finally(() => location.reload());
-          }),
+          go("API-Tokens verwalten", () => navigate({ view: "tokens" }), "key"),
+          go("Einstellungen", () => navigate({ view: "einstellungen" }), "settings", { detail: "Timing, Jev, Kalender" }),
+          go("KI-Protokoll", () => navigate({ view: "ki-protokoll" }), "history", { detail: "Was Agenten geändert haben" }),
+          go(
+            "Abmelden",
+            () => {
+              void api()
+                .logout()
+                .catch(() => undefined)
+                .finally(() => location.reload());
+            },
+            "logout",
+          ),
         ];
     // "Zurückgeben" for the open (or selected) task, only while it is Rauch (contract 5.1).
     const current = data.tasks[detailId() ?? selectedId() ?? ""];
-    const handBack = current && canHandBack(current) ? [go(`Zurückgeben: ${current.title}`, () => setHandBackRequest({ taskId: current.id }), "Rauch")] : [];
+    const handBack = current && canHandBack(current) ? [go(`Zurückgeben: ${current.title}`, () => setHandBackRequest({ taskId: current.id }), "user", { detail: "Rauch" })] : [];
     return [
       ...handBack,
-      go("Neue Aufgabe", () => setCaptureOpen(true), "n"),
-      go("Gehe zu Heute", () => navigate({ view: "heute" }), "g h"),
-      go("Gehe zu Inbox", () => navigate({ view: "inbox" }), "g i"),
-      go("Gehe zu Lose", () => navigate({ view: "lose" }), "g l"),
-      go("Gehe zu Bereiche", () => navigate({ view: "bereiche" }), "g b"),
-      go("Gehe zu Dev", () => navigate({ view: "dev" }), "g d"),
-      go("Gehe zu Phönix", () => navigate({ view: "phoenix" }), "g p"),
-      go("Gehe zu Wartet auf andere", () => navigate({ view: "wartet" }), "g w"),
-      go("Gehe zu Offene Zusagen", () => navigate({ view: "zusagen" }), "g z"),
-      go("Neuer Bereich", () => setStructureEdit({ kind: "area" })),
-      go("Neues Projekt", () => setStructureEdit({ kind: "project" })),
-      go(sidebarHidden() ? "Seitenleiste einblenden" : "Seitenleiste ausblenden", toggleSidebar, "⌘B"),
-      go(treeHidden() ? "Bereiche einblenden" : "Bereiche ausblenden", toggleTree),
-      go("Tastenkürzel anzeigen", () => setHelpOpen(true), "?"),
+      go("Neue Aufgabe", () => setCaptureOpen(true), "plus", { keys: "n" }),
+      go("Gehe zu Heute", () => navigate({ view: "heute" }), "sun", { keys: "g h" }),
+      go("Gehe zu Inbox", () => navigate({ view: "inbox" }), "inbox", { keys: "g i" }),
+      go("Gehe zu Lose", () => navigate({ view: "lose" }), "loose", { keys: "g l" }),
+      go("Gehe zu Bereiche", () => navigate({ view: "bereiche" }), "folder", { keys: "g b" }),
+      go("Gehe zu Dev", () => navigate({ view: "dev" }), "code", { keys: "g d" }),
+      go("Gehe zu Phönix", () => navigate({ view: "phoenix" }), "flame", { keys: "g p" }),
+      go("Gehe zu Wartet auf andere", () => navigate({ view: "wartet" }), "user", { keys: "g w" }),
+      go("Gehe zu Offene Zusagen", () => navigate({ view: "zusagen" }), "user", { keys: "g z" }),
+      go("Neuer Bereich", () => setStructureEdit({ kind: "area" }), "folder"),
+      go("Neues Projekt", () => setStructureEdit({ kind: "project" }), "list"),
+      go(sidebarHidden() ? "Seitenleiste einblenden" : "Seitenleiste ausblenden", toggleSidebar, "menu", { keys: "⌘ B" }),
+      go(treeHidden() ? "Bereiche einblenden" : "Bereiche ausblenden", toggleTree, "tree"),
+      go("Tastenkürzel anzeigen", () => setHelpOpen(true), "keyboard", { keys: "?" }),
       ...account,
     ];
   };
@@ -130,6 +143,7 @@ export function CommandPalette(props: { request: PaletteRequest }) {
       key: `area:${a.id}`,
       group: "Bereiche",
       label: a.name,
+      icon: "folder",
       detail: a.state === "archived" ? "archiviert" : undefined,
       hay: normalize(a.name),
       rank: 1,
@@ -140,6 +154,7 @@ export function CommandPalette(props: { request: PaletteRequest }) {
       key: `project:${p.id}`,
       group: "Projekte",
       label: p.name,
+      icon: p.kind === "dev" ? "code" : "list",
       detail: data.areas[p.area_id]?.name,
       hay: normalize(`${p.name} ${data.areas[p.area_id]?.name ?? ""}`),
       rank: 2,
@@ -164,6 +179,7 @@ export function CommandPalette(props: { request: PaletteRequest }) {
         key: `task:${t.id}`,
         group: "Aufgaben",
         label: t.title,
+        icon: t.status === "done" ? "checkCircle" : "circle",
         detail,
         hay: normalize(`${t.ref ?? ""} ${t.title} ${where} ${t.description ?? ""} ${t.plan ?? ""}`),
         rank: t.ref && normalize(query().trim()) === normalize(t.ref) ? -1 : 3,
@@ -180,24 +196,25 @@ export function CommandPalette(props: { request: PaletteRequest }) {
   });
 
   const locationItems = (onPick: (l: Location) => void): Item[] => {
-    const item = (key: string, label: string, location: Location, group: string, rank: number, detail?: string): Item => ({
+    const item = (key: string, label: string, icon: IconName, location: Location, group: string, rank: number, detail?: string): Item => ({
       key,
       group,
       label,
+      icon,
       detail,
       hay: normalize(`${label} ${detail ?? ""}`),
       rank,
       run: () => onPick(location),
     });
     return [
-      item("inbox", "Inbox", { kind: "inbox" }, "Stellen", 0),
-      item("loose", "Lose", { kind: "loose" }, "Stellen", 0),
+      item("inbox", "Inbox", "inbox", { kind: "inbox" }, "Stellen", 0),
+      item("loose", "Lose", "loose", { kind: "loose" }, "Stellen", 0),
       ...areaList()
         .filter((a) => a.state === "active")
-        .map((a) => item(`area:${a.id}`, a.name, { kind: "area", id: a.id }, "Bereiche", 1)),
+        .map((a) => item(`area:${a.id}`, a.name, "folder", { kind: "area", id: a.id }, "Bereiche", 1)),
       ...projectList()
         .filter((p) => p.status !== "completed")
-        .map((p) => item(`project:${p.id}`, p.name, { kind: "project", id: p.id }, "Projekte", 2, data.areas[p.area_id]?.name)),
+        .map((p) => item(`project:${p.id}`, p.name, p.kind === "dev" ? "code" : "list", { kind: "project", id: p.id }, "Projekte", 2, data.areas[p.area_id]?.name)),
     ];
   };
 
@@ -239,33 +256,36 @@ export function CommandPalette(props: { request: PaletteRequest }) {
       <Show when={props.request.mode !== "search"}>
         <div class="palette-title">{title()}</div>
       </Show>
-      <input
-        ref={input}
-        class="palette-input"
-        placeholder={props.request.mode === "search" ? "Aufgaben, Projekte, Bereiche, Aktionen …" : `${title()} …`}
-        value={query()}
-        onInput={(e) => {
-          setQuery(e.currentTarget.value);
-          setActive(0);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowDown" || (e.ctrlKey && e.key === "n")) {
-            e.preventDefault();
-            moveActive(1);
-          } else if (e.key === "ArrowUp" || (e.ctrlKey && e.key === "p")) {
-            e.preventDefault();
-            moveActive(-1);
-          } else if (e.key === "Enter") {
-            e.preventDefault();
-            choose(results()[active()]);
-          }
-        }}
-        aria-label={title()}
-        aria-controls="palette-results"
-        aria-activedescendant={results()[active()] ? `palette-item-${active()}` : undefined}
-        role="combobox"
-        aria-expanded="true"
-      />
+      <div class="palette-search">
+        <Icon name="search" size={18} />
+        <input
+          ref={input}
+          class="palette-input"
+          placeholder={props.request.mode === "search" ? "Aufgaben, Projekte, Bereiche, Aktionen …" : `${title()} …`}
+          value={query()}
+          onInput={(e) => {
+            setQuery(e.currentTarget.value);
+            setActive(0);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown" || (e.ctrlKey && e.key === "n")) {
+              e.preventDefault();
+              moveActive(1);
+            } else if (e.key === "ArrowUp" || (e.ctrlKey && e.key === "p")) {
+              e.preventDefault();
+              moveActive(-1);
+            } else if (e.key === "Enter") {
+              e.preventDefault();
+              choose(results()[active()]);
+            }
+          }}
+          aria-label={title()}
+          aria-controls="palette-results"
+          aria-activedescendant={results()[active()] ? `palette-item-${active()}` : undefined}
+          role="combobox"
+          aria-expanded="true"
+        />
+      </div>
       <ul class="palette-results" id="palette-results" role="listbox" ref={listEl}>
         <For each={results()}>
           {(item, i) => (
@@ -285,9 +305,17 @@ export function CommandPalette(props: { request: PaletteRequest }) {
                 onMouseMove={() => setActive(i())}
                 onClick={() => choose(item)}
               >
+                <Icon name={item.icon} size={16} />
                 <span class="palette-label">{item.label}</span>
                 <Show when={item.detail}>
                   <span class="palette-detail">{item.detail}</span>
+                </Show>
+                <Show when={item.keys}>
+                  {(keys) => (
+                    <span class="palette-keys" aria-hidden="true">
+                      <For each={keys().split(" ")}>{(key) => <kbd>{key}</kbd>}</For>
+                    </span>
+                  )}
                 </Show>
               </li>
             </>
@@ -297,6 +325,18 @@ export function CommandPalette(props: { request: PaletteRequest }) {
           <li class="empty">Nichts gefunden.</li>
         </Show>
       </ul>
+      <div class="palette-foot" aria-hidden="true">
+        <span>
+          <kbd>↑</kbd>
+          <kbd>↓</kbd> wählen
+        </span>
+        <span>
+          <kbd>↵</kbd> {props.request.mode === "search" ? "öffnen" : "übernehmen"}
+        </span>
+        <span>
+          <kbd>Esc</kbd> schließen
+        </span>
+      </div>
     </Modal>
   );
 }

@@ -3,7 +3,7 @@
 // on a day lists its tasks right here, where the detail can spread them out.
 
 import { createMemo, createSignal, For, Show } from "solid-js";
-import { isCrowded, PREVIEW_DAYS, type DayLoad } from "../sync/dayload";
+import { CROWDED_DAY, isCrowded, PREVIEW_DAYS, type DayLoad } from "../sync/dayload";
 import { dateFromLocal, localDate } from "../sync/dates";
 import { CROWDED_HINT, crowdedDayLine, dueCountLabel, longDayLabel } from "../labels";
 import { dayLoadsAhead } from "../state/selectors";
@@ -54,6 +54,8 @@ export function DayPreview(props: { loads: DayLoad[] }) {
                   aria-pressed={openDay() === load.date}
                   aria-label={`${longDayLabel(load.date)}: ${dueCountLabel(count())}`}
                   disabled={count() === 0}
+                  // The meter at the foot of the cell: full once the day counts as crowded.
+                  style={{ "--load": Math.min(count() / CROWDED_DAY, 1) }}
                   onClick={() => toggle(load.date)}
                 >
                   <span class="day-weekday">{label.weekday}</span>

@@ -50,6 +50,19 @@ function atLocation(location: Location) {
   };
 }
 
+/** Open root tasks per area and project id: the numbers in the tree of Bereiche. */
+export function openCountsByPlace(): Map<string, number> {
+  const index = taskIndex();
+  const nowMs = now();
+  const out = new Map<string, number>();
+  for (const t of index.byId.values()) {
+    if (isClosed(t.status) || !index.isRoot(t) || !index.isVisible(t, nowMs)) continue;
+    const loc = index.location(t);
+    if (loc.kind === "area" || loc.kind === "project") out.set(loc.id, (out.get(loc.id) ?? 0) + 1);
+  }
+  return out;
+}
+
 export function tasksAt(location: Location): Task[] {
   return sortForList(visibleRoots(atLocation(location)));
 }

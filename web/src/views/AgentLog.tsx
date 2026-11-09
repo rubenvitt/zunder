@@ -39,7 +39,7 @@ export function AgentLogView() {
           <Icon name="sync" size={14} /> Neu laden
         </button>
       </header>
-      <p class="muted">
+      <p class="view-lead">
         Was Agenten über MCP (z. B. Claude) in Zunder geändert haben, neueste zuerst. Ein Eintrag ist ein Werkzeugaufruf. Was sie nur gelesen haben, steht hier nicht. Die Änderungen einer einzelnen Aufgabe zeigt auch ihr Änderungsprotokoll.
       </p>
       <Show when={failed()}>{(message) => <p class="notice notice-error">{message()}</p>}</Show>

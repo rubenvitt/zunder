@@ -232,6 +232,9 @@ export function TaskRow(props: TaskRowProps) {
                   onClick={() => action.run()}
                 >
                   {action.label}
+                  <Show when={action.key}>
+                    <kbd aria-hidden="true">{action.key}</kbd>
+                  </Show>
                 </button>
               )}
             </For>

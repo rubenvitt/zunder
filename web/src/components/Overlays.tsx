@@ -55,49 +55,87 @@ export function Toasts() {
   );
 }
 
-const SHORTCUTS: [string, string][] = [
-  ["n", "Neue Aufgabe erfassen"],
-  ["⌘K / Strg+K, /", "Suche und Befehle"],
-  ["⌘B / Strg+B", "Seitenleiste ein- und ausblenden"],
-  ["⌘, / Strg+,", "Einstellungen öffnen"],
-  ["j / k", "Nächste / vorige Aufgabe"],
-  ["Enter", "Aufgabe öffnen"],
-  ["x", "Erledigt umschalten"],
-  ["y", "Kennung der Aufgabe (z. B. ZUN-42) kopieren, für Agenten"],
-  ["Esc", "Panel oder Dialog schließen"],
-  ["a / l / d", "Inbox: zuordnen / lose / verwerfen"],
-  ["s / Shift+S", "Heute: heute nicht, auf morgen / nächste Woche"],
-  ["h / l bzw. ← / →", "Board: Spalte wechseln"],
-  ["Shift+H / Shift+L", "Board: Karte in andere Spalte"],
-  ["Shift+J / Shift+K", "Board: Karte nach unten / oben"],
-  ["v", "Projekt: Liste/Board umschalten"],
-  ["g h", "Heute"],
-  ["g i", "Inbox"],
-  ["g l", "Lose"],
-  ["g b", "Bereiche"],
-  ["g d", "Dev"],
-  ["g p", "Phönix"],
-  ["g w", "Wartet auf andere"],
-  ["g z", "Offene Zusagen"],
-  ["?", "Diese Übersicht"],
+/** One shortcut: its keys (alternatives side by side, a sequence as several keys) and what it does. */
+type Shortcut = [keys: string[][], label: string];
+
+const SHORTCUT_GROUPS: { title: string; items: Shortcut[] }[] = [
+  {
+    title: "Überall",
+    items: [
+      [[["n"]], "Neue Aufgabe erfassen"],
+      [[["⌘", "K"], ["Strg", "K"], ["/"]], "Suche und Befehle"],
+      [[["⌘", "B"], ["Strg", "B"]], "Seitenleiste ein- und ausblenden"],
+      [[["⌘", ","], ["Strg", ","]], "Einstellungen öffnen"],
+      [[["Esc"]], "Panel oder Dialog schließen"],
+      [[["?"]], "Diese Übersicht"],
+    ],
+  },
+  {
+    title: "Listen",
+    items: [
+      [[["j"], ["k"]], "Nächste / vorige Aufgabe"],
+      [[["Enter"]], "Aufgabe öffnen"],
+      [[["x"]], "Erledigt umschalten"],
+      [[["y"]], "Kennung der Aufgabe (z. B. ZUN-42) kopieren, für Agenten"],
+      [[["a"], ["l"], ["d"]], "Inbox: zuordnen / lose / verwerfen"],
+      [[["s"], ["Shift", "S"]], "Heute: heute nicht, auf morgen / nächste Woche"],
+    ],
+  },
+  {
+    title: "Board",
+    items: [
+      [[["h"], ["l"], ["←"], ["→"]], "Spalte wechseln"],
+      [[["Shift", "H"], ["Shift", "L"]], "Karte in andere Spalte"],
+      [[["Shift", "J"], ["Shift", "K"]], "Karte nach unten / oben"],
+      [[["v"]], "Projekt: Liste/Board umschalten"],
+    ],
+  },
+  {
+    title: "Springen",
+    items: [
+      [[["g", "h"]], "Heute"],
+      [[["g", "i"]], "Inbox"],
+      [[["g", "l"]], "Lose"],
+      [[["g", "b"]], "Bereiche"],
+      [[["g", "d"]], "Dev"],
+      [[["g", "p"]], "Phönix"],
+      [[["g", "w"]], "Wartet auf andere"],
+      [[["g", "z"]], "Offene Zusagen"],
+    ],
+  },
 ];
 
 export function ShortcutHelp() {
   return (
     <Modal label="Tastenkürzel" onClose={() => setHelpOpen(false)} class="help">
       <h2>Tastenkürzel</h2>
-      <dl class="shortcuts">
-        <For each={SHORTCUTS}>
-          {([keys, label]) => (
-            <>
-              <dt>
-                <kbd>{keys}</kbd>
-              </dt>
-              <dd>{label}</dd>
-            </>
+      <div class="shortcut-groups">
+        <For each={SHORTCUT_GROUPS}>
+          {(group) => (
+            <section>
+              <h3 class="help-section">{group.title}</h3>
+              <dl class="shortcuts">
+                <For each={group.items}>
+                  {([alternatives, label]) => (
+                    <>
+                      <dt>
+                        <For each={alternatives}>
+                          {(keys) => (
+                            <span class="keys">
+                              <For each={keys}>{(key) => <kbd>{key}</kbd>}</For>
+                            </span>
+                          )}
+                        </For>
+                      </dt>
+                      <dd>{label}</dd>
+                    </>
+                  )}
+                </For>
+              </dl>
+            </section>
           )}
         </For>
-      </dl>
+      </div>
       <h3 class="help-section">Kurzschreibweise beim Erfassen</h3>
       <ShorthandList />
       <div class="modal-actions">
