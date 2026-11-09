@@ -223,9 +223,12 @@ jobs:
 
   # iOS app to TestFlight, releases only (the build needs signing). Xcode
   # signs automatically through the App Store Connect API key (Admin role:
-  # it creates the distribution certificate and profile itself). The app
-  # record for dev.rubeen.zunder must exist in App Store Connect. The Xcode
-  # project (gen/apple) is not checked in and is generated here.
+  # it creates the distribution certificate and profiles itself). The app
+  # record for dev.rubeen.zunder must exist in App Store Connect. App Groups
+  # it cannot set up: the App Group, its assignment to dev.rubeen.zunder and
+  # the App ID dev.rubeen.zunder.share are created once by hand in the
+  # Developer portal (apps/zunder-app/README.md, "Einmalig bei Apple"). The
+  # Xcode project (gen/apple) is not checked in and is generated here.
   ios:
     name: iOS (TestFlight)
     if: inputs.tag || startsWith(github.ref, 'refs/tags/v')
@@ -289,8 +292,15 @@ jobs:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
         # The tag is the version (CFBundleShortVersionString and CFBundleVersion).
         run: |
-          npx tauri ios build --ci --export-method app-store-connect \
-            --config "{\"version\":\"${TAG#v}\"}"
+          set -o pipefail
+          log="$RUNNER_TEMP/ios-build.log"
+          if ! npx tauri ios build --ci --export-method app-store-connect \
+            --config "{\"version\":\"${TAG#v}\"}" 2>&1 | tee "$log"; then
+            if grep -Eq "Automatic signing cannot (update|register) bundle identifier" "$log"; then
+              echo "::error::App-IDs oder App Group fehlen im Apple-Developer-Portal (automatische Signierung kann sie nicht anlegen). Einmalig von Hand einrichten: apps/zunder-app/README.md, Abschnitt „Einmalig bei Apple“."
+            fi
+            exit 1
+          fi
 
       - name: Zu TestFlight hochladen
         env:
