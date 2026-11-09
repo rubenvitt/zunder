@@ -1,6 +1,6 @@
 # zunder-web
 
-Die Web-Oberfläche von Zunder: SolidJS, Vite und TypeScript (strict), eigenes schlankes CSS mit hellem und dunklem Modus. Sie spricht dasselbe Sync-Protokoll wie alle anderen Clients (Implementierungsvertrag, Abschnitte 2, 3 und 5). Dieselbe Oberfläche läuft auch in der Tauri-App (`apps/zunder-app`), dort über die Befehle der App statt HTTP (siehe [In der Tauri-App](#in-der-tauri-app)).
+Die Web-Oberfläche von Zunder: SolidJS, Vite und TypeScript (strict), eigenes schlankes CSS mit hellem und dunklem Modus (Gestaltung: [Gestaltung](#gestaltung)). Sie spricht dasselbe Sync-Protokoll wie alle anderen Clients (Implementierungsvertrag, Abschnitte 2, 3 und 5). Dieselbe Oberfläche läuft auch in der Tauri-App (`apps/zunder-app`), dort über die Befehle der App statt HTTP (siehe [In der Tauri-App](#in-der-tauri-app)).
 
 ## Befehle
 
@@ -63,11 +63,21 @@ Läuft die Oberfläche im Webview der App (`window.__TAURI_INTERNALS__` vorhande
 
 Befehls- und Ereignisvertrag: [`apps/zunder-app/README.md`](../apps/zunder-app/README.md).
 
+## Gestaltung
+
+Alles Sichtbare steht in `src/styles.css`; die Farben, Abstände und Schriften oben als Variablen, hell und dunkel über `prefers-color-scheme`.
+
+- **Blätter auf Papier:** Die Seitenleiste liegt auf dem Untergrund (`--canvas`), Sicht und Aufgabendetail sind eigene Blätter (`--bg`) mit Abstand (`--gap`). Auf dem Telefon füllt ein Blatt den Bildschirm, die Tabs schweben darüber.
+- **Glut nur, wo es brennt:** Orange (`--accent`) trägt die Hauptaktion, Fälliges und die Auswahl. Der Verlauf des Logos (`--flame`) bleibt der laufenden Flamme vorbehalten. Alles andere ist Papier und Asche.
+- **Schriften:** Hanken Grotesk für Text, Bricolage Grotesque (`--display`) für Titel und große Zahlen. Beide liegen als variable Schriften im Bundle (`@fontsource-variable/*`), damit die Oberfläche offline und in der App gleich aussieht.
+- **Überschriften** in normaler Schreibung, mit Anzahl daneben, wo sie hilft (`h2 .count`); ein farbiger Punkt (`h2.tone`) sagt, welche Art Druck ein Abschnitt hält.
+- **Bewegung** antwortet auf eine Handlung (abhaken, öffnen, erfassen). Von selbst bewegt sich nur die laufende Flamme; `prefers-reduced-motion` schaltet alles ab.
+
 ## Bedienung
 
-Tastatur: `n` erfassen, `⌘K`/`Strg+K` oder `/` Suche, `⌘B`/`Strg+B` Seitenleiste ein/aus, `j`/`k` bewegen, `Enter` öffnen, `x` erledigt, `Esc` schließen, in der Inbox `a` zuordnen, `l` lose, `d` verwerfen, auf dem Board `h`/`l` Spalte wechseln, `Shift+H`/`Shift+L` Karte verschieben, `Shift+J`/`Shift+K` umsortieren, `v` Liste/Board, `g h/i/l/b/d/p` Sichtwechsel, `?` Übersicht.
+Tastatur: `n` erfassen, `⌘K`/`Strg+K` oder `/` Suche, `⌘B`/`Strg+B` Seitenleiste ein/aus (eingeklappt bleibt ein schmaler Rand mit dem Knopf zum Ausklappen), `j`/`k` bewegen, `Enter` öffnen, `x` erledigt, `Esc` schließen, in der Inbox `a` zuordnen, `l` lose, `d` verwerfen, auf dem Board `h`/`l` Spalte wechseln, `Shift+H`/`Shift+L` Karte verschieben, `Shift+J`/`Shift+K` umsortieren, `v` Liste/Board, `g h/i/l/b/d/p` Sichtwechsel, `?` Übersicht.
 
-Mobil: Sichten als Tabs unten, großes ＋ zum Erfassen, in der Inbox nach rechts wischen = lose, nach links = verwerfen.
+Mobil: Sichten als schwebende Tabs unten, großes ＋ zum Erfassen, in der Inbox nach rechts wischen = lose, nach links = verwerfen.
 
 ## Tests
 

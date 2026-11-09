@@ -83,7 +83,7 @@ function FlameButton(props: { task: Task }) {
   return (
     <button
       class="btn btn-small flame-button"
-      classList={{ "btn-primary": !running(), burning: running() }}
+      classList={{ "btn-soft": !running(), burning: running() }}
       data-flame-for={props.task.id}
       onClick={() => void flame(props.task.id, running() ? "stop" : "start")}
     >
@@ -91,6 +91,18 @@ function FlameButton(props: { task: Task }) {
       {running() ? "Flamme beenden" : "Flamme starten"}
     </button>
   );
+}
+
+/** The days of a fire ("2026-W46") in words: "9.–15. November". */
+function fireRange(fire: string): string {
+  const [year, week] = fire.split("-W").map(Number) as [number, number];
+  // ISO 8601: January 4th always lies in week 1.
+  const jan4 = new Date(year, 0, 4);
+  const monday = new Date(year, 0, 4 - ((jan4.getDay() + 6) % 7) + (week - 1) * 7);
+  const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+  const month = (d: Date) => d.toLocaleDateString("de-DE", { month: "long" });
+  const from = monday.getMonth() === sunday.getMonth() ? `${monday.getDate()}.` : `${monday.getDate()}. ${month(monday)}`;
+  return `${from} – ${sunday.getDate()}. ${month(sunday)}`;
 }
 
 export function PhoenixView() {
@@ -111,18 +123,19 @@ export function PhoenixView() {
           <button class="btn btn-ghost btn-icon" aria-label="Vorige Woche" onClick={() => go(-1)}>
             <Icon name="left" />
           </button>
-          <span class="fire-label mono" data-fire={fire()}>
+          <span class="fire-label" data-fire={fire()}>
             Feuer {fire()}
           </span>
           <button class="btn btn-ghost btn-icon" aria-label="Nächste Woche" onClick={() => go(1)}>
             <Icon name="right" />
           </button>
-          <Show when={fire() !== current()}>
-            <button class="btn btn-ghost btn-small" onClick={() => navigate({ view: "phoenix" })}>
-              Aktuelles Feuer
-            </button>
-          </Show>
         </div>
+        <span class="muted fire-range">{fireRange(fire())}</span>
+        <Show when={fire() !== current()}>
+          <button class="btn btn-small" onClick={() => navigate({ view: "phoenix" })}>
+            Aktuelles Feuer
+          </button>
+        </Show>
       </header>
       <section class="group">
         <h2>Feuer-Schritte</h2>
@@ -154,11 +167,11 @@ export function TokensView() {
 /** Tauri app: token management needs a browser session on the server. */
 function TokensInApp() {
   return (
-    <div class="view">
+    <div class="view view-settings">
       <header class="view-head">
         <h1>API-Tokens</h1>
       </header>
-      <p class="muted">API-Tokens verwaltest du in der Web-Oberfläche deines Zunder-Servers; dafür ist die Anmeldung im Browser nötig. Die App selbst nutzt den Token aus der Verbindung.</p>
+      <p class="view-lead">API-Tokens verwaltest du in der Web-Oberfläche deines Zunder-Servers; dafür ist die Anmeldung im Browser nötig. Die App selbst nutzt den Token aus der Verbindung.</p>
       <a class="btn" href="#/verbindung">
         Zur Verbindung
       </a>
@@ -242,10 +255,12 @@ function TokenManager() {
   }
 
   return (
-    <div class="view">
+    <div class="view view-settings">
       <header class="view-head">
         <h1>API-Tokens</h1>
       </header>
+      <section class="group" aria-labelledby="tokens-heading">
+      <h2 id="tokens-heading">Agenten und MCP</h2>
       <p class="muted">Tokens für Agenten und den MCP-Zugang. Jeder Token ist einzeln widerrufbar.</p>
       <form class="inline-form" onSubmit={create}>
         <input class="field" placeholder="Name, z. B. claude-code" aria-label="Token-Name" value={name()} onInput={(e) => setName(e.currentTarget.value)} />
@@ -304,6 +319,7 @@ function TokenManager() {
           </tbody>
         </table>
       </Show>
+      </section>
       <IntakeChannels />
       <section class="group">
         <h2>Geräte</h2>

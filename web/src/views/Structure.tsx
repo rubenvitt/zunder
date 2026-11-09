@@ -10,7 +10,7 @@ import { PROJECT_STATUS_LABELS } from "../labels";
 import { createTask, updateProject } from "../state/actions";
 import { navigate, route } from "../state/router";
 import { areaList, data, projectList } from "../state/store";
-import { archivedAt, tasksAt } from "../state/selectors";
+import { archivedAt, openCountsByPlace, tasksAt } from "../state/selectors";
 import { registerList, setStructureEdit, toggleTree, treeHidden } from "../state/ui";
 
 export function StructureView() {
@@ -34,6 +34,7 @@ export function StructureView() {
     return data.areas[c.id]?.name ?? "";
   };
   createEffect(on(current, () => setTreeOpen(false), { defer: true }));
+  const openCounts = createMemo(openCountsByPlace);
 
   return (
     <div class="view view-split" classList={{ "has-selection": !!current()?.id, "tree-open": treeOpen(), "tree-hidden": treeHidden() && !!current()?.id }}>
@@ -65,7 +66,8 @@ export function StructureView() {
                   classList={{ active: isActive("area", area.id), dim: area.state === "archived" }}
                 >
                   <Icon name="folder" size={16} />
-                  {area.name}
+                  <span class="tree-label">{area.name}</span>
+                  <Show when={openCounts().get(area.id)}>{(n) => <span class="tree-count" title="Offene Aufgaben ohne Projekt">{n()}</span>}</Show>
                 </a>
                 <ul>
                   <For each={projectsOf(area)}>
@@ -79,7 +81,8 @@ export function StructureView() {
                           <Show when={project.kind === "dev"} fallback={<span class="dot" />}>
                             <Icon name="code" size={14} />
                           </Show>
-                          {project.name}
+                          <span class="tree-label">{project.name}</span>
+                          <Show when={openCounts().get(project.id)}>{(n) => <span class="tree-count" title="Offene Aufgaben">{n()}</span>}</Show>
                         </a>
                       </li>
                     )}
@@ -174,11 +177,11 @@ function AreaPanel(props: { area: Area }) {
           <span class="chip">Archiviert</span>
         </Show>
         <span class="spacer" />
-        <button class="btn btn-ghost btn-small" onClick={() => setStructureEdit({ kind: "project", areaId: props.area.id })}>
-          <Icon name="plus" size={14} /> Projekt
+        <button class="btn btn-small" title="Neues Projekt in diesem Bereich" onClick={() => setStructureEdit({ kind: "project", areaId: props.area.id })}>
+          <Icon name="plus" size={14} /> <span class="btn-label">Projekt</span>
         </button>
-        <button class="btn btn-ghost btn-small" onClick={() => setStructureEdit({ kind: "area", id: props.area.id })}>
-          <Icon name="pencil" size={14} /> Bearbeiten
+        <button class="btn btn-ghost btn-small" title="Bereich bearbeiten" onClick={() => setStructureEdit({ kind: "area", id: props.area.id })}>
+          <Icon name="pencil" size={14} /> <span class="btn-label">Bearbeiten</span>
         </button>
       </header>
       <Show when={projects().length > 0}>
@@ -186,6 +189,9 @@ function AreaPanel(props: { area: Area }) {
           <For each={projects()}>
             {(p) => (
               <button class="chip chip-button" onClick={() => navigate({ view: "bereiche", kind: "project", id: p.id })}>
+                <Show when={p.kind === "dev"}>
+                  <Icon name="code" size={13} />
+                </Show>
                 {p.name}
                 <Show when={p.status !== "active"}>
                   <span class="muted"> · {PROJECT_STATUS_LABELS[p.status]}</span>
@@ -215,28 +221,34 @@ function ProjectPanel(props: { project: Project }) {
     <>
       <header class="view-head">
         <ShowTreeButton />
-        <h1>{props.project.name}</h1>
-        <span class="muted">{data.areas[props.project.area_id]?.name}</span>
-        <Show when={dev()}>
-          <span class="chip chip-type-feature">
-            <Icon name="code" size={12} />
-            Dev{props.project.repo ? ` · ${props.project.repo}` : ""}
-          </span>
-        </Show>
-        <Show when={props.project.status !== "active"}>
-          <span class="chip">{PROJECT_STATUS_LABELS[props.project.status]}</span>
-        </Show>
+        <div class="view-title">
+          <h1>{props.project.name}</h1>
+          <p class="view-sub">
+            <a class="muted" href={`#/bereiche/area/${props.project.area_id}`}>
+              {data.areas[props.project.area_id]?.name}
+            </a>
+            <Show when={dev()}>
+              <span class="chip chip-type-feature">
+                <Icon name="code" size={12} />
+                Dev{props.project.repo ? ` · ${props.project.repo}` : ""}
+              </span>
+            </Show>
+            <Show when={props.project.status !== "active"}>
+              <span class="chip">{PROJECT_STATUS_LABELS[props.project.status]}</span>
+            </Show>
+          </p>
+        </div>
         <span class="spacer" />
         <div class="segmented" role="group" aria-label="Ansicht">
           <button classList={{ active: props.project.view === "list" }} aria-pressed={props.project.view === "list"} onClick={() => props.project.view !== "list" && toggleView()} title="Liste (v)">
-            <Icon name="list" size={16} /> Liste
+            <Icon name="list" size={16} /> <span class="btn-label">Liste</span>
           </button>
           <button classList={{ active: props.project.view === "board" }} aria-pressed={props.project.view === "board"} onClick={() => props.project.view !== "board" && toggleView()} title="Board (v)">
-            <Icon name="board" size={16} /> Board
+            <Icon name="board" size={16} /> <span class="btn-label">Board</span>
           </button>
         </div>
-        <button class="btn btn-ghost btn-small" onClick={() => setStructureEdit({ kind: "project", id: props.project.id })}>
-          <Icon name="pencil" size={14} /> Bearbeiten
+        <button class="btn btn-ghost btn-small" title="Projekt bearbeiten" onClick={() => setStructureEdit({ kind: "project", id: props.project.id })}>
+          <Icon name="pencil" size={14} /> <span class="btn-label">Bearbeiten</span>
         </button>
       </header>
       <AddTaskInline label="Aufgabe im Projekt anlegen …" onAdd={(title) => createTask({ title, location: { kind: "project", id: props.project.id } })} />

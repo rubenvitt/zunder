@@ -19,11 +19,11 @@ export function SettingsView() {
 /** Tauri app: server settings need a browser session on the server. */
 function SettingsInApp() {
   return (
-    <div class="view">
+    <div class="view view-settings">
       <header class="view-head">
         <h1>Einstellungen</h1>
       </header>
-      <p class="muted">Die Einstellungen des Servers (z. B. Timing) änderst du in der Web-Oberfläche deines Zunder-Servers; dafür ist die Anmeldung im Browser nötig.</p>
+      <p class="view-lead">Die Einstellungen des Servers (z. B. Timing) änderst du in der Web-Oberfläche deines Zunder-Servers; dafür ist die Anmeldung im Browser nötig.</p>
       <a class="btn" href="#/verbindung">
         Zur Verbindung
       </a>
@@ -31,13 +31,29 @@ function SettingsInApp() {
   );
 }
 
+/** The sections of the page by their `aria-label`: jump marks at the top. */
+const SECTIONS = ["Timing", "Jev", "Kalender", "KI-Protokoll"];
+
 function ServerSettings() {
   return (
-    <div class="view">
+    <div class="view view-settings">
       <header class="view-head">
         <h1>Einstellungen</h1>
       </header>
-      <p class="muted">Einstellungen dieses Zunder-Servers. Sie gelten sofort und haben Vorrang vor den Umgebungsvariablen des Servers.</p>
+      <p class="view-lead">Einstellungen dieses Zunder-Servers. Sie gelten sofort und haben Vorrang vor den Umgebungsvariablen des Servers.</p>
+      <nav class="settings-nav" aria-label="Abschnitte">
+        <For each={SECTIONS}>
+          {(name) => (
+            <button
+              type="button"
+              class="chip chip-button"
+              onClick={() => document.querySelector(`.settings-section[aria-label="${name}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            >
+              {name}
+            </button>
+          )}
+        </For>
+      </nav>
       <TimingSection />
       <JevSection />
       <CalendarSection />

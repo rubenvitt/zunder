@@ -24,6 +24,8 @@ test("Schnellerfassung wählt das offene Projekt vor, #tag und × übersteuern",
   const projectId = seeder.project(`Umzug ${s}`, areaId);
   await seeder.push(page);
   await openApp(page, `#/bereiche/project/${projectId}`);
+  // A running app (real backend: loaded by the login) gets the seeded project by pull.
+  await expect(page.locator(".view-head h1")).toHaveText(`Umzug ${s}`);
 
   // Preselected: the open project.
   await page.keyboard.press("n");

@@ -257,7 +257,7 @@ export function QuickCapture() {
             Abbrechen
           </button>
           <button type="submit" class="btn btn-primary" disabled={!text().trim()}>
-            Erfassen
+            Erfassen <kbd aria-hidden="true">↵</kbd>
           </button>
         </div>
       </form>
