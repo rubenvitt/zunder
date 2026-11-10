@@ -31,6 +31,7 @@ import type {
   JevEval,
   JevSettings,
   JevStatus,
+  PrStatuses,
   JevSettingsUpdate,
   Me,
   OAuthClient,
@@ -337,6 +338,11 @@ export class TauriApp {
     return this.call("task_suggest", { task_id: taskId });
   }
 
+  /** PR status through the app; an old server without the endpoint answers `unsupported`. */
+  prStatus(urls: string[]): Promise<PrStatuses> {
+    return this.call("pr_status", { urls });
+  }
+
   appInfo(): Promise<AppInfo> {
     return this.call("app_info");
   }
@@ -507,6 +513,10 @@ export class TauriTransport implements SyncTransport, ApiClient {
 
   suggestTask(taskId: string): Promise<Suggestion> {
     return this.app.taskSuggest(taskId);
+  }
+
+  prStatus(urls: string[]): Promise<PrStatuses> {
+    return this.app.prStatus(urls);
   }
 
   calendarSettings(): Promise<CalendarSettings> {

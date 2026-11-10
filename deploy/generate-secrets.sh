@@ -186,6 +186,13 @@ set_var ZUNDER_TIMING_TOKEN CHANGEME_OPTIONAL "$ZUNDER_TIMING_TOKEN"
 ZUNDER_TIMING_PROJECT=$(prompt_optional_value "ZUNDER_TIMING_PROJECT" "Timing project (self link /projects/<id> or project title)")
 set_var ZUNDER_TIMING_PROJECT CHANGEME_OPTIONAL "$ZUNDER_TIMING_PROJECT"
 
+echo ""
+echo "🔀 GitHub (optional): Token zum Lesen des PR-Status an Aufgaben."
+echo ""
+
+ZUNDER_GITHUB_TOKEN=$(prompt_optional_secret "ZUNDER_GITHUB_TOKEN" "GitHub token (read access to pull requests and checks)")
+set_var ZUNDER_GITHUB_TOKEN CHANGEME_OPTIONAL "$ZUNDER_GITHUB_TOKEN"
+
 # ============================================================================
 
 # Every placeholder must be gone now

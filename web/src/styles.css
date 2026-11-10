@@ -1997,6 +1997,77 @@ h2.tone-violet::before {
   font-weight: 600;
   text-decoration: none;
 }
+.pr-badge {
+  --pr-color: var(--muted);
+  color: var(--pr-color);
+  gap: 0.3rem;
+  white-space: nowrap;
+}
+.pr-badge[data-state] {
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pr-color) 12%, transparent);
+}
+.pr-badge-state {
+  font-variant-numeric: tabular-nums;
+}
+.pr-mark {
+  display: inline-flex;
+  color: var(--mark-color, currentColor);
+}
+:is(.pr-badge, .pr-chip)[data-state="open"] {
+  --pr-color: var(--success);
+}
+:is(.pr-badge, .pr-chip)[data-state="merged"] {
+  --pr-color: var(--violet);
+}
+:is(.pr-badge, .pr-chip)[data-state="closed"] {
+  --pr-color: var(--danger);
+}
+:is(.pr-badge, .pr-chip)[data-state="draft"] {
+  --pr-color: var(--muted);
+}
+:is(.pr-mark, .pr-chip)[data-review="approved"],
+:is(.pr-mark, .pr-chip)[data-checks="success"] {
+  --mark-color: var(--success);
+}
+:is(.pr-mark, .pr-chip)[data-review="changes_requested"],
+:is(.pr-mark, .pr-chip)[data-checks="pending"] {
+  --mark-color: var(--warning);
+}
+:is(.pr-mark, .pr-chip)[data-review="requested"] {
+  --mark-color: var(--info);
+}
+:is(.pr-mark, .pr-chip)[data-checks="failure"] {
+  --mark-color: var(--danger);
+}
+.pr-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  min-width: 0;
+}
+.pr-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-weight: 600;
+  color: var(--pr-color, var(--mark-color, var(--muted)));
+  background: color-mix(in srgb, var(--pr-color, var(--mark-color, var(--muted))) 12%, transparent);
+}
+.pr-title {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1 1 8rem;
+}
 .card-subtasks-bar {
   display: flex;
   flex-wrap: wrap;

@@ -178,6 +178,28 @@ impl HttpClient {
     }
 }
 
+/// Status of linked pull requests.
+impl HttpClient {
+    /// `POST /api/pr-status` with the PR links the web UI shows, answer
+    /// unchanged (`{configured, statuses}`). A server that does not know
+    /// the endpoint yet (404) is `Error::Unsupported`: the UI then shows
+    /// plain links.
+    pub async fn pr_status(&self, urls: &[String]) -> Result<serde_json::Value> {
+        let request = self
+            .http
+            .post(self.url("api/pr-status")?)
+            .json(&serde_json::json!({ "urls": urls }));
+        match self.send(request).await {
+            Err(Error::Server {
+                status: 404,
+                message,
+                ..
+            }) => Err(Error::Unsupported(message)),
+            other => other,
+        }
+    }
+}
+
 const FOCUS_PATH: &str = "api/settings/focus";
 
 fn focus_only_for_devices(result: Result<serde_json::Value>) -> Result<serde_json::Value> {
@@ -434,6 +456,28 @@ mod tests {
         let err = client.suggest_task(id).await.unwrap_err();
         assert_eq!(err.code(), "unsupported", "{err:?}");
         assert_eq!(err.to_string(), "privater Bereich");
+    }
+
+    #[tokio::test]
+    async fn pr_status_passes_through_and_404_is_unsupported() {
+        let (url, seen) = canned(vec![
+            (200, r#"{"configured":true,"statuses":{"u":null}}"#),
+            (
+                404,
+                r#"{"error":{"code":"not_found","message":"unbekannt"}}"#,
+            ),
+        ]);
+        let client = client(&url);
+        let urls = vec!["u".to_string()];
+
+        let got = client.pr_status(&urls).await.unwrap();
+        assert_eq!(got["configured"], true);
+        let request = seen.recv().unwrap();
+        assert_eq!(request.request_line, "POST /zunder/api/pr-status HTTP/1.1");
+        assert_eq!(request.authorization.as_deref(), Some("Bearer zt_secret"));
+
+        let err = client.pr_status(&urls).await.unwrap_err();
+        assert_eq!(err.code(), "unsupported", "{err:?}");
     }
 
     #[tokio::test]

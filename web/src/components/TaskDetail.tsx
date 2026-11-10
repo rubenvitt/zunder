@@ -54,6 +54,7 @@ import { copyTaskId, copyText, detailWide, pickLocation, pickTask, selectedId, s
 import { waitingNames } from "../sync/handback";
 import { TextField } from "./Fields";
 import { Icon, type IconName } from "./Icon";
+import { PrStatusChips } from "./PrBadge";
 import { MarkdownField } from "./MarkdownField";
 import { CheckButton, ProgressBar, SubtaskTree } from "./TaskBits";
 import { RecurrenceEditor, RecurrenceField, SeriesLinks } from "./RecurrenceField";
@@ -634,6 +635,7 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
                       )}
                     </Show>
                   </span>
+                  <Show when={t().pr_url}>{(url) => <PrStatusChips url={url()} />}</Show>
                 </Prop>
                 <Prop icon="user" label="Reserviert">
                   <Show when={t().claimed_by} fallback={<span class="prop-value muted">—</span>}>

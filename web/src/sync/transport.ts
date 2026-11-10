@@ -20,6 +20,7 @@ import type {
   JevSettingsUpdate,
   Me,
   OAuthClient,
+  PrStatuses,
   PullResponse,
   PushRequest,
   PushResponse,
@@ -116,6 +117,8 @@ export interface ApiClient {
   taskSuggestion(taskId: string): Promise<Suggestion | null>;
   /** Asks Jev for an open root task and stores the answer; 409 for tasks Jev may not see. */
   suggestTask(taskId: string): Promise<Suggestion>;
+  /** Status of linked GitHub PRs (browser and app). */
+  prStatus(urls: string[]): Promise<PrStatuses>;
   calendarSettings(): Promise<CalendarSettings>;
   /** Creates the feed token; an existing one stops working. */
   createCalendarFeed(): Promise<CreatedCalendarFeed>;
@@ -303,6 +306,10 @@ export class HttpTransport implements SyncTransport, ApiClient {
 
   suggestTask(taskId: string): Promise<Suggestion> {
     return this.request("POST", `/api/tasks/${encodeURIComponent(taskId)}/suggestion`);
+  }
+
+  prStatus(urls: string[]): Promise<PrStatuses> {
+    return this.request("POST", "/api/pr-status", { urls });
   }
 
   calendarSettings(): Promise<CalendarSettings> {
