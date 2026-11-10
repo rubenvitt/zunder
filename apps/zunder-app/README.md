@@ -255,7 +255,12 @@ Zunder steht im Teilen-Menü von iOS und macOS: Ein geteilter Link oder Text wir
   ```
 
   Pull Requests bauen die iOS-App samt Erweiterung für den Simulator (Job `ios-check`).
-- **Einmalig bei Apple:** Die Signierung legt App-ID `dev.rubeen.zunder.share` und die App Group `group.dev.rubeen.zunder` normalerweise selbst an (automatische Signierung mit dem API-Schlüssel, Rolle Admin). Schlägt der TestFlight-Build mit einem Profilfehler fehl, beides im Developer-Portal anlegen und der App-ID `dev.rubeen.zunder` die App Group zuweisen.
+- **Einmalig bei Apple (Pflicht):** Die automatische Signierung mit dem API-Schlüssel legt nur Zertifikat und Profile an. App Groups richtet sie nicht ein: Sie kann weder die App-ID `dev.rubeen.zunder` um die App Group erweitern noch die App-ID der Erweiterung registrieren. Der Export bricht dann mit „Automatic signing cannot update/register bundle identifier … No profiles for … were found“ ab. Deshalb im [Developer-Portal](https://developer.apple.com/account/resources/identifiers/list), Team `H95J852PKP`:
+  1. Identifiers → App Groups → `group.dev.rubeen.zunder` registrieren.
+  2. App-ID `dev.rubeen.zunder` öffnen, Capability **App Groups** einschalten, über „Configure“ `group.dev.rubeen.zunder` zuweisen, speichern.
+  3. Neue App-ID (App IDs → App) `dev.rubeen.zunder.share` anlegen, ebenfalls mit **App Groups** und derselben Gruppe.
+
+  Vorhandene Profile werden dabei ungültig; die nächste Signierung legt neue an. Danach den fehlgeschlagenen Job `iOS (TestFlight)` neu starten.
 - **Grenzen:** Nur ein Link je Teilen, Dateien und Bilder werden ignoriert. Auf iOS kommt das Geteilte erst beim nächsten Öffnen der App an (die Erweiterung schreibt nur in den Ordner). Auf dem Mac erscheint Zunder im Teilen-Menü, sobald die App einmal aus `/Applications` gestartet wurde; sonst unter Systemeinstellungen → Allgemein → Anmeldeobjekte & Erweiterungen → Teilen einschalten.
 
 ## Erinnerungen
@@ -278,5 +283,5 @@ Titel ist der Aufgabentitel, der Text „Erinnerung“ bzw. „Jetzt fällig“,
 - Kein SSE in der App: Änderungen anderer Geräte kommen mit dem 30-s-Takt (oder per `sync_now`).
 - API- bzw. Geräte-Token im Schlüsselbund statt in SQLite.
 - Teilen aus anderen Apps ist weder auf dem iPhone noch auf dem Mac von Hand durchgespielt; geprüft sind Ordner, Import und Titel (Tests) sowie der Simulator-Build.
-- Android-Build ist nicht eingerichtet; iOS nur lokal gebaut, nicht in der CI und nicht über TestFlight verteilt.
+- Android-Build ist nicht eingerichtet.
 - Desktop-Releases gibt es nur für macOS (Apple Silicon); Linux und Windows baut die CI nicht.
