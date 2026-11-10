@@ -72,6 +72,7 @@ pub fn routes() -> Router<App> {
         )
         .route("/settings/jev/eval", post(eval_jev))
         .route("/jev", get(jev_status))
+        .route("/pr-status", post(pr_status))
         .route(
             "/tasks/{id}/suggestion",
             get(task_suggestion).post(suggest_task),
@@ -477,6 +478,21 @@ async fn eval_jev(
 }
 
 /// Whether Jev is set up (no key, no settings): for the browser and the app.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PrStatusBody {
+    urls: Vec<String>,
+}
+
+/// Status of the GitHub PRs behind the given links.
+async fn pr_status(
+    State(app): State<App>,
+    _principal: Principal,
+    ApiJson(body): ApiJson<PrStatusBody>,
+) -> AppResult<Json<crate::app::PrStatuses>> {
+    Ok(Json(app.pr_statuses(body.urls).await?))
+}
+
 async fn jev_status(
     State(app): State<App>,
     _principal: Principal,

@@ -174,6 +174,16 @@ pub async fn jev_status(state: State<'_, AppState>) -> Result<serde_json::Value,
     client.jev_status().await
 }
 
+/// `POST /api/pr-status` with the stored token: status of linked PRs.
+#[tauri::command]
+pub async fn pr_status(
+    state: State<'_, AppState>,
+    urls: Vec<String>,
+) -> Result<serde_json::Value, Error> {
+    let client = state.syncer.client(&state.store)?;
+    client.pr_status(&urls).await
+}
+
 /// `GET /api/tasks/{id}/suggestion`: Jev's stored proposal or `null`.
 #[tauri::command(rename_all = "snake_case")]
 pub async fn task_suggestion(

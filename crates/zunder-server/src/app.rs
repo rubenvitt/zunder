@@ -14,7 +14,7 @@
 //! - The materialized [`State`] plus its cursor live in an `RwLock`; readers
 //!   always see a state together with the cursor it corresponds to.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock, RwLockReadGuard};
 
@@ -44,6 +44,7 @@ use crate::config::Config;
 use crate::db::{self, TokenRow, User};
 use crate::error::{AppError, AppResult};
 use crate::focus::{FocusSettings, FocusUpdate, FOCUS_PREFIX};
+use crate::github::{GithubClient, PrRef, PrStatus, MAX_PR_URLS};
 use crate::settings::{
     EffectiveTiming, TimingCheck, TimingOverrides, TimingSettings, TimingUpdate, TIMING_PREFIX,
     TIMING_PROJECT_KEY, TIMING_TOKEN_KEY,
@@ -232,6 +233,8 @@ struct Inner {
     /// Client for outgoing requests (Timing bridge).
     http: reqwest::Client,
     timing: RwLock<TimingState>,
+    /// PR status reader, if `ZUNDER_GITHUB_TOKEN` is set.
+    github: Option<GithubClient>,
 }
 
 /// The Timing bridge as configured right now (environment plus settings).
@@ -289,6 +292,14 @@ pub fn format_ms(ms: i64) -> String {
     let t = time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(ms) * 1_000_000)
         .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
     zunder_core::model::format_rfc3339(t)
+}
+
+/// Answer of `POST /api/pr-status`.
+#[derive(Debug, Clone, Serialize)]
+pub struct PrStatuses {
+    /// Whether a GitHub token is configured.
+    pub configured: bool,
+    pub statuses: BTreeMap<String, Option<PrStatus>>,
 }
 
 /// Parallel requests of a Jev eval run.
@@ -366,6 +377,9 @@ impl App {
                 shutdown: CancellationToken::new(),
                 bootstrap_hash,
                 timing: RwLock::new(timing),
+                github: config.github_token.as_ref().map(|token| {
+                    GithubClient::new(http.clone(), &config.github_graphql_url, token)
+                }),
                 http,
                 config,
             }),
@@ -394,6 +408,44 @@ impl App {
     /// settings change in between does not mix two configurations.
     pub fn timing(&self) -> Option<TimingBridge> {
         read_lock(&self.inner.timing).bridge.clone()
+    }
+
+    /// The status of the GitHub PRs behind `urls`, keyed by the link as
+    /// given. Links that are no GitHub PR URL are left out; `None` means
+    /// GitHub does not know the PR or the token may not read it. Without
+    /// a token, `configured` is `false` and nothing is asked.
+    pub async fn pr_statuses(&self, urls: Vec<String>) -> AppResult<PrStatuses> {
+        if urls.len() > MAX_PR_URLS {
+            return Err(AppError::bad_request(format!(
+                "Höchstens {MAX_PR_URLS} PR-Links pro Anfrage"
+            )));
+        }
+        let Some(github) = &self.inner.github else {
+            return Ok(PrStatuses {
+                configured: false,
+                statuses: BTreeMap::new(),
+            });
+        };
+        let parsed: Vec<(String, PrRef)> = urls
+            .into_iter()
+            .filter_map(|url| PrRef::parse(&url).map(|r| (url, r)))
+            .collect();
+        let refs: Vec<PrRef> = parsed.iter().map(|(_, r)| r.clone()).collect();
+        let found = github.statuses(&refs).await.map_err(|e| {
+            tracing::warn!(error = %e, "reading PR status failed");
+            AppError::Unavailable(e.to_string())
+        })?;
+        let statuses = parsed
+            .into_iter()
+            .map(|(url, r)| {
+                let status = found.get(&r).cloned().flatten();
+                (url, status)
+            })
+            .collect();
+        Ok(PrStatuses {
+            configured: true,
+            statuses,
+        })
     }
 
     /// The Timing settings for the settings view.

@@ -27,6 +27,7 @@ pub mod db;
 pub mod error;
 pub mod flame;
 pub mod focus;
+pub mod github;
 pub mod healthcheck;
 pub mod http;
 pub mod intake;

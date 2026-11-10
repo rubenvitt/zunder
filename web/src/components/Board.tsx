@@ -10,6 +10,8 @@ import { data, now, taskIndex } from "../state/store";
 import { detailId, registerList, selectedId, setActiveBoard, setDetailId, setSelectedId, toast } from "../state/ui";
 import { EmptyState } from "./EmptyState";
 import { Icon } from "./Icon";
+import { PrBadge } from "./PrBadge";
+import { prStatus } from "../state/prs";
 import { Modal } from "./Modal";
 import { RefButton, SubtaskToggle, SubtaskTree } from "./TaskBits";
 import { TaskList } from "./TaskList";
@@ -242,6 +244,8 @@ function Card(props: {
     const children = taskIndex().childrenOf(props.task.id);
     return children.length > 0 && !hasOpenChildren(children);
   };
+  // The linked PR is merged while the task is still open: offer closing, never do it on its own.
+  const prMerged = () => !isClosed(props.task.status) && !!props.task.pr_url && prStatus(props.task.pr_url)?.state === "merged";
   return (
     <li
       ref={(el) => {
@@ -268,16 +272,16 @@ function Card(props: {
       </span>
       <span class="task-title">{props.task.title}</span>
       <TaskMeta task={props.task} />
-      <Show when={taskIndex().progress(props.task.id).total > 0 || readyToClose()}>
+      <Show when={taskIndex().progress(props.task.id).total > 0 || readyToClose() || prMerged()}>
         <span class="card-subtasks-bar">
           <Show when={taskIndex().progress(props.task.id).total > 0}>
             <SubtaskToggle task={props.task} open={subtasksOpen()} onToggle={() => setSubtasksOpen((o) => !o)} />
           </Show>
-          <Show when={readyToClose()}>
+          <Show when={readyToClose() || prMerged()}>
             <button
               type="button"
               class="btn btn-small card-close"
-              title="Alle Unteraufgaben sind erledigt"
+              title={prMerged() ? "Der PR ist gemergt" : "Alle Unteraufgaben sind erledigt"}
               onClick={(e) => {
                 e.stopPropagation();
                 if (setStatus(props.task.id, "done")) toast(`„${shorten(props.task.title)}“ → ${STATUS_LABELS.done}`);
@@ -296,19 +300,15 @@ function Card(props: {
           <SubtaskTree parentId={props.task.id} compact />
         </div>
       </Show>
-      <Show when={props.devDetails && (props.task.branch || props.task.pr_url || isClaimActive(props.task, now()))}>
+      {/* The PR's status shows on every board; branch and claim only in the dev view. */}
+      <Show when={props.task.pr_url || (props.devDetails && (props.task.branch || isClaimActive(props.task, now())))}>
         <span class="card-dev">
-          <Show when={props.task.branch}>
+          <Show when={props.devDetails && props.task.branch}>
             <span class="mono card-branch" title="Branch">
               <Icon name="branch" size={12} /> {props.task.branch}
             </span>
           </Show>
-          <Show when={props.task.pr_url}>
-            <a class="card-pr" href={props.task.pr_url!} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
-              <Icon name="pullRequest" size={12} />
-              PR
-            </a>
-          </Show>
+          <Show when={props.task.pr_url}>{(url) => <PrBadge url={url()} />}</Show>
         </span>
       </Show>
     </li>

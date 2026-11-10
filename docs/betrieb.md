@@ -117,6 +117,7 @@ Dann `https://zunder.rubeen.dev` im Browser öffnen, über Pocket-ID anmelden un
 | `ZUNDER_SESSION_SECRET` | zufällig | `.env`, generiert |
 | `ZUNDER_TIMING_TOKEN` | Timing-API-Token | `.env`, optional (leer = aus); ein Token aus den **Einstellungen** der Web-UI hat Vorrang |
 | `ZUNDER_TIMING_PROJECT` | Timing-Projekt für Flammen: Self-Link (z. B. `/projects/1`) oder Projekttitel, wird unverändert an Timing gegeben (eine reine Zahl liest Timing als Titel) | `.env`, optional; ein Projekt aus den **Einstellungen** hat Vorrang |
+| `ZUNDER_GITHUB_TOKEN` | GitHub-Token, mit dem der Server den Status verlinkter PRs liest: Fine-grained Token mit Lesezugriff auf *Pull requests* (und *Commit statuses*/*Checks* für CI) der betroffenen Repos, oder ein klassischer Token mit `repo` | `.env`, optional (leer = PR-Links ohne Status) |
 | `ZUNDER_BOOTSTRAP_TOKEN` | fester API-Token `zt_…` | nicht gesetzt; nur für Tests oder eine Inbetriebnahme ohne Web-Login |
 | `ZUNDER_DEV_AUTH` | `true` = Login ohne OIDC | **nie in Produktion**, nur lokal |
 | `ZUNDER_DEV_AUTH_ALLOW_REMOTE` | `true` = Dev-Auth auch mit nicht lokaler `ZUNDER_BIND` (nur für einen lokalen Container mit `-p 127.0.0.1:…`) | **nie in Produktion** |

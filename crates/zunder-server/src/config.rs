@@ -57,6 +57,12 @@ pub struct Config {
     /// Endpoint of the decision model (`POST /v1/systemone`). Always
     /// [`crate::suggest::DEFAULT_BASE_URL`]; tests point it at a mock server.
     pub jev_base_url: Url,
+    /// Token for reading pull requests (`ZUNDER_GITHUB_TOKEN`); without it
+    /// the UI shows PR links without a status.
+    pub github_token: Option<String>,
+    /// GraphQL endpoint of GitHub. Always
+    /// [`crate::github::DEFAULT_GRAPHQL_URL`]; tests point it at a mock server.
+    pub github_graphql_url: Url,
     pub bootstrap_token: Option<String>,
     pub dev_auth: bool,
     /// Local hour (0–23) of the nightly backup.
@@ -186,6 +192,8 @@ impl Config {
             timing,
             timing_base_url: default_timing_base_url(),
             jev_base_url: default_jev_base_url(),
+            github_token: get("ZUNDER_GITHUB_TOKEN"),
+            github_graphql_url: default_github_graphql_url(),
             bootstrap_token: get("ZUNDER_BOOTSTRAP_TOKEN"),
             dev_auth,
             backup_hour,
@@ -206,6 +214,8 @@ impl Config {
             timing: None,
             timing_base_url: default_timing_base_url(),
             jev_base_url: default_jev_base_url(),
+            github_token: None,
+            github_graphql_url: default_github_graphql_url(),
             bootstrap_token: None,
             dev_auth: false,
             backup_hour: 3,
@@ -245,6 +255,10 @@ fn default_jev_base_url() -> Url {
     Url::parse(crate::suggest::DEFAULT_BASE_URL).expect("static URL is valid")
 }
 
+fn default_github_graphql_url() -> Url {
+    Url::parse(crate::github::DEFAULT_GRAPHQL_URL).expect("static URL is valid")
+}
+
 fn default_timing_base_url() -> Url {
     Url::parse(crate::timing::DEFAULT_BASE_URL).expect("static URL is valid")
 }
@@ -281,6 +295,7 @@ mod tests {
         assert_eq!(c.backup_hour, 3);
         assert!(!c.dev_auth);
         assert!(c.oidc.is_none());
+        assert!(c.github_token.is_none());
         assert!(!c.secure_cookies());
         assert_eq!(c.db_path(), PathBuf::from("./data/zunder.db"));
     }
@@ -297,8 +312,10 @@ mod tests {
             ("ZUNDER_SESSION_SECRET", "0123456789abcdef0123456789abcdef"),
             ("ZUNDER_BACKUP_HOUR", "23"),
             ("ZUNDER_TIMING_TOKEN", "t"),
+            ("ZUNDER_GITHUB_TOKEN", " ghp_test "),
         ])
         .unwrap();
+        assert_eq!(c.github_token.as_deref(), Some("ghp_test"));
         let oidc = c.oidc.as_ref().unwrap();
         assert_eq!(oidc.allowed_email.as_deref(), Some("person@example.org"));
         assert!(c.secure_cookies());

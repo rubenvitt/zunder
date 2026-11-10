@@ -1,6 +1,6 @@
 // German UI labels for the English codes used on the wire.
 
-import type { AreaState, ForWhom, JsonValue, Location, PhoenixRole, ProjectKind, ProjectStatus, Recurrence, RecurrenceFrom, RecurrenceUnit, Task, TaskStatus, TaskType, WeekdayCode, Weight } from "./sync/types";
+import type { AreaState, ForWhom, JsonValue, Location, PhoenixRole, PrChecks, PrReview, PrState, ProjectKind, ProjectStatus, Recurrence, RecurrenceFrom, RecurrenceUnit, Task, TaskStatus, TaskType, WeekdayCode, Weight } from "./sync/types";
 import { WEEKDAY_CODES } from "./sync/types";
 import { FOR_WHOM_KEYS, WEIGHT_KEYS, type ForWhomKey, type WeekBalance, type WeightKey } from "./sync/balance";
 import { dateFromLocal, formatDateLabel, parseDue } from "./sync/dates";
@@ -402,3 +402,23 @@ export function nextInstanceMessage(due: string | null, now: Date): string {
   const day = ["Heute", "Morgen", "Gestern"].includes(label) ? label.toLowerCase() : `am ${label}`;
   return `Nächste Instanz ${day}${info.time ? ` um ${info.time}` : ""}`;
 }
+
+/** State of a linked GitHub PR. */
+export const PR_STATE_LABELS: Record<PrState, string> = {
+  draft: "Entwurf",
+  open: "Offen",
+  merged: "Gemergt",
+  closed: "Geschlossen",
+};
+
+export const PR_REVIEW_LABELS: Record<PrReview, string> = {
+  requested: "Review angefragt",
+  approved: "Freigegeben",
+  changes_requested: "Änderungen gewünscht",
+};
+
+export const PR_CHECKS_LABELS: Record<PrChecks, string> = {
+  pending: "CI läuft",
+  success: "CI grün",
+  failure: "CI rot",
+};

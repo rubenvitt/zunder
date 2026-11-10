@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { card, entityFields, openApp, prepare, reloadApp, Seeder, suffix } from "./fixtures";
+import { card, entityFields, isMock, openApp, prepare, reloadApp, Seeder, suffix } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
   await prepare(page);
@@ -62,6 +62,41 @@ test("Dev-Sicht zeigt Reservierung, Branch und PR", async ({ page }) => {
   await expect(c).toContainText("agent-7");
   await expect(c).toContainText("feature/agent");
   await expect(c.getByRole("link", { name: "PR" })).toHaveAttribute("href", "https://github.com/example/app/pull/7");
+});
+
+test("PR-Status als Badge auf der Karte und im Detail", async ({ page }) => {
+  test.skip(!isMock, "Der echte Server hat keinen GitHub-Token; nur der Mock antwortet fest");
+  const s = suffix();
+  const seeder = new Seeder();
+  const area = seeder.area(`Arbeit ${s}`);
+  const project = seeder.project(`Dienst ${s}`, area, { kind: "dev" });
+  const loc = { kind: "project", id: project };
+  seeder.task(`Offen ${s}`, { location: loc, status: "in_progress", pr_url: "https://github.com/mock/app/pull/1" });
+  const merged = seeder.task(`Gemergt ${s}`, { location: loc, status: "review", pr_url: "https://github.com/mock/app/pull/3" });
+  seeder.task(`Unbekannt ${s}`, { location: loc, status: "review", pr_url: "https://github.com/mock/app/pull/99" });
+  await seeder.push(page);
+  await openApp(page, "#/dev");
+
+  const open = card(page, `Offen ${s}`).locator(".pr-badge");
+  await expect(open).toHaveText(/#1 Offen/);
+  await expect(open).toHaveAttribute("data-state", "open");
+  await expect(open).toHaveAttribute("title", /Freigegeben · CI rot/);
+  await expect(card(page, `Gemergt ${s}`).locator(".pr-badge")).toHaveAttribute("data-state", "merged");
+  // Unknown to GitHub: plain link as before.
+  await expect(card(page, `Unbekannt ${s}`).getByRole("link", { name: "PR" })).toBeVisible();
+  await expect(card(page, `Offen ${s}`).getByRole("button", { name: "Abschließen" })).toHaveCount(0);
+
+  // Merged PR: closing is offered, not done by itself.
+  await expect.poll(async () => (await entityFields(page, "task", merged)).status).toBe("review");
+  await card(page, `Gemergt ${s}`).getByRole("button", { name: "Abschließen" }).click();
+  await expect.poll(async () => (await entityFields(page, "task", merged)).status).toBe("done");
+
+  await card(page, `Offen ${s}`).click();
+  const chips = page.getByTestId("pr-status");
+  await expect(chips).toContainText("Offen");
+  await expect(chips).toContainText("Freigegeben");
+  await expect(chips).toContainText("CI rot");
+  await expect(chips).toContainText("#1 Anmeldung verbessern");
 });
 
 test("Umsortieren zwischen Rängen des ClickUp-Imports", async ({ page }) => {

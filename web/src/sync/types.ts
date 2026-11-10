@@ -467,6 +467,31 @@ export interface JevStatus {
   auto_apply_min_probability: number;
 }
 
+/** State of a linked GitHub pull request. */
+export type PrState = "draft" | "open" | "merged" | "closed";
+/** Review of an open PR: asked for, approved or changes wanted. */
+export type PrReview = "requested" | "approved" | "changes_requested";
+/** Rollup of the CI checks of the PR's last commit. */
+export type PrChecks = "pending" | "success" | "failure";
+
+export interface PrStatus {
+  number: number;
+  title: string;
+  state: PrState;
+  review: PrReview | null;
+  checks: PrChecks | null;
+}
+
+/**
+ * `POST /api/pr-status`: status per PR link as sent. Links that are no GitHub
+ * PR are missing; `null` = GitHub does not know the PR or the token may not read
+ * it. `configured: false` = no GitHub token on the server, nothing was asked.
+ */
+export interface PrStatuses {
+  configured: boolean;
+  statuses: Record<string, PrStatus | null>;
+}
+
 /** `GET /api/settings/jev`: the decision model for proposals. Never contains the key. */
 export interface JevSettings {
   configured: boolean;

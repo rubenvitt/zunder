@@ -788,6 +788,27 @@ function seed(kind: string) {
 
 // ---- HTTP ------------------------------------------------------------------------
 
+/**
+ * Fixed PR states of the owner `mock` (`github.com/mock/app/pull/N`): 1 open with approval and red CI,
+ * 2 draft with requested review and running CI, 3 merged, 4 closed; other numbers and owners are unknown.
+ */
+function mockPrStatuses(urls: string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const url of urls) {
+    const m = /^https?:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)/i.exec(url);
+    if (!m) continue;
+    const number = Number(m[3]);
+    const known: Record<number, unknown> = {
+      1: { number, title: "Anmeldung verbessern", state: "open", review: "approved", checks: "failure" },
+      2: { number, title: "Entwurf Suche", state: "draft", review: "requested", checks: "pending" },
+      3: { number, title: "Board aufräumen", state: "merged", review: null, checks: "success" },
+      4: { number, title: "Verworfener Versuch", state: "closed", review: null, checks: null },
+    };
+    out[url] = m[1] === "mock" ? (known[number] ?? null) : null;
+  }
+  return out;
+}
+
 function send(res: ServerResponse, status: number, body?: unknown, headers: Record<string, string> = {}) {
   const data = body === undefined ? "" : JSON.stringify(body);
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...headers });
@@ -1151,6 +1172,11 @@ const server = createServer(async (req, res) => {
         const report = jevEval(limit);
         if (report.asked === 0) return error(res, 409, "conflict", "Keine eingeordneten Aufgaben für einen Probelauf (Gewicht, „für wen“ oder Ort fehlen überall).");
         return send(res, 200, report);
+      }
+      if (path === "/api/pr-status" && method === "POST") {
+        const body = await readJson(req);
+        if (!Array.isArray(body.urls) || body.urls.length > 200) return error(res, 400, "invalid_request", "Höchstens 200 PR-Links pro Anfrage");
+        return send(res, 200, { configured: true, statuses: mockPrStatuses(body.urls.map(String)) });
       }
       if (path === "/api/jev" && method === "GET") return send(res, 200, { configured: jev.token !== null, auto_apply_min_probability: JEV_AUTO_MIN });
       m = /^\/api\/tasks\/([^/]+)\/suggestion$/.exec(path);

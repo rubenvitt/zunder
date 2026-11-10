@@ -225,6 +225,7 @@ Basis: `ZUNDER_PUBLIC_URL`. JSON, UTF-8. Fehler: `{"error":{"code":…,"message"
 | `GET` / `PUT` / `DELETE /api/settings/timing`, `POST /api/settings/timing/check`, `GET /api/settings/timing/projects` | Timing-Einstellungen (nur Session-Auth), Details in 4.2 |
 | `GET` / `PUT /api/settings/focus` | „Erst für dich“ in Heute: Tag des Wegklickens und für einen Tag gewählte Aufgabe (Session-Auth oder Geräte-Token der App), Details in 5.1 |
 | `GET` / `POST` / `DELETE /api/settings/calendar` | Kalender-Feed einrichten, ersetzen, abschalten (nur Session-Auth), Details in 4.4 |
+| `POST /api/pr-status` | Status verlinkter GitHub-PRs (jede `/api`-Auth), Details in 4.6 |
 | `GET /api/jev` | Ob Jev eingerichtet ist und ab welcher Wahrscheinlichkeit die UI selbst setzt (jede `/api`-Auth), Details in 4.5 |
 | `GET` / `PUT` / `DELETE /api/settings/jev` | Jev für Vorschläge: Key, feste Version, private Bereiche, Übernahmequote (nur Session-Auth), Details in 4.5 |
 | `POST /api/settings/jev/eval` | Probelauf von Jev gegen schon eingeordnete Aufgaben (nur Session-Auth), Details in 4.5 |
@@ -254,6 +255,7 @@ Basis: `ZUNDER_PUBLIC_URL`. JSON, UTF-8. Fehler: `{"error":{"code":…,"message"
 | `ZUNDER_OIDC_ALLOWED_SUBJECT` oder `ZUNDER_OIDC_ALLOWED_EMAIL` | Wer sich anmelden darf (eine Person) |
 | `ZUNDER_SESSION_SECRET` | Signatur der Session-Cookies |
 | `ZUNDER_TIMING_TOKEN`, `ZUNDER_TIMING_PROJECT` | Timing-Web-API (optional; Werte aus der Einstellungsseite haben Vorrang, 4.2) |
+| `ZUNDER_GITHUB_TOKEN` | GitHub-Token zum Lesen von Pull Requests (optional; ohne Token zeigt die UI PR-Links ohne Status, 4.6) |
 | `ZUNDER_BOOTSTRAP_TOKEN` | optionaler fester API-Token für Erstinbetriebnahme und Tests |
 | `ZUNDER_DEV_AUTH` | `true` = Login ohne OIDC (nur lokal, Warnung im Log) |
 | `ZUNDER_DEV_AUTH_ALLOW_REMOTE` | `true` = Dev-Auth auch mit nicht lokaler `ZUNDER_BIND` (lokaler Container) |
@@ -480,6 +482,15 @@ Ein Entscheidungsmodell schlägt für eine offene Wurzelaufgabe Gewicht, „für
 - **Speicher (Migration 0008):** Einstellungen als `settings`-Zeilen `jev.token` (Klartext, also auch in den Backups), `jev.model`, `jev.private_areas` (JSON-Liste); Vorschläge in `suggestions` (task_id, model, body = Vorschlag als JSON, created_at in Unix-Millisekunden), ein Vorschlag pro Aufgabe.
 - **Web-UI:** Einstellungen → „Jev“ (Key, Version, private Bereiche als Häkchen, Übernahmequote mit aufklappbarer Tabelle je Schwelle, Zurücksetzen, darunter „Probelauf“: Zahl der Aufgaben, Start mit Rückfrage, Ergebnis als Tabelle je Frage und Schwelle und aufklappbare Liste der Aufgaben mit Abweichungen). In der Detailansicht einer offenen Wurzelaufgabe außerhalb von Dev-Projekten, bei der Gewicht oder „für wen“ fehlt oder die in der Inbox liegt, fragt die UI Jev von selbst, sobald Jev eingerichtet ist (`GET /api/jev`), kein Vorschlag gespeichert ist und keine Änderung mehr auf Übertragung wartet. Oben steht eine Zeile „Jev“ mit Chips für die noch offenen Felder (Gewicht, „für wen“, in der Inbox der Ort); ein Tipp übernimmt, unter 0,6 trägt der Chip ein „?“, ab zwei Chips gibt es „Alle übernehmen“ (verschiebt zuletzt). Keine Prozente, keine Modellnamen. Werte aus `auto` setzt die UI sofort in noch leere Felder und zeigt sie mit „Rückgängig“. Fehlt nichts mehr, verschwindet die Zeile; Fehler beim selbsttätigen Fragen zeigen „gerade nicht erreichbar“ mit „Noch einmal“, abgelehnte Aufgaben (`409`) gar nichts. In der App laufen dieselben Aufrufe über die Befehle `jev_status`, `task_suggestion` und `task_suggest` (überträgt vorher ausstehende Änderungen; `409`/`403` → `unsupported`); die Einstellungen brauchen weiter die Browser-Sitzung.
 
+### 4.6 Status verlinkter Pull Requests
+
+- **Zweck:** Aufgaben in Dev-Projekten tragen ihren PR in `pr_url`. Die UI zeigt, wie es um ihn steht, ohne dass jemand GitHub öffnet.
+- **API:** `POST /api/pr-status` mit `{"urls":[String]}` (höchstens 200, sonst `400`) → `{"configured":bool,"statuses":{<url>: PrStatus|null}}`. Schlüssel ist der Link wie gesendet. Links, die kein GitHub-PR sind (`http(s)://(www.)github.com/<owner>/<repo>/pull/<n>`, beliebiger Rest dahinter), fehlen in `statuses`; `null` heißt: GitHub kennt den PR nicht oder der Token darf ihn nicht lesen. Ohne `ZUNDER_GITHUB_TOKEN` ist `configured` `false`, `statuses` leer, und GitHub wird nicht gefragt. Scheitert GitHub (Netz, `401`, Rate-Limit), antwortet der Server `503` (`unavailable`) mit GitHubs Meldung.
+- **PrStatus:** `{"number","title","state","review","checks"}`. `state`: `draft`, `open`, `merged`, `closed`. `review` nur bei offenen PRs: `approved`, `changes_requested`, `requested` (Review nötig oder Reviewer angefragt) oder `null`. `checks`: Gesamtstatus der Checks und Statuses des letzten Commits, `success`, `failure` (auch `ERROR`), `pending` (auch `EXPECTED`) oder `null` (keine).
+- **Abruf:** eine GraphQL-Anfrage (`POST https://api.github.com/graphql`) je 25 PRs, mit einem Alias `p<i>: repository(owner, name) { pullRequest(number) }` je PR; Owner, Repo und Nummer gehen als Variablen, nie im Abfragetext. Antworten liegen im Speicher des Servers: offene PRs 2 Minuten, gemergte und geschlossene 30 Minuten, unbekannte 10 Minuten. Fehlschläge werden nicht gespeichert.
+- **Web-UI:** Karten auf jedem Board (nicht nur in der Dev-Sicht) zeigen statt „PR“ ein Badge „#<n> <Zustand>“ in der Farbe des Zustands (Offen grün, Entwurf grau, Gemergt violett, Geschlossen rot), dahinter je ein Zeichen für Review und CI; der Tooltip nennt Titel und alles im Klartext. Die Detailansicht zeigt unter dem PR-Feld Chips für Zustand, Review („Review angefragt“, „Freigegeben“, „Änderungen gewünscht“) und CI („CI läuft“, „CI grün“, „CI rot“) und den Titel. Die UI sammelt die Links eines Renderdurchgangs zu einer Anfrage, fragt angezeigte Links alle 3 Minuten und beim Zurückkehren ins Fenster erneut und lässt Links, die 15 Minuten nicht zu sehen waren, ruhen. Ohne Token (`configured: false`) fragt sie 30 Minuten lang nicht nach; offline, bei Fehlern oder ohne Status bleibt es beim schlichten Link „PR“. In der App läuft derselbe Aufruf über den Befehl `pr_status` (5.1).
+- **Abschließen:** Ist der PR gemergt und die Aufgabe noch nicht erledigt oder verworfen, bietet ihre Karte den Knopf „Abschließen“ an (wie bei erledigten Unteraufgaben); ein Klick setzt `done`. Von selbst ändert weder Server noch UI den Status.
+
 ## 5. Web-UI
 
 SolidJS + Vite + TypeScript (strict). Kein UI-Framework mit großem Laufzeitanteil; eigenes, schlankes CSS mit Variablen, hell/dunkel.
@@ -554,6 +565,7 @@ In der Tauri-App spricht die Web-UI nicht direkt mit dem Server (die CSP erlaubt
 | `task_history` | `{"task_id"}` | `GET /api/tasks/{id}/history` mit dem gespeicherten Token, Antwort unverändert |
 | `flame_start`, `flame_stop` | `{"task_id"}` | `POST /api/tasks/{id}/flame/start\|stop`, Antwort unverändert; vorher Push, falls Operationen ausstehen, danach ein Sync (Flammenfelder kommen per `zunder://changed`). 409 → Fehler `server` |
 | `focus_get`, `focus_set` | – bzw. `{"update"}` | `GET` bzw. `PUT /api/settings/focus` („Erst für dich“, 5.1) mit dem gespeicherten Token, `update` und Antwort unverändert. Mit einem API-Token statt Geräte-Token antwortet der Server `403` → Fehler `unsupported` |
+| `pr_status` | `{"urls"}` | `POST /api/pr-status` (4.6) mit dem gespeicherten Token, Antwort unverändert; ein Server ohne den Endpunkt (`404`) → Fehler `unsupported` |
 | `app_info` | – | `{"version","desktop","autostart":bool\|null,"update":{"installed":String\|null,"last_check":{"at_ms","ok","error"?}\|null}\|null}` (die App selbst; mobil `autostart`/`update` = `null`) |
 | `set_autostart` | `{"enabled"}` | neuer Zustand; nur Desktop (sonst `unsupported`), startet beim Anmelden versteckt in der Menüleiste (`--hidden`) |
 | `check_update` | – | `{"installed","last_check"}`; sucht sofort und installiert eine neuere Version (aktiv nach `restart_app`); Fehler `update`, mobil und in Entwicklungsversionen `unsupported` |
