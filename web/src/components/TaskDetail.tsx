@@ -46,8 +46,6 @@ import {
   updateTask,
 } from "../state/actions";
 import { detailBack, NARROW_LAYOUT } from "../state/back";
-import { appConfig } from "../state/desktop";
-import { isTauri } from "../platform/runtime";
 import { api, commentsOf, data, now, pendingCount, taskIndex } from "../state/store";
 import { dueCountOn } from "../state/selectors";
 import { copyTaskId, copyText, detailWide, pickLocation, pickTask, selectedId, setDetailId, setDetailWide, setDetailWidth, setHandBackRequest, setSelectedId } from "../state/ui";
@@ -58,7 +56,7 @@ import { PrStatusChips } from "./PrBadge";
 import { MarkdownField } from "./MarkdownField";
 import { CheckButton, ProgressBar, SubtaskTree } from "./TaskBits";
 import { RecurrenceEditor, RecurrenceField, SeriesLinks } from "./RecurrenceField";
-import { Dependencies, taskHref } from "./TaskLinks";
+import { Dependencies, taskHref, taskUrl } from "./TaskLinks";
 import { JevSuggestion, wantsSuggestion } from "./JevSuggestion";
 import { jevConfigured } from "../state/jev";
 
@@ -806,15 +804,6 @@ function Prop(props: { icon: IconName; label: string; children: JSX.Element }) {
       <div class="prop-control">{props.children}</div>
     </div>
   );
-}
-
-/**
- * Full, permanent address of a task (by reference if it has one). In the app the
- * webview's own origin is useless outside it, so the link points to the server.
- */
-function taskUrl(task: Task): string {
-  const server = isTauri() ? appConfig()?.server_url?.replace(/\/+$/, "") : null;
-  return `${server ? `${server}/` : `${location.origin}${location.pathname}`}${taskHref(task)}`;
 }
 
 /** German relative label for the wall time of an HLC. */
