@@ -29,6 +29,10 @@ interface FakeAppHandle {
   focus: { dismissed_on: string | null; chosen: { on: string; task_id: string } | null };
   /** Items in the share extension's folder (share_take/share_done). */
   shared: { id: string; text?: string; url?: string; created_at_ms: number }[];
+  /** Texts of the last native context menu (plugin:menu|new), submenus as "Name/Item". */
+  menuTexts(): string[];
+  /** Clicks an item of the last native context menu by its text ("Status/In Arbeit"). */
+  menuClick(path: string): void;
 }
 
 declare global {
@@ -78,6 +82,28 @@ function installFakeApp(seed: { serverOps: WireOp[]; validToken: string }) {
       fake.ops.push({ op_id: uuid(), entity, entity_id: id, field, value, hlc: hlc() });
       config.cursor += 1;
     },
+    menuTexts() {
+      const out: string[] = [];
+      const walk = (items: MenuItem[], prefix: string) => {
+        for (const item of items) {
+          if (!item.text) continue;
+          out.push(prefix + item.text);
+          if (item.items) walk(item.items, `${prefix}${item.text}/`);
+        }
+      };
+      walk(lastMenu(), "");
+      return out;
+    },
+    menuClick(path: string) {
+      let items = lastMenu();
+      let item: MenuItem | undefined;
+      for (const part of path.split("/")) {
+        item = items.find((i) => i.text === part);
+        items = item?.items ?? [];
+      }
+      const channel = Number(String(item?.handler ?? "").replace("__CHANNEL__:", ""));
+      callbacks.get(channel)?.({ index: 0, message: "item" });
+    },
     completeLogin() {
       config.server_url = loginServer;
       config.token = seed.validToken;
@@ -86,6 +112,15 @@ function installFakeApp(seed: { serverOps: WireOp[]; validToken: string }) {
     },
   };
   let loginServer: string | null = null;
+  interface MenuItem {
+    text?: string;
+    items?: MenuItem[];
+    handler?: string;
+  }
+  const lastMenu = (): MenuItem[] => {
+    const call = fake.calls.filter((c) => c.cmd === "plugin:menu|new").at(-1);
+    return ((call?.args.options as { items?: MenuItem[] } | undefined)?.items ?? []) as MenuItem[];
+  };
 
   function snapshot() {
     const entities = new Map<string, { entity: string; entity_id: string; created_hlc: string; fields: Record<string, { value: Json; hlc: string; op_id: string }> }>();
@@ -205,6 +240,12 @@ function installFakeApp(seed: { serverOps: WireOp[]; validToken: string }) {
         fake.shared = fake.shared.filter((item) => !ids.includes(item.id));
         return before - fake.shared.length;
       }
+      // Native context menu (Tauri menu API): created, shown, freed; clicks via menuClick.
+      case "plugin:menu|new":
+        return [nextId++, `menu-${nextId}`];
+      case "plugin:menu|popup":
+      case "plugin:resources|close":
+        return null;
       default:
         throw `command ${cmd} not found`;
     }
@@ -464,4 +505,29 @@ test("App: Aus anderen Apps Geteiltes landet als Aufgabe in der Inbox", async ({
   // Inbox tasks carry no location field.
   expect(applied.some((o) => o.field === "location")).toBe(false);
   expect(apiRequests).toEqual([]);
+});
+
+test("App: Rechtsklick zeigt das native Kontextmenü, seine Aktionen gehen an den lokalen Speicher", async ({ page }) => {
+  const seed = serverOps(currentFire());
+  await openInApp(page, seed.ops);
+  await page.getByLabel("Server-Adresse").fill("https://zunder.example.org");
+  await page.getByLabel("API-Token").fill("zt_richtig");
+  await page.getByRole("button", { name: "Speichern und verbinden" }).click();
+  await expect(row(page, "Vom Server geladen")).toBeVisible();
+
+  await row(page, "Vom Server geladen").locator(".task-main").click({ button: "right" });
+  await expect.poll(() => calls(page)).toContain("plugin:menu|popup");
+  // The system draws the menu, not the web UI.
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  const texts = await page.evaluate(() => window.__ZUNDER_FAKE_APP__.menuTexts());
+  expect(texts).toEqual(expect.arrayContaining(["Öffnen", "Erledigt", "Status/In Arbeit", "Fälligkeit/Morgen", "Verschieben …", "Löschen …"]));
+
+  await page.evaluate(() => window.__ZUNDER_FAKE_APP__.menuClick("Status/In Arbeit"));
+  await expect(row(page, "Vom Server geladen").locator(".chip-status-in_progress")).toBeVisible();
+  const applied = await page.evaluate(() => window.__ZUNDER_FAKE_APP__.calls.filter((c) => c.cmd === "local_apply").flatMap((c) => c.args.ops as { field: string; value: unknown }[]));
+  expect(applied).toContainEqual(expect.objectContaining({ field: "status", value: "in_progress" }));
+
+  // A second menu frees the first one.
+  await row(page, "Vom Server geladen").locator(".task-main").click({ button: "right" });
+  await expect.poll(() => calls(page)).toContain("plugin:resources|close");
 });

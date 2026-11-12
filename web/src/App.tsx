@@ -1,5 +1,6 @@
 import { createMemo, createSignal, For, lazy, Match, onCleanup, onMount, Show, Switch } from "solid-js";
 import { CommandPalette } from "./components/CommandPalette";
+import { ContextMenu } from "./components/ContextMenu";
 import { Icon, type IconName } from "./components/Icon";
 import { DeferDecisionDialog, DropSeriesDialog, HandBackDialog, ShortcutHelp, Toasts } from "./components/Overlays";
 import { QuickCapture } from "./components/QuickCapture";
@@ -7,6 +8,8 @@ import { StructureForm } from "./components/StructureForm";
 import { TaskDetail } from "./components/TaskDetail";
 import { TaskHoverCard } from "./components/TaskLinks";
 import { installKeyboard } from "./keys";
+import { contextMenu } from "./state/menu";
+import { installContextMenu } from "./state/task-menu";
 import { installDetailHistory, NARROW_LAYOUT } from "./state/back";
 import { isTauri } from "./platform/runtime";
 import { isUnauthorized } from "./sync/transport";
@@ -116,6 +119,7 @@ function markReady(): void {
 function Shell() {
   const desktop = isTauri();
   onMount(() => onCleanup(installKeyboard()));
+  onMount(() => onCleanup(installContextMenu()));
   // "Erst für dich": send what was changed offline, read what other devices changed.
   onMount(() => void refreshFocus());
   installDetailHistory();
@@ -320,6 +324,9 @@ function Shell() {
       <Show when={dropRequest()}>{(req) => <DropSeriesDialog request={req()} />}</Show>
       <Show when={deferRequest()}>{(req) => <DeferDecisionDialog request={req()} />}</Show>
       <Show when={handBackRequest()}>{(req) => <HandBackDialog request={req()} />}</Show>
+      <Show when={contextMenu()} keyed>
+        {(req) => <ContextMenu request={req} />}
+      </Show>
       <Toasts />
       <TaskHoverCard />
     </div>

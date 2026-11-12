@@ -4003,6 +4003,79 @@ a.sync {
   text-decoration: none;
 }
 
+/* ---- Context menu (right click; the desktop app shows the native one) ---- */
+
+.context-menu {
+  position: fixed;
+  z-index: 70;
+  min-width: 220px;
+  max-width: min(340px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.3rem;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  box-shadow: var(--shadow-lg);
+  font-size: 0.88rem;
+  animation: fade 0.08s ease-out;
+}
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  padding: 0.36rem 0.55rem 0.36rem 0.35rem;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  cursor: default;
+}
+.context-menu-item:focus-visible,
+.context-menu-item:focus,
+.context-menu-item.open {
+  outline: none;
+  background: var(--accent-soft);
+}
+.context-menu-item:disabled {
+  color: var(--muted);
+  opacity: 0.6;
+}
+.context-menu-item.danger {
+  color: var(--danger);
+}
+.context-menu-check {
+  display: inline-flex;
+  width: 14px;
+  flex: none;
+  color: var(--accent);
+}
+.context-menu-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.context-menu-item > .icon {
+  color: var(--muted);
+}
+.context-menu-item kbd {
+  border-bottom-width: 1px;
+  background: var(--surface-2);
+}
+.context-menu-separator {
+  height: 1px;
+  margin: 0.3rem 0.4rem;
+  background: var(--border);
+}
+
 /* ---- Task links: hover card and dependencies ---------------------------- */
 
 .task-card {

@@ -13,6 +13,8 @@ import { describeRecurrence, locationLabel, STATUS_LABELS, TYPE_LABELS } from ".
 import { updateTask } from "../state/actions";
 import { now, taskIndex } from "../state/store";
 import { openTask, pickTask } from "../state/ui";
+import { appConfig } from "../state/desktop";
+import { isTauri } from "../platform/runtime";
 import { Icon } from "./Icon";
 
 const LINK_SELECTOR = "a[data-task-id], a[data-task-ref]";
@@ -30,6 +32,15 @@ function taskOf(el: Element): Task | undefined {
 /** Link target of a task: its reference if it has one (stable and readable), else its ID. */
 export function taskHref(task: Task): string {
   return `#/aufgabe/${encodeURIComponent(task.ref ?? task.id)}`;
+}
+
+/**
+ * Full, permanent address of a task (by reference if it has one). In the app the
+ * webview's own origin is useless outside it, so the link points to the server.
+ */
+export function taskUrl(task: Task): string {
+  const server = isTauri() ? appConfig()?.server_url?.replace(/\/+$/, "") : null;
+  return `${server ? `${server}/` : `${location.origin}${location.pathname}`}${taskHref(task)}`;
 }
 
 /** A plain click opens the task in the panel; modifier and middle clicks keep the browser's own behaviour. */
