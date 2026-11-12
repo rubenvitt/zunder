@@ -10,7 +10,7 @@ import { TaskHoverCard } from "./components/TaskLinks";
 import { TabBar } from "./components/TabBar";
 import { installKeyboard } from "./keys";
 import { contextMenu } from "./state/menu";
-import { installContextMenu } from "./state/task-menu";
+import { installContextMenu } from "./state/context-menu";
 import { installDetailHistory, NARROW_LAYOUT } from "./state/back";
 import { isTauri } from "./platform/runtime";
 import { isUnauthorized } from "./sync/transport";

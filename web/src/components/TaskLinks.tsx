@@ -39,8 +39,13 @@ export function taskHref(task: Task): string {
  * webview's own origin is useless outside it, so the link points to the server.
  */
 export function taskUrl(task: Task): string {
+  return appUrl(taskHref(task));
+}
+
+/** Full address of an in-app hash link (`#/bereiche/…`); in the app it points to the server. */
+export function appUrl(href: string): string {
   const server = isTauri() ? appConfig()?.server_url?.replace(/\/+$/, "") : null;
-  return `${server ? `${server}/` : `${location.origin}${location.pathname}`}${taskHref(task)}`;
+  return `${server ? `${server}/` : `${location.origin}${location.pathname}`}${href}`;
 }
 
 /** A plain click opens the task in the panel; modifier and middle clicks keep the browser's own behaviour. */

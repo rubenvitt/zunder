@@ -1,17 +1,16 @@
 // Right click on a task (row, card, subtask, task link): the actions of the detail and
-// the row in one menu. One listener on the document serves every element with
-// `data-task-id`; text fields keep the system's own menu (copy, paste).
+// the row in one menu. The listener lives in state/context-menu.ts.
 
-import { dateFromLocal, formatDateLabel, localDate, parseDue, toRfc3339Local } from "../sync/dates";
+import { dateFromLocal, formatDateLabel, parseDue, toRfc3339Local } from "../sync/dates";
 import { isClosed, isDevLocation } from "../sync/derived";
 import { deferDay, offersNextWeek } from "../sync/defer";
 import { WEIGHTS, type JsonValue, type Task, type TaskStatus, type Weight } from "../sync/types";
 import { boardStatuses, locationLabel, STATUS_LABELS, WEIGHT_HINTS, WEIGHT_LABELS } from "../labels";
 import { taskUrl } from "../components/TaskLinks";
 import { clearDue, deferTask, deleteTask, dependentsCount, dropTask, moveTask, setStatus, shorten, updateTask } from "./actions";
-import { showContextMenu, type MenuEntry } from "./menu";
+import type { MenuEntry } from "./menu";
 import { data, now, taskIndex } from "./store";
-import { activeList, copyTaskId, copyText, detailId, openTask, pickLocation, selectedId, setDetailId, setSelectedId, toast } from "./ui";
+import { copyTaskId, copyText, detailId, openTask, pickLocation, selectedId, setDetailId, setSelectedId, toast } from "./ui";
 
 /** Sets the status the way the check button and the detail do (dropping asks for a series). */
 function changeStatus(task: Task, status: TaskStatus): void {
@@ -136,40 +135,4 @@ export function taskMenuItems(task: Task, today: string): MenuEntry[] {
     { kind: "item", label: "Löschen …", danger: true, run: () => removeTask(task) },
   );
   return items;
-}
-
-function isEditable(el: Element): boolean {
-  if (el.closest("input, textarea, select")) return true;
-  return el instanceof HTMLElement && el.isContentEditable;
-}
-
-/** Installs the right-click menu on tasks; returns the uninstaller. */
-export function installContextMenu(): () => void {
-  const handler = (e: MouseEvent) => {
-    if (e.defaultPrevented || !(e.target instanceof Element) || isEditable(e.target)) return;
-    const el = e.target.closest<HTMLElement>("[data-task-id]");
-    if (!el) return;
-    // Selected text keeps the system menu (copy, look up …).
-    const selection = window.getSelection();
-    if (selection && !selection.isCollapsed && selection.anchorNode && el.contains(selection.anchorNode)) return;
-    const index = taskIndex();
-    const task = index.byId.get(el.dataset.taskId ?? "");
-    if (!task || index.isDeleted(task)) return;
-    e.preventDefault();
-
-    // From the keyboard (context menu key, Shift+F10) there is no pointer position: below the element.
-    let x = e.clientX;
-    let y = e.clientY;
-    if (x === 0 && y === 0) {
-      const rect = el.getBoundingClientRect();
-      x = rect.left + 16;
-      y = rect.top + Math.min(rect.height, 32);
-    }
-    // Like Finder: the row the menu belongs to is the selected one (if it is in the current list).
-    if (activeList()().some((t) => t.id === task.id)) setSelectedId(task.id);
-    const focused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    showContextMenu({ items: taskMenuItems(task, localDate(new Date(now()))), x, y, returnFocus: focused });
-  };
-  document.addEventListener("contextmenu", handler);
-  return () => document.removeEventListener("contextmenu", handler);
 }

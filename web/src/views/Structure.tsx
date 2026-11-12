@@ -63,6 +63,7 @@ export function StructureView() {
                 <a
                   href={`#/bereiche/area/${area.id}`}
                   class="tree-item"
+                  data-area-id={area.id}
                   classList={{ active: isActive("area", area.id), dim: area.state === "archived" }}
                 >
                   <Icon name="folder" size={16} />
@@ -76,6 +77,7 @@ export function StructureView() {
                         <a
                           href={`#/bereiche/project/${project.id}`}
                           class="tree-item tree-project"
+                          data-project-id={project.id}
                           classList={{ active: isActive("project", project.id), dim: project.status !== "active" }}
                         >
                           <Show when={project.kind === "dev"} fallback={<span class="dot" />}>
@@ -172,7 +174,7 @@ function AreaPanel(props: { area: Area }) {
     <>
       <header class="view-head">
         <ShowTreeButton />
-        <h1>{props.area.name}</h1>
+        <h1 data-area-id={props.area.id}>{props.area.name}</h1>
         <Show when={props.area.state === "archived"}>
           <span class="chip">Archiviert</span>
         </Show>
@@ -188,7 +190,7 @@ function AreaPanel(props: { area: Area }) {
         <div class="project-chips">
           <For each={projects()}>
             {(p) => (
-              <button class="chip chip-button" onClick={() => navigate({ view: "bereiche", kind: "project", id: p.id })}>
+              <button class="chip chip-button" data-project-id={p.id} onClick={() => navigate({ view: "bereiche", kind: "project", id: p.id })}>
                 <Show when={p.kind === "dev"}>
                   <Icon name="code" size={13} />
                 </Show>
@@ -222,9 +224,9 @@ function ProjectPanel(props: { project: Project }) {
       <header class="view-head">
         <ShowTreeButton />
         <div class="view-title">
-          <h1>{props.project.name}</h1>
+          <h1 data-project-id={props.project.id}>{props.project.name}</h1>
           <p class="view-sub">
-            <a class="muted" href={`#/bereiche/area/${props.project.area_id}`}>
+            <a class="muted" data-area-id={props.project.area_id} href={`#/bereiche/area/${props.project.area_id}`}>
               {data.areas[props.project.area_id]?.name}
             </a>
             <Show when={dev()}>
