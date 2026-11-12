@@ -74,6 +74,8 @@ test("PR-Status als Badge auf der Karte und im Detail", async ({ page }) => {
   seeder.task(`Offen ${s}`, { location: loc, status: "in_progress", pr_url: "https://github.com/mock/app/pull/1" });
   const merged = seeder.task(`Gemergt ${s}`, { location: loc, status: "review", pr_url: "https://github.com/mock/app/pull/3" });
   seeder.task(`Unbekannt ${s}`, { location: loc, status: "review", pr_url: "https://github.com/mock/app/pull/99" });
+  const epic = seeder.task(`Gemergt mit Rest ${s}`, { location: loc, status: "review", pr_url: "https://github.com/mock/app/pull/3" });
+  seeder.task(`Rest offen ${s}`, { parent_id: epic });
   await seeder.push(page);
   await openApp(page, "#/dev");
 
@@ -85,6 +87,9 @@ test("PR-Status als Badge auf der Karte und im Detail", async ({ page }) => {
   // Unknown to GitHub: plain link as before.
   await expect(card(page, `Unbekannt ${s}`).getByRole("link", { name: "PR" })).toBeVisible();
   await expect(card(page, `Offen ${s}`).getByRole("button", { name: "Abschließen" })).toHaveCount(0);
+  // Merged PR but open subtasks: nothing to close yet.
+  await expect(card(page, `Gemergt mit Rest ${s}`).locator(".pr-badge")).toHaveAttribute("data-state", "merged");
+  await expect(card(page, `Gemergt mit Rest ${s}`).getByRole("button", { name: "Abschließen" })).toHaveCount(0);
 
   // Merged PR: closing is offered, not done by itself.
   await expect.poll(async () => (await entityFields(page, "task", merged)).status).toBe("review");
