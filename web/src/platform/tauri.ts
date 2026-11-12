@@ -42,6 +42,8 @@ import type {
   Rejection,
   Snapshot,
   Suggestion,
+  GithubCheck,
+  GithubSettings,
   TimingCheck,
   TimingProject,
   TimingSettings,
@@ -473,6 +475,22 @@ export class TauriTransport implements SyncTransport, ApiClient {
   }
 
   timingProjects(): Promise<TimingProject[]> {
+    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+  }
+
+  githubSettings(): Promise<GithubSettings> {
+    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+  }
+
+  updateGithubSettings(_token: string): Promise<GithubSettings> {
+    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+  }
+
+  resetGithubSettings(): Promise<GithubSettings> {
+    return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
+  }
+
+  checkGithub(): Promise<GithubCheck> {
     return Promise.reject(new AppCommandError("unsupported", SETTINGS_UNSUPPORTED));
   }
 

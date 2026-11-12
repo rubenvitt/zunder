@@ -46,8 +46,9 @@ use crate::error::{AppError, AppResult};
 use crate::focus::{FocusSettings, FocusUpdate, FOCUS_PREFIX};
 use crate::github::{GithubClient, PrRef, PrStatus, MAX_PR_URLS};
 use crate::settings::{
-    EffectiveTiming, TimingCheck, TimingOverrides, TimingSettings, TimingUpdate, TIMING_PREFIX,
-    TIMING_PROJECT_KEY, TIMING_TOKEN_KEY,
+    github_token_from_rows, EffectiveTiming, GithubCheck, GithubSettings, GithubUpdate,
+    TimingCheck, TimingOverrides, TimingSettings, TimingUpdate, GITHUB_PREFIX, GITHUB_TOKEN_KEY,
+    TIMING_PREFIX, TIMING_PROJECT_KEY, TIMING_TOKEN_KEY,
 };
 use crate::suggest::{self, JevSettings, JevStored, JevUpdate, Suggestion, JEV_PREFIX};
 use crate::timing::{TimingApi, TimingClient, TimingProject};
@@ -233,8 +234,32 @@ struct Inner {
     /// Client for outgoing requests (Timing bridge).
     http: reqwest::Client,
     timing: RwLock<TimingState>,
-    /// PR status reader, if `ZUNDER_GITHUB_TOKEN` is set.
-    github: Option<GithubClient>,
+    /// PR status reader (environment plus settings).
+    github: RwLock<GithubState>,
+}
+
+/// The GitHub token as configured right now.
+struct GithubState {
+    /// Token stored in the settings (overrides `ZUNDER_GITHUB_TOKEN`).
+    stored: Option<String>,
+    /// Reader with the token in effect, if any.
+    client: Option<Arc<GithubClient>>,
+}
+
+impl GithubState {
+    fn new(config: &Config, http: &reqwest::Client, stored: Option<String>) -> Self {
+        let client = stored
+            .as_deref()
+            .or(config.github_token.as_deref())
+            .map(|token| {
+                Arc::new(GithubClient::new(
+                    http.clone(),
+                    &config.github_graphql_url,
+                    token,
+                ))
+            });
+        Self { stored, client }
+    }
 }
 
 /// The Timing bridge as configured right now (environment plus settings).
@@ -364,6 +389,11 @@ impl App {
         let bootstrap_hash = config.bootstrap_token.as_deref().map(auth::sha256_hex);
         let overrides = TimingOverrides::from_rows(&db::settings(&conn, TIMING_PREFIX)?);
         let timing = TimingState::new(&config, &http, overrides);
+        let github = GithubState::new(
+            &config,
+            &http,
+            github_token_from_rows(&db::settings(&conn, GITHUB_PREFIX)?),
+        );
         let app = App {
             inner: Arc::new(Inner {
                 owner_id: owner.id,
@@ -377,9 +407,7 @@ impl App {
                 shutdown: CancellationToken::new(),
                 bootstrap_hash,
                 timing: RwLock::new(timing),
-                github: config.github_token.as_ref().map(|token| {
-                    GithubClient::new(http.clone(), &config.github_graphql_url, token)
-                }),
+                github: RwLock::new(github),
                 http,
                 config,
             }),
@@ -420,7 +448,7 @@ impl App {
                 "Höchstens {MAX_PR_URLS} PR-Links pro Anfrage"
             )));
         }
-        let Some(github) = &self.inner.github else {
+        let Some(github) = self.github() else {
             return Ok(PrStatuses {
                 configured: false,
                 statuses: BTreeMap::new(),
@@ -445,6 +473,77 @@ impl App {
         Ok(PrStatuses {
             configured: true,
             statuses,
+        })
+    }
+
+    /// The PR status reader with the token in effect, if any.
+    fn github(&self) -> Option<Arc<GithubClient>> {
+        read_lock(&self.inner.github).client.clone()
+    }
+
+    /// The GitHub settings for the settings view.
+    pub fn github_settings(&self) -> GithubSettings {
+        let state = read_lock(&self.inner.github);
+        GithubSettings::build(
+            self.inner.config.github_token.as_deref(),
+            state.stored.as_deref(),
+        )
+    }
+
+    /// Stores a GitHub token; PR status uses it from the next request on.
+    pub async fn update_github_settings(&self, update: GithubUpdate) -> AppResult<GithubSettings> {
+        let token = update.validated()?;
+        self.change_github_settings(move |conn, now| {
+            db::set_setting(conn, GITHUB_TOKEN_KEY, &token, now)?;
+            Ok(Some(token))
+        })
+        .await
+    }
+
+    /// Removes the stored GitHub token; the environment applies again.
+    pub async fn reset_github_settings(&self) -> AppResult<GithubSettings> {
+        self.change_github_settings(|conn, _| {
+            db::delete_settings(conn, GITHUB_PREFIX)?;
+            Ok(None)
+        })
+        .await
+    }
+
+    /// Writes under the writer lock and rebuilds the reader (with an empty
+    /// cache: another token may see other PRs).
+    async fn change_github_settings<F>(&self, change: F) -> AppResult<GithubSettings>
+    where
+        F: FnOnce(&Connection, i64) -> anyhow::Result<Option<String>> + Send + 'static,
+    {
+        let app = self.clone();
+        self.blocking(move |inner| {
+            let writer = lock(&inner.writer);
+            let stored = change(&writer.conn, now_ms())?;
+            let state = GithubState::new(&inner.config, &inner.http, stored);
+            *inner.github.write().unwrap_or_else(PoisonError::into_inner) = state;
+            drop(writer);
+            tracing::info!("GitHub settings changed");
+            Ok(app.github_settings())
+        })
+        .await
+    }
+
+    /// Asks GitHub whether it accepts the token in effect.
+    pub async fn check_github(&self) -> AppResult<GithubCheck> {
+        let github = self
+            .github()
+            .ok_or_else(|| AppError::Conflict("GitHub ist nicht eingerichtet.".into()))?;
+        Ok(match github.viewer().await {
+            Ok(login) => GithubCheck {
+                ok: true,
+                login: Some(login),
+                error: None,
+            },
+            Err(e) => GithubCheck {
+                ok: false,
+                login: None,
+                error: Some(e.to_string()),
+            },
         })
     }
 

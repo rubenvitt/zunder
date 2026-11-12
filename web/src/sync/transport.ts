@@ -26,6 +26,8 @@ import type {
   PushResponse,
   Snapshot,
   Suggestion,
+  GithubCheck,
+  GithubSettings,
   TimingCheck,
   TimingProject,
   TimingSettings,
@@ -101,6 +103,12 @@ export interface ApiClient {
   resetTimingSettings(): Promise<TimingSettings>;
   checkTiming(): Promise<TimingCheck>;
   timingProjects(): Promise<TimingProject[]>;
+  /** GitHub token for PR status (browser session only). */
+  githubSettings(): Promise<GithubSettings>;
+  updateGithubSettings(token: string): Promise<GithubSettings>;
+  /** Removes the stored token; `ZUNDER_GITHUB_TOKEN` applies again. */
+  resetGithubSettings(): Promise<GithubSettings>;
+  checkGithub(): Promise<GithubCheck>;
   /** "Erst für dich": day clicked away and the task picked for a day. */
   focusSettings(): Promise<FocusSettings>;
   updateFocusSettings(update: FocusSettingsUpdate): Promise<FocusSettings>;
@@ -270,6 +278,22 @@ export class HttpTransport implements SyncTransport, ApiClient {
 
   timingProjects(): Promise<TimingProject[]> {
     return this.request("GET", "/api/settings/timing/projects");
+  }
+
+  githubSettings(): Promise<GithubSettings> {
+    return this.request("GET", "/api/settings/github");
+  }
+
+  updateGithubSettings(token: string): Promise<GithubSettings> {
+    return this.request("PUT", "/api/settings/github", { token });
+  }
+
+  resetGithubSettings(): Promise<GithubSettings> {
+    return this.request("DELETE", "/api/settings/github");
+  }
+
+  checkGithub(): Promise<GithubCheck> {
+    return this.request("POST", "/api/settings/github/check");
   }
 
   focusSettings(): Promise<FocusSettings> {

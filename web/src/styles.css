@@ -482,6 +482,19 @@ select.field {
 .settings-form {
   max-width: 32rem;
 }
+.settings-steps {
+  max-width: 32rem;
+  margin: 0 0 0.75rem;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 0.5rem;
+}
+.settings-steps .hint {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
 .combo {
   position: relative;
 }

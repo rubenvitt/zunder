@@ -27,7 +27,9 @@ use crate::flame::{self, FlameOutcome};
 use crate::focus::{FocusSettings, FocusUpdate};
 use crate::intake::{ChannelInfo, CreatedChannel};
 use crate::oauth;
-use crate::settings::{TimingCheck, TimingSettings, TimingUpdate};
+use crate::settings::{
+    GithubCheck, GithubSettings, GithubUpdate, TimingCheck, TimingSettings, TimingUpdate,
+};
 use crate::suggest::{EvalRequest, JevEval, JevSettings, JevUpdate, Suggestion};
 use crate::timing::TimingProject;
 
@@ -64,6 +66,13 @@ pub fn routes() -> Router<App> {
                 .delete(reset_timing_settings),
         )
         .route("/settings/timing/check", post(check_timing))
+        .route(
+            "/settings/github",
+            get(github_settings)
+                .put(update_github_settings)
+                .delete(reset_github_settings),
+        )
+        .route("/settings/github/check", post(check_github))
         .route(
             "/settings/jev",
             get(jev_settings)
@@ -439,6 +448,39 @@ async fn reset_timing_settings(
 ) -> AppResult<Json<TimingSettings>> {
     require_browser_for_settings(&principal)?;
     Ok(Json(app.reset_timing_settings().await?))
+}
+
+async fn github_settings(
+    State(app): State<App>,
+    principal: Principal,
+) -> AppResult<Json<GithubSettings>> {
+    require_browser_for_settings(&principal)?;
+    Ok(Json(app.github_settings()))
+}
+
+async fn update_github_settings(
+    State(app): State<App>,
+    principal: Principal,
+    ApiJson(body): ApiJson<GithubUpdate>,
+) -> AppResult<Json<GithubSettings>> {
+    require_browser_for_settings(&principal)?;
+    Ok(Json(app.update_github_settings(body).await?))
+}
+
+async fn reset_github_settings(
+    State(app): State<App>,
+    principal: Principal,
+) -> AppResult<Json<GithubSettings>> {
+    require_browser_for_settings(&principal)?;
+    Ok(Json(app.reset_github_settings().await?))
+}
+
+async fn check_github(
+    State(app): State<App>,
+    principal: Principal,
+) -> AppResult<Json<GithubCheck>> {
+    require_browser_for_settings(&principal)?;
+    Ok(Json(app.check_github().await?))
 }
 
 async fn jev_settings(

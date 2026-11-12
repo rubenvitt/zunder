@@ -1,13 +1,13 @@
-// Server settings (browser session only): the Timing bridge for flames (stored
-// settings override the server's environment variables field by field) and the
-// calendar feed of flames and timed tasks, Jev for task proposals, plus the
+// Server settings (browser session only): the Timing bridge for flames and the
+// GitHub token for PR status (stored settings override the server's environment
+// variables field by field), the calendar feed of flames and timed tasks, Jev for task proposals, plus the
 // link to the agent log.
 
 import { createMemo, createResource, createSignal, For, Show } from "solid-js";
 import { Icon } from "../components/Icon";
 import { isTauri } from "../platform/runtime";
 import { formatInstant } from "../sync/dates";
-import type { CalendarSettings, CreatedCalendarFeed, JevEval, JevEvalAnswer, JevEvalRow, JevSettings, JevSettingsUpdate, SettingSource, SuggestionTally, TimingProject, TimingSettings, TimingSettingsUpdate } from "../sync/types";
+import type { CalendarSettings, GithubSettings, CreatedCalendarFeed, JevEval, JevEvalAnswer, JevEvalRow, JevSettings, JevSettingsUpdate, SettingSource, SuggestionTally, TimingProject, TimingSettings, TimingSettingsUpdate } from "../sync/types";
 import { setJevConfigured } from "../state/jev";
 import { api, areaList, now } from "../state/store";
 import { copyText, toast } from "../state/ui";
@@ -32,7 +32,7 @@ function SettingsInApp() {
 }
 
 /** The sections of the page by their `aria-label`: jump marks at the top. */
-const SECTIONS = ["Timing", "Jev", "Kalender", "KI-Protokoll"];
+const SECTIONS = ["Timing", "GitHub", "Jev", "Kalender", "KI-Protokoll"];
 
 function ServerSettings() {
   return (
@@ -55,6 +55,7 @@ function ServerSettings() {
         </For>
       </nav>
       <TimingSection />
+      <GithubSection />
       <JevSection />
       <CalendarSection />
       <section class="group settings-section" aria-label="KI-Protokoll">
@@ -251,6 +252,138 @@ function TimingSection() {
                   <Show when={s().configured}>
                     <button class="btn" type="button" disabled={busy() || dirty()} onClick={() => void check()}>
                       <Icon name="sync" size={14} /> Verbindung prüfen
+                    </button>
+                  </Show>
+                  <Show when={s().overridden}>
+                    <button class="btn btn-ghost" type="button" disabled={busy()} onClick={() => void reset()}>
+                      Zurücksetzen
+                    </button>
+                  </Show>
+                </div>
+              </form>
+            </>
+          )}
+        </Show>
+      </Show>
+    </section>
+  );
+}
+
+function GithubSection() {
+  const [settings, { mutate }] = createResource(async (): Promise<GithubSettings | null> => {
+    try {
+      return await api().githubSettings();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "GitHub-Einstellungen konnten nicht geladen werden.", "error");
+      return null;
+    }
+  });
+  const [token, setToken] = createSignal("");
+  const [busy, setBusy] = createSignal(false);
+  const dirty = () => token().trim().length > 0;
+
+  function loaded(next: GithubSettings) {
+    mutate(next);
+    setToken("");
+  }
+
+  async function save(e: Event) {
+    e.preventDefault();
+    if (!dirty() || busy()) return;
+    setBusy(true);
+    try {
+      loaded(await api().updateGithubSettings(token().trim()));
+      toast("GitHub-Token gespeichert.");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Speichern fehlgeschlagen.", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function check() {
+    setBusy(true);
+    try {
+      const result = await api().checkGithub();
+      if (result.ok) toast(`GitHub akzeptiert den Token (Konto ${result.login ?? "unbekannt"}).`);
+      else toast(result.error ?? "GitHub lehnt den Token ab.", "error");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Prüfen fehlgeschlagen.", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reset() {
+    const s = settings();
+    if (!s) return;
+    const after = s.env_token ? "Danach gilt wieder ZUNDER_GITHUB_TOKEN des Servers." : "Danach zeigen PR-Links keinen Status mehr.";
+    if (!confirm(`Gespeicherten GitHub-Token entfernen? ${after}`)) return;
+    setBusy(true);
+    try {
+      loaded(await api().resetGithubSettings());
+      toast("GitHub-Token entfernt.");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Zurücksetzen fehlgeschlagen.", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section class="group settings-section" aria-label="GitHub">
+      <h2>GitHub</h2>
+      <p class="muted">
+        Mit einem GitHub-Token zeigen PR-Links an Aufgaben ihren Status: offen, gemergt, Review und CI. Der Token braucht nur Leserechte und verlässt den Server nicht.
+      </p>
+      <Show when={settings() !== null} fallback={<p class="muted">GitHub-Einstellungen nicht verfügbar.</p>}>
+        <Show when={settings()} fallback={<p class="muted">Lädt …</p>}>
+          {(s) => (
+            <>
+              <p class="notice" classList={{ "notice-success": s().configured }} data-testid="github-status">
+                <Show when={s().configured} fallback="Nicht eingerichtet: PR-Links zeigen keinen Status.">
+                  Eingerichtet mit Token <code>{s().token_hint}</code> ({sourceText(s().token_source, "ZUNDER_GITHUB_TOKEN")}).
+                </Show>
+              </p>
+              <ol class="settings-steps">
+                <li>
+                  <a class="btn" href={s().create_url} target="_blank" rel="noopener noreferrer" data-testid="github-create-token">
+                    <Icon name="external" size={14} /> Token bei GitHub erstellen
+                  </a>
+                  <span class="hint">
+                    Rechte sind vorausgewählt (nur lesen: <em>Pull requests</em>, <em>Commit statuses</em>). Bei <em>Repository access</em> „All repositories“ oder deine Repos wählen.
+                  </span>
+                </li>
+                <li>Token kopieren, unten einfügen und speichern.</li>
+              </ol>
+              <form class="form settings-form" onSubmit={save}>
+                <label>
+                  GitHub-Token
+                  <input
+                    class="field"
+                    type="password"
+                    name="github-token"
+                    autocomplete="off"
+                    spellcheck={false}
+                    placeholder={s().configured ? `Leer lassen, um den Token ${s().token_hint ?? ""} zu behalten` : "github_pat_…"}
+                    value={token()}
+                    onInput={(e) => setToken(e.currentTarget.value)}
+                  />
+                  <span class="hint">
+                    Bleibt der CI-Status leer, liest der Fine-grained-Token die Checks nicht. Dann stattdessen einen{" "}
+                    <a href={s().create_classic_url} target="_blank" rel="noopener noreferrer">
+                      klassischen Token mit <code>repo</code>
+                    </a>{" "}
+                    erstellen.
+                  </span>
+                </label>
+                <div class="inline-group">
+                  <button class="btn btn-primary" type="submit" disabled={!dirty() || busy()}>
+                    Speichern
+                  </button>
+                  <Show when={s().configured}>
+                    <button class="btn" type="button" disabled={busy() || dirty()} onClick={() => void check()}>
+                      <Icon name="sync" size={14} /> Token prüfen
                     </button>
                   </Show>
                   <Show when={s().overridden}>

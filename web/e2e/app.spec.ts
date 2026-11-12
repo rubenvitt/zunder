@@ -160,6 +160,42 @@ test("Eingang anlegen (Token einmal sichtbar), einwerfen und widerrufen", async 
   expect(revoked.status()).toBe(401);
 });
 
+test("GitHub-Token in den Einstellungen eintragen und zurücksetzen", async ({ page }) => {
+  try {
+    await openApp(page, "#/einstellungen");
+    const region = page.getByRole("region", { name: "GitHub" });
+    const status = page.getByTestId("github-status");
+    await expect(status).toContainText("Nicht eingerichtet");
+    // The link opens GitHub's token page with read-only permissions preselected.
+    const link = page.getByTestId("github-create-token");
+    await expect(link).toHaveAttribute("target", "_blank");
+    const href = new URL((await link.getAttribute("href")) ?? "");
+    expect(href.origin + href.pathname).toBe("https://github.com/settings/personal-access-tokens/new");
+    expect(href.searchParams.get("pull_requests")).toBe("read");
+    expect(href.searchParams.get("statuses")).toBe("read");
+
+    const save = region.getByRole("button", { name: "Speichern" });
+    await expect(save).toBeDisabled();
+    await page.getByLabel("GitHub-Token").fill("github_pat_e2e_token_5678");
+    await save.click();
+    await expect(status).toContainText("…5678");
+    await expect(status).toContainText("aus den Einstellungen");
+    await expect(page.getByLabel("GitHub-Token")).toHaveValue("");
+    await expect(region.getByRole("button", { name: "Token prüfen" })).toBeVisible();
+    // Checking asks GitHub; only the mock answers without a real token.
+    if (isMock) {
+      await region.getByRole("button", { name: "Token prüfen" }).click();
+      await expect(page.locator(".toast", { hasText: "akzeptiert den Token" })).toBeVisible();
+    }
+
+    page.once("dialog", (d) => void d.accept());
+    await region.getByRole("button", { name: "Zurücksetzen" }).click();
+    await expect(status).toContainText("Nicht eingerichtet");
+  } finally {
+    await page.request.delete("/api/settings/github", { headers: WEB_HEADERS });
+  }
+});
+
 test("Timing in den Einstellungen eintragen, ändern und zurücksetzen", async ({ page }) => {
   // The real server would call Timing for flames afterwards: always reset.
   try {

@@ -1,4 +1,5 @@
-//! Instance settings changed in the web UI. For now: the Timing bridge.
+//! Instance settings changed in the web UI: the Timing bridge and the
+//! GitHub token for PR status.
 //!
 //! Stored settings override the environment field by field:
 //!
@@ -8,8 +9,12 @@
 //!   `ZUNDER_TIMING_PROJECT`; an empty value means "no project", even if the
 //!   environment names one).
 //!
-//! Resetting removes both, so the environment applies again. The token
-//! never leaves the server; the UI only sees its last characters.
+//! - `github.token`: token for reading pull requests (overrides
+//!   `ZUNDER_GITHUB_TOKEN`).
+//!
+//! Resetting removes a section's settings, so the environment applies
+//! again. Tokens never leave the server; the UI only sees their last
+//! characters.
 
 use std::collections::BTreeMap;
 
@@ -199,6 +204,113 @@ impl TimingUpdate {
     }
 }
 
+/// Key prefix of the GitHub settings.
+pub const GITHUB_PREFIX: &str = "github.";
+pub const GITHUB_TOKEN_KEY: &str = "github.token";
+/// Maximum length of a GitHub token.
+pub const MAX_GITHUB_TOKEN_CHARS: usize = 1024;
+
+/// Page that creates a fine-grained token with the permissions Zunder
+/// needs preselected: read-only *Pull requests* and *Commit statuses*
+/// (*Metadata* comes with every token). Owner and repositories are chosen
+/// on that page. See GitHub's "Pre-filling fine-grained personal access
+/// token details using URL parameters".
+pub const GITHUB_TOKEN_URL: &str = "https://github.com/settings/personal-access-tokens/new\
+?name=Zunder&description=Zunder%3A+Status+verlinkter+Pull+Requests+lesen\
+&expires_in=366&pull_requests=read&statuses=read";
+/// Classic token with `repo` (classic tokens have no read-only scope for
+/// private repositories), for PRs across owners and CI check runs.
+pub const GITHUB_CLASSIC_TOKEN_URL: &str =
+    "https://github.com/settings/tokens/new?scopes=repo&description=Zunder";
+
+/// What the web UI shows (`GET /api/settings/github`). Never contains the
+/// token itself.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GithubSettings {
+    /// Whether PR links show their status (a token is in effect).
+    pub configured: bool,
+    pub token_source: Option<SettingSource>,
+    /// Last characters of the token in effect, to recognize it.
+    pub token_hint: Option<String>,
+    /// Whether a token from the web UI overrides the environment.
+    pub overridden: bool,
+    /// Whether `ZUNDER_GITHUB_TOKEN` is set (applies after a reset).
+    pub env_token: bool,
+    /// Creates a fine-grained token with the right permissions.
+    pub create_url: &'static str,
+    /// Creates a classic token instead.
+    pub create_classic_url: &'static str,
+}
+
+impl GithubSettings {
+    pub fn build(env: Option<&str>, stored: Option<&str>) -> Self {
+        let token_source = match (stored, env) {
+            (Some(_), _) => Some(SettingSource::Settings),
+            (None, Some(_)) => Some(SettingSource::Env),
+            (None, None) => None,
+        };
+        let effective = stored.or(env);
+        Self {
+            configured: effective.is_some(),
+            token_source,
+            token_hint: effective.map(token_hint),
+            overridden: stored.is_some(),
+            env_token: env.is_some(),
+            create_url: GITHUB_TOKEN_URL,
+            create_classic_url: GITHUB_CLASSIC_TOKEN_URL,
+        }
+    }
+}
+
+/// Reads the stored GitHub token from the rows of [`crate::db::settings`].
+pub fn github_token_from_rows(rows: &BTreeMap<String, String>) -> Option<String> {
+    rows.get(GITHUB_TOKEN_KEY)
+        .filter(|t| !t.is_empty())
+        .cloned()
+}
+
+/// Change of the GitHub settings (`PUT /api/settings/github`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GithubUpdate {
+    pub token: String,
+}
+
+impl GithubUpdate {
+    /// The trimmed token, checked (German messages).
+    pub fn validated(self) -> AppResult<String> {
+        let token = self.token.trim();
+        if token.is_empty() {
+            return Err(AppError::bad_request("Bitte einen GitHub-Token eingeben"));
+        }
+        if token.chars().count() > MAX_GITHUB_TOKEN_CHARS {
+            return Err(AppError::bad_request(format!(
+                "Der GitHub-Token darf höchstens {MAX_GITHUB_TOKEN_CHARS} Zeichen lang sein"
+            )));
+        }
+        if !token
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+        {
+            return Err(AppError::bad_request(
+                "Der GitHub-Token darf nur Buchstaben, Ziffern, _ , - und . enthalten",
+            ));
+        }
+        Ok(token.to_owned())
+    }
+}
+
+/// Result of `POST /api/settings/github/check`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GithubCheck {
+    /// Whether GitHub accepted the token.
+    pub ok: bool,
+    /// The account the token belongs to.
+    pub login: Option<String>,
+    /// German error message when GitHub did not accept it.
+    pub error: Option<String>,
+}
+
 /// Result of `POST /api/settings/timing/check`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TimingCheck {
@@ -313,6 +425,70 @@ mod tests {
         }
         .validated()
         .is_err());
+    }
+
+    #[test]
+    fn github_settings() {
+        let s = GithubSettings::build(None, None);
+        assert!(!s.configured);
+        assert_eq!(s.token_source, None);
+        assert_eq!(s.token_hint, None);
+        assert!(!s.overridden && !s.env_token);
+
+        let s = GithubSettings::build(Some("ghp_env0123456789"), None);
+        assert!(s.configured);
+        assert_eq!(s.token_source, Some(SettingSource::Env));
+        assert_eq!(s.token_hint.as_deref(), Some("…6789"));
+
+        let s = GithubSettings::build(Some("ghp_env0123456789"), Some("github_pat_ui_abcd"));
+        assert_eq!(s.token_source, Some(SettingSource::Settings));
+        assert_eq!(s.token_hint.as_deref(), Some("…abcd"));
+        assert!(s.overridden && s.env_token);
+    }
+
+    #[test]
+    fn github_token_links_preselect_read_only_permissions() {
+        let url = url::Url::parse(GITHUB_TOKEN_URL).unwrap();
+        assert_eq!(url.path(), "/settings/personal-access-tokens/new");
+        let q: BTreeMap<String, String> = url.query_pairs().into_owned().collect();
+        assert_eq!(q["name"], "Zunder");
+        assert!(q["name"].len() <= 40);
+        assert_eq!(q["pull_requests"], "read");
+        assert_eq!(q["statuses"], "read");
+        assert_eq!(q["expires_in"], "366");
+        assert!(q.values().all(|v| v != "write" && v != "admin"));
+        let classic = url::Url::parse(GITHUB_CLASSIC_TOKEN_URL).unwrap();
+        assert_eq!(
+            classic
+                .query_pairs()
+                .find(|(k, _)| k == "scopes")
+                .unwrap()
+                .1,
+            "repo"
+        );
+    }
+
+    #[test]
+    fn github_update_validation() {
+        let t = GithubUpdate {
+            token: "  github_pat_11AB_cd-9.x  ".into(),
+        };
+        assert_eq!(t.validated().unwrap(), "github_pat_11AB_cd-9.x");
+        for bad in ["", "   ", "a b", "ghp_ä", "a\nb"] {
+            assert!(
+                GithubUpdate { token: bad.into() }.validated().is_err(),
+                "{bad:?}"
+            );
+        }
+        assert!(GithubUpdate {
+            token: "x".repeat(MAX_GITHUB_TOKEN_CHARS + 1)
+        }
+        .validated()
+        .is_err());
+        let mut rows = BTreeMap::new();
+        assert_eq!(github_token_from_rows(&rows), None);
+        rows.insert(GITHUB_TOKEN_KEY.to_owned(), "ghp_x".to_owned());
+        assert_eq!(github_token_from_rows(&rows).as_deref(), Some("ghp_x"));
     }
 
     #[test]
