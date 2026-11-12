@@ -1,0 +1,508 @@
+/* Zunder – glass. A layer over styles.css in the manner of Apple's current "Liquid Glass":
+   the interface lies as translucent sheets on a soft, warm light (the glow of the ember),
+   floating parts (bars, menus, dialogs) blur what passes beneath them, edges catch the light.
+
+   Rules that keep it calm and fast:
+   - The ambient light is a static gradient on the body. The big sheets (sidebar, view,
+     detail) are only translucent, without backdrop-filter: over a smooth gradient blurring
+     would change nothing and only cost.
+   - backdrop-filter only where content moves beneath: tab bar, top bar, dialogs, menus,
+     toasts, the sticky Markdown toolbar.
+   - Text sits on fills that keep the contrast of the old paper look (checked in light and
+     dark); with "reduce transparency" or "more contrast" everything turns solid again. */
+
+:root {
+  /* Ambient light behind everything: ember top left, amber top right, a cool counter light. */
+  --ambient-base: #f2ede6;
+  --ambient:
+    radial-gradient(70vmax 55vmax at -8% -12%, rgb(255 166 61 / 0.38), transparent 62%),
+    radial-gradient(55vmax 45vmax at 108% 0%, rgb(255 92 41 / 0.15), transparent 60%),
+    radial-gradient(75vmax 60vmax at 95% 110%, rgb(116 136 255 / 0.2), transparent 62%),
+    radial-gradient(60vmax 50vmax at 0% 105%, rgb(255 118 150 / 0.11), transparent 60%),
+    var(--ambient-base);
+
+  /* Glass: a sheet (rests), a thick pane (floats over content and blurs it). */
+  --glass: rgb(255 255 255 / 0.56);
+  --glass-thick: rgb(252 250 247 / 0.74);
+  --glass-blur: saturate(1.8) blur(28px);
+  --glass-blur-thick: saturate(1.9) blur(40px);
+  /* About what a sheet looks like over the light: where something must cover (swipe, figure plate). */
+  --sheet-solid: #f9f6f2;
+  /* The edge that catches the light, and the hairline around it. */
+  --glass-edge: rgb(255 255 255 / 0.85);
+  --glass-rim: rgb(60 40 20 / 0.09);
+  --glass-inner:
+    inset 0 1px 0 0 var(--glass-edge),
+    inset 0 0 0 1px rgb(255 255 255 / 0.35);
+  --glass-shadow:
+    0 0 0 0.5px var(--glass-rim),
+    0 1px 2px rgb(var(--shadow-color) / 0.04),
+    0 18px 40px -22px rgb(var(--shadow-color) / 0.22);
+  --glass-float:
+    0 0 0 0.5px var(--glass-rim),
+    0 2px 6px rgb(var(--shadow-color) / 0.06),
+    0 24px 56px -16px rgb(var(--shadow-color) / 0.3);
+  /* A lens: the highlighted spot inside glass (active nav, active tab, segment). */
+  --lens: rgb(255 255 255 / 0.82);
+
+  /* Fills on glass are tints, not paper: they let the light through. */
+  --surface: rgb(255 255 255 / 0.66);
+  --surface-2: rgb(70 48 28 / 0.055);
+  --surface-3: rgb(70 48 28 / 0.09);
+  --border: rgb(60 40 20 / 0.11);
+  --border-strong: rgb(60 40 20 / 0.2);
+  --accent-soft: rgb(232 80 30 / 0.14);
+  --accent-softer: rgb(232 80 30 / 0.075);
+
+  --radius: 22px;
+  --radius-small: 12px;
+  --radius-xs: 8px;
+  --gap: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ambient-base: #0e0c0b;
+    --ambient:
+      radial-gradient(70vmax 55vmax at -8% -12%, rgb(255 90 42 / 0.26), transparent 62%),
+      radial-gradient(55vmax 45vmax at 108% 0%, rgb(255 166 61 / 0.08), transparent 60%),
+      radial-gradient(75vmax 60vmax at 95% 110%, rgb(72 92 210 / 0.22), transparent 62%),
+      radial-gradient(60vmax 50vmax at 0% 105%, rgb(170 60 120 / 0.1), transparent 60%),
+      var(--ambient-base);
+    --glass: rgb(32 27 24 / 0.58);
+    --glass-thick: rgb(36 31 28 / 0.76);
+    --sheet-solid: #1c1816;
+    --glass-edge: rgb(255 255 255 / 0.11);
+    --glass-rim: rgb(255 255 255 / 0.07);
+    --glass-inner:
+      inset 0 1px 0 0 var(--glass-edge),
+      inset 0 0 0 1px rgb(255 255 255 / 0.04);
+    --glass-shadow:
+      0 0 0 0.5px var(--glass-rim),
+      0 18px 44px -22px rgb(0 0 0 / 0.8);
+    --glass-float:
+      0 0 0 0.5px var(--glass-rim),
+      0 2px 8px rgb(0 0 0 / 0.35),
+      0 28px 64px -16px rgb(0 0 0 / 0.75);
+    --lens: rgb(255 255 255 / 0.1);
+    --surface: rgb(255 255 255 / 0.07);
+    --surface-2: rgb(255 255 255 / 0.05);
+    --surface-3: rgb(255 255 255 / 0.09);
+    --border: rgb(255 255 255 / 0.08);
+    --border-strong: rgb(255 255 255 / 0.15);
+    --accent-soft: rgb(255 106 53 / 0.2);
+    --accent-softer: rgb(255 106 53 / 0.1);
+  }
+}
+
+/* ---- The light and the sheets --------------------------------------------------- */
+
+html,
+body {
+  background: var(--ambient);
+  background-color: var(--ambient-base);
+}
+
+.app {
+  padding: var(--gap);
+  background: none;
+}
+
+.sidebar {
+  margin-right: var(--gap);
+  padding: 0.6rem 0.65rem 0.4rem;
+  background: var(--glass);
+  border-radius: var(--radius);
+  box-shadow: var(--glass-inner), var(--glass-shadow);
+}
+.app.sidebar-hidden .sidebar {
+  margin-right: 0;
+  box-shadow: none;
+}
+
+.main,
+.detail {
+  background: var(--glass);
+  box-shadow: var(--glass-inner), var(--glass-shadow);
+}
+
+.login-card,
+.settings-card,
+.view-settings > .group,
+.view-settings > .detail-section {
+  box-shadow: var(--glass-inner), var(--glass-shadow);
+}
+
+/* hairline figures: their plate covers lines behind it, so it takes the sheet's tone. */
+.figure {
+  --hairline-plate: var(--sheet-solid);
+}
+/* A faint glow beneath the figure: it stands in the light like the rest. */
+.empty-state > .figure {
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--flame-to) 14%, transparent), transparent);
+  border-radius: 50%;
+}
+
+/* ---- Navigation ------------------------------------------------------------------ */
+
+.nav-item,
+.tree-item {
+  border-radius: 11px;
+}
+.nav-item:hover {
+  background: var(--surface-2);
+}
+.nav-item.active,
+.segmented button.active {
+  background: var(--lens);
+  box-shadow:
+    inset 0 1px 0 0 var(--glass-edge),
+    0 0 0 0.5px var(--glass-rim),
+    0 2px 8px -2px rgb(var(--shadow-color) / 0.14);
+}
+.search-button {
+  border-radius: 999px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0.5px 0 var(--glass-rim);
+}
+.sidebar-foot {
+  border-top-color: var(--glass-rim);
+}
+
+.segmented {
+  border-radius: 999px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 0.5px var(--glass-rim);
+}
+.segmented button {
+  border-radius: 999px;
+}
+
+/* ---- Controls: capsules with a lit edge ------------------------------------------ */
+
+.btn {
+  border-radius: 999px;
+  border-color: var(--glass-rim);
+  box-shadow:
+    inset 0 1px 0 0 var(--glass-edge),
+    0 1px 2px rgb(var(--shadow-color) / 0.06);
+}
+.btn-small,
+.btn-large,
+.btn-xs {
+  border-radius: 999px;
+}
+/* The ember button stays solid behind its white label; only light plays on its top. */
+.btn-primary {
+  background-color: var(--accent-solid);
+  background-image: linear-gradient(180deg, rgb(255 255 255 / 0.12), rgb(255 255 255 / 0) 35%);
+  border-color: color-mix(in srgb, var(--accent-solid) 75%, #000);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.32),
+    0 1px 2px rgb(var(--shadow-color) / 0.16),
+    0 6px 18px -6px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+.btn-primary:hover {
+  border-color: color-mix(in srgb, var(--accent-solid-hover) 75%, #000);
+}
+.btn-soft,
+.btn-ghost,
+.btn-danger {
+  box-shadow: none;
+  border-color: transparent;
+}
+.btn-soft {
+  background: var(--accent-soft);
+}
+.btn-ghost:hover {
+  background: var(--surface-2);
+}
+
+.field,
+.prop-input.field {
+  border-radius: var(--radius-small);
+  border-color: var(--border);
+  background: var(--surface);
+  box-shadow: inset 0 1px 2px rgb(var(--shadow-color) / 0.05);
+}
+.field:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.chip {
+  border-radius: 999px;
+  padding: 0 0.55rem;
+}
+.chip-button {
+  border-radius: 999px;
+}
+
+.check {
+  box-shadow: inset 0 1px 0 var(--glass-edge);
+}
+
+/* ---- Lists and cards -------------------------------------------------------------- */
+
+.task-row {
+  border-radius: 14px;
+}
+/* The row is see-through; only while it is swiped it must cover the hint below. */
+.task-row-inner {
+  background: transparent;
+}
+.task-row.swiping .task-row-inner {
+  background: var(--sheet-solid);
+}
+.row-subtasks {
+  background: transparent;
+}
+.task-row.selected .task-row-inner {
+  background: var(--accent-softer);
+}
+
+.props,
+.dev-section,
+.week-mirror,
+.recurrence-editor {
+  border-color: var(--glass-rim);
+  border-radius: 16px;
+  background: var(--surface-2);
+  box-shadow: inset 0 1px 0 0 var(--glass-edge);
+}
+.props {
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+.board-column {
+  border-radius: 20px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 0.5px var(--glass-rim);
+}
+.card,
+.flame-item,
+.decision,
+.focus-choice,
+.subtask-chip,
+.jev-chip {
+  background: var(--surface);
+  box-shadow:
+    inset 0 1px 0 0 var(--glass-edge),
+    0 0 0 0.5px var(--glass-rim),
+    0 1px 2px rgb(var(--shadow-color) / 0.05);
+}
+.card {
+  border-radius: 16px;
+}
+.card:hover {
+  box-shadow:
+    inset 0 1px 0 0 var(--glass-edge),
+    0 0 0 0.5px var(--border-strong),
+    0 8px 20px -10px rgb(var(--shadow-color) / 0.25);
+}
+.card.selected {
+  box-shadow:
+    inset 0 1px 0 0 var(--glass-edge),
+    0 0 0 2px var(--accent),
+    0 8px 20px -10px rgb(var(--shadow-color) / 0.25);
+}
+.day-cell {
+  border-radius: 14px;
+  background: var(--surface-2);
+  box-shadow: inset 0 1px 0 0 var(--glass-edge);
+}
+.notice {
+  border-radius: 14px;
+}
+
+/* ---- Floating glass: blurs what lies beneath ------------------------------------------ */
+
+.modal,
+.context-menu,
+.combo-list,
+.task-card,
+.md-toolbar,
+.day-open {
+  background: var(--glass-thick);
+  -webkit-backdrop-filter: var(--glass-blur-thick);
+  backdrop-filter: var(--glass-blur-thick);
+}
+.modal {
+  border-radius: 28px;
+  box-shadow: var(--glass-inner), var(--glass-float);
+}
+.context-menu,
+.combo-list,
+.task-card {
+  border-color: var(--glass-rim);
+  border-radius: 16px;
+  box-shadow: var(--glass-inner), var(--glass-float);
+}
+.context-menu-item,
+.combo-option,
+.palette-item {
+  border-radius: 10px;
+}
+.palette-foot {
+  background: var(--surface-2);
+}
+/* The dialog blurs for itself; the veil only dims a little. */
+.backdrop {
+  background: rgb(22 16 10 / 0.2);
+  backdrop-filter: none;
+}
+@media (prefers-color-scheme: dark) {
+  .backdrop {
+    background: rgb(0 0 0 / 0.42);
+  }
+}
+
+.toast {
+  border-radius: 999px;
+  padding-left: 1.15rem;
+  background: color-mix(in srgb, var(--text) 84%, transparent);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.14),
+    var(--glass-float);
+}
+.toast-error {
+  background: color-mix(in srgb, var(--danger) 92%, transparent);
+}
+.toast-warning {
+  background: color-mix(in srgb, var(--warning) 92%, transparent);
+}
+
+/* ---- Phones: content flows beneath the bars ------------------------------------------- */
+
+@media (max-width: 900px) {
+  html,
+  body {
+    background: var(--ambient);
+    background-color: var(--ambient-base);
+  }
+  .app,
+  .app.detail-open,
+  .app.detail-wide,
+  .app.sidebar-hidden {
+    grid-template-rows: minmax(0, 1fr);
+    padding: 0;
+    background: none;
+  }
+  /* The top bar floats: the list scrolls beneath it and shimmers through. */
+  .topbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    border-bottom: 0;
+    background: linear-gradient(to bottom, var(--glass-thick), color-mix(in srgb, var(--glass-thick) 70%, transparent));
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    box-shadow: 0 0.5px 0 var(--glass-rim);
+  }
+  .main {
+    background: none;
+    box-shadow: none;
+    padding-top: calc(var(--topbar) + env(safe-area-inset-top));
+    scroll-padding-top: calc(var(--topbar) + env(safe-area-inset-top));
+  }
+  .task-row:hover .task-row-inner {
+    background: transparent;
+  }
+  .task-row.selected .task-row-inner {
+    background: var(--accent-softer);
+  }
+  .tree-picker,
+  .view-split.has-selection.tree-open .tree {
+    background: var(--surface-2);
+  }
+
+  /* The tab bar: one capsule of glass, the active tab a lens inside it. */
+  .tabbar {
+    border-radius: 999px;
+    padding: 5px;
+    background: var(--glass-thick);
+    -webkit-backdrop-filter: var(--glass-blur-thick);
+    backdrop-filter: var(--glass-blur-thick);
+    box-shadow: var(--glass-inner), var(--glass-float);
+  }
+  .tab {
+    border-radius: 999px;
+  }
+  .tab.active {
+    background: var(--lens);
+    box-shadow:
+      inset 0 1px 0 0 var(--glass-edge),
+      0 0 0 0.5px var(--glass-rim),
+      0 2px 8px -2px rgb(var(--shadow-color) / 0.16);
+  }
+  .tab-count {
+    box-shadow: none;
+  }
+
+  .fab {
+    border-radius: 50%;
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.28), rgb(255 255 255 / 0) 50%),
+      linear-gradient(160deg, var(--flame-to) -40%, var(--accent) 55%);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.45),
+      inset 0 -2px 6px rgb(120 30 0 / 0.18),
+      0 10px 26px -6px color-mix(in srgb, var(--accent) 65%, transparent),
+      0 2px 4px rgb(var(--shadow-color) / 0.2);
+  }
+
+  /* The detail covers the list as a thick pane. */
+  .detail {
+    background: var(--glass-thick);
+    -webkit-backdrop-filter: var(--glass-blur-thick);
+    backdrop-filter: var(--glass-blur-thick);
+    box-shadow: none;
+  }
+  .modal {
+    border-radius: 26px;
+  }
+}
+
+/* ---- When glass is not wanted or not possible: solid again ----------------------------- */
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :root {
+    --glass: var(--bg);
+    --glass-thick: var(--bg);
+    --surface: var(--bg);
+  }
+  html,
+  body {
+    background: var(--ambient-base);
+  }
+  .modal,
+  .context-menu,
+  .combo-list,
+  .task-card,
+  .md-toolbar,
+  .day-open,
+  .toast,
+  .topbar,
+  .tabbar,
+  .detail {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .toast {
+    background: var(--text);
+  }
+  .toast-error {
+    background: var(--danger);
+  }
+  .toast-warning {
+    background: var(--warning);
+  }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --glass-thick: var(--bg);
+  }
+}
