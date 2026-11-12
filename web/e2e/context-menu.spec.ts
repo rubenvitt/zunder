@@ -64,7 +64,8 @@ test("Kontextmenü: Esc schließt ohne Aktion, Tasten wirken solange nicht auf d
 
   // A click outside closes it as well.
   await row(page, `Bleibt offen ${s}`).locator(".task-main").click({ button: "right" });
-  await page.locator("main").first().click({ position: { x: 5, y: 5 } });
+  // Inside the rounded corner of the sheet, not on its cut-off tip.
+  await page.locator("main").first().click({ position: { x: 30, y: 30 } });
   await expect(page.getByRole("menu")).toHaveCount(0);
 });
 

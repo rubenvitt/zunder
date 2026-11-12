@@ -65,9 +65,11 @@ Befehls- und Ereignisvertrag: [`apps/zunder-app/README.md`](../apps/zunder-app/R
 
 ## Gestaltung
 
-Alles Sichtbare steht in `src/styles.css`; die Farben, Abstände und Schriften oben als Variablen, hell und dunkel über `prefers-color-scheme`.
+Alles Sichtbare steht in `src/styles.css`; die Farben, Abstände und Schriften oben als Variablen, hell und dunkel über `prefers-color-scheme`. Darüber legt `src/glass.css` das Material: Glas im Stil von Apples „Liquid Glass“.
 
-- **Blätter auf Papier:** Die Seitenleiste liegt auf dem Untergrund (`--canvas`), Sicht und Aufgabendetail sind eigene Blätter (`--bg`) mit Abstand (`--gap`). Auf dem Telefon füllt ein Blatt den Bildschirm, die Tabs schweben darüber.
+- **Glas im Glutlicht:** Hinter allem liegt ein ruhiges Umgebungslicht (`--ambient`, Glut oben links, ein kühles Gegenlicht unten rechts). Seitenleiste, Sicht und Aufgabendetail sind durchscheinende Scheiben (`--glass`) mit Abstand (`--gap`) und einer Kante, die das Licht fängt (`--glass-inner`). Auf dem Telefon laufen die Inhalte unter der Kopfleiste und der Tab-Kapsel durch.
+- **Unschärfe nur, wo etwas darunter durchläuft:** `backdrop-filter` tragen nur schwebende Teile (Tab-Leiste, Kopfleiste mobil, Dialoge, Menüs, Toasts, die Markdown-Leiste) als dicke Scheibe (`--glass-thick`). Die großen Scheiben liegen auf dem statischen Verlauf und kommen ohne aus, das spart Rechenzeit. Mit „Transparenz reduzieren“ oder „Mehr Kontrast“ wird alles wieder deckend.
+- **Kapseln und Linsen:** Knöpfe, Chips und Segmente sind Kapseln; das Aktive (Navigation, Tab, Segment) ist eine hellere Linse im Glas (`--lens`). Flächen auf Glas sind Tönungen (`--surface-*`), kein Papier.
 - **Glut nur, wo es brennt:** Orange (`--accent`) trägt die Hauptaktion, Fälliges und die Auswahl. Der Verlauf des Logos (`--flame`) bleibt der laufenden Flamme vorbehalten. Alles andere ist Papier und Asche.
 - **Schriften:** Hanken Grotesk für Text, Bricolage Grotesque (`--display`) für Titel und große Zahlen. Beide liegen als variable Schriften im Bundle (`@fontsource-variable/*`), damit die Oberfläche offline und in der App gleich aussieht.
 - **Überschriften** in normaler Schreibung, mit Anzahl daneben, wo sie hilft (`h2 .count`); ein farbiger Punkt (`h2.tone`) sagt, welche Art Druck ein Abschnitt hält.

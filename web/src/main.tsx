@@ -4,5 +4,6 @@ import { App } from "./App";
 import "@fontsource-variable/hanken-grotesk/wght.css";
 import "@fontsource-variable/bricolage-grotesque/opsz.css";
 import "./styles.css";
+import "./glass.css";
 
 render(() => <App />, document.getElementById("root")!);
