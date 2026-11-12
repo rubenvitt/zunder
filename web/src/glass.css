@@ -419,7 +419,8 @@ body {
     background: var(--surface-2);
   }
 
-  /* The tab bar: one capsule of glass, the active tab a lens inside it. */
+  /* The tab bar: one capsule of glass, the current tab a lens inside it (components/TabBar.tsx).
+     The lens slides between the tabs and follows a thumb that slides over the bar. */
   .tabbar {
     border-radius: 999px;
     padding: 5px;
@@ -427,19 +428,133 @@ body {
     -webkit-backdrop-filter: var(--glass-blur-thick);
     backdrop-filter: var(--glass-blur-thick);
     box-shadow: var(--glass-inner), var(--glass-float);
+    /* The bar takes the slide itself: no scrolling, no back swipe from here. */
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
   }
-  .tab {
+  .tab-lens {
+    position: absolute;
+    top: 5px;
+    bottom: 5px;
+    left: 5px;
+    width: calc((100% - 10px) / var(--tabs, 5));
     border-radius: 999px;
-  }
-  .tab.active {
     background: var(--lens);
     box-shadow:
       inset 0 1px 0 0 var(--glass-edge),
       0 0 0 0.5px var(--glass-rim),
       0 2px 8px -2px rgb(var(--shadow-color) / 0.16);
+    pointer-events: none;
+    transition:
+      transform 0.38s var(--spring),
+      opacity 0.15s;
+  }
+  .tab-lens.hidden {
+    opacity: 0;
+  }
+  .tabbar.sliding .tab-lens {
+    transition: transform 0.06s linear;
+    box-shadow:
+      inset 0 1px 0 0 var(--glass-edge),
+      0 0 0 0.5px var(--glass-rim),
+      0 6px 18px -4px rgb(var(--shadow-color) / 0.25);
+  }
+  .tab {
+    position: relative;
+    border-radius: 999px;
+    font-size: 0.7rem;
+  }
+  .tab.active {
+    background: none;
+  }
+  .tabbar.sliding .tab.active:not(.hover) {
+    color: var(--muted);
+  }
+  .tabbar.sliding .tab.active:not(.hover) .icon {
+    color: inherit;
+  }
+  .tab.hover {
+    color: var(--accent-fg);
+  }
+  .tab.hover .icon {
+    color: var(--accent);
+  }
+  .tab:active {
+    transform: none;
   }
   .tab-count {
     box-shadow: none;
+  }
+
+  /* "Mehr": the other views as a small pane of glass above the bar. */
+  .tab-more {
+    position: fixed;
+    right: max(0.75rem, env(safe-area-inset-right));
+    bottom: calc(var(--tabbar) + max(0.5rem, env(safe-area-inset-bottom)) + 0.6rem);
+    z-index: 30;
+    min-width: 13.5rem;
+    display: flex;
+    flex-direction: column;
+    padding: 0.35rem;
+    border-radius: 22px;
+    background: var(--glass-thick);
+    -webkit-backdrop-filter: var(--glass-blur-thick);
+    backdrop-filter: var(--glass-blur-thick);
+    box-shadow: var(--glass-inner), var(--glass-float);
+    transform-origin: 90% 100%;
+    animation: more-in 0.26s var(--spring);
+  }
+  @keyframes more-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.92);
+    }
+  }
+  /* The plus steps aside while "Mehr" is open, so it does not shine through the pane. */
+  .fab {
+    transition:
+      transform 0.12s var(--spring),
+      opacity 0.15s;
+  }
+  .app:has(.tab-more) .fab {
+    opacity: 0;
+    transform: scale(0.85);
+    pointer-events: none;
+  }
+  .tab-more-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 2.9rem;
+    padding: 0 0.85rem;
+    border: 0;
+    border-radius: 16px;
+    background: none;
+    color: var(--text);
+    font-weight: 550;
+    text-align: left;
+    cursor: pointer;
+  }
+  .tab-more-item span:first-of-type {
+    flex: 1;
+  }
+  .tab-more-item .icon {
+    color: var(--muted);
+  }
+  .tab-more-item:active,
+  .tab-more-item.active {
+    background: var(--lens);
+    box-shadow: inset 0 1px 0 0 var(--glass-edge);
+  }
+  .tab-more-item.active,
+  .tab-more-item.active .icon {
+    color: var(--accent-fg);
+  }
+  .tab-more-count {
+    color: var(--muted);
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
   }
 
   .fab {

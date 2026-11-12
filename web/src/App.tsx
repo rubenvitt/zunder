@@ -7,6 +7,7 @@ import { QuickCapture } from "./components/QuickCapture";
 import { StructureForm } from "./components/StructureForm";
 import { TaskDetail } from "./components/TaskDetail";
 import { TaskHoverCard } from "./components/TaskLinks";
+import { TabBar } from "./components/TabBar";
 import { installKeyboard } from "./keys";
 import { contextMenu } from "./state/menu";
 import { installContextMenu } from "./state/task-menu";
@@ -46,6 +47,11 @@ const NAV: NavItem[] = [
   { view: "phoenix", label: "Phönix", icon: "flame", keys: "g p" },
   { view: "wartet", label: "Wartet auf andere", short: "Wartet", icon: "user", keys: "g w", gap: true },
 ];
+
+// The phone's tab bar holds four views, as iOS advises (at most five tabs); the rest sit behind "Mehr".
+const TAB_PRIMARY: ViewName[] = ["heute", "inbox", "bereiche", "phoenix"];
+const TAB_MORE: ViewName[] = ["lose", "dev", "wartet"];
+const navItem = (view: ViewName): NavItem => NAV.find((n) => n.view === view)!;
 
 setNotifier({
   rejected(rejections) {
@@ -299,19 +305,15 @@ function Shell() {
         <Icon name="plus" size={28} />
       </button>
 
-      <nav class="tabbar" aria-label="Sichten" inert={covered()}>
-        <For each={NAV}>
-          {(item) => (
-            <button class="tab" classList={{ active: active(item.view) }} onClick={() => navigate(parseRoute(`#/${item.view}`))} aria-current={active(item.view) ? "page" : undefined}>
-              <Icon name={item.icon} size={20} />
-              <span>{item.short ?? item.label}</span>
-              <Show when={item.view === "inbox" && inboxCount() > 0}>
-                <span class="tab-count">{inboxCount()}</span>
-              </Show>
-            </button>
-          )}
-        </For>
-      </nav>
+      <TabBar
+        primary={TAB_PRIMARY.map(navItem)}
+        more={TAB_MORE.map(navItem)}
+        current={route().view}
+        inert={covered()}
+        countOf={countOf}
+        badgeOf={(view) => (view === "inbox" ? inboxCount() : 0)}
+        onSelect={(view) => navigate(parseRoute(`#/${view}`))}
+      />
 
       <Show when={captureOpen()}>
         <QuickCapture />

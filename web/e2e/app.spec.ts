@@ -471,6 +471,33 @@ test("Mobil: Tabs unten und großes Plus @mobile", async ({ page }) => {
   await expect(page.locator(".task-row", { hasText: "Mobil erfasst" })).toBeVisible();
 });
 
+test("Mobil: vier Tabs und Mehr, Ziehen über die Leiste wechselt die Sicht @mobile", async ({ page }) => {
+  await openApp(page, "#/heute");
+  const tabbar = page.locator(".tabbar");
+  await expect(tabbar.getByRole("button")).toHaveText([/Heute/, /Inbox/, /Bereiche/, /Phönix/, /Mehr/]);
+
+  // "Mehr" holds the rest; a tap elsewhere closes it.
+  await tabbar.getByRole("button", { name: "Mehr" }).click();
+  const more = page.getByRole("menu", { name: "Weitere Sichten" });
+  await expect(more.getByRole("menuitem")).toHaveText([/Lose/, /Dev/, /Wartet auf andere/]);
+  await more.getByRole("menuitem", { name: /Dev/ }).click();
+  await expect(more).toHaveCount(0);
+  await expect(page).toHaveURL(/#\/dev/);
+  await expect(tabbar.getByRole("button", { name: "Mehr" })).toHaveAttribute("aria-current", "page");
+
+  // Slide the thumb from Heute to Phönix: letting go switches there.
+  await tabbar.getByRole("button", { name: /Heute/ }).click();
+  const from = (await tabbar.getByRole("button", { name: /Heute/ }).boundingBox())!;
+  const to = (await tabbar.getByRole("button", { name: /Phönix/ }).boundingBox())!;
+  const y = from.y + from.height / 2;
+  await page.mouse.move(from.x + from.width / 2, y);
+  await page.mouse.down();
+  for (let i = 1; i <= 8; i++) await page.mouse.move(from.x + from.width / 2 + ((to.x - from.x) * i) / 8, y);
+  await page.mouse.up();
+  await expect(page).toHaveURL(/#\/phoenix/);
+  await expect(page.getByRole("menu")).toHaveCount(0);
+});
+
 test("Baum der Bereiche aus- und wieder einblenden", async ({ page }) => {
   const s = suffix();
   await openApp(page, "#/bereiche");

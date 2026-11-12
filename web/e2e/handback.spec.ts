@@ -208,13 +208,14 @@ test("Befehlspalette bietet Zurückgeben nur bei Rauch, Dev-Projekte nie", async
   await expect(palette).toHaveCount(0);
 });
 
-test("Wartet auf andere ist mobil ein Tab, die Antwort ein Knopf @mobile", async ({ page }) => {
+test("Wartet auf andere liegt mobil hinter Mehr, die Antwort ist ein Knopf @mobile", async ({ page }) => {
   const s = suffix();
   const seeder = new Seeder();
   seeder.task(`Rückruf ${s}`, { location: { kind: "loose" }, waiting_on: `Eva ${s}` });
   await seeder.push(page);
   await openApp(page, "#/heute");
-  await page.locator(".tabbar").getByRole("button", { name: "Wartet" }).click();
+  await page.locator(".tabbar").getByRole("button", { name: "Mehr" }).click();
+  await page.getByRole("menuitem", { name: /Wartet auf andere/ }).click();
   await expect(page.getByRole("heading", { name: "Wartet auf andere" })).toBeVisible();
   const group = page.getByRole("list", { name: `Wartet auf Eva ${s}` });
   await expect(group.getByRole("button", { name: "Antwort ist da" })).toBeVisible();
