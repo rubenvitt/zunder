@@ -4005,6 +4005,16 @@ a.sync {
 
 /* ---- Context menu (right click; the desktop app shows the native one) ---- */
 
+/* Touch: a long press opens Zunder's menu, not the system's link preview or text selection. */
+@media (pointer: coarse) {
+  :is([data-task-id], [data-area-id], [data-project-id]):not(input, textarea, [contenteditable="true"]),
+  .comment-head {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
 .context-menu {
   position: fixed;
   z-index: 70;
