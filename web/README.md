@@ -79,7 +79,7 @@ Alles Sichtbare steht in `src/styles.css`; die Farben, Abstände und Schriften o
 
 Tastatur: `n` erfassen, `⌘K`/`Strg+K` oder `/` Suche, `⌘B`/`Strg+B` Seitenleiste ein/aus (eingeklappt bleibt ein schmaler Rand mit dem Knopf zum Ausklappen), `j`/`k` bewegen, `Enter` öffnen, `x` erledigt, `Esc` schließen, in der Inbox `a` zuordnen, `l` lose, `d` verwerfen, auf dem Board `h`/`l` Spalte wechseln, `Shift+H`/`Shift+L` Karte verschieben, `Shift+J`/`Shift+K` umsortieren, `v` Liste/Board, `g h/i/l/b/d/p` Sichtwechsel, `?` Übersicht.
 
-Mobil: Sichten als schwebende Tabs unten, großes ＋ zum Erfassen, in der Inbox nach rechts wischen = lose, nach links = verwerfen.
+Mobil: Heute, Inbox, Bereiche und Phönix als schwebende Tabs unten, Lose, Dev und Wartet hinter „Mehr“; den Daumen über die Leiste ziehen wechselt die Sicht beim Loslassen, großes ＋ zum Erfassen, in der Inbox nach rechts wischen = lose, nach links = verwerfen.
 
 ## Tests
 
