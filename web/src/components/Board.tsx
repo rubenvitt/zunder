@@ -234,6 +234,12 @@ function Card(props: {
 }) {
   let ref: HTMLLIElement | undefined;
   const [subtasksOpen, setSubtasksOpen] = createSignal(false);
+  // Work has started below while the task itself still sits in open: offer moving it along, never do it on its own.
+  const readyToStart = () =>
+    props.task.status === "open" &&
+    taskIndex()
+      .descendantsOf(props.task.id)
+      .some((t) => !t.deleted && t.status === "in_progress");
   const project = () => {
     const loc = taskIndex().location(props.task);
     return loc.kind === "project" ? data.projects[loc.id] : undefined;
@@ -275,7 +281,7 @@ function Card(props: {
       </span>
       <span class="task-title">{props.task.title}</span>
       <TaskMeta task={props.task} />
-      <Show when={taskIndex().progress(props.task.id).total > 0 || readyToClose() || prMerged()}>
+      <Show when={taskIndex().progress(props.task.id).total > 0 || readyToClose() || prMerged() || readyToStart()}>
         <span class="card-subtasks-bar">
           <Show when={taskIndex().progress(props.task.id).total > 0}>
             <SubtaskToggle task={props.task} open={subtasksOpen()} onToggle={() => setSubtasksOpen((o) => !o)} />
@@ -294,6 +300,22 @@ function Card(props: {
             >
               <Icon name="check" size={12} />
               Abschließen
+            </button>
+          </Show>
+          <Show when={readyToStart() && !readyToClose() && !prMerged()}>
+            <button
+              type="button"
+              class="btn btn-small card-close"
+              title="Eine Unteraufgabe ist in Arbeit"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (setStatus(props.task.id, "in_progress")) toast(`„${shorten(props.task.title)}“ → ${STATUS_LABELS.in_progress}`);
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              draggable={false}
+            >
+              <Icon name="right" size={12} />
+              In Arbeit setzen
             </button>
           </Show>
         </span>
