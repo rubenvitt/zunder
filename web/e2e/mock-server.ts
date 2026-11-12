@@ -136,6 +136,8 @@ let tokens: Token[] = [];
 let oauthClients: OAuthClient[] = [];
 /** Timing settings from the settings view (the mock has no environment variables). */
 let timing: { token: string | null; project: string | null } = { token: null, project: null };
+/** GitHub token stored in the settings (PR status). */
+let githubToken: string | null = null;
 /** Projects the mock's Timing account has (for the project picker). */
 const TIMING_PROJECTS = [
   { self: "/projects/1", title: "Arbeit", title_chain: ["Arbeit"], color: "#E5532D" },
@@ -636,6 +638,21 @@ function timingSettings() {
   };
 }
 
+const GITHUB_TOKEN_URL =
+  "https://github.com/settings/personal-access-tokens/new?name=Zunder&description=Zunder%3A+Status+verlinkter+Pull+Requests+lesen&expires_in=366&pull_requests=read&statuses=read";
+
+function githubSettings() {
+  return {
+    configured: githubToken !== null,
+    token_source: githubToken !== null ? "settings" : null,
+    token_hint: githubToken !== null ? (githubToken.length >= 12 ? `…${githubToken.slice(-4)}` : "…") : null,
+    overridden: githubToken !== null,
+    env_token: false,
+    create_url: GITHUB_TOKEN_URL,
+    create_classic_url: "https://github.com/settings/tokens/new?scopes=repo&description=Zunder",
+  };
+}
+
 const JEV_THRESHOLDS = [0, 0.5, 0.6, 0.7, 0.8, 0.9];
 
 function emptyTally() {
@@ -739,6 +756,7 @@ function seed(kind: string) {
   tokens = [{ id: createId(), name: "claude-code", created_at: new Date(Date.now() - 86400000 * 3).toISOString(), last_used_at: null }];
   oauthClients = [];
   timing = { token: null, project: null };
+  githubToken = null;
   devices = [];
   intakeChannels = [];
   calendarCreatedAt = null;
@@ -1216,6 +1234,21 @@ const server = createServer(async (req, res) => {
       if (path === "/api/settings/timing/check" && method === "POST") {
         if (!timing.token) return error(res, 409, "conflict", "Timing ist nicht eingerichtet.");
         return send(res, 200, { ok: true, error: null });
+      }
+      if (path === "/api/settings/github") {
+        if (method === "PUT") {
+          const body = await readJson(req);
+          const token = typeof body.token === "string" ? body.token.trim() : "";
+          if (!token) return error(res, 400, "invalid_request", "Bitte einen GitHub-Token eingeben");
+          if (!/^[A-Za-z0-9_.-]+$/.test(token)) return error(res, 400, "invalid_request", "Der GitHub-Token darf nur Buchstaben, Ziffern, _ , - und . enthalten");
+          githubToken = token;
+        } else if (method === "DELETE") githubToken = null;
+        else if (method !== "GET") return error(res, 405, "invalid_request", "Methode nicht erlaubt.");
+        return send(res, 200, githubSettings());
+      }
+      if (path === "/api/settings/github/check" && method === "POST") {
+        if (!githubToken) return error(res, 409, "conflict", "GitHub ist nicht eingerichtet.");
+        return send(res, 200, { ok: true, login: "e2e", error: null });
       }
       if (path === "/api/settings/focus") {
         if (method === "PUT") {

@@ -3,7 +3,8 @@
 //! The web UI and the app ask `POST /api/pr-status` for the PR links they
 //! show; the server reads them in one GraphQL request per batch
 //! (`POST /graphql`, one aliased `repository { pullRequest }` per PR) with
-//! the token from `ZUNDER_GITHUB_TOKEN` and keeps the answers in memory for
+//! the token from the settings (`github.token`) or `ZUNDER_GITHUB_TOKEN`
+//! and keeps the answers in memory for
 //! a while, so a board full of cards does not hit GitHub on every render.
 //!
 //! What a PR reports ([`PrStatus`]):
@@ -218,14 +219,42 @@ impl GithubClient {
         Ok(out)
     }
 
+    /// The login of the account the token belongs to (checks the token).
+    pub async fn viewer(&self) -> Result<String, GithubError> {
+        let body = self
+            .post(json!({ "query": "query { viewer { login } }" }))
+            .await?;
+        if let Some(message) = body
+            .get("errors")
+            .and_then(Value::as_array)
+            .and_then(|e| e.first())
+            .and_then(|e| e.get("message"))
+            .and_then(Value::as_str)
+        {
+            return Err(GithubError::InvalidResponse(message.to_owned()));
+        }
+        body.pointer("/data/viewer/login")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| GithubError::InvalidResponse("ohne Anmeldename".into()))
+    }
+
     async fn fetch(&self, refs: &[PrRef]) -> Result<Vec<(PrRef, Option<PrStatus>)>, GithubError> {
         let (query, variables) = build_query(refs);
+        let body = self
+            .post(json!({ "query": query, "variables": variables }))
+            .await?;
+        parse_response(refs, &body)
+    }
+
+    /// Sends one GraphQL request; a non-success status is an error.
+    async fn post(&self, payload: Value) -> Result<Value, GithubError> {
         let response = self
             .http
             .post(self.endpoint.clone())
             .bearer_auth(&self.token)
             .header(reqwest::header::ACCEPT, "application/vnd.github+json")
-            .json(&json!({ "query": query, "variables": variables }))
+            .json(&payload)
             .send()
             .await
             .map_err(|e| GithubError::Transport(e.without_url().to_string()))?;
@@ -245,7 +274,7 @@ impl GithubClient {
                 message,
             });
         }
-        parse_response(refs, &body)
+        Ok(body)
     }
 }
 

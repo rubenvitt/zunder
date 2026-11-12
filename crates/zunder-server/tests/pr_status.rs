@@ -1,19 +1,20 @@
 //! `POST /api/pr-status`: PR status from a local mock of GitHub's GraphQL
-//! API, the cache, and the answer without a token.
+//! API, the cache, and the answer without a token; the GitHub token from
+//! the web UI (`/api/settings/github`).
 
 mod common;
 
 use std::sync::{Arc, Mutex};
 
 use axum::extract::State;
-use axum::http::{header, HeaderMap, StatusCode};
+use axum::http::{header, HeaderMap, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Json, Router};
 use serde_json::{json, Value};
 use url::Url;
 
-use common::{Auth, TestServer, BOOTSTRAP};
+use common::{api_token, Auth, TestServer, BOOTSTRAP};
 
 const GITHUB_TOKEN: &str = "github-test-token";
 
@@ -64,6 +65,9 @@ async fn graphql(
             Json(json!({"message": "Bad credentials"})),
         )
             .into_response();
+    }
+    if body["query"].as_str().unwrap().contains("viewer") {
+        return Json(json!({"data": {"viewer": {"login": "octo"}}})).into_response();
     }
     let vars = body["variables"].as_object().unwrap();
     let mut data = serde_json::Map::new();
@@ -196,4 +200,176 @@ async fn needs_login_and_limits_size() {
         )
         .await;
     assert_eq!(res.status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn token_from_the_web_ui() {
+    let (mock, url) = GithubMock::start().await;
+    let s = TestServer::with_config(|c| c.github_graphql_url = url).await;
+    let t = api_token(&s, "claude").await;
+    let session = s.session().await;
+    let ask = json!({"urls": ["https://github.com/o/r/pull/1"]});
+
+    let r = s.get("/api/settings/github", Auth::Web(&session)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    let body = r.json();
+    assert_eq!(body["configured"], false);
+    assert_eq!(body["token_source"], Value::Null);
+    assert_eq!(body["env_token"], false);
+    let create = body["create_url"].as_str().unwrap();
+    assert!(create.starts_with("https://github.com/settings/personal-access-tokens/new?"));
+    assert!(create.contains("pull_requests=read") && create.contains("statuses=read"));
+    let r = s
+        .request(
+            Method::POST,
+            "/api/settings/github/check",
+            Auth::Web(&session),
+            None,
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::CONFLICT);
+
+    // Browser sessions only.
+    let r = s.get("/api/settings/github", Auth::Bearer(&t)).await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+    let r = s
+        .request(
+            Method::PUT,
+            "/api/settings/github",
+            Auth::Bearer(&t),
+            Some(json!({"token": "ghp_x"})),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+    let r = s
+        .request(
+            Method::PUT,
+            "/api/settings/github",
+            Auth::Web(&session),
+            Some(json!({"token": "a b"})),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+
+    let r = s
+        .request(
+            Method::PUT,
+            "/api/settings/github",
+            Auth::Web(&session),
+            Some(json!({"token": " github_pat_ui0123456789 "})),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    let body = r.json();
+    assert_eq!(body["configured"], true);
+    assert_eq!(body["token_source"], "settings");
+    assert_eq!(body["token_hint"], "…6789");
+    assert!(!r.text().contains("github_pat_ui0123456789"));
+
+    // PR status uses it right away, without a restart.
+    let r = s
+        .post("/api/pr-status", Auth::Bearer(&t), ask.clone())
+        .await;
+    assert_eq!(r.json()["configured"], true);
+    assert_eq!(
+        r.json()["statuses"]["https://github.com/o/r/pull/1"]["state"],
+        "open"
+    );
+    assert_eq!(
+        mock.requests()[0].0.as_deref(),
+        Some("Bearer github_pat_ui0123456789")
+    );
+
+    let r = s
+        .request(
+            Method::POST,
+            "/api/settings/github/check",
+            Auth::Web(&session),
+            None,
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    assert_eq!(
+        r.json(),
+        json!({"ok": true, "login": "octo", "error": null})
+    );
+    mock.0.lock().unwrap().fail = true;
+    let r = s
+        .request(
+            Method::POST,
+            "/api/settings/github/check",
+            Auth::Web(&session),
+            None,
+        )
+        .await;
+    assert_eq!(r.json()["ok"], false);
+    assert!(r.json()["error"]
+        .as_str()
+        .unwrap()
+        .contains("Bad credentials"));
+    mock.0.lock().unwrap().fail = false;
+
+    // Reset: no token in the environment, so PR status is off again.
+    let r = s
+        .request(
+            Method::DELETE,
+            "/api/settings/github",
+            Auth::Web(&session),
+            None,
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.json()["configured"], false);
+    let r = s.post("/api/pr-status", Auth::Bearer(&t), ask).await;
+    assert_eq!(r.json(), json!({"configured": false, "statuses": {}}));
+}
+
+#[tokio::test]
+async fn stored_token_overrides_the_environment() {
+    let (server, mock) = server_with_github().await;
+    let session = server.session().await;
+    let r = server
+        .get("/api/settings/github", Auth::Web(&session))
+        .await;
+    assert_eq!(r.json()["token_source"], "env");
+    assert_eq!(r.json()["env_token"], true);
+    server
+        .request(
+            Method::PUT,
+            "/api/settings/github",
+            Auth::Web(&session),
+            Some(json!({"token": "github_pat_override_abcd"})),
+        )
+        .await;
+    server
+        .post(
+            "/api/pr-status",
+            Auth::Bearer(BOOTSTRAP),
+            json!({"urls": ["https://github.com/o/r/pull/2"]}),
+        )
+        .await;
+    assert_eq!(
+        mock.requests()[0].0.as_deref(),
+        Some("Bearer github_pat_override_abcd")
+    );
+    let r = server
+        .request(
+            Method::DELETE,
+            "/api/settings/github",
+            Auth::Web(&session),
+            None,
+        )
+        .await;
+    assert_eq!(r.json()["token_source"], "env");
+    server
+        .post(
+            "/api/pr-status",
+            Auth::Bearer(BOOTSTRAP),
+            json!({"urls": ["https://github.com/o/r/pull/2"]}),
+        )
+        .await;
+    assert_eq!(
+        mock.requests()[0].0.as_deref(),
+        Some(format!("Bearer {GITHUB_TOKEN}").as_str())
+    );
 }

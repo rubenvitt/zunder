@@ -399,6 +399,29 @@ export interface TimingCheck {
   error: string | null;
 }
 
+/** GitHub token for PR status, see `GET /api/settings/github` (never contains the token itself). */
+export interface GithubSettings {
+  configured: boolean;
+  token_source: SettingSource | null;
+  /** Last characters of the token in effect, e.g. "…abcd". */
+  token_hint: string | null;
+  /** Whether a stored token overrides `ZUNDER_GITHUB_TOKEN`. */
+  overridden: boolean;
+  env_token: boolean;
+  /** GitHub page that creates a fine-grained token with the needed permissions preselected. */
+  create_url: string;
+  /** Same for a classic token (`repo`). */
+  create_classic_url: string;
+}
+
+/** `POST /api/settings/github/check`. */
+export interface GithubCheck {
+  ok: boolean;
+  /** Account the token belongs to. */
+  login: string | null;
+  error: string | null;
+}
+
 /** Calendar feed, see `GET /api/settings/calendar` (never contains the feed URL). */
 export interface CalendarSettings {
   enabled: boolean;
