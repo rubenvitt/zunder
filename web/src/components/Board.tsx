@@ -238,14 +238,17 @@ function Card(props: {
     const loc = taskIndex().location(props.task);
     return loc.kind === "project" ? data.projects[loc.id] : undefined;
   };
+  const openSubtasks = () => hasOpenChildren(taskIndex().childrenOf(props.task.id));
   // Every subtask done or dropped while the task itself is still open: closing is one click away.
-  const readyToClose = () => {
-    if (isClosed(props.task.status)) return false;
-    const children = taskIndex().childrenOf(props.task.id);
-    return children.length > 0 && !hasOpenChildren(children);
-  };
+  const readyToClose = () =>
+    !isClosed(props.task.status) && taskIndex().childrenOf(props.task.id).length > 0 && !openSubtasks();
   // The linked PR is merged while the task is still open: offer closing, never do it on its own.
-  const prMerged = () => !isClosed(props.task.status) && !!props.task.pr_url && prStatus(props.task.pr_url)?.state === "merged";
+  // Open subtasks still need work, so the offer waits for them.
+  const prMerged = () =>
+    !isClosed(props.task.status) &&
+    !!props.task.pr_url &&
+    prStatus(props.task.pr_url)?.state === "merged" &&
+    !openSubtasks();
   return (
     <li
       ref={(el) => {
