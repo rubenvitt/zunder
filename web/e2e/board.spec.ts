@@ -219,6 +219,37 @@ test("Board-Karte: mit erledigten Unteraufgaben direkt abschließen", async ({ p
   await expect(close).toHaveCount(0);
 });
 
+test("Board-Karte: mit Unteraufgabe in Arbeit die Aufgabe in Arbeit setzen", async ({ page }) => {
+  const s = suffix();
+  const seeder = new Seeder();
+  const area = seeder.area(`Arbeit ${s}`);
+  const project = seeder.project(`Start ${s}`, area, { kind: "dev", repo: "example/app" });
+  const loc = { kind: "project", id: project };
+  const epic = seeder.task(`Oberaufgabe ${s}`, { location: loc });
+  const branch = seeder.task(`Zweig ${s}`, { parent_id: epic });
+  seeder.task(`Enkel ${s}`, { parent_id: branch, status: "in_progress" });
+  const quiet = seeder.task(`Ruhig ${s}`, { location: loc });
+  seeder.task(`Noch nicht begonnen ${s}`, { parent_id: quiet });
+  await seeder.push(page);
+  await openApp(page, `#/bereiche/project/${project}`);
+
+  await expect(card(page, `Ruhig ${s}`).getByRole("button", { name: "In Arbeit setzen" })).toHaveCount(0);
+
+  // Work started further down is only offered, the task stays open until the click.
+  const c = card(page, `Oberaufgabe ${s}`);
+  const start = c.getByRole("button", { name: "In Arbeit setzen" });
+  const open = page.locator('.board-column[data-status="open"]');
+  await expect(start).toBeVisible();
+  await expect(open.locator(".card", { hasText: `Oberaufgabe ${s}` })).toBeVisible();
+  await start.click();
+
+  const inProgress = page.locator('.board-column[data-status="in_progress"]');
+  await expect(inProgress.locator(".card", { hasText: `Oberaufgabe ${s}` })).toBeVisible();
+  await expect.poll(async () => (await entityFields(page, "task", epic)).status).toBe("in_progress");
+  await expect(start).toHaveCount(0);
+  await expect(open.locator(".card", { hasText: `Ruhig ${s}` })).toBeVisible();
+});
+
 test("Erledigt-Spalte zeigt die letzten fünf, Ältere im Archiv", async ({ page }) => {
   const s = suffix();
   const seeder = new Seeder();
