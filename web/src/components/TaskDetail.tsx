@@ -59,6 +59,7 @@ import { RecurrenceEditor, RecurrenceField, SeriesLinks } from "./RecurrenceFiel
 import { Dependencies, taskHref, taskUrl } from "./TaskLinks";
 import { JevSuggestion, wantsSuggestion } from "./JevSuggestion";
 import { jevConfigured } from "../state/jev";
+import { PLAIN_INPUT } from "./inputs";
 
 /** Only http(s) and mailto links become clickable; anything else (javascript:, data: …) is shown as text. */
 export function safeHref(url: string): string | undefined {
@@ -1030,7 +1031,7 @@ function LinksEditor(props: { task: Task }) {
         }}
       >
         <Icon name="plus" size={16} />
-        <input class="add-input" type="url" placeholder="Link hinzufügen: https://…" aria-label="Link-URL" value={url()} onInput={(e) => setUrl(e.currentTarget.value)} />
+        <input class="add-input" type="url" {...PLAIN_INPUT} placeholder="Link hinzufügen: https://…" aria-label="Link-URL" value={url()} onInput={(e) => setUrl(e.currentTarget.value)} />
         <input class="add-input add-input-short" placeholder="Titel (optional)" aria-label="Link-Titel" value={title()} onInput={(e) => setTitle(e.currentTarget.value)} />
         <button class="btn btn-small" type="submit" disabled={!url().trim()} aria-label="Link hinzufügen">
           Hinzufügen
@@ -1078,7 +1079,7 @@ function VaultLinksEditor(props: { task: Task }) {
         }}
       >
         <Icon name="plus" size={16} />
-        <input class="add-input" placeholder="Pfad im Vault oder obsidian://…" aria-label="Vault-Link" value={value()} onInput={(e) => setValue(e.currentTarget.value)} />
+        <input class="add-input" {...PLAIN_INPUT} placeholder="Pfad im Vault oder obsidian://…" aria-label="Vault-Link" value={value()} onInput={(e) => setValue(e.currentTarget.value)} />
         <button class="btn btn-small" type="submit" disabled={!value().trim()} aria-label="Vault-Link hinzufügen">
           Hinzufügen
         </button>

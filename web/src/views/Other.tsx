@@ -15,6 +15,7 @@ import { navigate, route } from "../state/router";
 import { api, areaList, data, now, projectList, taskIndex } from "../state/store";
 import { devArchive, devProjectIds, devTasks, phoenixTasks } from "../state/selectors";
 import { copyText, devProjectFilter, registerList, setDevProjectFilter, setStructureEdit, toast } from "../state/ui";
+import { PLAIN_INPUT } from "../components/inputs";
 
 /** A remembered filter may sit off-screen in the sideways-scrolling chip row (mobile). */
 function revealPressed(row: HTMLElement) {
@@ -263,7 +264,7 @@ function TokenManager() {
       <h2 id="tokens-heading">Agenten und MCP</h2>
       <p class="muted">Tokens für Agenten und den MCP-Zugang. Jeder Token ist einzeln widerrufbar.</p>
       <form class="inline-form" onSubmit={create}>
-        <input class="field" placeholder="Name, z. B. claude-code" aria-label="Token-Name" value={name()} onInput={(e) => setName(e.currentTarget.value)} />
+        <input class="field" {...PLAIN_INPUT} placeholder="Name, z. B. claude-code" aria-label="Token-Name" value={name()} onInput={(e) => setName(e.currentTarget.value)} />
         <button class="btn btn-primary" type="submit" disabled={!name().trim()}>
           <Icon name="key" size={14} /> Token erstellen
         </button>
@@ -463,7 +464,7 @@ function IntakeChannels() {
         nur anlegen: nichts lesen, nichts ändern, keine anderen Bereiche. API-Tokens funktionieren dort nicht und Eingangs-Tokens nicht in der API.
       </p>
       <form class="inline-form" onSubmit={create}>
-        <input class="field" placeholder="Name, z. B. iuk-suite" aria-label="Name des Eingangs" value={name()} onInput={(e) => setName(e.currentTarget.value)} />
+        <input class="field" {...PLAIN_INPUT} placeholder="Name, z. B. iuk-suite" aria-label="Name des Eingangs" value={name()} onInput={(e) => setName(e.currentTarget.value)} />
         <select class="field" aria-label="Zielprojekt" value={projectId()} onChange={(e) => setProjectId(e.currentTarget.value)}>
           <option value="" disabled>
             Zielprojekt wählen …

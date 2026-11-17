@@ -28,6 +28,7 @@ import {
 } from "../state/ui";
 import { Icon, type IconName } from "./Icon";
 import { Modal } from "./Modal";
+import { PLAIN_INPUT } from "./inputs";
 
 interface Item {
   key: string;
@@ -261,6 +262,7 @@ export function CommandPalette(props: { request: PaletteRequest }) {
         <input
           ref={input}
           class="palette-input"
+          {...PLAIN_INPUT}
           placeholder={props.request.mode === "search" ? "Aufgaben, Projekte, Bereiche, Aktionen …" : `${title()} …`}
           value={query()}
           onInput={(e) => {
