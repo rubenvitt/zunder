@@ -219,6 +219,9 @@ export function ConnectionView(props: { setup?: boolean; onConnected?: () => voi
             type="url"
             inputmode="url"
             autocomplete="url"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck={false}
             placeholder="https://zunder.example.org"
             value={serverUrl()}
             onInput={(e) => setServerUrl(e.currentTarget.value)}

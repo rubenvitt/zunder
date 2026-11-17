@@ -11,6 +11,7 @@ import type { CalendarSettings, GithubSettings, CreatedCalendarFeed, JevEval, Je
 import { setJevConfigured } from "../state/jev";
 import { api, areaList, now } from "../state/store";
 import { copyText, toast } from "../state/ui";
+import { PLAIN_INPUT } from "../components/inputs";
 
 export function SettingsView() {
   return isTauri() ? <SettingsInApp /> : <ServerSettings />;
@@ -859,8 +860,7 @@ function ProjectCombo(props: {
         class="field"
         name="timing-project"
         role="combobox"
-        autocomplete="off"
-        spellcheck={false}
+        {...PLAIN_INPUT}
         aria-autocomplete="list"
         aria-expanded={expanded()}
         aria-controls={`${id}-list`}

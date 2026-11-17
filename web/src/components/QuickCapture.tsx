@@ -135,6 +135,8 @@ export function QuickCapture() {
           name="capture"
           placeholder="Neue Aufgabe … z. B. „Zahnarzt anrufen morgen 9:00 #gesundheit“"
           autocomplete="off"
+          autocorrect="off"
+          spellcheck={false}
           value={text()}
           onInput={(e) => {
             setText(e.currentTarget.value);

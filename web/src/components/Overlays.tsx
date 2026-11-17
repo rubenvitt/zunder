@@ -313,7 +313,7 @@ export function HandBackDialog(props: { request: HandBackRequest }) {
         <label class="handback-label" for={nameId}>
           Wer entscheidet?
         </label>
-        <input id={nameId} class="field" list={listId} required autofocus placeholder="Name" value={name()} onInput={(e) => setName(e.currentTarget.value)} />
+        <input id={nameId} class="field" list={listId} spellcheck={false} autocorrect="off" required autofocus placeholder="Name" value={name()} onInput={(e) => setName(e.currentTarget.value)} />
         <datalist id={listId}>
           <For each={names}>{(n) => <option value={n} />}</For>
         </datalist>
