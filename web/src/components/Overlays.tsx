@@ -73,6 +73,7 @@ const SHORTCUT_GROUPS: { title: string; items: Shortcut[] }[] = [
   {
     title: "Listen",
     items: [
+      [[["f"]], "In Liste oder Board suchen und filtern (Esc leert, ↵ springt zum ersten Treffer)"],
       [[["j"], ["k"]], "Nächste / vorige Aufgabe"],
       [[["Enter"]], "Aufgabe öffnen"],
       [[["x"]], "Erledigt umschalten"],

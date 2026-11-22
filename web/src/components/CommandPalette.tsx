@@ -3,6 +3,7 @@
 
 import { createMemo, createSignal, For, onMount, Show } from "solid-js";
 import { isClosed } from "../sync/derived";
+import { normalizeText as normalize } from "../sync/task-filter";
 import type { Location } from "../sync/types";
 import { locationLabel, STATUS_LABELS } from "../labels";
 import { isTauri } from "../platform/runtime";
@@ -42,17 +43,6 @@ interface Item {
   rank: number;
   dim?: boolean;
   run: () => void;
-}
-
-function normalize(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/ä/g, "ae")
-    .replace(/ö/g, "oe")
-    .replace(/ü/g, "ue")
-    .replace(/ß/g, "ss")
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "");
 }
 
 function score(item: Item, terms: string[], query: string): number | null {

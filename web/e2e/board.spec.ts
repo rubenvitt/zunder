@@ -310,3 +310,74 @@ test("Archiv mobil: Schließen bleibt beim Scrollen sichtbar @mobile", async ({ 
   await close.click();
   await expect(archive).toBeHidden();
 });
+
+test("Board und Liste durchsuchen und nach Typ filtern", async ({ page }) => {
+  const s = suffix();
+  const seeder = new Seeder();
+  const area = seeder.area(`Arbeit ${s}`);
+  const project = seeder.project(`Suche ${s}`, area, { kind: "dev" });
+  const loc = { kind: "project", id: project };
+  seeder.task(`Login reparieren ${s}`, { location: loc, type: "bug" });
+  seeder.task(`Export bauen ${s}`, { location: loc, type: "feature", status: "in_progress" });
+  const epic = seeder.task(`Umzug ${s}`, { location: loc });
+  seeder.task(`Kartons besorgen ${s}`, { parent_id: epic });
+  await seeder.push(page);
+
+  await openApp(page, `#/bereiche/project/${project}`);
+  const board = page.getByRole("region", { name: `Board Suche ${s}` });
+  await expect(board.locator(".card")).toHaveCount(3);
+
+  // f focuses the field; the board narrows while typing.
+  await page.keyboard.press("f");
+  const field = page.getByRole("searchbox", { name: `Aufgaben in Suche ${s}: Suchen` });
+  await expect(field).toBeFocused();
+  await field.fill("login");
+  await expect(board.locator(".card")).toHaveCount(1);
+  await expect(card(page, `Login reparieren ${s}`)).toBeVisible();
+  await expect(page.locator(".task-filter-count")).toHaveText("1 von 3");
+
+  // A hit in a subtask shows the epic.
+  await field.fill("kartons");
+  await expect(board.locator(".card")).toHaveCount(1);
+  await expect(card(page, `Umzug ${s}`)).toBeVisible();
+
+  // Esc clears the query.
+  await page.keyboard.press("Escape");
+  await expect(field).toHaveValue("");
+  await expect(board.locator(".card")).toHaveCount(3);
+
+  // Type chips, then the same filter in the list view.
+  const filters = page.getByRole("group", { name: "Filter" });
+  await filters.locator('[data-type="feature"]').click();
+  await expect(board.locator(".card")).toHaveCount(1);
+  await expect(card(page, `Export bauen ${s}`)).toBeVisible();
+  await page.getByRole("button", { name: "Liste" }).click();
+  await expect(page.locator(".task-row")).toHaveCount(1);
+  await filters.locator('[data-type="feature"]').click();
+  await filters.locator('[data-type="bug"]').click();
+  await field.fill("export");
+  await expect(page.getByText("Keine Treffer.")).toBeVisible();
+  await page.getByRole("button", { name: "Filter zurücksetzen" }).click();
+  await expect(page.locator(".task-row")).toHaveCount(3);
+  await expect(field).toHaveValue("");
+});
+
+test("Dev-Board durchsuchen", async ({ page }) => {
+  const s = suffix();
+  const seeder = new Seeder();
+  const area = seeder.area(`Arbeit ${s}`);
+  const app = seeder.project(`App ${s}`, area, { kind: "dev" });
+  seeder.task(`Anmeldung ${s}`, { location: { kind: "project", id: app }, branch: "fix/oidc-redirect" });
+  seeder.task(`Dunkelmodus ${s}`, { location: { kind: "project", id: app } });
+  await seeder.push(page);
+  await openApp(page, "#/dev");
+
+  const field = page.getByRole("searchbox", { name: "Dev-Board: Suchen" });
+  await field.fill(`oidc ${s}`);
+  await expect(card(page, `Anmeldung ${s}`)).toBeVisible();
+  await expect(card(page, `Dunkelmodus ${s}`)).toHaveCount(0);
+  // Enter leaves the field on the first hit, so j/k and Enter work right away.
+  await field.press("Enter");
+  await expect(field).not.toBeFocused();
+  await expect(card(page, `Anmeldung ${s}`)).toHaveClass(/selected/);
+});

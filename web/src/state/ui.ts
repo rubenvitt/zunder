@@ -104,6 +104,13 @@ export interface BoardController {
 const [activeBoard, setActiveBoard] = createSignal<BoardController | null>(null);
 export { activeBoard, setActiveBoard };
 
+/** Focuses the search field of the current list or board (f); null = the view has none. */
+const [filterInput, setFilterInputSignal] = createSignal<(() => void) | null>(null);
+export { filterInput };
+export function setFilterInput(focus: (() => void) | null): void {
+  setFilterInputSignal(() => focus);
+}
+
 // ---- Overlays ----------------------------------------------------------
 
 export const [captureOpen, setCaptureOpen] = createSignal(false);

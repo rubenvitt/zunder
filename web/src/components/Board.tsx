@@ -28,6 +28,8 @@ export interface BoardProps {
   label: string;
   /** Done tasks past the 3-day window in the board's scope, newest first ("Ältere erledigte"). */
   archive?: () => Task[];
+  /** A search or filter is set: the done column shows every hit instead of folding. */
+  filtered?: boolean;
 }
 
 export function Board(props: BoardProps) {
@@ -49,9 +51,9 @@ export function Board(props: BoardProps) {
   /** What the column shows: done folds to the newest few unless expanded. */
   const shown = (status: TaskStatus) => {
     const list = column(status);
-    return status === "done" && !doneExpanded() ? list.slice(0, DONE_PREVIEW) : list;
+    return status === "done" && !doneExpanded() && !props.filtered ? list.slice(0, DONE_PREVIEW) : list;
   };
-  const hiddenDone = () => Math.max(0, column("done").length - DONE_PREVIEW);
+  const hiddenDone = () => (props.filtered ? 0 : Math.max(0, column("done").length - DONE_PREVIEW));
   // The detail panel sits beside the board; the archive dialog would cover it.
   createEffect(on(detailId, (id) => id && setArchiveOpen(false), { defer: true }));
   const [dragId, setDragId] = createSignal<string | null>(null);

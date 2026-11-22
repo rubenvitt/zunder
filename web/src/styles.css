@@ -1799,6 +1799,73 @@ h2.tone-violet::before {
 .add-row .btn {
   flex: none;
 }
+/* Search and filter above a list or board: one quiet line, the field grows when used. */
+.task-filter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: -0.3rem 0 0.9rem;
+}
+.task-filter-search {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 0 1 15rem;
+  min-width: 10rem;
+  height: 2rem;
+  padding: 0 0.3rem 0 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s,
+    flex-basis 0.15s;
+}
+.task-filter-search:focus-within,
+.task-filter-search.filled {
+  flex-basis: 22rem;
+}
+.task-filter-search:focus-within {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.task-filter-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 0.88rem;
+  color: var(--text);
+}
+.task-filter-input::placeholder {
+  color: var(--muted);
+}
+/* The own clear button replaces the browser's. */
+.task-filter-input::-webkit-search-cancel-button {
+  display: none;
+}
+.task-filter-chips {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.task-filter-chips .chip-button {
+  height: 1.75rem;
+  padding: 0 0.65rem;
+  font-size: 0.8rem;
+}
+.task-filter-count {
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
 /* The entry line of a project or area: always visible as a field, not only on hover. */
 .add-task {
   margin: 0 -0.6rem 0.9rem;
@@ -3549,11 +3616,21 @@ h2.tone-violet::before {
   .filter-chips > * {
     flex: none;
   }
+  /* Phones: the field takes the whole line, chips and count share the next one. */
+  .task-filter-search,
+  .task-filter-search:focus-within,
+  .task-filter-search.filled {
+    flex: 1 1 100%;
+  }
+  .task-filter-chips {
+    flex: 1 1 0;
+  }
   /* iOS zooms into fields below 16px. */
   .field,
   .prop-input,
   .prop-select,
   .add-input,
+  .task-filter-input,
   .capture-input,
   .palette-input,
   .md-content,
