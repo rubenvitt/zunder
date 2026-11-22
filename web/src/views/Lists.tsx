@@ -4,6 +4,7 @@ import { createMemo, For, onMount, Show } from "solid-js";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
 import { TaskList } from "../components/TaskList";
+import { createTaskFilter, NoMatches, TaskFilterBar } from "../components/TaskFilter";
 import { FocusSection } from "../components/FocusSection";
 import { WeekMirror } from "../components/WeekMirror";
 import { DayPreview, openDayTasks, previewLoads } from "../components/DayPreview";
@@ -225,18 +226,23 @@ export function InboxView() {
 }
 
 export function LooseView() {
-  const tasks = createMemo(() => tasksAt({ kind: "loose" }));
+  const all = createMemo(() => tasksAt({ kind: "loose" }));
+  const filter = createTaskFilter();
+  const tasks = createMemo(() => filter.apply(all()));
   onMount(() => registerList(tasks));
   return (
     <div class="view">
       <header class="view-head">
         <h1>Lose</h1>
-        <span class="count-badge">{tasks().length}</span>
+        <span class="count-badge">{all().length}</span>
       </header>
+      <Show when={all().length > 0 || filter.active()}>
+        <TaskFilterBar state={filter} weights shown={tasks().length} total={all().length} label="Lose Aufgaben" />
+      </Show>
       <TaskList
         tasks={tasks()}
         label="Lose Aufgaben"
-        empty={<EmptyState icon="loose" figure={{ name: "rail", label: "Eine Kleiderstange mit leeren Bügeln" }} title="Keine losen Aufgaben." hint="Hier liegt, was bewusst zu keinem Bereich gehört. Aus der Inbox mit l hierher schieben." />}
+        empty={filter.active() ? <NoMatches state={filter} /> : <EmptyState icon="loose" figure={{ name: "rail", label: "Eine Kleiderstange mit leeren Bügeln" }} title="Keine losen Aufgaben." hint="Hier liegt, was bewusst zu keinem Bereich gehört. Aus der Inbox mit l hierher schieben." />}
       />
     </div>
   );

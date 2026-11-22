@@ -10,6 +10,7 @@ import {
   anyOverlayOpen,
   copyTaskId,
   detailId,
+  filterInput,
   openSearch,
   palette,
   selectedId,
@@ -139,6 +140,13 @@ export function installKeyboard(): () => void {
       case "/":
         openSearch();
         break;
+      case "f": {
+        // Search inside the current list or board; views without one leave f alone.
+        const focus = filterInput();
+        if (focus) focus();
+        else handled = false;
+        break;
+      }
       case "?":
         setHelpOpen(true);
         break;

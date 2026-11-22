@@ -4,6 +4,7 @@ import { createEffect, createMemo, createSignal, For, on, onMount, Show } from "
 import { Board } from "../components/Board";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
+import { createTaskFilter, NoMatches, TaskFilterBar, type TaskFilterState } from "../components/TaskFilter";
 import { TaskList } from "../components/TaskList";
 import type { Area, Project } from "../sync/types";
 import { PROJECT_STATUS_LABELS } from "../labels";
@@ -167,7 +168,9 @@ function AddTaskInline(props: { onAdd: (title: string) => void; label: string })
 }
 
 function AreaPanel(props: { area: Area }) {
-  const tasks = createMemo(() => tasksAt({ kind: "area", id: props.area.id }));
+  const all = createMemo(() => tasksAt({ kind: "area", id: props.area.id }));
+  const filter = createTaskFilter(() => props.area.id);
+  const tasks = createMemo(() => filter.apply(all()));
   const projects = () => projectList().filter((p) => p.area_id === props.area.id);
   onMount(() => registerList(tasks));
   return (
@@ -204,17 +207,25 @@ function AreaPanel(props: { area: Area }) {
         </div>
       </Show>
       <AddTaskInline label="Aufgabe im Bereich anlegen …" onAdd={(title) => createTask({ title, location: { kind: "area", id: props.area.id } })} />
+      <Show when={all().length > 0 || filter.active()}>
+        <TaskFilterBar state={filter} weights shown={tasks().length} total={all().length} label={`Aufgaben in ${props.area.name}`} />
+      </Show>
       <TaskList
         tasks={tasks()}
         label={`Aufgaben in ${props.area.name}`}
-        empty={<EmptyState compact icon="check" title="Keine laufenden Aufgaben ohne Projekt." />}
+        empty={filter.active() ? <NoMatches state={filter} /> : <EmptyState compact icon="check" title="Keine laufenden Aufgaben ohne Projekt." />}
       />
     </>
   );
 }
 
 function ProjectPanel(props: { project: Project }) {
-  const tasks = createMemo(() => tasksAt({ kind: "project", id: props.project.id }));
+  const all = createMemo(() => tasksAt({ kind: "project", id: props.project.id }));
+  const filter = createTaskFilter(() => props.project.id);
+  const tasks = createMemo(() => filter.apply(all()));
+  const board = () => props.project.view === "board";
+  // The board has no column for dropped tasks; the counts follow what is on screen.
+  const boardAll = createMemo(() => all().filter((t) => t.status !== "dropped"));
   const boardTasks = createMemo(() => tasks().filter((t) => t.status !== "dropped"));
   const dev = () => props.project.kind === "dev";
   const toggleView = () => updateProject(props.project.id, { view: props.project.view === "board" ? "list" : "board" });
@@ -254,16 +265,38 @@ function ProjectPanel(props: { project: Project }) {
         </button>
       </header>
       <AddTaskInline label="Aufgabe im Projekt anlegen …" onAdd={(title) => createTask({ title, location: { kind: "project", id: props.project.id } })} />
-      <Show when={props.project.view === "board"} fallback={<ProjectList tasks={tasks()} name={props.project.name} />}>
-        <Board tasks={boardTasks()} dev={dev()} label={`Board ${props.project.name}`} archive={() => archivedAt({ kind: "project", id: props.project.id })} />
+      <Show when={all().length > 0 || filter.active()}>
+        <TaskFilterBar
+          state={filter}
+          types={dev()}
+          weights={!dev()}
+          shown={board() ? boardTasks().length : tasks().length}
+          total={board() ? boardAll().length : all().length}
+          label={`Aufgaben in ${props.project.name}`}
+        />
+      </Show>
+      <Show when={board()} fallback={<ProjectList tasks={tasks()} name={props.project.name} filter={filter} />}>
+        <Board
+          tasks={boardTasks()}
+          dev={dev()}
+          label={`Board ${props.project.name}`}
+          filtered={filter.active()}
+          archive={() => filter.apply(archivedAt({ kind: "project", id: props.project.id }))}
+        />
       </Show>
     </>
   );
 }
 
-function ProjectList(props: { tasks: ReturnType<typeof tasksAt>; name: string }) {
+function ProjectList(props: { tasks: ReturnType<typeof tasksAt>; name: string; filter: TaskFilterState }) {
   onMount(() => registerList(() => props.tasks));
-  return <TaskList tasks={props.tasks} label={`Aufgaben in ${props.name}`} empty={<EmptyState compact icon="list" title="Noch keine Aufgaben." hint="Oben eine Aufgabe anlegen." />} />;
+  return (
+    <TaskList
+      tasks={props.tasks}
+      label={`Aufgaben in ${props.name}`}
+      empty={props.filter.active() ? <NoMatches state={props.filter} /> : <EmptyState compact icon="list" title="Noch keine Aufgaben." hint="Oben eine Aufgabe anlegen." />}
+    />
+  );
 }
 
 export function toggleCurrentProjectView(): boolean {

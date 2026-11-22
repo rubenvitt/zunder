@@ -6,6 +6,7 @@ import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
 import { Logo } from "../components/Logo";
 import { TaskList } from "../components/TaskList";
+import { createTaskFilter, TaskFilterBar } from "../components/TaskFilter";
 import { isTauri } from "../platform/runtime";
 import { fireOf, formatInstant, isValidFire, shiftFire } from "../sync/dates";
 import { isFlameRunning } from "../sync/derived";
@@ -37,7 +38,9 @@ export function DevView() {
     for (const t of all()) out.set(projectOf(t), (out.get(projectOf(t)) ?? 0) + 1);
     return out;
   });
-  const tasks = createMemo(() => (selected().size === 0 ? all() : all().filter((t) => selected().has(projectOf(t)))));
+  const inProjects = createMemo(() => (selected().size === 0 ? all() : all().filter((t) => selected().has(projectOf(t)))));
+  const filter = createTaskFilter();
+  const tasks = createMemo(() => filter.apply(inProjects()));
   function toggle(id: string) {
     const next = new Set(selected());
     if (next.has(id)) next.delete(id);
@@ -73,7 +76,15 @@ export function DevView() {
             </For>
           </div>
         </Show>
-        <Board tasks={tasks()} dev devDetails label="Dev-Board" archive={() => devArchive(selected().size === 0 ? undefined : selected())} />
+        <TaskFilterBar state={filter} types shown={tasks().length} total={inProjects().length} label="Dev-Board" />
+        <Board
+          tasks={tasks()}
+          dev
+          devDetails
+          label="Dev-Board"
+          filtered={filter.active()}
+          archive={() => filter.apply(devArchive(selected().size === 0 ? undefined : selected()))}
+        />
       </Show>
     </div>
   );

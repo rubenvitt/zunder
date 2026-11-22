@@ -1,7 +1,7 @@
 // Right click on a task (contract 5.1, "Kontextmenü"): in the browser the web UI draws
 // the menu; the desktop app's native menu is covered in tauri.spec.ts.
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { localDate } from "../src/sync/dates";
 import { deferDay } from "../src/sync/defer";
 import { card, entityFields, newId, openApp, prepare, row, Seeder, suffix } from "./fixtures";
@@ -11,6 +11,17 @@ test.beforeEach(async ({ page }) => {
 });
 
 const menu = (page: Page) => page.getByRole("menu").first();
+
+/**
+ * Right click on an element that may sit below the fold (a long tree after earlier tests).
+ * Scrolling closes the menu, and the scroll event of Playwright's own scroll into view can
+ * arrive after the menu opened: bring it into view and let a frame pass first.
+ */
+async function rightClick(target: Locator): Promise<void> {
+  await target.scrollIntoViewIfNeeded();
+  await target.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  await target.click({ button: "right" });
+}
 
 test("Rechtsklick auf eine Zeile: erledigen, Fälligkeit und Gewicht über Untermenüs", async ({ page }) => {
   const s = suffix();
@@ -117,27 +128,27 @@ test("Kontextmenü auf Bereichen und Projekten: Ansicht, Status, Zustand, Bearbe
   const tree = page.getByRole("navigation", { name: "Bereiche und Projekte" });
 
   // Project in the tree: view and status in submenus.
-  await tree.getByRole("link", { name: `Dach ${s}` }).click({ button: "right" });
+  await rightClick(tree.getByRole("link", { name: `Dach ${s}` }));
   await menu(page).getByRole("menuitem", { name: "Ansicht" }).hover();
   await page.getByRole("menuitemcheckbox", { name: "Board" }).click();
   await expect.poll(async () => (await entityFields(page, "project", projectId)).view).toBe("board");
-  await tree.getByRole("link", { name: `Dach ${s}` }).click({ button: "right" });
+  await rightClick(tree.getByRole("link", { name: `Dach ${s}` }));
   await menu(page).getByRole("menuitem", { name: "Status" }).hover();
   await page.getByRole("menuitemcheckbox", { name: "Pausiert" }).click();
   await expect.poll(async () => (await entityFields(page, "project", projectId)).status).toBe("paused");
 
   // The project chip in the area opens the same menu; "Öffnen" navigates.
-  await page.locator(".project-chips").getByRole("button", { name: new RegExp(`Dach ${s}`) }).click({ button: "right" });
+  await rightClick(page.locator(".project-chips").getByRole("button", { name: new RegExp(`Dach ${s}`) }));
   await menu(page).getByRole("menuitem", { name: "Öffnen", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`#/bereiche/project/${projectId}$`));
 
   // Area: "Neues Projekt …" opens the dialog for this area, "Zustand" archives.
-  await tree.getByRole("link", { name: `Haus ${s}` }).click({ button: "right" });
+  await rightClick(tree.getByRole("link", { name: `Haus ${s}` }));
   await menu(page).getByRole("menuitem", { name: "Neues Projekt …" }).click();
   await expect(page.getByRole("dialog")).toContainText("Neues Projekt");
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await tree.getByRole("link", { name: `Haus ${s}` }).click({ button: "right" });
+  await rightClick(tree.getByRole("link", { name: `Haus ${s}` }));
   await menu(page).getByRole("menuitem", { name: "Zustand" }).hover();
   await page.getByRole("menuitemcheckbox", { name: "Archiviert" }).click();
   await expect.poll(async () => (await entityFields(page, "area", areaId)).state).toBe("archived");
