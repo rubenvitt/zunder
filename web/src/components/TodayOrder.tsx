@@ -143,6 +143,7 @@ export function TodayOrder(props: TodayOrderProps) {
               task={task}
               selected={selectedId() === task.id}
               showLocation
+              quietDue
               mark={<GoalMark task={task} />}
               drag={d.row(() => task)}
               actions={props.actions?.(task)}

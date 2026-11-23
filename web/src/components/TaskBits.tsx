@@ -2,7 +2,7 @@
 // the done check, the copyable reference, the progress bar and the subtask tree.
 
 import { createSignal, For, Show } from "solid-js";
-import { formatDue, localDate, parseDue } from "../sync/dates";
+import { formatDateLabel, formatDue, localDate, parseDue } from "../sync/dates";
 import { closedLast, hasOpenChildren, isClosed, isDevLocation } from "../sync/derived";
 import type { Task } from "../sync/types";
 import { STATUS_LABELS } from "../labels";
@@ -164,18 +164,26 @@ export function SubtaskToggle(props: { task: Task; open: boolean; onToggle: () =
   );
 }
 
-export function DueChip(props: { task: Task }) {
+/**
+ * The due date as a chip: red when overdue, accented when due today. `quiet` (Heute's order,
+ * design 5.1): no colour and no time of day, and nothing for a task due today.
+ */
+export function DueChip(props: { task: Task; quiet?: boolean }) {
   const info = () => parseDue(props.task.due);
+  const today = () => localDate(new Date(now()));
   const tone = () => {
     const due = info();
-    if (!due || isClosed(props.task.status)) return "";
-    const today = localDate(new Date(now()));
-    return due.date < today ? "chip-danger" : due.date === today ? "chip-accent" : "";
+    if (!due || props.quiet || isClosed(props.task.status)) return "";
+    return due.date < today() ? "chip-danger" : due.date === today() ? "chip-accent" : "";
+  };
+  const label = () => {
+    const due = info();
+    return props.quiet && due ? formatDateLabel(due.date, new Date(now())) : formatDue(props.task.due, new Date(now()));
   };
   return (
-    <Show when={props.task.due}>
+    <Show when={props.task.due && !(props.quiet && info()?.date === today())}>
       <span class={`chip ${tone()}`} title="Fällig">
-        {formatDue(props.task.due, new Date(now()))}
+        {label()}
       </span>
     </Show>
   );

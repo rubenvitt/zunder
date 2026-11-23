@@ -30,6 +30,8 @@ export interface TaskRowProps {
   swipe?: SwipeActions;
   /** The chip reads "wartet noch auf <Name>" (Wiedervorlage in Heute). */
   waitingStill?: boolean;
+  /** The due date without colour and time of day (Heute's order, design 5.1). */
+  quietDue?: boolean;
   /** Something quiet beside the title, e.g. the sign of the task's goal in Heute. */
   mark?: JSX.Element;
   /** HTML5 drag & drop (Heute's order). */
@@ -84,7 +86,7 @@ function PersonalChips(props: { task: Task }) {
   );
 }
 
-export function TaskMeta(props: { task: Task; showLocation?: boolean; showRef?: boolean; showProgress?: boolean; waitingStill?: boolean }) {
+export function TaskMeta(props: { task: Task; showLocation?: boolean; showRef?: boolean; showProgress?: boolean; waitingStill?: boolean; quietDue?: boolean }) {
   const progress = () => taskIndex().progress(props.task.id);
   return (
     <span class="task-meta">
@@ -117,7 +119,7 @@ export function TaskMeta(props: { task: Task; showLocation?: boolean; showRef?: 
           </span>
         )}
       </Show>
-      <DueChip task={props.task} />
+      <DueChip task={props.task} quiet={props.quietDue} />
       <PersonalChips task={props.task} />
       <Show when={props.task.recurrence}>
         {(r) => (
@@ -228,7 +230,7 @@ export function TaskRow(props: TaskRowProps) {
           onFocus={() => props.onSelect()}
         >
           <span class="task-title">{props.task.title}</span>
-          <TaskMeta task={props.task} showLocation={props.showLocation} waitingStill={props.waitingStill} />
+          <TaskMeta task={props.task} showLocation={props.showLocation} waitingStill={props.waitingStill} quietDue={props.quietDue} />
         </button>
         <span class="row-side">
           {props.mark}

@@ -79,8 +79,8 @@ test("liegengebliebene und fällige stehen ohne Rot unter Danach", async ({ page
   const remind_at = toRfc3339Local(new Date(new Date().setHours(0, 5, 0, 0)));
   const tasks = [
     seeder.task(`Heute geplant ${s}`, { location: loose, planned_on: today(), remind_at }),
-    seeder.task(`Fällig heute ${s}`, { location: loose, due: today() }),
-    seeder.task(`Überfällig ${s}`, { location: loose, due: yesterday(), weight: "brand" }),
+    seeder.task(`Fällig heute ${s}`, { location: loose, due: toRfc3339Local(new Date(new Date().setHours(0, 30, 0, 0))) }),
+    seeder.task(`Überfällig ${s}`, { location: loose, due: toRfc3339Local(addDays(new Date(new Date().setHours(14, 0, 0, 0)), -1)), weight: "brand" }),
     seeder.task(`Liegen geblieben ${s}`, { location: loose, planned_on: yesterday() }),
     seeder.task(`Erinnerung ${s}`, { location: loose, remind_at }),
   ];
@@ -91,6 +91,11 @@ test("liegengebliebene und fällige stehen ohne Rot unter Danach", async ({ page
     await expect(restOf(page, s)).toHaveText([`Liegen geblieben ${s}`, `Überfällig ${s}`, `Fällig heute ${s}`]);
     // One list: no red, no "Überfällig" or "Heute fällig" headings.
     await expect(page.locator(".view .tone-danger")).toHaveCount(0);
+    await expect(page.locator(".view .chip-danger")).toHaveCount(0);
+    // Due dates quietly, without the time of day; today's not at all.
+    await expect(row(page, `Überfällig ${s}`).locator(".task-meta")).toContainText("Gestern");
+    await expect(row(page, `Überfällig ${s}`).locator(".task-meta")).not.toContainText("14:00");
+    await expect(row(page, `Fällig heute ${s}`).locator(".task-meta")).not.toContainText(/Heute|00:30/);
     await expect(page.getByRole("heading", { name: /Überfällig|Heute fällig/ })).toHaveCount(0);
     // Reminders stay, without what already stands in the order.
     const reminders = page.getByRole("list", { name: "Erinnerungen" });

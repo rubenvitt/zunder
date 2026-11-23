@@ -58,6 +58,7 @@ export function TodayFocus(props: TodayFocusProps) {
         task={t()}
         selected={selectedId() === t().id}
         showLocation
+        quietDue
         mark={<GoalMark task={t()} />}
         drag={props.drag.row(t)}
         actions={props.actions?.(t())}
