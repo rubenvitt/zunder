@@ -562,6 +562,18 @@ pub fn entity_history(
     history_rows(rows)
 }
 
+/// All `flame_started_at` / `flame_ended_at` operations of all tasks in log
+/// order (for the one-time `flame_log` backfill).
+pub fn flame_ops(conn: &Connection, owner: Uuid) -> anyhow::Result<Vec<HistoryRow>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT seq, op_id, entity, entity_id, field, value_json, hlc, source, received_at
+         FROM ops WHERE owner_id = ?1 AND entity = 'task'
+           AND field IN ('flame_started_at', 'flame_ended_at') ORDER BY seq",
+    )?;
+    let rows = stmt.query(params![owner.to_string()])?;
+    history_rows(rows)
+}
+
 /// Operations whose source starts with `prefix` (e.g. `mcp:`), newest first,
 /// with `seq < before` (all when `None`), at most `limit`. Operations of the
 /// commit of the oldest returned row that did not fit are appended, so a

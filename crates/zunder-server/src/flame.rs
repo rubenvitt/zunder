@@ -17,7 +17,8 @@ use serde::Serialize;
 use zunder_core::hlc::system_time_ms;
 use zunder_core::ids::Id;
 use zunder_core::model::fields::task as f;
-use zunder_core::{EntityKind, State, Warning};
+use zunder_core::model::{parse_rfc3339, FlameInterval, MAX_FLAME_LOG};
+use zunder_core::{EntityKind, OpBatch, State, Warning};
 
 use crate::app::{format_ms, App, Source};
 use crate::error::{AppError, AppResult};
@@ -72,6 +73,25 @@ fn live_task(state: &State, id: Id) -> AppResult<zunder_core::Task> {
 fn view(app: &App, id: Id) -> AppResult<TaskView> {
     app.read(|s| TaskView::build(s, id, system_time_ms(), false))
         .ok_or_else(|| AppError::NotFound(format!("Aufgabe {id} nicht gefunden.")))
+}
+
+/// Appends the running flame of `id` (start until `now`) to its `flame_log`
+/// in the same batch as the end. The whole list is the value; the oldest
+/// entries fall away at the limit.
+fn log_flame(state: &State, batch: &mut OpBatch<'_>, id: Id, now: &str) {
+    let Some(task) = state.task(id) else { return };
+    let (Some(start), Some(end)) = (task.flame_started_at, parse_rfc3339(now)) else {
+        return;
+    };
+    if end <= start {
+        return;
+    }
+    let mut log = task.flame_log;
+    log.push(FlameInterval { start, end });
+    if log.len() > MAX_FLAME_LOG {
+        log.drain(..log.len() - MAX_FLAME_LOG);
+    }
+    batch.set_task(id, f::FLAME_LOG, serde_json::json!(log));
 }
 
 /// Starts a flame on a live task.
@@ -136,6 +156,7 @@ pub async fn start(app: &App, task_id: Id) -> AppResult<FlameOutcome> {
                 .collect();
             for id in &previous {
                 batch.set_task(*id, f::FLAME_ENDED_AT, now.clone());
+                log_flame(state, batch, *id, &now);
             }
             batch.set_task(task_id, f::FLAME_STARTED_AT, now.clone());
             batch.clear(EntityKind::Task, task_id, f::FLAME_ENDED_AT);
@@ -213,7 +234,8 @@ pub async fn stop(app: &App, task_id: Id) -> AppResult<FlameOutcome> {
         .mutate_atomic(Source::Server, move |state, batch| {
             let task = live_task(state, task_id)?;
             if flame_running(&task) {
-                batch.set_task(task_id, f::FLAME_ENDED_AT, now);
+                batch.set_task(task_id, f::FLAME_ENDED_AT, now.clone());
+                log_flame(state, batch, task_id, &now);
             }
             Ok(())
         })
