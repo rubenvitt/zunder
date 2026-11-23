@@ -1,6 +1,6 @@
 {
   "name": "validierung-ziele",
-  "description": "Ziele: einem Ziel ohne Namen fehlt ein Pflichtfeld, ein vollständiges Ziel mit allen Feldern wird angenommen. Ungültige Werte (lead_per_week, Daten) prüfen die Einheitentests in Kern und Web, weil der Web-Client statische Wertfehler vor Entitätsregeln meldet.",
+  "description": "Ziele: einem Ziel ohne Namen fehlt ein Pflichtfeld, ein vollständiges Ziel mit allen Feldern wird angenommen.",
   "kind": "validate",
   "now_ms": 1760000101000,
   "state": [],
