@@ -157,13 +157,18 @@ export interface WeekGoalInput {
  * included); `minutes` sums the flames of live tasks with this effective goal (any status) that
  * started in the week, the running one until `nowMs`.
  */
+/** Goal order everywhere: rank (missing last), then name, then ID. */
+export function compareGoals(a: Goal, b: Goal): number {
+  return presentFirst(a.rank, b.rank) || compareStrings(a.name, b.name) || compareStrings(a.id, b.id);
+}
+
 export function goalInput(index: TaskIndex, goals: Record<string, Goal>, week: string, nowMs: number): WeekGoalInput {
   const monday = mondayOf(week);
   const from = monday ? localDate(monday) : "";
   const to = monday ? localDate(addDays(monday, 6)) : "";
   const active = Object.values(goals)
     .filter((g) => !g.deleted && g.state === "active")
-    .sort((a, b) => presentFirst(a.rank, b.rank) || compareStrings(a.name, b.name) || compareStrings(a.id, b.id));
+    .sort(compareGoals);
   const rows = active.map((goal): GoalInput => ({ goal, done: 0, minutes: 0, lead_per_week: goal.lead_per_week, reached: false }));
   const rowOf = new Map(rows.map((r) => [r.goal.id, r]));
   if (monday) {

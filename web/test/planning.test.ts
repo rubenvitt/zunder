@@ -93,3 +93,27 @@ describe("empty input", () => {
     expect(doneLog(new TaskIndex([task("t", { status: "done" })]), {}, "2026-11-30", "2026-11-01", 0)).toEqual([]);
   });
 });
+
+describe("focus", () => {
+  it("skips waiting_on and takes the next open task", () => {
+    const waiting = task("a", { planned_on: "2026-11-23", day_rank: "a", waiting_on: "Anna" });
+    const free = task("b", { planned_on: "2026-11-23", day_rank: "b" });
+    const out = todayList(new TaskIndex([waiting, free]), "2026-11-23");
+    expect(out.items.map((t) => t.id)).toEqual(["a", "b"]);
+    expect(out.focus?.id).toBe("b");
+    expect(todayList(new TaskIndex([waiting]), "2026-11-23").focus).toBeNull();
+  });
+});
+
+describe("closed goal", () => {
+  it("keeps its emoji in the log (effectiveGoal) but is left out of the goal input", () => {
+    const closed = goal("zu", { state: "closed", emoji: "🏃" });
+    const goals = { zu: closed };
+    const done = task("t", { goal_id: "zu", status: "done", status_hlc: "1790000000000:00000:test" });
+    const index = new TaskIndex([done]);
+    const log = doneLog(index, {}, "2000-01-01", "2100-01-01", 0);
+    const entry = log.flatMap((d) => d.done)[0]!;
+    expect(effectiveGoal(index, goals, entry.task)?.emoji).toBe("🏃");
+    expect(goalInput(index, goals, "2026-W47", 0).goals).toEqual([]);
+  });
+});
