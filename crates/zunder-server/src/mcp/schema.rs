@@ -385,7 +385,9 @@ fn with(
 const DEFER_TASK: &str = "Verschiebt eine Aufgabe auf später („Heute nicht“) und zählt mit \
     (deferrals, Verschiebungs-Counter der Phönix-Progression). Eine Fälligkeit vor dem Zieltag \
     rückt auf ihn (eine Uhrzeit bleibt), ebenso eine frühere Erinnerung; eine Aufgabe ganz ohne \
-    Datum bekommt den Zieltag als Fälligkeit. Liegt beides schon auf oder nach dem Zieltag, ändert \
+    Datum bekommt den Zieltag als Fälligkeit. Ist die Aufgabe für einen früheren Tag eingeplant \
+    (planned_on), wandert der Plan mit auf den Zieltag, auch wenn Fälligkeit und Erinnerung schon \
+    später liegen (das zählt dann ebenfalls). Liegt alles schon auf oder nach dem Zieltag, ändert \
     sich nichts. Zweimal verschieben geht ohne Weiteres; der dritte Aufschub ist eine Entscheidung \
     und wird ohne force abgelehnt (Fehler decision_due): den Nutzer fragen, ob die Aufgabe gestrichen \
     (update_task status dropped), neu geschnitten (Titel oder Beschreibung schärfen oder \

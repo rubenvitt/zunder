@@ -1148,8 +1148,8 @@ async fn defer_task(app: &App, source: Source, args: &Args) -> AppResult<Value> 
                 return Err(AppError::BadRequest {
                     code: "invalid_value",
                     message: format!(
-                        "Nichts zu verschieben: Fälligkeit und Erinnerung liegen schon am {} \
-                         oder später.",
+                        "Nichts zu verschieben: Fälligkeit, Erinnerung und Tagesplan liegen \
+                         schon am {} oder später.",
                         german_day(day)
                     ),
                 });
@@ -1162,6 +1162,9 @@ async fn defer_task(app: &App, source: Source, args: &Args) -> AppResult<Value> 
             }
             if let Some(remind_at) = plan.remind_at {
                 batch.set_task(id, ft::REMIND_AT, format_rfc3339(remind_at));
+            }
+            if let Some(planned_on) = plan.planned_on {
+                batch.set_task(id, ft::PLANNED_ON, format_date(planned_on));
             }
             batch.set_task(id, ft::DEFERRALS, plan.deferrals);
             Ok(id)

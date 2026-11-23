@@ -2093,6 +2093,36 @@ async fn defer_task_moves_counts_and_asks_for_a_decision() {
 }
 
 #[tokio::test]
+async fn defer_task_moves_planned_on() {
+    let (s, t) = setup().await;
+    let today = local_today().to_string();
+    let tomorrow = (local_today() + chrono::Days::new(1)).to_string();
+    let later = (local_today() + chrono::Days::new(14)).to_string();
+    let planned = create(&s, &t, json!({"title": "Geplant", "planned_on": today})).await;
+    let r = mcp_ok(&s, &t, "defer_task", json!({"task_id": planned})).await;
+    assert_eq!(r["task"]["planned_on"], tomorrow);
+    assert_eq!(r["task"]["due"], tomorrow);
+    assert_eq!(r["task"]["deferrals"], 1);
+
+    // Due later anyway: only the plan moves, and it counts (as in the web UI).
+    let deadline = create(
+        &s,
+        &t,
+        json!({"title": "Frist", "planned_on": today, "due": later}),
+    )
+    .await;
+    let r = mcp_ok(&s, &t, "defer_task", json!({"task_id": deadline})).await;
+    assert_eq!(r["task"]["planned_on"], tomorrow);
+    assert_eq!(r["task"]["due"], later);
+    assert_eq!(r["task"]["deferrals"], 1);
+    // Now nothing lies before tomorrow: refused, nothing counted.
+    let (code, message) = mcp_err(&s, &t, "defer_task", json!({"task_id": deadline})).await;
+    assert_eq!(code, "invalid_value");
+    assert!(message.contains("Tagesplan"), "{message}");
+    assert_eq!(task_json(&s, &t, &deadline).await["deferrals"], 1);
+}
+
+#[tokio::test]
 async fn defer_task_keeps_the_time_and_refuses_bad_targets() {
     let (s, t) = setup().await;
     let id = create(

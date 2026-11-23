@@ -8,6 +8,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { weekBalance, type WeekBalance } from "../src/sync/balance";
+import { deferFields } from "../src/sync/defer";
 import { doneLog, goalInput, todayList } from "../src/sync/planning";
 import { isDevLocation, TaskIndex } from "../src/sync/derived";
 import { compareHlc, isValidHlc } from "../src/sync/hlc";
@@ -121,7 +122,21 @@ type DoneLogVector = PlanningVector<
   }
 >;
 
+/** "Heute nicht" (zunder_core::defer::plan, sync/defer deferFields): new values, null = stays. */
+interface DeferVector {
+  name: string;
+  kind: "defer";
+  cases: {
+    description: string;
+    day: string;
+    task_id: string;
+    state: Op[];
+    expected: { due: string | null; remind_at: string | null; planned_on: string | null; deferrals: number } | null;
+  }[];
+}
+
 type Vector =
+  | DeferVector
   | MergeVector
   | HlcOrderVector
   | ValidateVector
@@ -243,6 +258,19 @@ describe("shared test vectors", () => {
           const got = todayList(planningInput(ops).index, c.today);
           return { items: got.items.map((t) => t.id), focus: got.focus?.id ?? null, has_plan: got.has_plan, plan_done: got.plan_done };
         });
+        return;
+      }
+      if (vector.kind === "defer") {
+        expect(vector.cases.length).toBeGreaterThan(0);
+        for (const c of vector.cases) {
+          for (const order of orderings(c.state)) {
+            const task = planningInput(order).index.byId.get(c.task_id);
+            expect(task, c.description).toBeDefined();
+            const f = deferFields(task!, c.day);
+            const got = f && { due: f.due ?? null, remind_at: f.remind_at ?? null, planned_on: f.planned_on ?? null, deferrals: f.deferrals };
+            expect(got, c.description).toEqual(c.expected);
+          }
+        }
         return;
       }
       if (vector.kind === "goal_input") {

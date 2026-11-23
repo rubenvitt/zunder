@@ -1,0 +1,237 @@
+{
+  "name": "heute-nicht-mit-tagesplan",
+  "description": "„Heute nicht“ (Entwurf 5.3) mit Tagesplan: zu `day` verschoben rücken eine frühere Fälligkeit (Uhrzeit bleibt), eine frühere Erinnerung und ein früherer planned_on auf `day`; ohne Fälligkeit und Erinnerung wird `day` die Fälligkeit. Rückt nur der Plan, zählt es ebenfalls. `expected` nennt die neuen Werte (null = bleibt) und den Zähler danach, oder ist null, wenn nichts zu verschieben ist (zunder_core::defer::plan, web/src/sync/defer.ts deferFields).",
+  "kind": "defer",
+  "cases": [
+    {
+      "description": "Für heute eingeplant, ohne Datum: Fälligkeit und Plan rücken auf morgen, der Zähler steigt.",
+      "day": "2026-11-24",
+      "task_id": "p680000000t0000000000001",
+      "state": [
+        {
+          "op_id": "p680000000e0000000000001",
+          "entity": "task",
+          "entity_id": "p680000000t0000000000001",
+          "field": "title",
+          "value": "Aufgabe 1",
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "p680000000e0000000000002",
+          "entity": "task",
+          "entity_id": "p680000000t0000000000001",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "p680000000e0000000000003",
+          "entity": "task",
+          "entity_id": "p680000000t0000000000001",
+          "field": "planned_on",
+          "value": "2026-11-23",
+          "hlc": "1793520001000:00000:p"
+        }
+      ],
+      "expected": {
+        "due": "2026-11-24",
+        "remind_at": null,
+        "planned_on": "2026-11-24",
+        "deferrals": 1
+      }
+    },
+    {
+      "description": "Für heute eingeplant, Fälligkeit liegt später: nur der Plan rückt, das zählt trotzdem.",
+      "day": "2026-11-24",
+      "task_id": "p680000000t0000000000002",
+      "state": [
+        {
+          "op_id": "p680000000e0000000000004",
+          "entity": "task",
+          "entity_id": "p680000000t0000000000002",
+          "field": "title",
+          "value": "Aufgabe 2",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "p680000000e0000000000005",
+          "entity": "task",
+          "entity_id": "p680000000t0000000000002",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "p680000000e0000000000006",
+          "entity": "task",
+          "entity_id": "p680000000t0000000000002",
+          "field": "planned_on",
+          "value": "2026-11-23",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "p680000000e0000000000007",
+          "entity": "task",
+          "entity_id": "p680000000t0000000000002",
+          "field": "due",
+          "value": "2026-12-07",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "p680000000e0000000000008",
+          "entity": "task",
+          "entity_id": "p680000000t0000000000002",
+          "field": "deferrals",
+          "value": 1,
+          "hlc": "1793520002000:00000:p"
+        }
+      ],
+      "expected": {
+        "due": null,
+        "remind_at": null,
+        "planned_on": "2026-11-24",
+        "deferrals": 2
+      }
+    },
+    {
+      "description": "Liegengeblieben (Plan von gestern), Fälligkeit mit Uhrzeit und Erinnerung von heute: alles rückt auf den Montag der nächsten Woche, Uhrzeit und Versatz bleiben.",
+      "day": "2026-11-30",
+      "task_id": "p680000000t0000000000003",
+      "state": [
+        {
+          "op_id": "p680000000e0000000000009",
+          "entity": "task",
+          "entity_id": "p680000000t0000000000003",
+          "field": "title",
+          "value": "Aufgabe 3",
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "p680000000e0000000000010",
+          "entity": "task",
+          "entity_id": "p680000000t0000000000003",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "p680000000e0000000000011",
+          "entity": "task",
+          "entity_id": "p680000000t0000000000003",
+          "field": "planned_on",
+          "value": "2026-11-20",
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "p680000000e0000000000012",
+          "entity": "task",
+          "entity_id": "p680000000t0000000000003",
+          "field": "due",
+          "value": "2026-11-22T18:30:00+01:00",
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "p680000000e0000000000013",
+          "entity": "task",
+          "entity_id": "p680000000t0000000000003",
+          "field": "remind_at",
+          "value": "2026-11-23T09:00:00+01:00",
+          "hlc": "1793520003000:00000:p"
+        }
+      ],
+      "expected": {
+        "due": "2026-11-30T18:30:00+01:00",
+        "remind_at": "2026-11-30T09:00:00+01:00",
+        "planned_on": "2026-11-30",
+        "deferrals": 1
+      }
+    },
+    {
+      "description": "Für übermorgen eingeplant, Fälligkeit noch später: nichts zu verschieben.",
+      "day": "2026-11-24",
+      "task_id": "p680000000t0000000000004",
+      "state": [
+        {
+          "op_id": "p680000000e0000000000014",
+          "entity": "task",
+          "entity_id": "p680000000t0000000000004",
+          "field": "title",
+          "value": "Aufgabe 4",
+          "hlc": "1793520004000:00000:p"
+        },
+        {
+          "op_id": "p680000000e0000000000015",
+          "entity": "task",
+          "entity_id": "p680000000t0000000000004",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520004000:00000:p"
+        },
+        {
+          "op_id": "p680000000e0000000000016",
+          "entity": "task",
+          "entity_id": "p680000000t0000000000004",
+          "field": "planned_on",
+          "value": "2026-11-25",
+          "hlc": "1793520004000:00000:p"
+        },
+        {
+          "op_id": "p680000000e0000000000017",
+          "entity": "task",
+          "entity_id": "p680000000t0000000000004",
+          "field": "due",
+          "value": "2026-11-28",
+          "hlc": "1793520004000:00000:p"
+        }
+      ],
+      "expected": null
+    },
+    {
+      "description": "Schon für den Zieltag eingeplant, ohne Datum: der Plan bleibt, die Aufgabe bekommt den Zieltag als Fälligkeit.",
+      "day": "2026-11-24",
+      "task_id": "p680000000t0000000000005",
+      "state": [
+        {
+          "op_id": "p680000000e0000000000018",
+          "entity": "task",
+          "entity_id": "p680000000t0000000000005",
+          "field": "title",
+          "value": "Aufgabe 5",
+          "hlc": "1793520005000:00000:p"
+        },
+        {
+          "op_id": "p680000000e0000000000019",
+          "entity": "task",
+          "entity_id": "p680000000t0000000000005",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520005000:00000:p"
+        },
+        {
+          "op_id": "p680000000e0000000000020",
+          "entity": "task",
+          "entity_id": "p680000000t0000000000005",
+          "field": "planned_on",
+          "value": "2026-11-24",
+          "hlc": "1793520005000:00000:p"
+        }
+      ],
+      "expected": {
+        "due": "2026-11-24",
+        "remind_at": null,
+        "planned_on": null,
+        "deferrals": 1
+      }
+    }
+  ]
+}

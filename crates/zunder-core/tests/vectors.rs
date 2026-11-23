@@ -9,7 +9,11 @@ use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use time::{Date, Month, OffsetDateTime, UtcOffset, Weekday};
 use zunder_core::balance::week_balance;
-use zunder_core::model::{format_rfc3339, parse_plain_date, parse_rfc3339, Due, Recurrence};
+use zunder_core::defer;
+use zunder_core::ids::Id;
+use zunder_core::model::{
+    format_date, format_rfc3339, parse_plain_date, parse_rfc3339, Due, Recurrence,
+};
 use zunder_core::planning::{done_log, goal_input, today_list};
 use zunder_core::recurrence::{next_occurrence, LocalZone};
 use zunder_core::{validate_push, Hlc, IsoWeek, Op, State};
@@ -81,6 +85,25 @@ enum Vector {
         time_zone: String,
         cases: Vec<DoneLogCase>,
     },
+    /// „Heute nicht“ (design 5.3): per case the task `task_id` of `state`
+    /// (merged in every op permutation) is put off to `day`; `expected` is
+    /// `zunder_core::defer::plan` as new values (`due`, `remind_at`,
+    /// `planned_on`, null = stays) and `deferrals`, or null when nothing
+    /// moves.
+    Defer {
+        name: String,
+        cases: Vec<DeferCase>,
+    },
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DeferCase {
+    description: String,
+    day: String,
+    task_id: String,
+    state: Vec<Op>,
+    expected: Value,
 }
 
 #[derive(Debug, Deserialize)]
@@ -302,6 +325,7 @@ fn shared_vectors() {
     let mut balance_count = 0;
     let mut occurrence_count = 0;
     let mut planning_count = 0;
+    let mut defer_count = 0;
     for path in &files {
         let file_name = path.file_name().unwrap().to_string_lossy().into_owned();
         match load(path) {
@@ -468,6 +492,35 @@ fn shared_vectors() {
                     },
                 );
             }
+            Vector::Defer { name, cases } => {
+                defer_count += 1;
+                assert!(
+                    file_name.contains(&name),
+                    "{file_name}: name {name:?} does not match"
+                );
+                assert!(!cases.is_empty(), "{name}: no cases");
+                for case in &cases {
+                    let day = date_input(&case.day, "day");
+                    let id = Id::parse(&case.task_id).expect("task_id is an ID");
+                    for (label, perm) in permutations(&case.state) {
+                        let task = State::from_ops(&perm).task(id).expect("task in state");
+                        let got = defer::plan(&task, day).map(|d| {
+                            json!({
+                                "due": d.due.map(|due| due.to_wire()),
+                                "remind_at": d.remind_at.map(format_rfc3339),
+                                "planned_on": d.planned_on.map(format_date),
+                                "deferrals": d.deferrals,
+                            })
+                        });
+                        assert_eq!(
+                            got.unwrap_or(Value::Null),
+                            case.expected,
+                            "vector {name}, case {:?}, order: {label}",
+                            case.description
+                        );
+                    }
+                }
+            }
             Vector::HlcOrder { name, sorted } => {
                 hlc_count += 1;
                 assert!(
@@ -512,6 +565,7 @@ fn shared_vectors() {
         planning_count >= 3,
         "expected today_list, goal_input and done_log vectors, found {planning_count}"
     );
+    assert!(defer_count >= 1, "expected at least one defer vector");
     assert!(
         validate_count >= 10,
         "expected at least 10 validate vectors, found {validate_count}"

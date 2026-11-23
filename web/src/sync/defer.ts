@@ -1,5 +1,7 @@
 // "Heute nicht": putting a task off to a later day, counted by the deferral counter of the
-// Phönix-Progression. Mirrors zunder_core::defer; the MCP tool defer_task follows the same rules.
+// Phönix-Progression; a task planned for an earlier day takes its plan along (design 5.3).
+// Mirrors zunder_core::defer (shared vector kind "defer"); the MCP tool defer_task follows the
+// same rules.
 
 import { addDays, dateFromLocal, isDateOnly, isRfc3339, localDate } from "./dates";
 import type { JsonValue, Task } from "./types";
@@ -38,17 +40,20 @@ function ownDate(value: string): string | null {
 }
 
 /**
- * The fields one deferral to `day` writes, or null when the due date and the reminder
- * already lie on or after it. An earlier due date moves to `day` (a timestamp keeps its time
- * of day and offset), an earlier reminder as well; a task without both gets `day` as due date.
+ * The fields one deferral to `day` writes, or null when the due date, the reminder and the plan
+ * day already lie on or after it (or are not set). An earlier due date moves to `day` (a
+ * timestamp keeps its time of day and offset), an earlier reminder and an earlier `planned_on`
+ * as well; a task without due date and reminder gets `day` as due date. A plan that moves alone
+ * counts as a deferral too.
  */
-export function deferFields(task: Pick<Task, "due" | "remind_at" | "deferrals" | "undated_ack">, day: string): Record<string, JsonValue> | null {
+export function deferFields(task: Pick<Task, "due" | "remind_at" | "deferrals" | "undated_ack" | "planned_on">, day: string): Record<string, JsonValue> | null {
   const fields: Record<string, JsonValue> = {};
   const due = task.due ? ownDate(task.due) : null;
   if (task.due && due && due < day) fields.due = isDateOnly(task.due) ? day : day + task.due.slice(10);
   const remind = task.remind_at ? ownDate(task.remind_at) : null;
   if (task.remind_at && remind && remind < day) fields.remind_at = day + task.remind_at.slice(10);
   if (!task.due && !task.remind_at) fields.due = day;
+  if (task.planned_on && task.planned_on < day) fields.planned_on = day;
   if (Object.keys(fields).length === 0) return null;
   if (fields.due !== undefined && task.undated_ack) fields.undated_ack = null;
   fields.deferrals = task.deferrals + 1;

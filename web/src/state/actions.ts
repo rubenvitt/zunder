@@ -187,11 +187,7 @@ export function writeDeferral(id: string, target: DeferTarget, before?: () => vo
   if (!task) return false;
   const today = new Date(now());
   const day = deferDay(target, localDate(today));
-  // A planned task takes its plan along to that day (design 5.3), in the same push group; that
-  // alone is a deferral too, when due date and reminder lie on or after the day already.
-  const movesPlan = task.planned_on !== null && task.planned_on < day;
-  const fields = deferFields(task, day) ?? (movesPlan ? { deferrals: task.deferrals + 1 } : null);
-  if (fields && movesPlan) fields.planned_on = day;
+  const fields = deferFields(task, day);
   if (!fields) {
     toast(`„${shorten(task.title)}“ ist schon für ${dayPhrase(day, today)} oder später geplant.`);
     return false;
