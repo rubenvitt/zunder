@@ -7,20 +7,26 @@
 //   (isFlameRunning) and counts until `nowMs`;
 // - a flame counts whole minutes (rounded down per flame) for the local calendar day of its
 //   start, even when it ends after midnight;
-// - the effective goal is the task's own goal_id, otherwise its root's; a deleted goal is none.
+// - the effective goal is the task's own goal_id, otherwise its root's; a deleted goal counts
+//   as none (a deleted own goal falls back to the root's).
 
 import { addDays, dateFromLocal, localDate, parseDue } from "./dates";
 import { mondayOf } from "./balance";
-import { isClosed, isDevLocation, isFlameRunning, rootOf, statusChangedMs, weightRank, type TaskIndex } from "./derived";
+import { compareTasks, isClosed, isDevLocation, isFlameRunning, rootOf, statusChangedMs, weightRank, type TaskIndex } from "./derived";
 import type { Goal, Project, Task } from "./types";
 
 const MINUTE_MS = 60_000;
 
-/** The effective goal of a task: its own goal, otherwise its root's; a deleted goal is none. */
+/**
+ * The effective goal of a task: its own goal, otherwise its root's. A deleted (or unknown) goal
+ * counts as none, so a subtask whose own goal is deleted counts for its root's goal.
+ */
 export function effectiveGoal(index: TaskIndex, goals: Record<string, Goal>, task: Task): Goal | null {
-  const id = task.goal_id ?? rootOf(task, index.lookup).goal_id;
-  const goal = id ? goals[id] : undefined;
-  return goal && !goal.deleted ? goal : null;
+  const live = (id: string | null) => {
+    const goal = id ? goals[id] : undefined;
+    return goal && !goal.deleted ? goal : null;
+  };
+  return live(task.goal_id) ?? live(rootOf(task, index.lookup).goal_id);
 }
 
 /** Whole minutes from `startMs` to `endMs` (rounded down, never negative; 0 when unreadable). */
@@ -80,7 +86,8 @@ export interface TodayList {
  * 1. planned_on = today, by day_rank (missing last), creation, ID;
  * 2. planned_on < today, by planned_on, day_rank, creation, ID;
  * 3. no planned_on and due by today, by weight (Brand, Glut, none, Rauch, Asche), due instant
- *    (a date without time is due at local midnight), creation, ID.
+ *    (a date without time is due at local midnight), then compareTasks (rank, else the default
+ *    rank of the creation time, creation, ID): as byDue in state/selectors.
  */
 export function todayList(index: TaskIndex, today: string): TodayList {
   const planned: Task[] = [];
@@ -112,7 +119,7 @@ export function todayList(index: TaskIndex, today: string): TodayList {
   }
   planned.sort(byDayRank);
   leftOver.sort((a, b) => compareStrings(a.planned_on!, b.planned_on!) || byDayRank(a, b));
-  due.sort((a, b) => weightRank(a.task.weight) - weightRank(b.task.weight) || a.at - b.at || byCreation(a.task, b.task));
+  due.sort((a, b) => weightRank(a.task.weight) - weightRank(b.task.weight) || a.at - b.at || compareTasks(a.task, b.task));
   const items = [...planned, ...leftOver, ...due.map((d) => d.task)];
   const planDone = hasPlan && !planOpen;
   const focus =

@@ -1,6 +1,6 @@
 {
   "name": "heute-liste",
-  "description": "Heute als eine Reihenfolge (Entwurf 5.1/5.2): lebende Aufgaben mit Status open, in_progress, blocked oder review; erst für heute eingeplant (day_rank, dann Erstellung, ID), dann liegengeblieben (planned_on, day_rank, Erstellung, ID), dann fällig bis heute ohne Plan (Gewicht, Fälligkeitszeitpunkt, Erstellung, ID). Fokus ist die laufende Flamme, sonst ohne erledigten Plan die erste offene oder begonnene Aufgabe ohne waiting_on.",
+  "description": "Heute als eine Reihenfolge (Entwurf 5.1/5.2): lebende Aufgaben mit Status open, in_progress, blocked oder review; erst für heute eingeplant (day_rank, dann Erstellung, ID), dann liegengeblieben (planned_on, day_rank, Erstellung, ID), dann fällig bis heute ohne Plan (Gewicht, Fälligkeitszeitpunkt, rank bzw. Standard-Rang der Erstellungszeit, Erstellung, ID). Fokus ist die laufende Flamme, sonst ohne erledigten Plan die erste offene oder begonnene Aufgabe ohne waiting_on.",
   "kind": "today_list",
   "time_zone": "Europe/Berlin",
   "cases": [
@@ -1031,6 +1031,116 @@
           "s650000000t0000000000003"
         ],
         "focus": "s650000000t0000000000003",
+        "has_plan": false,
+        "plan_done": false
+      }
+    },
+    {
+      "description": "Gleiches Gewicht und gleiche Fälligkeit ohne Uhrzeit: Reihenfolge wie bisher (byDue) nach rank, ohne rank nach dem Standard-Rang der Erstellungszeit (Basis 36, der vor a0 sortiert), erst dann Erstellung und ID.",
+      "today": "2026-11-23",
+      "state": [
+        {
+          "op_id": "t650000000e0000000000001",
+          "entity": "task",
+          "entity_id": "t650000000t0000000000001",
+          "field": "title",
+          "value": "Zuerst angelegt, rank b0",
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "t650000000e0000000000002",
+          "entity": "task",
+          "entity_id": "t650000000t0000000000001",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "t650000000e0000000000003",
+          "entity": "task",
+          "entity_id": "t650000000t0000000000001",
+          "field": "due",
+          "value": "2026-11-23",
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "t650000000e0000000000004",
+          "entity": "task",
+          "entity_id": "t650000000t0000000000001",
+          "field": "rank",
+          "value": "b0",
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "t650000000e0000000000005",
+          "entity": "task",
+          "entity_id": "t650000000t0000000000002",
+          "field": "title",
+          "value": "Danach angelegt, rank a0",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "t650000000e0000000000006",
+          "entity": "task",
+          "entity_id": "t650000000t0000000000002",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "t650000000e0000000000007",
+          "entity": "task",
+          "entity_id": "t650000000t0000000000002",
+          "field": "due",
+          "value": "2026-11-23",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "t650000000e0000000000008",
+          "entity": "task",
+          "entity_id": "t650000000t0000000000002",
+          "field": "rank",
+          "value": "a0",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "t650000000e0000000000009",
+          "entity": "task",
+          "entity_id": "t650000000t0000000000003",
+          "field": "title",
+          "value": "Zuletzt angelegt, ohne rank",
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "t650000000e0000000000010",
+          "entity": "task",
+          "entity_id": "t650000000t0000000000003",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "t650000000e0000000000011",
+          "entity": "task",
+          "entity_id": "t650000000t0000000000003",
+          "field": "due",
+          "value": "2026-11-23",
+          "hlc": "1793520003000:00000:p"
+        }
+      ],
+      "expected": {
+        "items": [
+          "t650000000t0000000000003",
+          "t650000000t0000000000002",
+          "t650000000t0000000000001"
+        ],
+        "focus": "t650000000t0000000000003",
         "has_plan": false,
         "plan_done": false
       }

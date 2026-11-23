@@ -48,9 +48,17 @@ describe("effectiveGoal", () => {
     expect(effectiveGoal(index, goals, grandchild)?.id).toBe("sport");
   });
 
-  it("counts a deleted or unknown goal as none, also when the root has one", () => {
-    expect(effectiveGoal(index, goals, own)).toBeNull();
+  it("counts a deleted own goal as none, so the root's goal applies", () => {
+    expect(effectiveGoal(index, goals, own)?.id).toBe("sport");
+  });
+
+  it("is none for a deleted or unknown goal without a live one at the root", () => {
     expect(effectiveGoal(index, goals, task("x", { goal_id: "unbekannt" }))).toBeNull();
+    const gone = task("gone", { goal_id: "weg" });
+    const below = task("below", { parent_id: "gone" });
+    const other = new TaskIndex([gone, below]);
+    expect(effectiveGoal(other, goals, gone)).toBeNull();
+    expect(effectiveGoal(other, goals, below)).toBeNull();
   });
 });
 

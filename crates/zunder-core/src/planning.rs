@@ -86,29 +86,54 @@ fn live_goal(state: &State, goal: Option<Id>) -> Option<Id> {
 }
 
 /// The effective goal of a task: its own `goal_id`, otherwise the one of its
-/// root task (chain over `parent_id`); a deleted goal counts as none.
+/// root task (chain over `parent_id`). A deleted (or unknown) goal counts as
+/// none, so a subtask whose own goal is deleted counts for its root's goal.
 pub fn effective_goal(state: &State, task_id: Id) -> Option<Id> {
-    let task = state.task(task_id)?;
-    let goal = task.goal_id.or_else(|| {
-        state
-            .root_task(task_id)
-            .and_then(|root| state.task(root))
-            .and_then(|root| root.goal_id)
-    });
-    live_goal(state, goal)
+    effective_goal_by(state, task_id, |id| state.task(id).and_then(|t| t.goal_id))
 }
 
 /// [`effective_goal`] over a precomputed map of all tasks' own `goal_id`.
 fn effective_goal_in(state: &State, own: &HashMap<Id, Option<Id>>, task: &Task) -> Option<Id> {
-    let goal = task.goal_id.or_else(|| {
-        state
-            .root_task(task.id)
-            .and_then(|root| own.get(&root).copied().flatten())
-    });
-    live_goal(state, goal)
+    effective_goal_by(state, task.id, |id| own.get(&id).copied().flatten())
+}
+
+/// The one rule behind [`effective_goal`]; `own_goal` gives a task's stored
+/// `goal_id`.
+fn effective_goal_by(
+    state: &State,
+    task_id: Id,
+    own_goal: impl Fn(Id) -> Option<Id>,
+) -> Option<Id> {
+    live_goal(state, own_goal(task_id)).or_else(|| {
+        let root = state.root_task(task_id)?;
+        live_goal(state, own_goal(root))
+    })
 }
 
 // ----- Heute ----------------------------------------------------------------
+
+/// The rank a task without an explicit `rank` sorts by: its creation time in
+/// ms as base 36, zero-padded to nine digits, plus the suffix `i` (exactly
+/// `defaultRank` in `web/src/sync/rank.ts`), so explicit and implicit ranks
+/// share one key space.
+pub fn default_rank(created_ms: u64) -> String {
+    const DIGITS: &[u8; 36] = b"0123456789abcdefghijklmnopqrstuvwxyz";
+    let mut digits = Vec::new();
+    let mut rest = created_ms;
+    loop {
+        digits.push(DIGITS[(rest % 36) as usize]);
+        rest /= 36;
+        if rest == 0 {
+            break;
+        }
+    }
+    while digits.len() < 9 {
+        digits.push(b'0');
+    }
+    digits.reverse();
+    digits.push(b'i');
+    String::from_utf8(digits).expect("ASCII digits")
+}
 
 /// Heute as one list (design 5.1/5.2), as task IDs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -155,6 +180,14 @@ struct Entry {
     due_at: Option<OffsetDateTime>,
 }
 
+/// The list order of a task as `compareTasks` in the web client: `rank`,
+/// else [`default_rank`] of the creation time.
+fn sort_key(task: &Task, created: &Hlc) -> String {
+    task.rank
+        .clone()
+        .unwrap_or_else(|| default_rank(created.wall_ms()))
+}
+
 impl Entry {
     fn by_creation(&self, other: &Self) -> Ordering {
         self.created
@@ -185,7 +218,8 @@ fn due_in(due: Due, zone: &impl LocalZone) -> Option<(Date, OffsetDateTime)> {
 /// 1. `planned_on == today`, by `day_rank` (missing last), creation, ID;
 /// 2. `planned_on < today`, by `planned_on`, `day_rank`, creation, ID;
 /// 3. no `planned_on` and due by today, by weight (Brand, Glut, none,
-///    Rauch, Asche), due instant, creation, ID.
+///    Rauch, Asche), due instant, then list order (`rank`, else
+///    [`default_rank`]), creation, ID: as `byDue` in the web client.
 pub fn today_list(state: &State, today: Date, zone: &impl LocalZone) -> TodayList {
     let mut planned = Vec::new();
     let mut left_over = Vec::new();
@@ -247,6 +281,7 @@ pub fn today_list(state: &State, today: Date, zone: &impl LocalZone) -> TodayLis
         weight_rank(a.task.weight)
             .cmp(&weight_rank(b.task.weight))
             .then(a.due_at.cmp(&b.due_at))
+            .then_with(|| sort_key(&a.task, &a.created).cmp(&sort_key(&b.task, &b.created)))
             .then_with(|| a.by_creation(b))
     });
     let items: Vec<Task> = planned
@@ -562,9 +597,42 @@ mod tests {
         assert_eq!(effective_goal(&state, root), Some(goal));
         assert_eq!(effective_goal(&state, child), Some(goal));
         assert_eq!(effective_goal(&state, grandchild), Some(goal));
-        // Its own goal wins over the root's, even when that goal is deleted.
-        assert_eq!(effective_goal(&state, own), None);
+        // A deleted own goal counts as none: the root's goal applies.
+        assert_eq!(effective_goal(&state, own), Some(goal));
         assert_eq!(effective_goal(&state, Id::new()), None);
+        // The bulk variant follows the same rule.
+        let map: HashMap<Id, Option<Id>> = state.tasks().map(|t| (t.id, t.goal_id)).collect();
+        let own_task = state.task(own).unwrap();
+        assert_eq!(effective_goal_in(&state, &map, &own_task), Some(goal));
+    }
+
+    #[test]
+    fn a_root_with_a_deleted_goal_has_none() {
+        let mut clock = Clock::new(NodeId::new("t").unwrap());
+        let mut batch = OpBatch::new(&mut clock, 1_790_000_000_000);
+        let gone = Id::new();
+        batch
+            .set_goal(gone, "name", "Weg")
+            .set_goal(gone, "deleted", true);
+        let root = batch.create_task(NewTask::new("Wurzel"));
+        let child = batch.create_task(NewTask::subtask("Kind", root));
+        batch.set_task(root, "goal_id", gone.to_string());
+        let state = State::from_ops(&batch.into_ops());
+        assert_eq!(effective_goal(&state, root), None);
+        assert_eq!(effective_goal(&state, child), None);
+    }
+
+    #[test]
+    fn default_rank_matches_the_web_client() {
+        // Values of defaultRank in web/src/sync/rank.ts.
+        assert_eq!(default_rank(0), "000000000i");
+        assert_eq!(default_rank(1), "000000001i");
+        assert_eq!(default_rank(35), "00000000zi");
+        assert_eq!(default_rank(1_790_000_000_000), "0mubbs7i8i");
+        assert_eq!(default_rank(1_793_185_200_123), "0mvs063nfi");
+        assert_eq!(default_rank(99_999_999_999_999), "zg3d62r5ri");
+        // Wider than nine digits: no truncation.
+        assert_eq!(default_rank(200_000_000_000_000), "1yw6qc5ibki");
     }
 
     #[test]

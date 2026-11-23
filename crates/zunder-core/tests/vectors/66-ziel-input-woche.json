@@ -1,11 +1,11 @@
 {
   "name": "ziel-input-woche",
-  "description": "Input pro Ziel und ISO-Woche (Entwurf 6.1) in Europe/Berlin: nur aktive, lebende Ziele nach rank (fehlend zuletzt), dann Name. done zählt lebende, erledigte Aufgaben mit diesem effektiven Ziel nach dem Ortstag von status_changed_at (Unteraufgabe ohne Ziel zählt für das Ziel der Wurzel, mit eigenem Ziel für dieses; Dev-Aufgaben zählen). minutes summiert ganze Minuten je Flamme aus flame_log plus die laufende Flamme bis now, nach dem Tag des Starts, egal welcher Status (verworfen zählt mit, gelöscht nicht). Die Flamme So 29.11. 23:30 bis Mo 0:30 zählt 60 min in W48; die laufende Flamme ab Mo 0:40 zählt in W49. Geschlossene und gelöschte Ziele fehlen.",
+  "description": "Input pro Ziel und ISO-Woche (Entwurf 6.1) in Europe/Berlin: nur aktive, lebende Ziele nach rank (fehlend zuletzt), dann Name. done zählt lebende, erledigte Aufgaben mit diesem effektiven Ziel nach dem Ortstag von status_changed_at (Unteraufgabe ohne Ziel zählt für das Ziel der Wurzel, mit eigenem Ziel für dieses, mit gelöschtem eigenem Ziel wieder für das der Wurzel; Dev-Aufgaben zählen). minutes summiert ganze Minuten je Flamme aus flame_log plus die laufende Flamme bis now, nach dem Tag des Starts, egal welcher Status (verworfen zählt mit, gelöscht nicht). Die Flamme So 29.11. 23:30 bis Mo 0:30 zählt 60 min in W48; die laufende Flamme ab Mo 0:40 zählt in W49. Geschlossene und gelöschte Ziele fehlen.",
   "kind": "goal_input",
   "time_zone": "Europe/Berlin",
   "cases": [
     {
-      "description": "Woche 48: Sport erreicht (3 Züge bei 1), Sichtbar nicht (1 bei 2), I&K ohne Leitkennzahl mit Dev-Aufgabe",
+      "description": "Woche 48: Sport erreicht (3 Züge bei 1), Sichtbar nicht (1 bei 2), I&K ohne Leitkennzahl mit Dev-Aufgabe und Unteraufgabe mit gelöschtem eigenem Ziel",
       "now": "2026-11-30T01:10:45+01:00",
       "week": "2026-W48",
       "state": [
@@ -736,6 +736,61 @@
           "field": "goal_id",
           "value": "p660000000g0000000000004",
           "hlc": "1793520021000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000085",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "title",
+          "value": "Unteraufgabe mit gelöschtem eigenem Ziel",
+          "hlc": "1793520022000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000086",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520022000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000087",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "parent_id",
+          "value": "p660000000t0000000000009",
+          "hlc": "1793520022000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000088",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "goal_id",
+          "value": "p660000000g0000000000006",
+          "hlc": "1793520022000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000089",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-11-26T19:00:00+01:00",
+              "end": "2026-11-26T19:10:00+01:00"
+            }
+          ],
+          "hlc": "1793520022000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000090",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795719600000:00000:p"
         }
       ],
       "expected": {
@@ -752,8 +807,8 @@
           },
           {
             "goal_id": "p660000000g0000000000003",
-            "done": 1,
-            "minutes": 0,
+            "done": 2,
+            "minutes": 10,
             "lead_per_week": null,
             "reached": false
           },
@@ -1506,6 +1561,61 @@
           "field": "goal_id",
           "value": "p660000000g0000000000004",
           "hlc": "1793520021000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000085",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "title",
+          "value": "Unteraufgabe mit gelöschtem eigenem Ziel",
+          "hlc": "1793520022000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000086",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520022000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000087",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "parent_id",
+          "value": "p660000000t0000000000009",
+          "hlc": "1793520022000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000088",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "goal_id",
+          "value": "p660000000g0000000000006",
+          "hlc": "1793520022000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000089",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-11-26T19:00:00+01:00",
+              "end": "2026-11-26T19:10:00+01:00"
+            }
+          ],
+          "hlc": "1793520022000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000090",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795719600000:00000:p"
         }
       ],
       "expected": {
