@@ -1,0 +1,100 @@
+{
+  "name": "validierung-ziele",
+  "description": "Ziele: einem Ziel ohne Namen fehlt ein Pflichtfeld, ein vollständiges Ziel mit allen Feldern wird angenommen. Ungültige Werte (lead_per_week, Daten) prüfen die Einheitentests in Kern und Web, weil der Web-Client statische Wertfehler vor Entitätsregeln meldet.",
+  "kind": "validate",
+  "now_ms": 1760000101000,
+  "state": [],
+  "push": [
+    {
+      "op_id": "v000700080000f0000000301",
+      "entity": "goal",
+      "entity_id": "v000700080000g0000000001",
+      "field": "emoji",
+      "value": "🏃",
+      "hlc": "1760000100001:00000:web-test"
+    },
+    {
+      "op_id": "v000700080000f0000000302",
+      "entity": "goal",
+      "entity_id": "v000700080000g0000000001",
+      "field": "lead",
+      "value": "Dreimal pro Woche laufen",
+      "hlc": "1760000100002:00000:web-test"
+    },
+    {
+      "op_id": "v000700080000f0000000303",
+      "entity": "goal",
+      "entity_id": "v000700080000g0000000002",
+      "field": "name",
+      "value": "Sport",
+      "hlc": "1760000100003:00000:web-test"
+    },
+    {
+      "op_id": "v000700080000f0000000304",
+      "entity": "goal",
+      "entity_id": "v000700080000g0000000002",
+      "field": "emoji",
+      "value": "🏃",
+      "hlc": "1760000100004:00000:web-test"
+    },
+    {
+      "op_id": "v000700080000f0000000305",
+      "entity": "goal",
+      "entity_id": "v000700080000g0000000002",
+      "field": "lead",
+      "value": "Dreimal pro Woche laufen",
+      "hlc": "1760000100005:00000:web-test"
+    },
+    {
+      "op_id": "v000700080000f0000000306",
+      "entity": "goal",
+      "entity_id": "v000700080000g0000000002",
+      "field": "lead_per_week",
+      "value": 3,
+      "hlc": "1760000100006:00000:web-test"
+    },
+    {
+      "op_id": "v000700080000f0000000307",
+      "entity": "goal",
+      "entity_id": "v000700080000g0000000002",
+      "field": "storm",
+      "value": "Zu müde nach der Arbeit",
+      "hlc": "1760000100007:00000:web-test"
+    },
+    {
+      "op_id": "v000700080000f0000000308",
+      "entity": "goal",
+      "entity_id": "v000700080000g0000000002",
+      "field": "starts_on",
+      "value": "2026-09-28",
+      "hlc": "1760000100008:00000:web-test"
+    },
+    {
+      "op_id": "v000700080000f0000000309",
+      "entity": "goal",
+      "entity_id": "v000700080000g0000000002",
+      "field": "ends_on",
+      "value": "2026-12-31",
+      "hlc": "1760000100009:00000:web-test"
+    },
+    {
+      "op_id": "v000700080000f000000030a",
+      "entity": "goal",
+      "entity_id": "v000700080000g0000000002",
+      "field": "state",
+      "value": "active",
+      "hlc": "1760000100010:00000:web-test"
+    },
+    {
+      "op_id": "v000700080000f000000030b",
+      "entity": "goal",
+      "entity_id": "v000700080000g0000000002",
+      "field": "rank",
+      "value": "a0",
+      "hlc": "1760000100011:00000:web-test"
+    }
+  ],
+  "expected_rejected": {
+    "v000700080000g0000000001": "missing_required"
+  }
+}

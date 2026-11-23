@@ -3,7 +3,7 @@
 /** HLC string "<wall_ms:13>:<counter:5>:<node>". */
 export type Hlc = string;
 
-export type EntityKind = "area" | "project" | "task" | "comment";
+export type EntityKind = "area" | "project" | "task" | "comment" | "goal";
 
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
@@ -22,6 +22,8 @@ export type AreaState = "active" | "archived";
 export type ProjectStatus = "active" | "paused" | "completed";
 export type ProjectKind = "standard" | "dev";
 export type ProjectView = "list" | "board";
+/** State of a goal (core: model::GoalState). */
+export type GoalState = "active" | "closed";
 export type TaskType = "aufgabe" | "bug" | "feature";
 export type TaskStatus = "open" | "in_progress" | "review" | "blocked" | "done" | "dropped";
 export type PhoenixRole = "feuer_schritt" | "flamme";
@@ -70,6 +72,9 @@ export const AREA_STATES: readonly AreaState[] = ["active", "archived"];
 export const PROJECT_STATUSES: readonly ProjectStatus[] = ["active", "paused", "completed"];
 export const PROJECT_KINDS: readonly ProjectKind[] = ["standard", "dev"];
 export const PROJECT_VIEWS: readonly ProjectView[] = ["list", "board"];
+export const GOAL_STATES: readonly GoalState[] = ["active", "closed"];
+/** Highest value of a goal's `lead_per_week` (core: model::MAX_LEAD_PER_WEEK). */
+export const MAX_LEAD_PER_WEEK = 99;
 export const TASK_TYPES: readonly TaskType[] = ["aufgabe", "bug", "feature"];
 export const TASK_STATUSES: readonly TaskStatus[] = ["open", "in_progress", "review", "blocked", "done", "dropped"];
 export const PHOENIX_ROLES: readonly PhoenixRole[] = ["feuer_schritt", "flamme"];
@@ -119,16 +124,31 @@ export const TASK_FIELDS = [
 
 export const COMMENT_FIELDS = ["task_id", "body", "author", "deleted"] as const;
 
+export const GOAL_FIELDS = [
+  "name",
+  "emoji",
+  "lead",
+  "lead_per_week",
+  "storm",
+  "starts_on",
+  "ends_on",
+  "state",
+  "rank",
+  "deleted",
+] as const;
+
 export type AreaField = (typeof AREA_FIELDS)[number];
 export type ProjectField = (typeof PROJECT_FIELDS)[number];
 export type TaskField = (typeof TASK_FIELDS)[number];
 export type CommentField = (typeof COMMENT_FIELDS)[number];
+export type GoalField = (typeof GOAL_FIELDS)[number];
 
 export const FIELDS_BY_ENTITY: Record<EntityKind, readonly string[]> = {
   area: AREA_FIELDS,
   project: PROJECT_FIELDS,
   task: TASK_FIELDS,
   comment: COMMENT_FIELDS,
+  goal: GOAL_FIELDS,
 };
 
 // ---- Materialized entities (winning values with defaults applied) ------
@@ -210,6 +230,21 @@ export interface Comment extends EntityMeta {
   body: string;
   /** Agent or tool that wrote it; null = the owner. */
   author: string | null;
+}
+
+export interface Goal extends EntityMeta {
+  name: string;
+  emoji: string | null;
+  lead: string | null;
+  /** 1 to 99; null = not set. */
+  lead_per_week: number | null;
+  storm: string | null;
+  /** Calendar date YYYY-MM-DD. */
+  starts_on: string | null;
+  /** Calendar date YYYY-MM-DD. */
+  ends_on: string | null;
+  state: GoalState;
+  rank: string | null;
 }
 
 // ---- HTTP API payloads ---------------------------------------------------

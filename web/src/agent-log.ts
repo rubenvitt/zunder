@@ -72,6 +72,11 @@ export function describeChange(change: AgentChange): ChangeSummary {
       const href = area && !area.deleted ? `#/bereiche/area/${encodeURIComponent(id)}` : undefined;
       return { icon: "folder", lead: "Bereich", name, href, verb, details };
     }
+    case "goal": {
+      // No goal store yet: the name comes from the change itself.
+      const name = text(lastValue(change, "name")) ?? "unbekanntes Ziel";
+      return { icon: "pencil", lead: "Ziel", name, verb, details };
+    }
   }
 }
 

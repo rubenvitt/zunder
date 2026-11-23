@@ -2,12 +2,15 @@
 // Malformed values (which the server should never accept) fall back to defaults
 // instead of crashing the UI.
 
+import { isDateOnly } from "./dates";
 import type { EntityState } from "./merge";
 import { parseRecurrence } from "./recurrence";
 import {
   AREA_STATES,
   FOR_WHOMS,
+  GOAL_STATES,
   MAX_DEFERRALS,
+  MAX_LEAD_PER_WEEK,
   PHOENIX_ROLES,
   PROJECT_KINDS,
   PROJECT_STATUSES,
@@ -17,6 +20,7 @@ import {
   WEIGHTS,
   type Area,
   type Comment,
+  type Goal,
   type Hlc,
   type JsonValue,
   type Link,
@@ -155,6 +159,35 @@ export function toTask(e: EntityState): Task {
     waiting_on: str(value(e, "waiting_on")),
     ref: str(value(e, "ref")),
     status_hlc: e.fields.status?.hlc ?? min,
+  };
+}
+
+/** A whole number from 1 to MAX_LEAD_PER_WEEK; anything else counts as unset. */
+function leadPerWeek(v: JsonValue | undefined): number | null {
+  return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= MAX_LEAD_PER_WEEK ? v : null;
+}
+
+/** A calendar date YYYY-MM-DD; anything else counts as unset. */
+function plainDate(v: JsonValue | undefined): string | null {
+  return typeof v === "string" && isDateOnly(v) ? v : null;
+}
+
+export function toGoal(e: EntityState): Goal {
+  const { min, max } = hlcRange(e);
+  return {
+    id: e.id,
+    deleted: value(e, "deleted") === true,
+    created_hlc: min,
+    updated_hlc: max,
+    name: str(value(e, "name")) ?? "",
+    emoji: str(value(e, "emoji")),
+    lead: str(value(e, "lead")),
+    lead_per_week: leadPerWeek(value(e, "lead_per_week")),
+    storm: str(value(e, "storm")),
+    starts_on: plainDate(value(e, "starts_on")),
+    ends_on: plainDate(value(e, "ends_on")),
+    state: oneOf(value(e, "state"), GOAL_STATES, "active"),
+    rank: str(value(e, "rank")),
   };
 }
 

@@ -154,6 +154,38 @@ pub mod fields {
         pub const REQUIRED: &[&str] = &[TASK_ID, BODY];
     }
 
+    pub mod goal {
+        pub const NAME: &str = "name";
+        /// A single emoji (or short symbol) shown beside the name.
+        pub const EMOJI: &str = "emoji";
+        /// The lead: what the goal is about, in the owner's words.
+        pub const LEAD: &str = "lead";
+        /// How many times per week the lead is held (1-99).
+        pub const LEAD_PER_WEEK: &str = "lead_per_week";
+        /// The storm: what gets in the way.
+        pub const STORM: &str = "storm";
+        /// First day of the goal (`YYYY-MM-DD`).
+        pub const STARTS_ON: &str = "starts_on";
+        /// Last day of the goal (`YYYY-MM-DD`).
+        pub const ENDS_ON: &str = "ends_on";
+        pub const STATE: &str = "state";
+        pub const RANK: &str = "rank";
+        pub const DELETED: &str = super::DELETED;
+        pub const ALL: &[&str] = &[
+            NAME,
+            EMOJI,
+            LEAD,
+            LEAD_PER_WEEK,
+            STORM,
+            STARTS_ON,
+            ENDS_ON,
+            STATE,
+            RANK,
+            DELETED,
+        ];
+        pub const REQUIRED: &[&str] = &[NAME];
+    }
+
     /// All known fields of an entity kind.
     pub fn all(kind: EntityKind) -> &'static [&'static str] {
         match kind {
@@ -161,6 +193,7 @@ pub mod fields {
             EntityKind::Project => project::ALL,
             EntityKind::Task => task::ALL,
             EntityKind::Comment => comment::ALL,
+            EntityKind::Goal => goal::ALL,
         }
     }
 
@@ -171,6 +204,7 @@ pub mod fields {
             EntityKind::Project => project::REQUIRED,
             EntityKind::Task => task::REQUIRED,
             EntityKind::Comment => comment::REQUIRED,
+            EntityKind::Goal => goal::REQUIRED,
         }
     }
 
@@ -339,6 +373,17 @@ string_enum! {
         Andere => "andere", "für andere";
     }
 }
+
+string_enum! {
+    /// State of a goal.
+    GoalState, default = Active {
+        Active => "active", "aktiv";
+        Closed => "closed", "abgeschlossen";
+    }
+}
+
+/// Highest value of a goal's `lead_per_week`.
+pub const MAX_LEAD_PER_WEEK: u64 = 99;
 
 /// Highest value of a task's `deferrals`.
 pub const MAX_DEFERRALS: u64 = 9999;
@@ -912,6 +957,45 @@ pub struct Comment {
     pub deleted: bool,
 }
 
+/// Typed view of a goal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Goal {
+    pub id: Id,
+    pub name: String,
+    pub emoji: Option<String>,
+    pub lead: Option<String>,
+    pub lead_per_week: Option<u32>,
+    pub storm: Option<String>,
+    #[serde(with = "plain_date_option")]
+    pub starts_on: Option<Date>,
+    #[serde(with = "plain_date_option")]
+    pub ends_on: Option<Date>,
+    pub state: GoalState,
+    pub rank: Option<String>,
+    pub deleted: bool,
+}
+
+/// Serde for optional calendar dates as `YYYY-MM-DD`.
+mod plain_date_option {
+    use super::*;
+
+    pub fn serialize<S: Serializer>(d: &Option<Date>, s: S) -> Result<S::Ok, S::Error> {
+        match d {
+            Some(d) => s.serialize_some(&format_date(*d)),
+            None => s.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Date>, D::Error> {
+        match Option::<String>::deserialize(d)? {
+            None => Ok(None),
+            Some(s) => parse_plain_date(&s)
+                .map(Some)
+                .ok_or_else(|| de::Error::custom(format!("invalid date {s:?}"))),
+        }
+    }
+}
+
 /// Rejection of a single field value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValueError {
@@ -939,6 +1023,10 @@ enum Shape {
     Bool,
     /// Whole number from 0 to [`MAX_DEFERRALS`].
     Count,
+    /// Whole number from 1 to [`MAX_LEAD_PER_WEEK`].
+    PositiveCount,
+    /// Calendar date `YYYY-MM-DD` (no time).
+    Date,
     Enum(fn() -> Vec<&'static str>),
     Id,
     Location,
@@ -957,7 +1045,7 @@ enum Shape {
 }
 
 fn shape_of(kind: EntityKind, field: &str) -> Option<Shape> {
-    use fields::{area as a, comment as c, project as p, task as t};
+    use fields::{area as a, comment as c, goal as g, project as p, task as t};
     if field == fields::DELETED {
         return Some(Shape::Bool);
     }
@@ -1015,6 +1103,14 @@ fn shape_of(kind: EntityKind, field: &str) -> Option<Shape> {
             c::TASK_ID => Shape::Id,
             c::BODY => Shape::Body,
             c::AUTHOR => Shape::Title,
+            _ => return None,
+        },
+        EntityKind::Goal => match field {
+            g::NAME | g::EMOJI | g::STORM => Shape::Title,
+            g::LEAD | g::RANK => Shape::Text,
+            g::LEAD_PER_WEEK => Shape::PositiveCount,
+            g::STARTS_ON | g::ENDS_ON => Shape::Date,
+            g::STATE => Shape::Enum(GoalState::codes),
             _ => return None,
         },
     };
@@ -1089,6 +1185,23 @@ fn check_shape(shape: Shape, field: &str, value: &Value) -> Result<(), ValueErro
             if !value.as_u64().is_some_and(|n| n <= MAX_DEFERRALS) {
                 return Err(ValueError::invalid(format!(
                     "„{field}“ muss eine ganze Zahl von 0 bis {MAX_DEFERRALS} sein."
+                )));
+            }
+        }
+        Shape::PositiveCount => {
+            if !value
+                .as_u64()
+                .is_some_and(|n| (1..=MAX_LEAD_PER_WEEK).contains(&n))
+            {
+                return Err(ValueError::invalid(format!(
+                    "„{field}“ muss eine ganze Zahl von 1 bis {MAX_LEAD_PER_WEEK} sein."
+                )));
+            }
+        }
+        Shape::Date => {
+            if parse_plain_date(text()?).is_none() {
+                return Err(ValueError::invalid(format!(
+                    "„{field}“ muss ein Datum (JJJJ-MM-TT) sein."
                 )));
             }
         }
@@ -1310,6 +1423,70 @@ mod tests {
                 e.code
             }
         }
+    }
+
+    #[test]
+    fn goal_fields() {
+        let g = EntityKind::Goal;
+        ok(g, "name", json!("Sport"));
+        assert_eq!(bad(g, "name", json!("")), RejectCode::InvalidValue);
+        ok(g, "emoji", json!("🏃"));
+        ok(g, "lead", json!("Dreimal pro Woche laufen"));
+        ok(g, "storm", json!("Zu müde nach der Arbeit"));
+        ok(g, "lead_per_week", json!(3));
+        ok(g, "lead_per_week", json!(99));
+        ok(g, "lead_per_week", Value::Null);
+        assert_eq!(bad(g, "lead_per_week", json!(0)), RejectCode::InvalidValue);
+        assert_eq!(
+            bad(g, "lead_per_week", json!(100)),
+            RejectCode::InvalidValue
+        );
+        assert_eq!(
+            bad(g, "lead_per_week", json!("3")),
+            RejectCode::InvalidValue
+        );
+        ok(g, "starts_on", json!("2026-09-28"));
+        ok(g, "ends_on", json!("2026-12-31"));
+        assert_eq!(
+            bad(g, "starts_on", json!("2026-02-30")),
+            RejectCode::InvalidValue
+        );
+        assert_eq!(
+            bad(g, "starts_on", json!("2026-09-28T00:00:00Z")),
+            RejectCode::InvalidValue
+        );
+        ok(g, "state", json!("closed"));
+        assert_eq!(bad(g, "state", json!("archived")), RejectCode::InvalidValue);
+        ok(g, "rank", json!("a0"));
+        ok(g, "deleted", json!(true));
+        assert_eq!(bad(g, "unknown", json!("x")), RejectCode::UnknownField);
+        assert_eq!(
+            bad(g, "name", Value::Null),
+            RejectCode::InvalidValue,
+            "name is required"
+        );
+    }
+
+    #[test]
+    fn goal_serializes_dates_as_plain_dates() {
+        let goal = Goal {
+            id: Id::parse(ID).unwrap(),
+            name: "Sport".into(),
+            emoji: None,
+            lead: None,
+            lead_per_week: Some(3),
+            storm: None,
+            starts_on: parse_plain_date("2026-09-28"),
+            ends_on: None,
+            state: GoalState::default(),
+            rank: None,
+            deleted: false,
+        };
+        let json = serde_json::to_value(&goal).unwrap();
+        assert_eq!(json["starts_on"], "2026-09-28");
+        assert_eq!(json["ends_on"], Value::Null);
+        assert_eq!(json["state"], "active");
+        assert_eq!(serde_json::from_value::<Goal>(json).unwrap(), goal);
     }
 
     #[test]

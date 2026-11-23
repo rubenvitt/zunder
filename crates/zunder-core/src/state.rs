@@ -17,8 +17,8 @@ use serde_json::Value;
 
 use crate::hlc::Hlc;
 use crate::model::{
-    fields, Area, AreaState, Comment, Location, Project, ProjectKind, ProjectStatus, ProjectView,
-    Task, TaskStatus, TaskType,
+    fields, Area, AreaState, Comment, Goal, GoalState, Location, Project, ProjectKind,
+    ProjectStatus, ProjectView, Task, TaskStatus, TaskType,
 };
 use crate::op::{EntityKind, Op};
 
@@ -317,6 +317,27 @@ impl Entity {
         })
     }
 
+    fn to_goal(&self) -> Option<Goal> {
+        use fields::goal as f;
+        let date = |field| {
+            self.str_value(field)
+                .and_then(crate::model::parse_plain_date)
+        };
+        Some(Goal {
+            id: self.id,
+            name: self.string(f::NAME)?,
+            emoji: self.string(f::EMOJI),
+            lead: self.string(f::LEAD),
+            lead_per_week: self.parsed(f::LEAD_PER_WEEK),
+            storm: self.string(f::STORM),
+            starts_on: date(f::STARTS_ON),
+            ends_on: date(f::ENDS_ON),
+            state: self.code::<GoalState>(f::STATE),
+            rank: self.string(f::RANK),
+            deleted: self.is_deleted(),
+        })
+    }
+
     fn to_comment(&self) -> Option<Comment> {
         use fields::comment as f;
         Some(Comment {
@@ -519,6 +540,21 @@ impl State {
     /// Typed comment view. `None` if missing or without task/body.
     pub fn comment(&self, id: Id) -> Option<Comment> {
         self.entity(EntityKind::Comment, id)?.to_comment()
+    }
+
+    /// Typed goal view. `None` if missing or without name.
+    pub fn goal(&self, id: Id) -> Option<Goal> {
+        self.entity(EntityKind::Goal, id)?.to_goal()
+    }
+
+    /// All goals, including tombstoned ones.
+    pub fn goals(&self) -> impl Iterator<Item = Goal> + '_ {
+        self.entities_of(EntityKind::Goal)
+            .filter_map(Entity::to_goal)
+    }
+
+    pub fn live_goals(&self) -> impl Iterator<Item = Goal> + '_ {
+        self.goals().filter(|g| !g.deleted)
     }
 
     /// Live comments of a task, oldest first (by creation HLC, then ID).

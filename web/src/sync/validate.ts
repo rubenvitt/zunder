@@ -4,13 +4,15 @@
 // crates/zunder-core/tests/vectors) keep both sides in step.
 
 import { isCanonicalId } from "./ids";
-import { isRfc3339, isValidDue, isValidFire } from "./dates";
+import { isDateOnly, isRfc3339, isValidDue, isValidFire } from "./dates";
 import { entityKey, EntityStore, wins, type EntityState } from "./merge";
 import {
   AREA_STATES,
   FIELDS_BY_ENTITY,
   FOR_WHOMS,
+  GOAL_STATES,
   MAX_DEFERRALS,
+  MAX_LEAD_PER_WEEK,
   PHOENIX_ROLES,
   PROJECT_KINDS,
   PROJECT_STATUSES,
@@ -57,21 +59,24 @@ export const REQUIRED_FIELDS: Record<EntityKind, readonly string[]> = {
   project: ["name", "area_id"],
   task: ["title"],
   comment: ["task_id", "body"],
+  goal: ["name"],
 };
 
-const KIND_LABEL: Record<EntityKind, string> = { area: "Bereich", project: "Projekt", task: "Aufgabe", comment: "Kommentar" };
-const DEFINITE: Record<EntityKind, string> = { area: "Der", project: "Das", task: "Die", comment: "Der" };
+const KIND_LABEL: Record<EntityKind, string> = { area: "Bereich", project: "Projekt", task: "Aufgabe", comment: "Kommentar", goal: "Ziel" };
+const DEFINITE: Record<EntityKind, string> = { area: "Der", project: "Das", task: "Die", comment: "Der", goal: "Das" };
 const INDEFINITE_ACC: Record<EntityKind, string> = {
   area: "einen Bereich",
   project: "ein Projekt",
   task: "eine Aufgabe",
   comment: "einen Kommentar",
+  goal: "ein Ziel",
 };
 const DEPENDENT: Record<EntityKind, string> = {
   area: "noch ein Bereich",
   project: "noch ein Projekt",
   task: "noch eine Aufgabe",
   comment: "noch ein Kommentar",
+  goal: "noch ein Ziel",
 };
 
 export { isCanonicalId } from "./ids";
@@ -144,6 +149,8 @@ type Shape =
   | "body"
   | "bool"
   | "count"
+  | "positive_count"
+  | "date"
   | "id"
   | "location"
   | "due"
@@ -206,6 +213,18 @@ const SHAPES: Record<EntityKind, Record<string, Shape>> = {
     deleted: "bool",
   },
   comment: { task_id: "id", body: "body", author: "title", deleted: "bool" },
+  goal: {
+    name: "title",
+    emoji: "title",
+    lead: "text",
+    lead_per_week: "positive_count",
+    storm: "title",
+    starts_on: "date",
+    ends_on: "date",
+    state: GOAL_STATES,
+    rank: "text",
+    deleted: "bool",
+  },
 };
 
 const FIELD_LABELS: Record<string, string> = {
@@ -231,6 +250,9 @@ const FIELD_LABELS: Record<string, string> = {
   task_id: "Aufgabe",
   body: "Text",
   author: "Autor",
+  lead_per_week: `Mal pro Woche (ganze Zahl von 1 bis ${MAX_LEAD_PER_WEEK})`,
+  starts_on: "Beginn (Datum JJJJ-MM-TT)",
+  ends_on: "Ende (Datum JJJJ-MM-TT)",
 };
 
 const label = (field: string) => FIELD_LABELS[field] ?? `„${field}“`;
@@ -246,6 +268,10 @@ function shapeOk(shape: Shape, v: JsonValue): boolean {
       return typeof v === "boolean";
     case "count":
       return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= MAX_DEFERRALS;
+    case "positive_count":
+      return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= MAX_LEAD_PER_WEEK;
+    case "date":
+      return typeof v === "string" && isDateOnly(v);
     case "id":
       return isCanonicalId(v);
     case "location":
@@ -787,7 +813,7 @@ export function validateOps(base: EntityStore, ops: readonly Op[], nowMs: number
     set.add(op.entity);
   }
   const failed = new Set<Key>();
-  const otherKinds = (kind: EntityKind, id: string) => (["area", "project", "task", "comment"] as const).filter((k) => k !== kind && base.has(k, id));
+  const otherKinds = (kind: EntityKind, id: string) => (["area", "project", "task", "comment", "goal"] as const).filter((k) => k !== kind && base.has(k, id));
   for (const op of ops) {
     const key = keyOf(op.entity, op.entity_id);
     if (failed.has(key)) continue;

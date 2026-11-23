@@ -339,6 +339,7 @@ fn reference_of(scratch: &Overlay<'_>, key: Key) -> Option<Key> {
             None => entity.own_location().target(),
         },
         EntityKind::Comment => entity.comment_task_id().map(|t| (EntityKind::Task, t)),
+        EntityKind::Goal => None,
     }
 }
 
@@ -400,6 +401,7 @@ fn this_dative(kind: EntityKind) -> &'static str {
         EntityKind::Project => "diesem Projekt",
         EntityKind::Task => "dieser Aufgabe",
         EntityKind::Comment => "diesem Kommentar",
+        EntityKind::Goal => "diesem Ziel",
     }
 }
 
@@ -590,6 +592,7 @@ impl Checker<'_> {
             EntityKind::Project => self.check_project(entity),
             EntityKind::Task => self.check_task(entity),
             EntityKind::Comment => self.check_comment(entity),
+            EntityKind::Goal => {}
         }
     }
 
@@ -937,6 +940,7 @@ fn definite_article(kind: EntityKind) -> &'static str {
         EntityKind::Project => "Das",
         EntityKind::Task => "Die",
         EntityKind::Comment => "Der",
+        EntityKind::Goal => "Das",
     }
 }
 
@@ -946,6 +950,7 @@ fn indefinite_accusative(kind: EntityKind) -> &'static str {
         EntityKind::Project => "ein Projekt",
         EntityKind::Task => "eine Aufgabe",
         EntityKind::Comment => "einen Kommentar",
+        EntityKind::Goal => "ein Ziel",
     }
 }
 
@@ -955,6 +960,7 @@ fn dependent_phrase(kind: EntityKind) -> &'static str {
         EntityKind::Project => "noch ein Projekt",
         EntityKind::Task => "noch eine Aufgabe",
         EntityKind::Comment => "noch ein Kommentar",
+        EntityKind::Goal => "noch ein Ziel",
     }
 }
 

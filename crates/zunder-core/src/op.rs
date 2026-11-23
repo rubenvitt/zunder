@@ -18,14 +18,17 @@ pub enum EntityKind {
     Task,
     /// A comment on a task (status notes from agents, remarks).
     Comment,
+    /// A goal: a lead the owner wants to hold over a period.
+    Goal,
 }
 
 impl EntityKind {
-    pub const ALL: [EntityKind; 4] = [
+    pub const ALL: [EntityKind; 5] = [
         EntityKind::Area,
         EntityKind::Project,
         EntityKind::Task,
         EntityKind::Comment,
+        EntityKind::Goal,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -34,6 +37,7 @@ impl EntityKind {
             EntityKind::Project => "project",
             EntityKind::Task => "task",
             EntityKind::Comment => "comment",
+            EntityKind::Goal => "goal",
         }
     }
 
@@ -44,6 +48,7 @@ impl EntityKind {
             EntityKind::Project => "Projekt",
             EntityKind::Task => "Aufgabe",
             EntityKind::Comment => "Kommentar",
+            EntityKind::Goal => "Ziel",
         }
     }
 }
@@ -67,6 +72,7 @@ impl FromStr for EntityKind {
             "project" => Ok(EntityKind::Project),
             "task" => Ok(EntityKind::Task),
             "comment" => Ok(EntityKind::Comment),
+            "goal" => Ok(EntityKind::Goal),
             other => Err(UnknownEntityKind(other.to_owned())),
         }
     }

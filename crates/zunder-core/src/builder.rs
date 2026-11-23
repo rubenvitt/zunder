@@ -302,6 +302,10 @@ impl<'c> OpBatch<'c> {
         self.set(EntityKind::Comment, id, field, value)
     }
 
+    pub fn set_goal(&mut self, id: Id, field: &str, value: impl Into<Value>) -> &mut Self {
+        self.set(EntityKind::Goal, id, field, value)
+    }
+
     /// Adds a comment to a task; `author` unset means the owner.
     pub fn add_comment(
         &mut self,
@@ -384,7 +388,7 @@ fn cascade(state: &State, entity: EntityKind, id: Id) -> Vec<(EntityKind, Id)> {
                 }
             }
         }
-        EntityKind::Comment => {}
+        EntityKind::Comment | EntityKind::Goal => {}
     }
     out
 }

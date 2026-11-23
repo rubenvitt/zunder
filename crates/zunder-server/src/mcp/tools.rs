@@ -676,7 +676,7 @@ async fn search_all(app: &App, args: &Args) -> AppResult<Value> {
                             }
                         }
                         // Not searched (zunder_core::search).
-                        EntityKind::Comment => {}
+                        EntityKind::Comment | EntityKind::Goal => {}
                     }
                     v
                 })
