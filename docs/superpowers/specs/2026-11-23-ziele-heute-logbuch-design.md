@@ -1,7 +1,7 @@
 # Zunder-Kern: Ziele, Heute als Reihenfolge, Erledigt-Logbuch – Design
 
 - **Datum:** 2026-11-23
-- **Status:** Entwurf, wartet auf Rubens Freigabe
+- **Status:** Entwurf, wartet auf Rubens Freigabe (Fragen aus dem Builder-Check beantwortet)
 - **Aufgabe:** ZUN-58 (Stufe 1 von 3; danach ZUN-59 Wochenplanung, ZUN-60 Reviews, ZUN-61 Langfrist; KI-Anbindung ZUN-62)
 - **Bezug:** [Zunder-Design](2026-10-11-zunder-design.md), [Implementierungsvertrag](../plans/2026-10-11-zunder-implementation.md)
 
@@ -98,7 +98,7 @@ Eine gemeinsame Regel in `zunder-core` und `web/src/sync/` mit Testvektoren. Bet
 
 Eine Aufgabe steht höchstens einmal in der Liste. Die Gruppen 1 bis 3 bilden **eine** Liste ohne Zwischenüberschriften.
 
-**Fokus** ist die laufende Flamme, falls eine läuft. Sonst ist es die erste Aufgabe der Liste mit Status `open` oder `in_progress` und ohne `waiting_on`. Alle weiteren Aufgaben stehen unter „Danach“.
+**Fokus** ist die laufende Flamme, falls eine läuft. Sonst ist es die erste Aufgabe der Liste mit Status `open` oder `in_progress` und ohne `waiting_on`, mit den Ausnahmen aus 5.2 (Tag ohne Plan, Plan erledigt). Alle weiteren Aufgaben stehen unter „Danach“.
 
 ```
 Heute · Montag, 23. November
@@ -118,7 +118,8 @@ Erinnerungen, Wiedervorlage, Tagesvorschau, Wochenspiegel und die Zusagen-Bremse
 
 ### 5.2 „Erst für dich“ geht im Plan auf (Entscheidung Ruben)
 
-- Gibt es für heute eingeplante Aufgaben (Gruppe 1 nicht leer), entfällt der Bereich „Erst für dich“. Der Grundsatz „erst mich selbst bezahlen“ wird zur Regel von `/tages-planung`: eine Glut-Aufgabe für mich bevorzugt nach vorn.
+- **Ein Plan für heute** besteht, sobald eine lebende Aufgabe `planned_on` = heute trägt, egal mit welchem Status, also auch erledigte (Entscheidung Ruben: „Plan bleibt Plan“). Ist alles Geplante erledigt, sagt der Fokus-Kasten ruhig „Plan für heute erledigt.“ und schlägt nichts Neues vor. Weitere Aufgaben der Liste (Liegengebliebenes, Fälliges) stehen dann ohne Fokus darunter.
+- Gibt es einen Plan für heute, entfällt der Bereich „Erst für dich“. Der Grundsatz „erst mich selbst bezahlen“ wird zur Regel von `/tages-planung`: eine Glut-Aufgabe für mich bevorzugt nach vorn.
 - Gibt es keinen Plan für heute, gilt im Fokus-Kasten die bisherige Regel von „Erst für dich“ (Vertrag 5.1, `web/src/sync/focus.ts`) **vor** der ersten Aufgabe der Liste. **Eigene Entscheidung, damit es sich wie heute anfühlt:**
   - Gibt es eine passende Glut-Aufgabe für mich, steht sie ohne Klick im Fokus. Liegengebliebene und fällige Aufgaben folgen unter „Danach“.
   - Gibt es keine, zeigt der Kasten wie bisher leise „Heute noch nichts für dich geplant.“ mit bis zu drei Glut-Aufgaben zum Wählen. Den Fokus übernimmt dann die erste Aufgabe der Liste, darunter.
@@ -189,7 +190,7 @@ Neue Werkzeuge (deutsche Beschreibungen und Fehlermeldungen wie die bestehenden)
 |---|---|
 | `list_goals` | Ziele mit allen Feldern. Standard nur aktive, `include_closed` für alle. |
 | `create_goal`, `update_goal` | Ziel anlegen bzw. ändern (Felder wie 4.1). Schließen über `state: closed`. Kein Löschwerkzeug. |
-| `plan_day` | `date` (Standard heute) und geordnete `task_ids` (IDs oder Kennungen). Setzt `planned_on` = `date` und `day_rank` in dieser Reihenfolge. Aufgaben, die bisher für diesen Tag eingeplant waren und nicht in der Liste stehen, bekommen `planned_on` = null. Ein Aufruf, eine Push-Gruppe. Liefert die resultierende Heute-Liste (5.1) zurück. |
+| `plan_day` | `date` (Standard heute) und geordnete `task_ids` (IDs oder Kennungen). Setzt `planned_on` = `date` und `day_rank` in dieser Reihenfolge. Der Aufruf bestimmt den ganzen Tag (Entscheidung Ruben): Nicht geschlossene Aufgaben mit `planned_on` ≤ `date`, die nicht in der Liste stehen, bekommen `planned_on` = null. Liegengebliebenes, das Claude bewusst nicht aufnimmt, fällt also aus Heute heraus und bleibt an seiner Stelle (fällige Aufgaben stehen weiter in Gruppe 3). Erledigte Aufgaben behalten ihr `planned_on`. Ohne Planung an einem Tag rutscht Liegengebliebenes weiter still mit. Ein Aufruf, eine Push-Gruppe. Liefert die resultierende Heute-Liste (5.1) zurück. |
 | `goal_input` | Input pro Ziel für eine ISO-Woche (6.1), Standard die laufende. |
 | `done_log` | Logbuch (Kapitel 7) für einen Zeitraum `from`/`to`, für Reviews durch Claude (ZUN-60). |
 
