@@ -119,7 +119,12 @@ Erinnerungen, Wiedervorlage, Tagesvorschau, Wochenspiegel und die Zusagen-Bremse
 ### 5.2 „Erst für dich“ geht im Plan auf (Entscheidung Ruben)
 
 - Gibt es für heute eingeplante Aufgaben (Gruppe 1 nicht leer), entfällt der Bereich „Erst für dich“. Der Grundsatz „erst mich selbst bezahlen“ wird zur Regel von `/tages-planung`: eine Glut-Aufgabe für mich bevorzugt nach vorn.
-- Gibt es keinen Plan für heute, schlägt die bisherige Regel von „Erst für dich“ (Vertrag 5.1) die Fokus-Aufgabe vor, mit „Für heute wählen“. **Eigene Entscheidung:** Wählen plant die Aufgabe ein (`planned_on` = heute, vorn) statt die Einstellung `focus.chosen_*` zu schreiben. „Für heute ausblenden“ bleibt für diesen Vorschlag.
+- Gibt es keinen Plan für heute, gilt im Fokus-Kasten die bisherige Regel von „Erst für dich“ (Vertrag 5.1, `web/src/sync/focus.ts`) **vor** der ersten Aufgabe der Liste. **Eigene Entscheidung, damit es sich wie heute anfühlt:**
+  - Gibt es eine passende Glut-Aufgabe für mich, steht sie ohne Klick im Fokus. Liegengebliebene und fällige Aufgaben folgen unter „Danach“.
+  - Gibt es keine, zeigt der Kasten wie bisher leise „Heute noch nichts für dich geplant.“ mit bis zu drei Glut-Aufgaben zum Wählen. Den Fokus übernimmt dann die erste Aufgabe der Liste, darunter.
+  - Wählen plant die Aufgabe ein (`planned_on` = heute, vorn), statt die Einstellung `focus.chosen_*` zu schreiben.
+  - „Für heute ausblenden“ blendet nur diesen Vorschlag aus. Der Fokus fällt dann auf die erste Aufgabe der Liste.
+  - Der Vorschlag gehört zur Oberfläche, nicht zur gemeinsamen Regel in 5.1. Er bleibt in TS, `plan_day` liefert ihn nicht mit, und er wird nicht nach Rust portiert.
 
 ### 5.3 Bedienung
 
