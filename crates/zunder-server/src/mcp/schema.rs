@@ -10,8 +10,8 @@ use serde_json::{json, Map, Value};
 use zunder_core::defer::FREE_DEFERRALS;
 use zunder_core::model::MAX_DEFERRALS;
 use zunder_core::{
-    AreaState, ForWhom, PhoenixRole, ProjectKind, ProjectStatus, ProjectView, RecurrenceFrom,
-    RecurrenceUnit, TaskStatus, TaskType, WeekdayCode, Weight,
+    AreaState, ForWhom, GoalState, PhoenixRole, ProjectKind, ProjectStatus, ProjectView,
+    RecurrenceFrom, RecurrenceUnit, TaskStatus, TaskType, WeekdayCode, Weight,
 };
 
 /// One tool.
@@ -255,6 +255,15 @@ const FOR_WHOM: &str = "Für wen (optional), gemeint ist: Wer wartet, wenn es si
     (absprechen), andere = jemand hat eine Zusage und wartet darauf (wer verschiebt, sagt \
     Bescheid).";
 
+const GOAL_ID: &str = "Ziel der Aufgabe (ID aus list_goals). Unteraufgaben ohne eigenes Ziel \
+    zählen für das Ziel ihrer Wurzelaufgabe. Jede neue Aufgabe bekommt ihr Ziel ausdrücklich.";
+const GOAL_ID_NULLABLE: &str = "Ziel der Aufgabe (ID aus list_goals); null entfernt es. \
+    Unteraufgaben ohne eigenes Ziel zählen für das Ziel ihrer Wurzelaufgabe.";
+const PLANNED_ON: &str = "Tag, für den die Aufgabe eingeplant ist (JJJJ-MM-TT). Den ganzen Tag \
+    legt plan_day fest; einzeln setzen nur in Ausnahmen.";
+const DAY_RANK: &str = "Reihenfolge innerhalb des geplanten Tages (Text, aufsteigend sortiert). \
+    Setzt plan_day selbst.";
+
 const WAITING_ON: &str = "Wartet auf (optional): wer gerade die Entscheidung hat, ein Name wie \
     „Anna“ (getrimmt, höchstens 500 Zeichen; leer wie null). Setzen macht eine offene Aufgabe \
     blocked; wird der Name entfernt und blockiert sonst nichts, wird sie wieder open. \
@@ -338,6 +347,16 @@ fn task_fields(nullable: bool) -> Vec<(&'static str, Value)> {
         ),
         ("recurrence", recurrence(nullable)),
         ("blocked_by", blocked_by(nullable)),
+        (
+            "goal_id",
+            if nullable {
+                nullable_string(GOAL_ID_NULLABLE)
+            } else {
+                string(GOAL_ID)
+            },
+        ),
+        ("planned_on", text(PLANNED_ON)),
+        ("day_rank", text(DAY_RANK)),
         ("plan", text("Plan (Markdown), z. B. aus dem Dev-Modus.")),
         ("branch", text("Git-Branch der Umsetzung.")),
         ("pr_url", text("URL des Pull Requests (http/https).")),
@@ -380,6 +399,73 @@ const WEEK_BALANCE: &str = "Wochenbilanz: zählt die in einer ISO-Woche erledigt
     Sonntag. Ergebnis: week, from und to (Montag und Sonntag, JJJJ-MM-TT), total, by_weight \
     (brand, glut, rauch, asche, none = ohne Gewicht) und by_for_whom (mich, uns, andere, none = \
     ohne Angabe). Für Wochenrückblick und Feuer-Review: sachlich spiegeln, nicht bewerten.";
+
+const LIST_GOALS: &str = "Listet die Ziele mit allen Feldern (id, name, emoji, lead = Leitgedanke, \
+    lead_per_week = Züge pro Woche, storm = der Feuersturm, starts_on, ends_on, state, rank). Ziele \
+    pflegt Claude (den Feuersturm aus dem Vault), nicht Ruben. Standard nur aktive Ziele, nach \
+    Rang; include_closed zeigt auch geschlossene.";
+
+const PLAN_DAY: &str = "Plant einen ganzen Tag: task_ids ist die geordnete Liste (IDs oder Kennungen \
+    wie „ZUN-42“), alles darin bekommt planned_on = date und day_rank in dieser Reihenfolge. Der \
+    Aufruf bestimmt den ganzen Tag: Nicht geschlossene Aufgaben mit planned_on bis einschließlich \
+    date, die nicht in der Liste stehen, verlieren planned_on und day_rank (Liegengebliebenes fällt \
+    aus Heute heraus und bleibt an seiner Stelle; fällige Aufgaben stehen weiter in Heute). \
+    Erledigte und verworfene Aufgaben behalten ihr planned_on. Eine Glut-Aufgabe für mich gehört \
+    bevorzugt nach vorn. Eine leere Liste leert den Plan. Ist eine ID oder Kennung unbekannt, eine \
+    Aufgabe gelöscht, erledigt oder verworfen oder kommt eine doppelt vor, wird der ganze Aufruf \
+    abgelehnt und nichts geschrieben. Ergebnis: date und today (die resultierende Heute-Liste: \
+    items in Reihenfolge, focus, has_plan, plan_done).";
+
+const GOAL_INPUT: &str = "Input pro Ziel für eine ISO-Woche: je aktivem Ziel done (erledigte Aufgaben \
+    mit diesem wirksamen Ziel, Unteraufgaben einzeln, Dev-Projekte eingeschlossen, verworfene nicht), \
+    minutes (Flammen-Minuten dieser Woche) und lead_per_week mit reached (done erreicht lead_per_week). \
+    Ergebnis: week, from, to (Montag und Sonntag) und goals mit goal_id, name, emoji. Für Reviews: \
+    sachlich spiegeln, nicht bewerten.";
+
+const DONE_LOG: &str = "Logbuch „Erledigt“ für einen Zeitraum, neuester Tag zuerst: je Tag done (an \
+    diesem Tag erledigte Aufgaben mit den Flammen-Minuten des Tages), worked (Aufgaben mit Flammen, \
+    aber an diesem Tag nicht erledigt) und die Tagessumme minutes. Ohne Dev-Projekte und ohne \
+    verworfene Aufgaben; Tage ohne Einträge entfallen. Jeder Eintrag nennt task_id, ref, title, \
+    minutes und goal (id, name, emoji des wirksamen Ziels oder null). Standard: die letzten 14 Tage \
+    bis heute; höchstens 92 Tage.";
+
+/// Fields of a goal shared by create_goal and update_goal.
+fn goal_fields(nullable: bool) -> Vec<(&'static str, Value)> {
+    let text = |d: &str| {
+        if nullable {
+            nullable_string(&format!("{d} null entfernt den Wert."))
+        } else {
+            string(d)
+        }
+    };
+    vec![
+        ("emoji", text("Ein Zeichen (Emoji) neben dem Namen.")),
+        (
+            "lead",
+            text("Leitgedanke: worum es beim Ziel geht, in Rubens Worten."),
+        ),
+        (
+            "lead_per_week",
+            if nullable {
+                json!({"type": ["integer", "null"], "minimum": 1, "maximum": 99,
+                    "description": "Wie viele Züge (erledigte Aufgaben) pro Woche der Leitgedanke trägt, 1–99. null entfernt den Wert."})
+            } else {
+                json!({"type": "integer", "minimum": 1, "maximum": 99,
+                    "description": "Wie viele Züge (erledigte Aufgaben) pro Woche der Leitgedanke trägt, 1–99."})
+            },
+        ),
+        (
+            "storm",
+            text("Der Feuersturm: was im Weg steht (aus dem Vault)."),
+        ),
+        ("starts_on", text("Erster Tag des Ziels (JJJJ-MM-TT).")),
+        ("ends_on", text("Letzter Tag des Ziels (JJJJ-MM-TT).")),
+        (
+            "rank",
+            text("Rangschlüssel für die Reihenfolge der Ziele (Text, aufsteigend)."),
+        ),
+    ]
+}
 
 /// All tools in a stable order.
 pub fn definitions() -> Vec<ToolDef> {
@@ -456,6 +542,14 @@ pub fn definitions() -> Vec<ToolDef> {
                     (
                         "due_after",
                         string("Fällig frühestens an diesem Tag (JJJJ-MM-TT oder RFC 3339, inklusive, Vergleich nach Kalendertag)."),
+                    ),
+                    (
+                        "goal_id",
+                        string("Nur Aufgaben mit diesem wirksamen Ziel (eigenes Ziel, sonst das der Wurzelaufgabe; ID aus list_goals) oder \"none\" für Aufgaben ohne wirksames Ziel, um Lücken zu finden."),
+                    ),
+                    (
+                        "planned_on",
+                        string("Nur Aufgaben, die für diesen Tag eingeplant sind (JJJJ-MM-TT)."),
                     ),
                     (
                         "include_closed",
@@ -944,6 +1038,115 @@ pub fn definitions() -> Vec<ToolDef> {
             read_only: false,
             destructive: false,
             idempotent: false,
+        },
+        ToolDef {
+            name: "list_goals",
+            title: "Ziele auflisten",
+            description: LIST_GOALS,
+            input_schema: object(
+                vec![(
+                    "include_closed",
+                    boolean("Auch geschlossene Ziele (Standard false)."),
+                )],
+                &[],
+            ),
+            read_only: true,
+            destructive: false,
+            idempotent: true,
+        },
+        ToolDef {
+            name: "create_goal",
+            title: "Ziel anlegen",
+            description: "Legt ein Ziel an (aktiv). Nur name ist Pflicht. Ziele pflegt Claude, nicht \
+                Ruben; es gibt kein Löschwerkzeug, geschlossen wird über update_goal mit state closed.",
+            input_schema: object(
+                with(vec![("name", string("Name des Ziels (Pflicht)."))], goal_fields(false)),
+                &["name"],
+            ),
+            read_only: false,
+            destructive: false,
+            idempotent: false,
+        },
+        ToolDef {
+            name: "update_goal",
+            title: "Ziel ändern",
+            description: "Ändert Felder eines Ziels; nur angegebene ändern sich, null entfernt \
+                optionale Werte. Schließen: state closed (wieder öffnen: active).",
+            input_schema: object(
+                with(
+                    vec![
+                        ("goal_id", string("ID des Ziels.")),
+                        ("name", string("Neuer Name.")),
+                        ("state", enumeration(GoalState::codes(), "active oder closed.")),
+                    ],
+                    goal_fields(true),
+                ),
+                &["goal_id"],
+            ),
+            read_only: false,
+            destructive: false,
+            idempotent: true,
+        },
+        ToolDef {
+            name: "plan_day",
+            title: "Tag planen",
+            description: PLAN_DAY,
+            input_schema: object(
+                vec![
+                    (
+                        "date",
+                        string("Der Tag (JJJJ-MM-TT). Standard: heute in der Zeitzone des Servers."),
+                    ),
+                    (
+                        "task_ids",
+                        json!({
+                            "type": "array",
+                            "description": "Geordnete Aufgaben des Tages (IDs oder Kennungen wie „ZUN-42“), die wichtigste zuerst. Leer: der Plan des Tages wird geleert.",
+                            "items": {"type": "string", "minLength": 1},
+                        }),
+                    ),
+                ],
+                &["task_ids"],
+            ),
+            read_only: false,
+            destructive: false,
+            idempotent: true,
+        },
+        ToolDef {
+            name: "goal_input",
+            title: "Ziel-Input",
+            description: GOAL_INPUT,
+            input_schema: object(
+                vec![(
+                    "week",
+                    string("ISO-Woche JJJJ-Www, z. B. 2026-W47. Standard: die aktuelle Woche in der Zeitzone des Servers."),
+                )],
+                &[],
+            ),
+            read_only: true,
+            destructive: false,
+            idempotent: true,
+        },
+        ToolDef {
+            name: "done_log",
+            title: "Logbuch",
+            description: DONE_LOG,
+            input_schema: object(
+                vec![
+                    (
+                        "from",
+                        string("Erster Tag (JJJJ-MM-TT, inklusive). Standard: 13 Tage vor to."),
+                    ),
+                    (
+                        "to",
+                        string("Letzter Tag (JJJJ-MM-TT, inklusive). Standard: heute in der Zeitzone des Servers."),
+                    ),
+                ],
+                &[],
+            ),
+            read_only: true,
+            destructive: false,
+            idempotent: true,
         },
     ]
 }

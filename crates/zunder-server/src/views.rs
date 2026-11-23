@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use serde::Serialize;
 use zunder_core::ids::Id;
 use zunder_core::model::{format_date, format_rfc3339};
+use zunder_core::planning;
 use zunder_core::{
     AreaState, Comment, Due, EntityKind, ForWhom, Goal, GoalState, Link, Location, Phoenix,
     Progress, ProjectKind, ProjectStatus, ProjectView as ProjectViewMode, Recurrence, State, Task,
@@ -124,6 +125,8 @@ pub struct TaskView {
     pub flame_running: bool,
     /// The goal set on the task itself (not the inherited one).
     pub goal_id: Option<Id>,
+    /// The effective goal: the task's own live goal, else its root task's.
+    pub goal: Option<GoalRef>,
     /// Day the task is planned for (`YYYY-MM-DD`).
     pub planned_on: Option<String>,
     /// Order within the planned day.
@@ -272,6 +275,7 @@ impl TaskView {
             flame_ended_at: task.flame_ended_at.map(format_rfc3339),
             flame_running: flame_running(&task),
             goal_id: task.goal_id,
+            goal: GoalRef::effective(state, id),
             planned_on: task.planned_on.map(format_date),
             day_rank: task.day_rank,
             flame_log: task
@@ -347,6 +351,52 @@ fn subtask_tree(
 pub struct FlameIntervalView {
     pub start: String,
     pub end: String,
+}
+
+/// A goal in short, as named by tasks and logbook entries.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GoalRef {
+    pub id: Id,
+    pub name: String,
+    pub emoji: Option<String>,
+}
+
+impl GoalRef {
+    pub fn of(state: &State, id: Id) -> Option<Self> {
+        let goal = state.goal(id).filter(|g| !g.deleted)?;
+        Some(GoalRef {
+            id,
+            name: goal.name,
+            emoji: goal.emoji,
+        })
+    }
+
+    /// The effective goal of a task ([`planning::effective_goal`]).
+    pub fn effective(state: &State, task_id: Id) -> Option<Self> {
+        planning::effective_goal(state, task_id).and_then(|id| Self::of(state, id))
+    }
+}
+
+/// Heute as returned by `plan_day`: the list in order with the focus.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TodayListView {
+    pub items: Vec<TaskView>,
+    pub focus: Option<TaskView>,
+    pub has_plan: bool,
+    pub plan_done: bool,
+}
+
+impl TodayListView {
+    pub fn build(state: &State, list: &planning::TodayList, now_ms: u64) -> Self {
+        let blocks = state.blocks_index();
+        let view = |id: Id| TaskView::build_with(state, &blocks, id, now_ms, false);
+        TodayListView {
+            items: list.items.iter().filter_map(|id| view(*id)).collect(),
+            focus: list.focus.and_then(view),
+            has_plan: list.has_plan,
+            plan_done: list.plan_done,
+        }
+    }
 }
 
 /// A goal as returned by tools; dates are `YYYY-MM-DD`.

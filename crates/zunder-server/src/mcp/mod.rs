@@ -109,6 +109,14 @@ Alternative „Ich schaffe <Titel> diese Woche nicht. Wie wichtig ist es dir?“
 verschicken. \
 Wochenrückblick und Feuer-Review: week_balance zählt die erledigten Aufgaben einer ISO-Woche \
 nach Gewicht und Für wen (wie der Wochenspiegel in Heute); sachlich spiegeln, nicht bewerten. \
+Ziele, Tagesplan und Logbuch: Die Ziele (list_goals, create_goal, update_goal) pflegt Claude, \
+den Feuersturm aus dem Vault; Ruben pflegt nichts. Jede neue Aufgabe bekommt ihr Ziel \
+ausdrücklich (goal_id; Unteraufgaben zählen für das Ziel ihrer Wurzelaufgabe, das effektive Ziel \
+steht als goal an der Aufgabe); filter_tasks mit goal_id „none“ findet die Lücken. plan_day \
+bestimmt den ganzen Tag: die geordnete Liste ist der Plan, Liegengebliebenes, das nicht \
+aufgenommen wird, fällt aus Heute heraus. Eine Glut-Aufgabe für mich bevorzugt nach vorn. \
+Input und Logbuch liest man mit goal_input (Züge und Flammen-Minuten je Ziel und Woche) und \
+done_log (erledigt und daran gearbeitet je Tag); sachlich spiegeln, nicht bewerten. \
 Abgelehnte Änderungen kommen mit deutscher Begründung zurück; nichts wird still verworfen.";
 
 /// The `/mcp` route (without state).

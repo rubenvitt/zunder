@@ -346,6 +346,12 @@ async fn tool_schemas_match_snapshot() {
             "stop_flame",
             "get_task_history",
             "add_comment",
+            "list_goals",
+            "create_goal",
+            "update_goal",
+            "plan_day",
+            "goal_input",
+            "done_log",
         ]
     );
     for tool in tools.as_array().unwrap() {
@@ -2386,4 +2392,551 @@ async fn week_balance_counts_done_tasks_by_weight_and_for_whom() {
     }
     let (code, _) = mcp_err(&s, &t, "week_balance", json!({"from": "2026-10-26"})).await;
     assert_eq!(code, "invalid_arguments");
+}
+
+// ----- Ziele, Tagesplan, Ziel-Input, Logbuch ----------------------------------------------
+
+async fn goal(s: &TestServer, t: &str, args: Value) -> String {
+    let r = mcp_ok(s, t, "create_goal", args).await;
+    r["goal"]["id"].as_str().unwrap().to_owned()
+}
+
+async fn task_json(s: &TestServer, t: &str, id: &str) -> Value {
+    mcp_ok(s, t, "get_task", json!({"task_id": id})).await["task"].clone()
+}
+
+/// Writes a finished flame of `minutes` at local noon of `day` (as the
+/// server does when a flame ends).
+async fn flame_at_noon(s: &TestServer, id: &str, flames: &[(chrono::NaiveDate, i64)]) {
+    use chrono::TimeZone;
+    let log: Vec<Value> = flames
+        .iter()
+        .map(|(day, minutes)| {
+            let start = chrono::Local
+                .from_local_datetime(&day.and_hms_opt(12, 0, 0).unwrap())
+                .earliest()
+                .unwrap();
+            let end = start + chrono::Duration::minutes(*minutes);
+            json!({"start": start.to_rfc3339(), "end": end.to_rfc3339()})
+        })
+        .collect();
+    let id = zunder_core::ids::parse_id(id).unwrap();
+    let log = Value::Array(log);
+    let (_, result) = s
+        .app
+        .mutate(zunder_server::Source::Server, move |_state, batch| {
+            batch.set_task(id, "flame_log", log);
+            Ok(())
+        })
+        .await
+        .unwrap();
+    assert!(result.is_fully_accepted());
+}
+
+#[tokio::test]
+async fn create_and_list_goals() {
+    let (s, t) = setup().await;
+    let fit = mcp_ok(
+        &s,
+        &t,
+        "create_goal",
+        json!({"name": "Fit bleiben", "emoji": "🏃", "lead": "Laufen", "lead_per_week": 3,
+               "storm": "Bequemlichkeit", "starts_on": "2026-01-05", "ends_on": "2026-12-31",
+               "rank": "b"}),
+    )
+    .await;
+    let g = &fit["goal"];
+    assert_eq!(g["name"], "Fit bleiben");
+    assert_eq!(g["emoji"], "🏃");
+    assert_eq!(g["lead"], "Laufen");
+    assert_eq!(g["lead_per_week"], 3);
+    assert_eq!(g["storm"], "Bequemlichkeit");
+    assert_eq!(g["starts_on"], "2026-01-05");
+    assert_eq!(g["ends_on"], "2026-12-31");
+    assert_eq!(g["state"], "active");
+    assert_eq!(g["rank"], "b");
+    assert_eq!(g["deleted"], false);
+
+    let blog = goal(&s, &t, json!({"name": "Blog", "rank": "a"})).await;
+    let r = mcp_ok(&s, &t, "list_goals", json!({})).await;
+    let names: Vec<&str> = r["goals"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|g| g["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["Blog", "Fit bleiben"]);
+    assert_eq!(r["goals"][0]["id"], blog.as_str());
+
+    for (args, tool) in [
+        (json!({"emoji": "x"}), "create_goal"),
+        (json!({"name": "A", "unbekannt": 1}), "create_goal"),
+    ] {
+        let (code, _) = mcp_err(&s, &t, tool, args).await;
+        assert_eq!(code, "invalid_arguments");
+    }
+    for bad in [
+        json!({"name": "A", "lead_per_week": 0}),
+        json!({"name": "A", "lead_per_week": 100}),
+        json!({"name": "A", "starts_on": "morgen"}),
+    ] {
+        let (code, _) = mcp_err(&s, &t, "create_goal", bad.clone()).await;
+        assert!(
+            ["invalid_value", "invalid_arguments"].contains(&code.as_str()),
+            "{bad}"
+        );
+    }
+    assert_eq!(
+        mcp_ok(&s, &t, "list_goals", json!({})).await["goals"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2,
+        "rejected goals leave nothing behind"
+    );
+}
+
+#[tokio::test]
+async fn update_goal_closes() {
+    let (s, t) = setup().await;
+    let id = goal(
+        &s,
+        &t,
+        json!({"name": "Blog", "emoji": "🎤", "lead_per_week": 2}),
+    )
+    .await;
+    let r = mcp_ok(
+        &s,
+        &t,
+        "update_goal",
+        json!({"goal_id": id, "emoji": null, "lead_per_week": null, "storm": "Zeit", "state": "closed"}),
+    )
+    .await;
+    assert_eq!(r["goal"]["state"], "closed");
+    assert_eq!(r["goal"]["emoji"], Value::Null);
+    assert_eq!(r["goal"]["lead_per_week"], Value::Null);
+    assert_eq!(r["goal"]["storm"], "Zeit");
+
+    let open = mcp_ok(&s, &t, "list_goals", json!({})).await;
+    assert!(open["goals"].as_array().unwrap().is_empty());
+    let all = mcp_ok(&s, &t, "list_goals", json!({"include_closed": true})).await;
+    assert_eq!(all["goals"][0]["id"], id.as_str());
+
+    let reopened = mcp_ok(
+        &s,
+        &t,
+        "update_goal",
+        json!({"goal_id": id, "state": "active"}),
+    )
+    .await;
+    assert_eq!(reopened["goal"]["state"], "active");
+
+    let (code, _) = mcp_err(&s, &t, "update_goal", json!({"goal_id": id})).await;
+    assert_eq!(code, "invalid_arguments");
+    let (code, _) = mcp_err(
+        &s,
+        &t,
+        "update_goal",
+        json!({"goal_id": zunder_core::ids::new_id().to_string(), "name": "X"}),
+    )
+    .await;
+    assert_eq!(code, "not_found");
+}
+
+#[tokio::test]
+async fn plan_day_orders_and_clears_leftovers() {
+    let (s, t) = setup().await;
+    let today = local_today();
+    let yesterday = (today - chrono::Days::new(1)).to_string();
+    let today_s = today.to_string();
+    let a = create(&s, &t, json!({"title": "A"})).await;
+    let b = create(&s, &t, json!({"title": "B"})).await;
+    let c = create(&s, &t, json!({"title": "C"})).await;
+    let old = create(&s, &t, json!({"title": "Rest", "planned_on": yesterday})).await;
+    let done = create(&s, &t, json!({"title": "Erledigt", "planned_on": today_s})).await;
+    mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": done, "status": "done"}),
+    )
+    .await;
+    let closed_old = create(
+        &s,
+        &t,
+        json!({"title": "Alt erledigt", "planned_on": yesterday}),
+    )
+    .await;
+    mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": closed_old, "status": "dropped"}),
+    )
+    .await;
+
+    let r = mcp_ok(&s, &t, "plan_day", json!({"task_ids": [c, a]})).await;
+    assert_eq!(r["date"], today_s.as_str());
+    let items: Vec<&str> = r["today"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["title"].as_str().unwrap())
+        .collect();
+    assert_eq!(items, ["C", "A"]);
+    assert_eq!(r["today"]["focus"]["title"], "C");
+    assert_eq!(r["today"]["has_plan"], true);
+    assert_eq!(r["today"]["plan_done"], false);
+
+    assert_eq!(task_json(&s, &t, &c).await["planned_on"], today_s.as_str());
+    assert_eq!(task_json(&s, &t, &c).await["day_rank"], "00005");
+    assert_eq!(task_json(&s, &t, &a).await["day_rank"], "00015");
+    // Not in the list: the leftover falls out of Heute, B was never planned.
+    let rest = task_json(&s, &t, &old).await;
+    assert_eq!(rest["planned_on"], Value::Null);
+    assert_eq!(rest["day_rank"], Value::Null);
+    assert_eq!(task_json(&s, &t, &b).await["planned_on"], Value::Null);
+    // Closed tasks keep their day.
+    assert_eq!(
+        task_json(&s, &t, &done).await["planned_on"],
+        today_s.as_str()
+    );
+    assert_eq!(
+        task_json(&s, &t, &closed_old).await["planned_on"],
+        yesterday.as_str()
+    );
+
+    // A new call decides the whole day again.
+    let r = mcp_ok(
+        &s,
+        &t,
+        "plan_day",
+        json!({"task_ids": [b, a], "date": today_s}),
+    )
+    .await;
+    assert_eq!(r["today"]["items"][0]["id"], b.as_str());
+    assert_eq!(r["today"]["items"][1]["id"], a.as_str());
+    assert_eq!(r["today"]["items"].as_array().unwrap().len(), 2);
+    assert_eq!(task_json(&s, &t, &c).await["planned_on"], Value::Null);
+
+    // An empty list clears the open plan.
+    let r = mcp_ok(&s, &t, "plan_day", json!({"task_ids": []})).await;
+    assert!(r["today"]["items"].as_array().unwrap().is_empty());
+    assert_eq!(task_json(&s, &t, &a).await["planned_on"], Value::Null);
+    assert_eq!(
+        task_json(&s, &t, &done).await["planned_on"],
+        today_s.as_str()
+    );
+}
+
+#[tokio::test]
+async fn plan_day_rejects_unknown_or_closed_task_and_writes_nothing() {
+    let (s, t) = setup().await;
+    let ok = create(&s, &t, json!({"title": "Gut"})).await;
+    let leftover = create(&s, &t, json!({"title": "Rest", "planned_on": "2020-01-01"})).await;
+    let done = create(&s, &t, json!({"title": "Fertig"})).await;
+    mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": done, "status": "done"}),
+    )
+    .await;
+    let dropped = create(&s, &t, json!({"title": "Verworfen"})).await;
+    mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": dropped, "status": "dropped"}),
+    )
+    .await;
+    let gone = create(&s, &t, json!({"title": "Gelöscht"})).await;
+    mcp_ok(&s, &t, "delete_task", json!({"task_id": gone})).await;
+    let unknown = zunder_core::ids::new_id().to_string();
+
+    let cases = [
+        (json!({"task_ids": [ok, unknown]}), "unknown id"),
+        (
+            json!({"task_ids": [ok, "ZUN-999"]}),
+            "unresolvable reference",
+        ),
+        (json!({"task_ids": [ok, gone]}), "deleted"),
+        (json!({"task_ids": [ok, done]}), "done"),
+        (json!({"task_ids": [ok, dropped]}), "dropped"),
+        (json!({"task_ids": [ok, ok]}), "duplicate"),
+        (json!({"task_ids": [ok], "date": "morgen"}), "bad date"),
+        (json!({"task_ids": [ok], "date": ""}), "empty date"),
+        (json!({"task_ids": "A"}), "not a list"),
+        (json!({"task_ids": [ok, ""]}), "empty entry"),
+    ];
+    for (args, what) in cases {
+        let (code, message) = mcp_err(&s, &t, "plan_day", args).await;
+        assert!(!code.is_empty() && !message.is_empty(), "{what}");
+        let planned = task_json(&s, &t, &ok).await;
+        assert_eq!(
+            planned["planned_on"],
+            Value::Null,
+            "{what}: nothing written"
+        );
+        assert_eq!(planned["day_rank"], Value::Null, "{what}: nothing written");
+        assert_eq!(
+            task_json(&s, &t, &leftover).await["planned_on"],
+            "2020-01-01",
+            "{what}: leftover untouched"
+        );
+    }
+    let (code, message) = mcp_err(&s, &t, "plan_day", json!({"task_ids": [ok, done]})).await;
+    assert_eq!(code, "invalid_value");
+    assert!(message.contains("Fertig"), "{message}");
+    let (code, _) = mcp_err(&s, &t, "plan_day", json!({"task_ids": [unknown]})).await;
+    assert_eq!(code, "not_found");
+    let (code, _) = mcp_err(&s, &t, "plan_day", json!({})).await;
+    assert_eq!(code, "invalid_arguments");
+}
+
+#[tokio::test]
+async fn goal_input_counts_done_and_flames() {
+    let (s, t) = setup().await;
+    let today = local_today();
+    let g = goal(
+        &s,
+        &t,
+        json!({"name": "Blog", "emoji": "🎤", "lead_per_week": 2, "rank": "a"}),
+    )
+    .await;
+    let other = goal(&s, &t, json!({"name": "Fit", "rank": "b"})).await;
+    let first = create(&s, &t, json!({"title": "Gliederung", "goal_id": g})).await;
+    let root = create(&s, &t, json!({"title": "Artikel", "goal_id": g})).await;
+    let child = create(&s, &t, json!({"title": "Entwurf", "parent_id": root})).await;
+    let loose = create(&s, &t, json!({"title": "Ohne Ziel"})).await;
+    for id in [&first, &child, &loose] {
+        mcp_ok(
+            &s,
+            &t,
+            "update_task",
+            json!({"task_id": id, "status": "done"}),
+        )
+        .await;
+    }
+    flame_at_noon(&s, &first, &[(today, 25)]).await;
+    flame_at_noon(&s, &root, &[(today, 10)]).await;
+    flame_at_noon(&s, &loose, &[(today, 99)]).await;
+
+    let r = mcp_ok(&s, &t, "goal_input", json!({})).await;
+    assert_eq!(r["week"], iso_week(today));
+    let goals = r["goals"].as_array().unwrap();
+    assert_eq!(goals.len(), 2);
+    assert_eq!(goals[0]["goal_id"], g.as_str());
+    assert_eq!(goals[0]["name"], "Blog");
+    assert_eq!(goals[0]["emoji"], "🎤");
+    assert_eq!(goals[0]["done"], 2, "own task and inherited subtask");
+    assert_eq!(goals[0]["minutes"], 35);
+    assert_eq!(goals[0]["lead_per_week"], 2);
+    assert_eq!(goals[0]["reached"], true);
+    assert_eq!(goals[1]["goal_id"], other.as_str());
+    assert_eq!(goals[1]["done"], 0);
+    assert_eq!(goals[1]["minutes"], 0);
+    assert_eq!(goals[1]["reached"], false);
+
+    let last = iso_week(today - chrono::Days::new(7));
+    let before = mcp_ok(&s, &t, "goal_input", json!({"week": last})).await;
+    assert_eq!(before["week"], last.as_str());
+    assert_eq!(before["goals"][0]["done"], 0);
+    assert_eq!(before["goals"][0]["minutes"], 0);
+
+    let (code, _) = mcp_err(&s, &t, "goal_input", json!({"week": "2026W44"})).await;
+    assert_eq!(code, "invalid_arguments");
+}
+
+#[tokio::test]
+async fn done_log_lists_done_and_worked() {
+    let (s, t) = setup().await;
+    let today = local_today();
+    let (area, dev, _) = structure(&s, &t).await;
+    let keyed = mcp_ok(
+        &s,
+        &t,
+        "create_project",
+        json!({"name": "Logbuch", "area_id": area, "key": "LOG"}),
+    )
+    .await["project"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let g = goal(&s, &t, json!({"name": "Fit", "emoji": "🏃"})).await;
+    let done = create(
+        &s,
+        &t,
+        json!({"title": "Krafttraining", "goal_id": g, "location": {"kind": "project", "id": keyed}}),
+    )
+    .await;
+    mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": done, "status": "done"}),
+    )
+    .await;
+    let worked = create(&s, &t, json!({"title": "Funkgeräte prüfen"})).await;
+    let ticket = create(
+        &s,
+        &t,
+        json!({"title": "Ticket", "location": {"kind": "project", "id": dev}}),
+    )
+    .await;
+    mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": ticket, "status": "done"}),
+    )
+    .await;
+    flame_at_noon(&s, &done, &[(today, 15)]).await;
+    flame_at_noon(
+        &s,
+        &worked,
+        &[(today, 20), (today - chrono::Days::new(2), 5)],
+    )
+    .await;
+
+    let r = mcp_ok(&s, &t, "done_log", json!({})).await;
+    assert_eq!(r["to"], today.to_string());
+    assert_eq!(r["from"], (today - chrono::Days::new(13)).to_string());
+    let days = r["days"].as_array().unwrap();
+    assert_eq!(days.len(), 2, "{r}");
+    let day = &days[0];
+    assert_eq!(day["date"], today.to_string());
+    assert_eq!(day["minutes"], 35);
+    let done_entries = day["done"].as_array().unwrap();
+    assert_eq!(done_entries.len(), 1, "dev project task left out: {r}");
+    assert_eq!(done_entries[0]["task_id"], done.as_str());
+    assert_eq!(done_entries[0]["title"], "Krafttraining");
+    assert_eq!(done_entries[0]["ref"], "LOG-1");
+    assert_eq!(done_entries[0]["minutes"], 15);
+    assert_eq!(done_entries[0]["goal"]["emoji"], "🏃");
+    assert_eq!(done_entries[0]["goal"]["name"], "Fit");
+    assert_eq!(done_entries[0]["goal"]["id"], g.as_str());
+    let worked_entries = day["worked"].as_array().unwrap();
+    assert_eq!(worked_entries[0]["title"], "Funkgeräte prüfen");
+    assert_eq!(worked_entries[0]["ref"], Value::Null);
+    assert_eq!(worked_entries[0]["minutes"], 20);
+    assert_eq!(worked_entries[0]["goal"], Value::Null);
+    assert_eq!(days[1]["date"], (today - chrono::Days::new(2)).to_string());
+    assert_eq!(days[1]["worked"][0]["minutes"], 5);
+
+    let one = mcp_ok(
+        &s,
+        &t,
+        "done_log",
+        json!({"from": today.to_string(), "to": today.to_string()}),
+    )
+    .await;
+    assert_eq!(one["days"].as_array().unwrap().len(), 1);
+    // Exactly 92 days are fine, 93 are too many.
+    let span = |days: u64| json!({"from": (today - chrono::Days::new(days - 1)).to_string(), "to": today.to_string()});
+    mcp_ok(&s, &t, "done_log", span(92)).await;
+    for bad in [
+        span(93),
+        json!({"from": "2026-11-23", "to": "2026-11-22"}),
+        json!({"from": "gestern"}),
+    ] {
+        let (code, message) = mcp_err(&s, &t, "done_log", bad.clone()).await;
+        assert_eq!(code, "invalid_arguments", "{bad}: {message}");
+    }
+}
+
+#[tokio::test]
+async fn filter_tasks_by_goal_none() {
+    let (s, t) = setup().await;
+    let today_s = local_today().to_string();
+    let g = goal(&s, &t, json!({"name": "Blog", "emoji": "🎤"})).await;
+    let a = create(&s, &t, json!({"title": "A", "goal_id": g})).await;
+    let child = create(&s, &t, json!({"title": "B", "parent_id": a})).await;
+    create(&s, &t, json!({"title": "C"})).await;
+    let created = mcp_ok(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "D", "planned_on": today_s, "day_rank": "00005"}),
+    )
+    .await;
+    assert_eq!(created["task"]["planned_on"], today_s.as_str());
+    assert_eq!(created["task"]["day_rank"], "00005");
+    assert_eq!(created["task"]["goal"], Value::Null);
+
+    let mut with_goal = titles(&mcp_ok(&s, &t, "filter_tasks", json!({"goal_id": g})).await);
+    with_goal.sort();
+    assert_eq!(with_goal, ["A", "B"], "the subtask inherits the goal");
+    let mut without = titles(&mcp_ok(&s, &t, "filter_tasks", json!({"goal_id": "none"})).await);
+    without.sort();
+    assert_eq!(without, ["C", "D"]);
+    let planned = mcp_ok(&s, &t, "filter_tasks", json!({"planned_on": today_s})).await;
+    assert_eq!(titles(&planned), ["D"]);
+
+    let view = task_json(&s, &t, &child).await;
+    assert_eq!(view["goal_id"], Value::Null);
+    assert_eq!(
+        view["goal"],
+        json!({"id": g, "name": "Blog", "emoji": "🎤"})
+    );
+
+    // null removes the goal; the filter follows.
+    let r = mcp_ok(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": a, "goal_id": null}),
+    )
+    .await;
+    assert_eq!(r["task"]["goal"], Value::Null);
+    assert!(titles(&mcp_ok(&s, &t, "filter_tasks", json!({"goal_id": g})).await).is_empty());
+    mcp_ok(&s, &t, "update_task", json!({"task_id": a, "goal_id": g})).await;
+    assert_eq!(
+        titles(&mcp_ok(&s, &t, "filter_tasks", json!({"goal_id": g})).await).len(),
+        2
+    );
+
+    for bad in [
+        json!({"goal_id": "irgendwas"}),
+        json!({"planned_on": "heute"}),
+    ] {
+        let (code, _) = mcp_err(&s, &t, "filter_tasks", bad.clone()).await;
+        assert_eq!(code, "invalid_arguments", "{bad}");
+    }
+    let (code, _) = mcp_err(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": a, "goal_id": zunder_core::ids::new_id().to_string()}),
+    )
+    .await;
+    assert!(!code.is_empty());
+}
+
+#[tokio::test]
+async fn update_task_rejects_flame_log() {
+    let (s, t) = setup().await;
+    let id = create(&s, &t, json!({"title": "A"})).await;
+    let log = json!([{"start": "2026-11-23T10:00:00Z", "end": "2026-11-23T10:30:00Z"}]);
+    let (code, message) = mcp_err(
+        &s,
+        &t,
+        "update_task",
+        json!({"task_id": id, "flame_log": log}),
+    )
+    .await;
+    assert_eq!(code, "invalid_value");
+    assert!(message.contains("Flammen-Historie"), "{message}");
+    let (code, _) = mcp_err(
+        &s,
+        &t,
+        "create_task",
+        json!({"title": "B", "flame_log": log}),
+    )
+    .await;
+    assert_eq!(code, "invalid_value");
+    assert!(task_json(&s, &t, &id).await["flame_log"]
+        .as_array()
+        .unwrap()
+        .is_empty());
 }

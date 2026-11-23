@@ -11,12 +11,15 @@ use zunder_core::balance;
 use zunder_core::defer::{self, DeferTarget, FREE_DEFERRALS};
 use zunder_core::hlc::system_time_ms;
 use zunder_core::ids::Id;
-use zunder_core::model::fields::{area as fa, comment as fc, project as fp, task as ft};
-use zunder_core::model::{format_rfc3339, MAX_DEFERRALS};
+use zunder_core::model::fields::{
+    area as fa, comment as fc, goal as fg, project as fp, task as ft,
+};
+use zunder_core::model::{format_date, format_rfc3339, parse_plain_date, MAX_DEFERRALS};
+use zunder_core::planning;
 use zunder_core::search::search;
 use zunder_core::{
-    AreaState, Due, EntityKind, ForWhom, IsoWeek, Location, PhoenixRole, ProjectStatus, Recurrence,
-    State, TaskStatus, TaskType, Weight,
+    AreaState, Due, EntityKind, ForWhom, GoalState, IsoWeek, Location, PhoenixRole, ProjectStatus,
+    Recurrence, State, TaskStatus, TaskType, Weight,
 };
 
 use rusqlite::Connection;
@@ -28,8 +31,8 @@ use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::flame;
 use crate::views::{
-    claim_active, flame_running, location_kind, AreaView, CommentView, ProjectView, TaskRef,
-    TaskView,
+    claim_active, flame_running, location_kind, AreaView, CommentView, GoalRef, GoalView,
+    ProjectView, TaskRef, TaskView, TodayListView,
 };
 
 /// Task fields that `create_task` and `update_task` pass through to the
@@ -49,7 +52,26 @@ const TASK_FIELDS: &[&str] = &[
     ft::PLAN,
     ft::BRANCH,
     ft::PR_URL,
+    ft::GOAL_ID,
+    ft::PLANNED_ON,
+    ft::DAY_RANK,
 ];
+
+/// Fields of a goal that `create_goal` and `update_goal` pass through to the
+/// core unchanged (besides `name` and `state`).
+const GOAL_FIELDS: &[&str] = &[
+    fg::EMOJI,
+    fg::LEAD,
+    fg::LEAD_PER_WEEK,
+    fg::STORM,
+    fg::STARTS_ON,
+    fg::ENDS_ON,
+    fg::RANK,
+];
+
+/// Longest span of `done_log` in days and its default.
+const MAX_LOG_DAYS: u64 = 92;
+const DEFAULT_LOG_DAYS: u64 = 14;
 
 /// Fields of a subtask in `decompose_task`.
 const SUBTASK_FIELDS: &[&str] = &[
@@ -92,11 +114,26 @@ pub async fn call(
 ) -> Option<Value> {
     let def = tools().iter().find(|t| t.name == name)?;
     let args = Args::new(args);
-    let result = match args.check(def.properties(), def.required()) {
+    let result = match refuse_server_fields(&args)
+        .and_then(|()| args.check(def.properties(), def.required()))
+    {
         Ok(()) => dispatch(app, source, name, &args).await,
         Err(e) => Err(e),
     };
     Some(tool_result(result))
+}
+
+/// `flame_log` is written by the server alone, whatever the tool.
+fn refuse_server_fields(args: &Args) -> AppResult<()> {
+    if args.raw(ft::FLAME_LOG).is_some() {
+        return Err(AppError::BadRequest {
+            code: "invalid_value",
+            message: "Die Flammen-Historie („flame_log“) schreibt nur der Server, wenn eine \
+                      Flamme endet; sie lässt sich nicht setzen."
+                .to_owned(),
+        });
+    }
+    Ok(())
 }
 
 fn tool_result(result: AppResult<Value>) -> Value {
@@ -143,6 +180,12 @@ async fn dispatch(app: &App, source: Source, name: &str, args: &Args) -> AppResu
         "stop_flame" => stop_flame(app, args).await,
         "get_task_history" => task_history(app, args).await,
         "add_comment" => add_comment(app, source, args).await,
+        "list_goals" => list_goals(app, args).await,
+        "create_goal" => create_goal(app, source, args).await,
+        "update_goal" => update_goal(app, source, args).await,
+        "plan_day" => plan_day(app, source, args).await,
+        "goal_input" => goal_input(app, args).await,
+        "done_log" => done_log(app, args).await,
         other => Err(AppError::Internal(anyhow::anyhow!(
             "tool {other} has no handler"
         ))),
@@ -254,10 +297,19 @@ struct TaskFilter {
     undated_ack_weeks: Option<u64>,
     /// With (`true`) or without (`false`) a recurrence.
     recurring: Option<bool>,
+    goal: Option<GoalFilter>,
+    planned_on: Option<Date>,
     order_by: OrderBy,
     reverse: bool,
     offset: usize,
     limit: usize,
+}
+
+/// The `goal_id` filter: one effective goal or none at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GoalFilter {
+    Goal(Id),
+    None,
 }
 
 /// Sort order of filter_tasks.
@@ -291,6 +343,22 @@ const MAX_OFFSET: u64 = 1_000_000;
 
 fn day(args: &Args, key: &str) -> AppResult<Option<Date>> {
     Ok(moment(args, key)?.map(|d| d.date()))
+}
+
+/// A calendar day `JJJJ-MM-TT` (nothing else).
+fn plain_day(args: &Args, key: &str) -> AppResult<Option<Date>> {
+    match args.str(key)? {
+        None => Ok(None),
+        Some(s) => parse_plain_date(s)
+            .map(Some)
+            .ok_or_else(|| invalid(format!("„{key}“ muss ein Datum JJJJ-MM-TT sein."))),
+    }
+}
+
+/// Today in the server's time zone.
+fn today() -> AppResult<Date> {
+    local_day(system_time_ms())
+        .ok_or_else(|| AppError::Internal(anyhow::anyhow!("no local calendar day")))
 }
 
 fn moment(args: &Args, key: &str) -> AppResult<Option<Due>> {
@@ -386,6 +454,14 @@ impl TaskFilter {
             undated_ack,
             undated_ack_weeks,
             recurring: args.bool("recurring")?,
+            goal: match args.str("goal_id")? {
+                None => None,
+                Some("none") => Some(GoalFilter::None),
+                Some(s) => Some(GoalFilter::Goal(zunder_core::ids::parse_id(s).ok_or_else(
+                    || invalid("„goal_id“ muss eine ID aus list_goals oder „none“ sein."),
+                )?)),
+            },
+            planned_on: plain_day(args, "planned_on")?,
             order_by: args
                 .code("order_by", &ORDER_BY_CODES)?
                 .unwrap_or(OrderBy::Due),
@@ -534,6 +610,19 @@ impl TaskFilter {
         }
         if self.parent_id.is_some_and(|p| task.parent_id != Some(p)) {
             return false;
+        }
+        if self.planned_on.is_some_and(|d| task.planned_on != Some(d)) {
+            return false;
+        }
+        if let Some(wanted) = self.goal {
+            let goal = planning::effective_goal(state, task.id);
+            let matches = match wanted {
+                GoalFilter::None => goal.is_none(),
+                GoalFilter::Goal(id) => goal == Some(id),
+            };
+            if !matches {
+                return false;
+            }
         }
         if let Some(agent) = &self.claimed_by {
             if task.claimed_by.as_deref() != Some(agent) || !claim_active(task, now) {
@@ -1561,4 +1650,232 @@ async fn stop_flame(app: &App, args: &Args) -> AppResult<Value> {
             .ok_or_else(|| AppError::Conflict("Es läuft keine Flamme.".into()))?,
     };
     to_json(&flame::stop(app, id).await?)
+}
+
+// ----- goals, day plan, input, logbook -------------------------------------------------
+
+/// Live goals by `rank` (missing last), then name, then ID.
+fn sorted_goals(state: &State, include_closed: bool) -> Vec<zunder_core::Goal> {
+    let mut goals: Vec<_> = state
+        .live_goals()
+        .filter(|g| include_closed || g.state == GoalState::Active)
+        .collect();
+    goals.sort_by(|a, b| {
+        let by_rank = match (&a.rank, &b.rank) {
+            (Some(x), Some(y)) => x.cmp(y),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        };
+        by_rank
+            .then_with(|| a.name.cmp(&b.name))
+            .then(a.id.cmp(&b.id))
+    });
+    goals
+}
+
+async fn list_goals(app: &App, args: &Args) -> AppResult<Value> {
+    let include_closed = args.bool("include_closed")?.unwrap_or(false);
+    let goals: Vec<GoalView> = app.read(|state| {
+        sorted_goals(state, include_closed)
+            .into_iter()
+            .map(GoalView::from)
+            .collect()
+    });
+    Ok(json!({"goals": goals, "count": goals.len()}))
+}
+
+fn goal_view(app: &App, id: Id) -> AppResult<GoalView> {
+    app.read(|s| s.goal(id))
+        .map(GoalView::from)
+        .ok_or_else(|| AppError::NotFound(format!("Ziel {id} nicht gefunden.")))
+}
+
+async fn create_goal(app: &App, source: Source, args: &Args) -> AppResult<Value> {
+    let name = args.raw(fg::NAME).cloned().unwrap_or(Value::Null);
+    let fields = present(args, GOAL_FIELDS, false);
+    let (id, _) = app
+        .mutate_atomic(source, move |_state, batch| {
+            let id = zunder_core::ids::new_id();
+            batch.set_goal(id, fg::NAME, name);
+            batch.set_goal(id, fg::STATE, GoalState::Active.as_str());
+            for (field, value) in fields {
+                batch.set_goal(id, field, value);
+            }
+            Ok(id)
+        })
+        .await?;
+    Ok(json!({"goal": goal_view(app, id)?}))
+}
+
+async fn update_goal(app: &App, source: Source, args: &Args) -> AppResult<Value> {
+    let id = args.required_id("goal_id")?;
+    let mut fields = present(args, &[fg::NAME, fg::STATE], true);
+    fields.extend(present(args, GOAL_FIELDS, true));
+    if fields.is_empty() {
+        return Err(invalid("Keine Änderung angegeben."));
+    }
+    app.mutate_atomic(source, move |state, batch| {
+        state
+            .live_entity(EntityKind::Goal, id)
+            .ok_or_else(|| AppError::NotFound(format!("Ziel {id} nicht gefunden.")))?;
+        for (field, value) in fields {
+            if changes(state, EntityKind::Goal, id, field, &value) {
+                batch.set_goal(id, field, value);
+            }
+        }
+        Ok(())
+    })
+    .await?;
+    Ok(json!({"goal": goal_view(app, id)?}))
+}
+
+fn closed_message(task: &zunder_core::Task) -> String {
+    let name = match &task.reference {
+        Some(r) => format!("{r} „{}“", task.title),
+        None => format!("„{}“", task.title),
+    };
+    let status = if task.status == TaskStatus::Done {
+        "erledigt"
+    } else {
+        "verworfen"
+    };
+    format!(
+        "Die Aufgabe {name} ist {status} und lässt sich nicht einplanen. Es wurde nichts geändert."
+    )
+}
+
+/// Plans one day (design 8): the listed tasks in order, leftovers out.
+async fn plan_day(app: &App, source: Source, args: &Args) -> AppResult<Value> {
+    let date = match plain_day(args, "date")? {
+        Some(d) => d,
+        None => today()?,
+    };
+    let refs = args.task_list("task_ids")?;
+    let date_text = format_date(date);
+    let day = date_text.clone();
+    app.mutate_atomic(source, move |state, batch| {
+        let mut ids: Vec<Id> = Vec::with_capacity(refs.len());
+        for target in &refs {
+            let id = target.resolve(state, false)?;
+            let task = state.task(id).expect("resolved task exists");
+            if task.status.is_closed() {
+                return Err(AppError::BadRequest {
+                    code: "invalid_value",
+                    message: closed_message(&task),
+                });
+            }
+            if ids.contains(&id) {
+                return Err(invalid(format!(
+                    "Die Aufgabe „{}“ steht mehrfach in task_ids. Es wurde nichts geändert.",
+                    task.title
+                )));
+            }
+            ids.push(id);
+        }
+        for (index, id) in ids.iter().enumerate() {
+            let rank = Value::String(format!("{index:04}5"));
+            let planned = Value::String(day.clone());
+            if changes(state, EntityKind::Task, *id, ft::PLANNED_ON, &planned) {
+                batch.set_task(*id, ft::PLANNED_ON, planned);
+            }
+            if changes(state, EntityKind::Task, *id, ft::DAY_RANK, &rank) {
+                batch.set_task(*id, ft::DAY_RANK, rank);
+            }
+        }
+        // The call decides the whole day: leftovers up to `date` fall out.
+        for task in state.live_tasks() {
+            if task.status.is_closed() || ids.contains(&task.id) {
+                continue;
+            }
+            if task.planned_on.is_some_and(|planned| planned <= date) {
+                batch.set_task(task.id, ft::PLANNED_ON, Value::Null);
+                if task.day_rank.is_some() {
+                    batch.set_task(task.id, ft::DAY_RANK, Value::Null);
+                }
+            }
+        }
+        Ok(())
+    })
+    .await?;
+    let now = system_time_ms();
+    let today_view = app.read(|state| {
+        TodayListView::build(state, &planning::today_list(state, date, &ServerZone), now)
+    });
+    Ok(json!({"date": date_text, "today": today_view}))
+}
+
+async fn goal_input(app: &App, args: &Args) -> AppResult<Value> {
+    let week = match args.str("week")? {
+        Some(s) => IsoWeek::parse(s)
+            .ok_or_else(|| invalid("„week“ muss eine ISO-Woche JJJJ-Www sein, z. B. 2026-W47."))?,
+        None => IsoWeek::of(today()?),
+    };
+    let now = time::OffsetDateTime::now_utc();
+    app.read_blocking(move |state| {
+        let input = planning::goal_input(state, week, &ServerZone, now);
+        let goals: Vec<Value> = input
+            .goals
+            .iter()
+            .map(|row| {
+                let goal = GoalRef::of(state, row.goal_id);
+                json!({
+                    "goal_id": row.goal_id,
+                    "name": goal.as_ref().map(|g| g.name.clone()),
+                    "emoji": goal.and_then(|g| g.emoji),
+                    "done": row.done,
+                    "minutes": row.minutes,
+                    "lead_per_week": row.lead_per_week,
+                    "reached": row.reached,
+                })
+            })
+            .collect();
+        json!({"week": input.week, "from": format_date(input.from), "to": format_date(input.to), "goals": goals})
+    })
+    .await
+}
+
+async fn done_log(app: &App, args: &Args) -> AppResult<Value> {
+    let to = match plain_day(args, "to")? {
+        Some(d) => d,
+        None => today()?,
+    };
+    let from = match plain_day(args, "from")? {
+        Some(d) => d,
+        None => to.saturating_sub(time::Duration::days(DEFAULT_LOG_DAYS as i64 - 1)),
+    };
+    if from > to {
+        return Err(invalid("„from“ liegt nach „to“."));
+    }
+    if (to - from).whole_days() + 1 > MAX_LOG_DAYS as i64 {
+        return Err(invalid(format!(
+            "Der Zeitraum darf höchstens {MAX_LOG_DAYS} Tage umfassen."
+        )));
+    }
+    let now = time::OffsetDateTime::now_utc();
+    app.read_blocking(move |state| {
+        let entry = |task_id: Id, minutes: u32| {
+            let task = state.task(task_id);
+            json!({
+                "task_id": task_id,
+                "ref": task.as_ref().and_then(|t| t.reference.clone()),
+                "title": task.map(|t| t.title),
+                "minutes": minutes,
+                "goal": GoalRef::effective(state, task_id),
+            })
+        };
+        let days: Vec<Value> = planning::done_log(state, from, to, &ServerZone, now)
+            .into_iter()
+            .map(|day| {
+                json!({
+                    "date": format_date(day.date),
+                    "minutes": day.minutes,
+                    "done": day.done.iter().map(|e| entry(e.task_id, e.minutes)).collect::<Vec<_>>(),
+                    "worked": day.worked.iter().map(|e| entry(e.task_id, e.minutes)).collect::<Vec<_>>(),
+                })
+            })
+            .collect();
+        json!({"from": format_date(from), "to": format_date(to), "days": days})
+    })
+    .await
 }
