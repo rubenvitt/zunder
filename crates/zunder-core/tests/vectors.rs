@@ -10,6 +10,7 @@ use serde_json::{json, Map, Value};
 use time::{Date, Month, OffsetDateTime, UtcOffset, Weekday};
 use zunder_core::balance::week_balance;
 use zunder_core::model::{format_rfc3339, parse_plain_date, parse_rfc3339, Due, Recurrence};
+use zunder_core::planning::{done_log, goal_input, today_list};
 use zunder_core::recurrence::{next_occurrence, LocalZone};
 use zunder_core::{validate_push, Hlc, IsoWeek, Op, State};
 
@@ -53,6 +54,103 @@ enum Vector {
         time_zone: String,
         cases: Vec<OccurrenceCase>,
     },
+    /// Heute als Reihenfolge (design 5.1/5.2). Planning vectors share one
+    /// shape: `time_zone` (only Europe/Berlin is modelled) and `cases`, each
+    /// with a `description`, its own `state` (merged in every op
+    /// permutation), the kind's inputs and `expected` in the serialized
+    /// shape of the result. Here: `today` (`JJJJ-MM-TT`, the local date);
+    /// `expected` is `zunder_core::planning::TodayList`.
+    TodayList {
+        name: String,
+        time_zone: String,
+        cases: Vec<TodayCase>,
+    },
+    /// Input pro Ziel und Woche (design 6.1), shape as `TodayList`. Inputs:
+    /// `week` (ISO week) and `now` (RFC 3339, the end of a running flame);
+    /// `expected` is `zunder_core::planning::WeekGoalInput`.
+    GoalInput {
+        name: String,
+        time_zone: String,
+        cases: Vec<GoalInputCase>,
+    },
+    /// Logbuch „Erledigt“ (design 7), shape as `TodayList`. Inputs: `from`
+    /// and `to` (`JJJJ-MM-TT`, both included) and `now` (RFC 3339);
+    /// `expected` is the list of `zunder_core::planning::LogDay`.
+    DoneLog {
+        name: String,
+        time_zone: String,
+        cases: Vec<DoneLogCase>,
+    },
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TodayCase {
+    description: String,
+    today: String,
+    state: Vec<Op>,
+    expected: Value,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GoalInputCase {
+    description: String,
+    now: String,
+    week: IsoWeek,
+    state: Vec<Op>,
+    expected: Value,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DoneLogCase {
+    description: String,
+    now: String,
+    from: String,
+    to: String,
+    state: Vec<Op>,
+    expected: Value,
+}
+
+/// Runs a planning vector: every case in every op permutation of its state.
+fn check_planning<C>(
+    name: &str,
+    file_name: &str,
+    time_zone: &str,
+    cases: &[C],
+    parts: impl Fn(&C) -> (&str, &[Op], &Value),
+    run: impl Fn(&C, &State) -> Value,
+) {
+    assert!(
+        file_name.contains(name),
+        "{file_name}: name {name:?} does not match"
+    );
+    assert_eq!(
+        time_zone, "Europe/Berlin",
+        "{name}: only Europe/Berlin is modelled"
+    );
+    assert!(!cases.is_empty(), "{name}: no cases");
+    for case in cases {
+        let (description, ops, expected) = parts(case);
+        assert!(!ops.is_empty(), "{name}, case {description:?}: no ops");
+        for (label, perm) in permutations(ops) {
+            let merged = State::from_ops(&perm);
+            assert_eq!(
+                &run(case, &merged),
+                expected,
+                "vector {name}, case {description:?}, order: {label}"
+            );
+        }
+    }
+}
+
+fn date_input(s: &str, what: &str) -> Date {
+    parse_plain_date(s).unwrap_or_else(|| panic!("bad {what} {s:?}"))
+}
+
+fn instant_input(s: &str) -> OffsetDateTime {
+    parse_rfc3339(s).unwrap_or_else(|| panic!("bad now {s:?}"))
 }
 
 /// One completed instance of a series. `today` is the server's local date
@@ -203,6 +301,7 @@ fn shared_vectors() {
     let mut validate_count = 0;
     let mut balance_count = 0;
     let mut occurrence_count = 0;
+    let mut planning_count = 0;
     for path in &files {
         let file_name = path.file_name().unwrap().to_string_lossy().into_owned();
         match load(path) {
@@ -313,6 +412,62 @@ fn shared_vectors() {
                     );
                 }
             }
+            Vector::TodayList {
+                name,
+                time_zone,
+                cases,
+            } => {
+                planning_count += 1;
+                check_planning(
+                    &name,
+                    &file_name,
+                    &time_zone,
+                    &cases,
+                    |c| (c.description.as_str(), c.state.as_slice(), &c.expected),
+                    |c, state| {
+                        let today = date_input(&c.today, "today");
+                        serde_json::to_value(today_list(state, today, &Berlin)).unwrap()
+                    },
+                );
+            }
+            Vector::GoalInput {
+                name,
+                time_zone,
+                cases,
+            } => {
+                planning_count += 1;
+                check_planning(
+                    &name,
+                    &file_name,
+                    &time_zone,
+                    &cases,
+                    |c| (c.description.as_str(), c.state.as_slice(), &c.expected),
+                    |c, state| {
+                        let now = instant_input(&c.now);
+                        serde_json::to_value(goal_input(state, c.week, &Berlin, now)).unwrap()
+                    },
+                );
+            }
+            Vector::DoneLog {
+                name,
+                time_zone,
+                cases,
+            } => {
+                planning_count += 1;
+                check_planning(
+                    &name,
+                    &file_name,
+                    &time_zone,
+                    &cases,
+                    |c| (c.description.as_str(), c.state.as_slice(), &c.expected),
+                    |c, state| {
+                        let from = date_input(&c.from, "from");
+                        let to = date_input(&c.to, "to");
+                        let now = instant_input(&c.now);
+                        serde_json::to_value(done_log(state, from, to, &Berlin, now)).unwrap()
+                    },
+                );
+            }
             Vector::HlcOrder { name, sorted } => {
                 hlc_count += 1;
                 assert!(
@@ -352,6 +507,10 @@ fn shared_vectors() {
     assert!(
         occurrence_count >= 1,
         "expected at least one next_occurrence vector"
+    );
+    assert!(
+        planning_count >= 3,
+        "expected today_list, goal_input and done_log vectors, found {planning_count}"
     );
     assert!(
         validate_count >= 10,

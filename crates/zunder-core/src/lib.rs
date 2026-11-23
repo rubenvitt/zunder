@@ -16,6 +16,7 @@
 //! - [`search`]: diacritic-tolerant full-text search
 //! - [`balance`]: Wochenbilanz, done tasks of an ISO week by weight and
 //!   for whom
+//! - [`planning`]: Heute as one list, input per goal and week, Logbuch
 
 pub mod balance;
 pub mod blocking;
@@ -26,6 +27,7 @@ pub mod ids;
 pub mod model;
 pub mod numbering;
 pub mod op;
+pub mod planning;
 pub mod recurrence;
 pub mod search;
 pub mod state;
