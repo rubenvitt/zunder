@@ -225,6 +225,33 @@ async fn warnings_are_returned() {
 }
 
 #[tokio::test]
+async fn goal_roundtrip_via_sync() {
+    let s = TestServer::new().await;
+    let mut clock = client_clock();
+    let goal = zunder_core::ids::Id::new();
+    let ops = ops(&mut clock, |b| {
+        b.set_goal(goal, "name", "Fit bleiben");
+        b.set_goal(goal, "state", "active");
+    });
+    let r = s.push(BOOT, &ops).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    let body = r.json();
+    assert_eq!(body["accepted"], op_ids(&ops));
+    assert_eq!(body["rejected"], json!([]));
+
+    let snap = s.get("/api/snapshot", BOOT).await.json();
+    let entities = snap["entities"].as_array().unwrap();
+    assert_eq!(entities.len(), 1);
+    assert_eq!(entities[0]["entity"], "goal");
+    assert_eq!(entities[0]["entity_id"], goal.to_string());
+    assert_eq!(entities[0]["fields"]["name"]["value"], "Fit bleiben");
+
+    let pull = s.get("/api/sync/pull?since=0", BOOT).await.json();
+    assert_eq!(pull["ops"].as_array().unwrap().len(), ops.len());
+    assert_eq!(pull["ops"][0]["op"]["entity"], "goal");
+}
+
+#[tokio::test]
 async fn malformed_push_is_a_bad_request() {
     let s = TestServer::new().await;
     let r = s
