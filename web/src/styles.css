@@ -1638,28 +1638,6 @@ h2.tone-violet::before {
   }
 }
 
-/* A running flame: the one place where the interface glows. */
-.group-flame {
-  border: 1.5px solid transparent;
-  border-radius: var(--radius);
-  padding: 0.15rem 0.75rem 0.5rem;
-  margin: 0 -0.75rem 0.5rem;
-  background:
-    linear-gradient(var(--accent-softer), var(--accent-softer)) padding-box,
-    var(--flame) border-box;
-  box-shadow: 0 4px 22px -8px color-mix(in srgb, var(--flame-from) 40%, transparent);
-}
-.group-flame h2 {
-  color: var(--accent-fg);
-  margin-top: 0.9rem;
-}
-.group-flame .task-row-inner {
-  background: transparent;
-}
-.group-flame .task-row:hover .task-row-inner {
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-}
-
 /* ---- Subtasks ------------------------------------------------------------- */
 
 .subtree {
@@ -3749,10 +3727,6 @@ h2.tone-violet::before {
   .add-task {
     margin-inline: -0.25rem;
   }
-  .group-flame {
-    margin-inline: -0.35rem;
-    padding-inline: 0.6rem;
-  }
   /* A flame on the phone: the task on top, its button below, so the title keeps the width. */
   .flame-item {
     flex-direction: column;
@@ -4720,9 +4694,9 @@ a.sync {
   background: var(--info);
 }
 
-/* ---- Erst für dich (contract 5.1) -------------------------------------------------------- */
+/* ---- Heute: Fokus and Danach (design 5.1–5.3) ------------------------------------------- */
 
-/* Glut first: the one task for yourself glows quietly at the top of the day. */
+/* The one task to do now glows quietly at the top of the day. */
 .focus {
   position: relative;
   margin: 0 0 0.75rem;
@@ -4732,8 +4706,9 @@ a.sync {
     radial-gradient(18rem 9rem at 0% 100%, color-mix(in srgb, var(--flame-to) 20%, transparent), transparent 70%),
     color-mix(in srgb, var(--warning-soft) 60%, var(--surface));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 20%, transparent);
+  transition: box-shadow 0.12s;
 }
-/* Nothing planned yet: said quietly, without the glow. */
+/* Nothing in the box (an offer, the plan done): said quietly, without the glow. */
 .focus.focus-quiet {
   background: transparent;
   box-shadow: none;
@@ -4743,13 +4718,29 @@ a.sync {
 .focus.focus-quiet .focus-head h2 {
   color: var(--muted);
 }
+/* A running flame: the one place where the interface glows. */
+.focus.focus-burning {
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(var(--accent-softer), var(--accent-softer)) padding-box,
+    var(--flame) border-box;
+  box-shadow: 0 4px 22px -8px color-mix(in srgb, var(--flame-from) 40%, transparent);
+}
+.focus.focus-burning .focus-head h2 {
+  color: var(--accent-fg);
+}
+.focus.drop-active {
+  box-shadow:
+    inset 0 0 0 2px var(--accent),
+    0 4px 22px -8px color-mix(in srgb, var(--flame-from) 40%, transparent);
+}
 .focus-head {
   display: flex;
   align-items: center;
   gap: 0.4rem;
 }
 .focus-head h2 {
-  margin: 0 0 0.45rem;
+  margin: 0 0 0.3rem;
   font-size: 0.84rem;
   color: var(--warning);
 }
@@ -4766,31 +4757,47 @@ a.sync {
   background: transparent;
   box-shadow: inset 0 0 0 1.5px currentColor;
 }
-.focus-dismiss {
-  margin: -0.35rem -0.4rem 0 auto;
-  color: var(--muted);
+/* The task in the box: the row of every list, its title set larger. */
+.focus-list {
+  margin-block: 0;
 }
-.focus-task {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.6rem;
+.focus .task-row-inner {
+  background: transparent;
 }
-.focus-title {
+.focus .task-row:hover .task-row-inner {
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+}
+.focus .task-row.selected .task-row-inner {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.focus-list .task-title {
   font-family: var(--display);
   font-weight: 650;
-  font-size: 1.2rem;
+  font-size: 1.15rem;
   letter-spacing: -0.015em;
   line-height: 1.3;
-  min-width: 0;
   overflow-wrap: anywhere;
 }
-.focus-note {
-  font-size: 0.8rem;
+.focus-for-you-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }
-.focus-empty p {
+.focus-note {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.focus-dismiss {
+  margin: -0.2rem -0.4rem 0 auto;
+  color: var(--muted);
+}
+.focus-empty p,
+.focus-done {
   margin: 0;
   font-size: 0.9rem;
+}
+.focus-for-you + .focus-list {
+  margin-top: 0.5rem;
 }
 .focus-choices {
   display: flex;
@@ -4820,6 +4827,28 @@ a.sync {
 .focus-choice:hover {
   box-shadow: inset 0 0 0 1.5px var(--warning);
   color: var(--text);
+}
+/* Aligned with the title, past the check button. */
+.focus-actions {
+  margin: 0.2rem 0 0 calc(21px + 0.75rem);
+}
+.focus-actions .flame-button {
+  margin-left: 0;
+}
+/* The sign of a task's goal: small, beside the row, never louder than the title. */
+.goal-mark {
+  font-size: 0.85rem;
+  line-height: 1;
+  opacity: 0.85;
+}
+.task-row.dragging {
+  opacity: 0.4;
+}
+.today-order .drop-indicator {
+  margin-inline: 0.6rem;
+}
+.today-order .task-row[draggable="true"] {
+  cursor: grab;
 }
 
 /* Jev's proposal as chips (TaskDetail): one tap takes it over. */

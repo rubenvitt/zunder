@@ -19,6 +19,8 @@ import {
   historyTaskRefs,
   locationLabel,
   PHOENIX_LABELS,
+  PLAN_FOR_TODAY,
+  REMOVE_FROM_TODAY,
   sourceLabel,
   STATUS_LABELS,
   TYPE_LABELS,
@@ -37,7 +39,10 @@ import {
   dependentsCount,
   dropTask,
   flame,
+  isInToday,
   moveTask,
+  planForToday,
+  removeFromToday,
   selfCommitted,
   setParent,
   setStatus,
@@ -482,6 +487,29 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
               </Prop>
             </Show>
 
+            {/* Heute's plan (design 5.3): the one action that applies. */}
+            <Show when={!isClosed(t().status)}>
+              <Prop icon="sun" label="Heute">
+                <span class="prop-inline today-plan">
+                  <Show when={t().planned_on}>
+                    {(day) => <span class="muted">{plannedLabel(day())}</span>}
+                  </Show>
+                  <Show
+                    when={isInToday(t(), localDate(new Date(now())))}
+                    fallback={
+                      <button class="btn btn-ghost btn-small" onClick={() => planForToday(t().id)}>
+                        {PLAN_FOR_TODAY}
+                      </button>
+                    }
+                  >
+                    <button class="btn btn-ghost btn-small" onClick={() => removeFromToday(t().id)}>
+                      {REMOVE_FROM_TODAY}
+                    </button>
+                  </Show>
+                </span>
+              </Prop>
+            </Show>
+
             {/* Only root tasks can recur (contract 2.5). */}
             <Show when={!t().parent_id}>
               <Prop icon="repeat" label="Wiederholen">
@@ -805,6 +833,12 @@ function Prop(props: { icon: IconName; label: string; children: JSX.Element }) {
       <div class="prop-control">{props.children}</div>
     </div>
   );
+}
+
+/** "Eingeplant für heute", "Eingeplant für Fr, 20.11." … */
+function plannedLabel(day: string): string {
+  const label = formatDateLabel(day, new Date(now()));
+  return `Eingeplant für ${/^(Heute|Morgen|Gestern)$/.test(label) ? label.toLowerCase() : label}`;
 }
 
 /** German relative label for the wall time of an HLC. */

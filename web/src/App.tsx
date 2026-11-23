@@ -15,7 +15,7 @@ import { installDetailHistory, NARROW_LAYOUT } from "./state/back";
 import { isTauri } from "./platform/runtime";
 import { isUnauthorized } from "./sync/transport";
 import { navigate, parseRoute, route, type Route, type ViewName } from "./state/router";
-import { inboxCount, todayGroups, waitingGroups } from "./state/selectors";
+import { inboxCount, todayCount as countToday, waitingGroups } from "./state/selectors";
 import { api, data, getEngine, pendingCount, ready, setNotifier, startSync, syncStatus, taskIndex } from "./state/store";
 import { captureOpen, deferRequest, detailId, handBackRequest, dropRequest, detailWide, detailWidth, helpOpen, openSearch, palette, setCaptureOpen, setDetailId, setHelpOpen, setSelectedId, sidebarHidden, structureEdit, toast, toggleSidebar } from "./state/ui";
 import { Logo } from "./components/Logo";
@@ -143,11 +143,8 @@ function Shell() {
   onCleanup(() => narrowQuery.removeEventListener("change", onNarrow));
   const covered = () => narrow() && !!detailId();
   const mobileTitle = () => NAV.find((n) => n.view === route().view)?.label ?? "Zunder";
-  // What each list holds, beside its name: due today (without the running flame) and who is waited on.
-  const todayCount = createMemo(() => {
-    const g = todayGroups();
-    return new Set([...g.overdue, ...g.dueToday, ...g.reminders, ...g.followUps].map((t) => t.id)).size;
-  });
+  // What each list holds, beside its name: Heute's order with reminders (without the running flame) and who is waited on.
+  const todayCount = createMemo(countToday);
   const waitingCount = createMemo(() => waitingGroups().reduce((n, g) => n + g.tasks.length, 0));
   const countOf = (view: ViewName) => (view === "inbox" ? inboxCount() : view === "heute" ? todayCount() : view === "wartet" ? waitingCount() : 0);
   const mac = /Mac|iPhone|iPad/.test(navigator.platform);

@@ -1,5 +1,5 @@
-import { expect, test } from "@playwright/test";
-import { entityFields, openApp, prepare, row, Seeder, suffix } from "./fixtures";
+import { expect, test, type Page } from "@playwright/test";
+import { entityFields, openApp, prepare, row, Seeder, suffix, WEB_HEADERS } from "./fixtures";
 
 function currentFire(): string {
   // The browser runs in Europe/Berlin (playwright.config.ts), the test process may not.
@@ -23,7 +23,16 @@ test("Flamme starten und beenden", async ({ page }) => {
   const flameId = seeder.task(`Deep Work ${s}`, { location: { kind: "area", id: area }, phoenix: { role: "flamme", fire } });
   seeder.task(`Schritt ${s}`, { location: { kind: "loose" }, phoenix: { role: "feuer_schritt", fire } });
   await seeder.push(page);
+  try {
+    await flameRun(page, s, fire, flameId);
+  } finally {
+    // The real backend keeps the flame, and a running flame is Heute's focus in later tests.
+    const res = await page.request.post(`/api/tasks/${flameId}/flame/stop`, { headers: WEB_HEADERS });
+    expect([200, 409]).toContain(res.status());
+  }
+});
 
+async function flameRun(page: Page, s: string, fire: string, flameId: string): Promise<void> {
   await openApp(page, "#/phoenix");
   await expect(page.locator(".fire-label")).toHaveText(`Feuer ${fire}`);
   await expect(row(page, `Schritt ${s}`)).toBeVisible();
@@ -36,7 +45,11 @@ test("Flamme starten und beenden", async ({ page }) => {
 
   await page.keyboard.press("g");
   await page.keyboard.press("h");
-  await expect(page.locator(".group-flame")).toContainText(`Deep Work ${s}`);
+  // The running flame is Heute's focus, glowing.
+  const box = page.getByRole("region", { name: "Fokus" });
+  await expect(box).toHaveClass(/focus-burning/);
+  await expect(box.locator(".task-title")).toHaveText(`Deep Work ${s}`);
+  await expect(box.getByRole("button", { name: "Flamme beenden" })).toBeVisible();
 
   await page.keyboard.press("g");
   await page.keyboard.press("p");
@@ -48,4 +61,4 @@ test("Flamme starten und beenden", async ({ page }) => {
   await button.click();
   await expect(button).toHaveText(/Flamme beenden/);
   await expect.poll(async () => (await entityFields(page, "task", flameId)).flame_ended_at ?? null).toBeNull();
-});
+}

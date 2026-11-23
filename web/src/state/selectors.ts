@@ -8,6 +8,7 @@ import { dayLoads, dueOnDay, type DayLoad } from "../sync/dayload";
 import { pickFocus, type Focus } from "../sync/focus";
 import { awaitsAnswer } from "../sync/handback";
 import { compareTasks, isClosed, isDevLocation, isFlameRunning, isHiddenByAge, statusChangedMs, weightRank } from "../sync/derived";
+import { todayList } from "../sync/planning";
 import type { Location, Task } from "../sync/types";
 import { data, now, taskIndex } from "./store";
 
@@ -100,53 +101,48 @@ export function devArchive(projectIds?: Set<string>): Task[] {
   return archivedDone(inDevProject(projectIds ?? devProjectIds()));
 }
 
-export interface TodayGroups {
-  overdue: Task[];
-  dueToday: Task[];
+export interface TodaySections {
+  /** Heute's order (rule in sync/planning): planned for today, left over, due without a plan. */
+  list: Task[];
+  /** The running flame, else the first open task of the list (none when the plan is done). */
+  focus: Task | null;
+  has_plan: boolean;
+  plan_done: boolean;
+  /** Today's reminders of open tasks that are not in the list (nor the focus). */
   reminders: Task[];
   /** Today's reminders of tasks that still wait on someone (Wiedervorlage), outside dev projects. */
   followUps: Task[];
-  flames: Task[];
 }
 
-/** Heute: overdue and due today, today's reminders and follow-ups, running flames (subtasks included). */
-export function todayGroups(): TodayGroups {
+/** Heute (design 5.1): the order with its focus, today's reminders and follow-ups (subtasks included). */
+export function todaySections(): TodaySections {
   const index = taskIndex();
-  const nowMs = now();
-  const today = localDate(new Date(nowMs));
-  const groups: TodayGroups = { overdue: [], dueToday: [], reminders: [], followUps: [], flames: [] };
+  const today = localDate(new Date(now()));
+  const { items, focus, has_plan, plan_done } = todayList(index, today);
+  const shown = new Set(items.map((t) => t.id));
+  if (focus) shown.add(focus.id);
+  const reminders: Task[] = [];
+  const followUps: Task[] = [];
   for (const t of index.byId.values()) {
-    if (index.isDeleted(t)) continue;
-    if (isFlameRunning(t)) groups.flames.push(t);
-    if (isClosed(t.status)) continue;
-    const due = parseDue(t.due);
-    if (due) {
-      if (due.date < today) {
-        groups.overdue.push(t);
-        continue;
-      }
-      if (due.date === today) {
-        groups.dueToday.push(t);
-        continue;
-      }
-    }
-    if (t.remind_at) {
-      const at = new Date(t.remind_at);
-      if (!Number.isNaN(at.getTime()) && localDate(at) === today) {
-        const dev = isDevLocation(index.location(t), (id) => data.projects[id]);
-        (awaitsAnswer(t, dev) ? groups.followUps : groups.reminders).push(t);
-      }
-    }
+    if (!t.remind_at || shown.has(t.id) || isClosed(t.status) || index.isDeleted(t)) continue;
+    const at = new Date(t.remind_at);
+    if (Number.isNaN(at.getTime()) || localDate(at) !== today) continue;
+    const dev = isDevLocation(index.location(t), (id) => data.projects[id]);
+    (awaitsAnswer(t, dev) ? followUps : reminders).push(t);
   }
-  // What matters first (Brand, Glut, unweighed, Rauch, Asche), then by due time.
-  const byDue = (a: Task, b: Task) =>
-    weightRank(a.weight) - weightRank(b.weight) || (parseDue(a.due)?.at.getTime() ?? 0) - (parseDue(b.due)?.at.getTime() ?? 0) || compareTasks(a, b);
-  groups.overdue.sort(byDue);
-  groups.dueToday.sort(byDue);
   const byReminder = (a: Task, b: Task) => Date.parse(a.remind_at!) - Date.parse(b.remind_at!);
-  groups.reminders.sort(byReminder);
-  groups.followUps.sort(byReminder);
-  return groups;
+  reminders.sort(byReminder);
+  followUps.sort(byReminder);
+  return { list: items, focus, has_plan, plan_done, reminders, followUps };
+}
+
+/**
+ * The number beside Heute (design 5.3): open tasks of the order plus reminders and follow-ups,
+ * each once; the running flame does not count.
+ */
+export function todayCount(): number {
+  const s = todaySections();
+  return [...s.list, ...s.reminders, ...s.followUps].filter((t) => !isFlameRunning(t)).length;
 }
 
 export interface WaitingGroup {
@@ -190,9 +186,12 @@ function notPersonal(t: Task): boolean {
   return index.isDeleted(t) || isDevLocation(index.location(t), (id) => data.projects[id]);
 }
 
-/** "Erst für dich": the task at the top of Heute for `today`, or Glut tasks to pick (rule in sync/focus). */
-export function focusOf(today: string, chosenId: string | null): Focus {
-  return pickFocus(taskIndex().byId.values(), today, notPersonal, chosenId);
+/**
+ * "Erst für dich" on a day without a plan (design 5.2): the Glut task for oneself that stands in
+ * Heute's box, or Glut tasks to pick (rule in sync/focus).
+ */
+export function focusOf(today: string): Focus {
+  return pickFocus(taskIndex().byId.values(), today, notPersonal);
 }
 
 /** Wochenspiegel: the balance of `week` (rule in sync/balance, one pass over the tasks). */

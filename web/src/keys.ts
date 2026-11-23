@@ -7,6 +7,7 @@ import { data } from "./state/store";
 import {
   activeBoard,
   activeList,
+  activeReorder,
   anyOverlayOpen,
   copyTaskId,
   detailId,
@@ -159,13 +160,14 @@ export function installKeyboard(): () => void {
         moveSelection(-1);
         break;
       case "J":
-        if (board) board.reorder(1);
+      case "K": {
+        const dy = key === "J" ? 1 : -1;
+        const reorder = activeReorder();
+        if (board) board.reorder(dy);
+        else if (reorder) reorder(dy);
         else handled = false;
         break;
-      case "K":
-        if (board) board.reorder(-1);
-        else handled = false;
-        break;
+      }
       case "h":
       case "ArrowLeft":
         if (board) board.moveSelection(-1);

@@ -5,9 +5,9 @@ import { dateFromLocal, formatDateLabel, parseDue, toRfc3339Local } from "../syn
 import { isClosed, isDevLocation } from "../sync/derived";
 import { deferDay, offersNextWeek } from "../sync/defer";
 import { WEIGHTS, type JsonValue, type Task, type TaskStatus, type Weight } from "../sync/types";
-import { boardStatuses, locationLabel, STATUS_LABELS, WEIGHT_HINTS, WEIGHT_LABELS } from "../labels";
+import { boardStatuses, locationLabel, PLAN_FOR_TODAY, REMOVE_FROM_TODAY, STATUS_LABELS, WEIGHT_HINTS, WEIGHT_LABELS } from "../labels";
 import { taskUrl } from "../components/TaskLinks";
-import { clearDue, deferTask, deleteTask, dependentsCount, dropTask, moveTask, setStatus, shorten, updateTask } from "./actions";
+import { clearDue, deferTask, deleteTask, dependentsCount, dropTask, isInToday, moveTask, planForToday, removeFromToday, setStatus, shorten, updateTask } from "./actions";
 import type { MenuEntry } from "./menu";
 import { data, now, taskIndex } from "./store";
 import { copyTaskId, copyText, detailId, openTask, pickLocation, selectedId, setDetailId, setSelectedId, toast } from "./ui";
@@ -66,6 +66,14 @@ function removeTask(task: Task): void {
   toast(`„${shorten(task.title)}“ gelöscht.`);
 }
 
+function planToday(task: Task): void {
+  if (planForToday(task.id)) toast(`„${shorten(task.title)}“ für heute eingeplant.`);
+}
+
+function takeOutOfToday(task: Task): void {
+  if (removeFromToday(task.id)) toast(`„${shorten(task.title)}“ ist nicht mehr für heute eingeplant.`);
+}
+
 /** The menu for one task. `today` is the local date ("YYYY-MM-DD"). */
 export function taskMenuItems(task: Task, today: string): MenuEntry[] {
   const dev = isDevLocation(taskIndex().location(task), (id) => data.projects[id]);
@@ -98,6 +106,14 @@ export function taskMenuItems(task: Task, today: string): MenuEntry[] {
     { kind: "submenu", label: "Fälligkeit", items: dueItems },
   ];
 
+  // Heute's plan (design 5.3): the one that applies.
+  if (!closed) {
+    items.push(
+      isInToday(task, today)
+        ? { kind: "item", label: REMOVE_FROM_TODAY, run: () => takeOutOfToday(task) }
+        : { kind: "item", label: PLAN_FOR_TODAY, run: () => planToday(task) },
+    );
+  }
   // The personal reading ("Heute nicht", weight) belongs outside dev projects, as in the detail.
   if (!dev && !closed) {
     const later: MenuEntry[] = [{ kind: "item", label: "Morgen", run: () => deferTask(task.id, "tomorrow") }];

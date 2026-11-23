@@ -30,8 +30,18 @@ export interface TaskRowProps {
   swipe?: SwipeActions;
   /** The chip reads "wartet noch auf <Name>" (Wiedervorlage in Heute). */
   waitingStill?: boolean;
+  /** Something quiet beside the title, e.g. the sign of the task's goal in Heute. */
+  mark?: JSX.Element;
+  /** HTML5 drag & drop (Heute's order). */
+  drag?: RowDrag;
   onOpen: () => void;
   onSelect: () => void;
+}
+
+export interface RowDrag {
+  dragging: boolean;
+  onDragStart: (e: DragEvent) => void;
+  onDragEnd: () => void;
 }
 
 const SWIPE_THRESHOLD = 80;
@@ -190,10 +200,13 @@ export function TaskRow(props: TaskRowProps) {
     <li
       ref={ref}
       class="task-row"
-      classList={{ selected: props.selected, closed: isClosed(props.task.status), swiping: dx() !== 0 }}
+      classList={{ selected: props.selected, closed: isClosed(props.task.status), swiping: dx() !== 0, dragging: !!props.drag?.dragging }}
       data-task-id={props.task.id}
       data-status={props.task.status}
       aria-selected={props.selected}
+      draggable={props.drag ? "true" : undefined}
+      onDragStart={(e) => props.drag?.onDragStart(e)}
+      onDragEnd={() => props.drag?.onDragEnd()}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -218,6 +231,7 @@ export function TaskRow(props: TaskRowProps) {
           <TaskMeta task={props.task} showLocation={props.showLocation} waitingStill={props.waitingStill} />
         </button>
         <span class="row-side">
+          {props.mark}
           <SubtaskToggle task={props.task} open={subtasksOpen()} onToggle={() => setSubtasksOpen((o) => !o)} />
           <RefButton task={props.task} />
         </span>

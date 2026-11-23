@@ -81,6 +81,15 @@ export const COMMITMENT_QUESTION = "Zugesagt oder selbst verpflichtet?";
 /** "Erst für dich" without a Glut task for oneself. */
 export const FOCUS_EMPTY = "Heute noch nichts für dich geplant.";
 
+/** Heute (design 5.1–5.3): the box with the one task, the rest of the order, the plan done. */
+export const TODAY_FOCUS = "Fokus";
+export const TODAY_REST = "Danach";
+export const FOR_YOU_FIRST = "Erst für dich";
+export const PLAN_DONE = "Plan für heute erledigt.";
+/** Context menu and detail: planning a task for today and taking it out again. */
+export const PLAN_FOR_TODAY = "Für heute einplanen";
+export const REMOVE_FROM_TODAY = "Aus Heute nehmen";
+
 /** Wochenspiegel groups: weights and "ohne Gewicht". */
 export const BALANCE_WEIGHT_LABELS: Record<WeightKey, string> = { ...WEIGHT_LABELS, none: "ohne Gewicht" };
 /** Wochenspiegel groups: for whom and "ohne Angabe". */
