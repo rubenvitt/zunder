@@ -106,11 +106,17 @@ impl CompletionsBefore {
                     remind_at: next.remind_at,
                     vault_links: task.vault_links,
                     links: task.links,
-                    // The weighing carries over; the deferrals and whom the
-                    // closed instance waited on belong to it (the new one
-                    // waits on nobody and starts open).
+                    // The weighing and the goal carry over; the deferrals,
+                    // whom the closed instance waited on, its day plan and
+                    // its flames belong to it (the new one waits on nobody,
+                    // is planned for no day and starts open).
                     weight: task.weight,
                     for_whom: task.for_whom,
+                    // A deleted goal is not carried over: the server's push
+                    // would be rejected for naming it.
+                    goal_id: task
+                        .goal_id
+                        .filter(|goal| state.goal(*goal).is_some_and(|g| !g.deleted)),
                     ..NewTask::default()
                 },
                 recurrence: next.recurrence,

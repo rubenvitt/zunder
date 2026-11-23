@@ -91,6 +91,7 @@ pub struct NewTask {
     pub status: TaskStatus,
     pub location: Location,
     pub parent_id: Option<Id>,
+    pub goal_id: Option<Id>,
     pub due: Option<Due>,
     pub remind_at: Option<OffsetDateTime>,
     pub vault_links: Vec<String>,
@@ -277,6 +278,9 @@ impl<'c> OpBatch<'c> {
         }
         if let Some(for_whom) = new.for_whom {
             self.set_task(id, f::FOR_WHOM, for_whom);
+        }
+        if let Some(goal_id) = new.goal_id {
+            self.set_task(id, f::GOAL_ID, goal_id.to_string());
         }
         id
     }

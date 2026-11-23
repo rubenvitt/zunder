@@ -118,6 +118,10 @@ export const TASK_FIELDS = [
   "for_whom",
   "deferrals",
   "waiting_on",
+  "goal_id",
+  "planned_on",
+  "day_rank",
+  "flame_log",
   "ref",
   "deleted",
 ] as const;
@@ -218,10 +222,24 @@ export interface Task extends EntityMeta {
   deferrals: number;
   /** Who has the decision (a name, e.g. after handing a Rauch task back); null = nobody. */
   waiting_on: string | null;
+  /** The goal the task serves (may name a deleted goal). */
+  goal_id: string | null;
+  /** The day the task is planned for ("Heute"), YYYY-MM-DD; null = not planned. */
+  planned_on: string | null;
+  /** Order among the tasks of the planned day. */
+  day_rank: string | null;
+  /** Finished flames; written by the server only. */
+  flame_log: FlameInterval[];
   /** Reference such as `ZUN-42`, assigned by the server (never by a client). */
   ref: string | null;
   /** HLC of the winning status op, or created_hlc when the status was never set. */
   status_hlc: Hlc;
+}
+
+/** A finished flame (core: model::FlameInterval), both RFC 3339. */
+export interface FlameInterval {
+  start: string;
+  end: string;
 }
 
 export interface Comment extends EntityMeta {

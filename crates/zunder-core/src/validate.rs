@@ -429,6 +429,9 @@ fn check_op(
             fields::task::RECURRENCE_PREV => Some(
                 "Die Vorgängerin in einer Serie („recurrence_prev“) setzt nur der Server, wenn er die nächste Instanz anlegt.",
             ),
+            fields::task::FLAME_LOG => Some(
+                "Die Flammen-Historie („flame_log“) schreibt nur der Server, wenn eine Flamme endet.",
+            ),
             _ => None,
         };
         if let Some(message) = reserved {
@@ -678,6 +681,28 @@ impl Checker<'_> {
         }
     }
 
+    /// `goal_id` must name a live goal when written. Deleting the goal later
+    /// is allowed (no protection against dependents), so nothing is checked
+    /// unless the task's own `goal_id` (or its restoration) is in the push.
+    fn check_goal(&mut self, task: &Entity) {
+        use fields::task as f;
+        let key = (EntityKind::Task, task.id());
+        let Some(goal) = task.str_value(f::GOAL_ID).and_then(crate::ids::parse_id) else {
+            return;
+        };
+        if !self.changed_any(key, &[f::GOAL_ID])
+            || self.scratch.live_entity(EntityKind::Goal, goal).is_some()
+        {
+            return;
+        }
+        let message = if self.scratch.entity(EntityKind::Goal, goal).is_some() {
+            "Das Ziel ist gelöscht."
+        } else {
+            "Das Ziel existiert nicht."
+        };
+        self.blame(key, RejectCode::InvalidReference, message);
+    }
+
     fn check_task(&mut self, task: &Entity) {
         use fields::task as f;
         let key = (EntityKind::Task, task.id());
@@ -697,6 +722,7 @@ impl Checker<'_> {
         } else if let Some(target) = task.own_location().target() {
             self.broken_reference(key, &reference_fields, target);
         }
+        self.check_goal(task);
         if self.changed_any(key, &[f::BLOCKED_BY]) {
             self.check_blocked_by(task);
         }

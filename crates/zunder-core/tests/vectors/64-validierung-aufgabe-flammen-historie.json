@@ -1,0 +1,84 @@
+{
+  "name": "validierung-aufgabe-flammen-historie",
+  "description": "Die Flammen-Historie (flame_log) schreibt nur der Server: Ein Client-Push mit Wert oder null wird abgelehnt (invalid_value); ein ungültiges Datum in planned_on ebenso, day_rank wird angenommen.",
+  "kind": "validate",
+  "now_ms": 1760000101000,
+  "state": [
+    {
+      "op_id": "v000700080000e0000000413",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000001",
+      "field": "title",
+      "value": "A",
+      "hlc": "1760000000001:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e0000000414",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000002",
+      "field": "title",
+      "value": "B",
+      "hlc": "1760000000002:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e0000000415",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000003",
+      "field": "title",
+      "value": "C",
+      "hlc": "1760000000003:00000:seed"
+    },
+    {
+      "op_id": "v000700080000e0000000416",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000004",
+      "field": "title",
+      "value": "D",
+      "hlc": "1760000000004:00000:seed"
+    }
+  ],
+  "push": [
+    {
+      "op_id": "v000700080000e0000000417",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000001",
+      "field": "flame_log",
+      "value": [
+        {
+          "start": "2026-11-23T08:00:00Z",
+          "end": "2026-11-23T08:15:00Z"
+        }
+      ],
+      "hlc": "1760000100001:00000:web-test"
+    },
+    {
+      "op_id": "v000700080000e0000000418",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000002",
+      "field": "flame_log",
+      "value": null,
+      "hlc": "1760000100002:00000:web-test"
+    },
+    {
+      "op_id": "v000700080000e0000000419",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000003",
+      "field": "planned_on",
+      "value": "23.11.2026",
+      "hlc": "1760000100003:00000:web-test"
+    },
+    {
+      "op_id": "v000700080000e000000041a",
+      "entity": "task",
+      "entity_id": "v000700080000c0000000004",
+      "field": "day_rank",
+      "value": "a0",
+      "hlc": "1760000100004:00000:web-test"
+    }
+  ],
+  "expected_rejected": {
+    "v000700080000c0000000001": "invalid_value",
+    "v000700080000c0000000002": "invalid_value",
+    "v000700080000c0000000003": "invalid_value"
+  }
+}

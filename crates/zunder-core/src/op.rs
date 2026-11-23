@@ -129,7 +129,7 @@ impl From<WireOp> for Op {
     }
 }
 
-/// Converts legacy UUIDs in the ID-valued fields (`area_id`, `parent_id`,
+/// Converts legacy UUIDs in the ID-valued fields (`area_id`, `parent_id`, `goal_id`,
 /// the `id` of a `location`, a comment's `task_id`) to their IDs
 /// ([`crate::ids::Id::from_legacy`]).
 pub fn upgrade_legacy_value(entity: EntityKind, field: &str, value: &mut Value) {
@@ -141,7 +141,7 @@ pub fn upgrade_legacy_value(entity: EntityKind, field: &str, value: &mut Value) 
     }
     match (entity, field) {
         (EntityKind::Project, project::AREA_ID)
-        | (EntityKind::Task, task::PARENT_ID)
+        | (EntityKind::Task, task::PARENT_ID | task::GOAL_ID)
         | (EntityKind::Comment, comment::TASK_ID) => upgrade(value),
         (EntityKind::Task, task::LOCATION) => {
             if let Some(id) = value.get_mut("id") {

@@ -19,6 +19,7 @@ import {
   TASK_TYPES,
   WEIGHTS,
   type Area,
+  type FlameInterval,
   type Comment,
   type Goal,
   type Hlc,
@@ -89,6 +90,17 @@ function stringArray(v: JsonValue | undefined): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 }
 
+/** The finished flames; a malformed list counts as empty (like the core's typed view). */
+function flameLog(v: JsonValue | undefined): FlameInterval[] {
+  if (!Array.isArray(v)) return [];
+  const out: FlameInterval[] = [];
+  for (const x of v) {
+    if (!x || typeof x !== "object" || Array.isArray(x) || typeof x.start !== "string" || typeof x.end !== "string") return [];
+    out.push({ start: x.start, end: x.end });
+  }
+  return out;
+}
+
 export function toArea(e: EntityState): Area {
   const { min, max } = hlcRange(e);
   return {
@@ -157,6 +169,10 @@ export function toTask(e: EntityState): Task {
     for_whom: optionalOneOf(value(e, "for_whom"), FOR_WHOMS),
     deferrals: count(value(e, "deferrals")),
     waiting_on: str(value(e, "waiting_on")),
+    goal_id: str(value(e, "goal_id")),
+    planned_on: plainDate(value(e, "planned_on")),
+    day_rank: str(value(e, "day_rank")),
+    flame_log: flameLog(value(e, "flame_log")),
     ref: str(value(e, "ref")),
     status_hlc: e.fields.status?.hlc ?? min,
   };

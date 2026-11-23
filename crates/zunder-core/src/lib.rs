@@ -37,9 +37,9 @@ mod testutil;
 pub use builder::{NewArea, NewProject, NewTask, OpBatch};
 pub use hlc::{Clock, Hlc, NodeId};
 pub use model::{
-    Area, AreaState, Comment, Due, ForWhom, Goal, GoalState, IsoWeek, Link, Location, MonthDay,
-    Phoenix, PhoenixRole, Project, ProjectKind, ProjectStatus, ProjectView, Recurrence,
-    RecurrenceFrom, RecurrenceUnit, Task, TaskStatus, TaskType, WeekdayCode, Weight,
+    Area, AreaState, Comment, Due, FlameInterval, ForWhom, Goal, GoalState, IsoWeek, Link,
+    Location, MonthDay, Phoenix, PhoenixRole, Project, ProjectKind, ProjectStatus, ProjectView,
+    Recurrence, RecurrenceFrom, RecurrenceUnit, Task, TaskStatus, TaskType, WeekdayCode, Weight,
 };
 pub use op::{EntityKind, Op};
 pub use state::{Progress, SnapshotEntity, State};

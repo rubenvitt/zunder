@@ -312,6 +312,12 @@ impl Entity {
             for_whom: self.parsed(f::FOR_WHOM),
             deferrals: self.parsed(f::DEFERRALS).unwrap_or(0),
             waiting_on: self.string(f::WAITING_ON),
+            goal_id: self.id_value(f::GOAL_ID),
+            planned_on: self
+                .str_value(f::PLANNED_ON)
+                .and_then(crate::model::parse_plain_date),
+            day_rank: self.string(f::DAY_RANK),
+            flame_log: self.parsed(f::FLAME_LOG).unwrap_or_default(),
             reference: self.string(f::REF),
             deleted: self.is_deleted(),
         })
