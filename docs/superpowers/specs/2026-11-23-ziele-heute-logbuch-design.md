@@ -1,7 +1,7 @@
 # Zunder-Kern: Ziele, Heute als Reihenfolge, Erledigt-Logbuch – Design
 
 - **Datum:** 2026-11-23
-- **Status:** Entwurf, wartet auf Rubens Freigabe (Fragen aus dem Builder-Check beantwortet)
+- **Status:** freigegeben (23.11.2026)
 - **Aufgabe:** ZUN-58 (Stufe 1 von 3; danach ZUN-59 Wochenplanung, ZUN-60 Reviews, ZUN-61 Langfrist; KI-Anbindung ZUN-62)
 - **Bezug:** [Zunder-Design](2026-10-11-zunder-design.md), [Implementierungsvertrag](../plans/2026-10-11-zunder-implementation.md)
 
