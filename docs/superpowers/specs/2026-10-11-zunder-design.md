@@ -57,6 +57,10 @@ Erfolgskriterien:
 | `phoenix` | optional: Rolle (`feuer_schritt` oder `flamme`) und Feuer-Kennung (z. B. `2026-W45`) |
 | `recurrence` | optional: Rhythmus einer wiederkehrenden Aufgabe (alle n Tage, Wochen, Monate oder Jahre; ab Fälligkeit oder ab Erledigung), siehe „Rhythmen“ |
 | `recurrence_prev` | nur vom Server: die Vorgängerin in einer Serie |
+| `goal_id` | optional: das Ziel, dem die Aufgabe dient (Entität `goal`); Unteraufgaben zählen für das Ziel ihrer Wurzelaufgabe. Entwurf [2026-11-23](2026-11-23-ziele-heute-logbuch-design.md), Vertrag 2.4 |
+| `planned_on` | optional: der Tag, für den die Aufgabe in Heute eingeplant ist (Entwurf 2026-11-23, 5) |
+| `day_rank` | optional: Reihenfolge innerhalb des geplanten Tages, unabhängig von `rank` (Entwurf 2026-11-23, 5) |
+| `flame_log` | nur vom Server: abgeschlossene Flammen `{start, end}` der Aufgabe, Grundlage für Minuten je Ziel und Logbuch (Entwurf 2026-11-23, 4.2) |
 | `claimed_by`, `claim_expires_at` | Reservierung durch einen Agenten (Dev-Modus) |
 | `plan`, `branch`, `pr_url` | strukturierte Ergebnisse aus dem Dev-Modus |
 | `timing_ref` | Verknüpfung zum Timer in Timing (Abschnitt 6) |
@@ -182,12 +186,14 @@ Modi sind Sichten auf dieselben Daten, keine getrennten Apps.
 
 | Sicht | Inhalt |
 |---|---|
-| **Heute** | Fällig und überfällig, Erinnerungen von heute, laufende Flamme. Startbildschirm. |
+| **Heute** | Eine Reihenfolge ohne Uhrzeiten und ohne Rot: Eingeplantes, Liegengebliebenes, Fälliges; eine Aufgabe im Fokus (laufende Flamme oder die erste), dazu Erinnerungen von heute. Startbildschirm. Seit 2026-11-23, siehe [Entwurf](2026-11-23-ziele-heute-logbuch-design.md). |
 | **Inbox** | Uneingeordnetes. Pro Aufgabe zuordnen, lose markieren oder verwerfen, jeweils mit einer Taste bzw. einem Wisch. |
 | **Lose** | Bewusst ungeordnete Aufgaben. |
 | **Bereiche → Projekte** | Baum links, Aufgaben rechts. Projekte als Liste, Dev-Projekte standardmäßig als Board (Spalten = Status). Umschaltbar. |
 | **Dev** | Board über alle Dev-Projekte mit Reservierungen, Branch und PR. |
 | **Phönix** | Aktuelles Feuer: Feuer-Schritte und Flammen über alle Bereiche, mit „Flamme starten“. |
+| **Ziele** | Aktive Ziele mit dem Input der Woche (Züge, Flammen-Minuten, Leitzahl ruhig daneben). Seit 2026-11-23. |
+| **Erledigt** | Logbuch: je Tag Erledigtes und „Daran gearbeitet“ mit Flammen-Minuten. Seit 2026-11-23. |
 | **Suche** | Befehlspalette (⌘K) für Aufgaben, Projekte und Aktionen. |
 
 - **Schnellerfassung** überall per Tastenkürzel bzw. großem ＋ auf dem Handy. Ein Titel genügt, die Aufgabe landet in der Inbox. Optionale Kurzschreibweise: `Zahnarzt anrufen morgen 9:00 #gesundheit` setzt Erinnerung und Zuordnung, `Odoo absenden jeden Monatsletzten` einen Rhythmus.
