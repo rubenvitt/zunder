@@ -115,7 +115,9 @@ ausdrücklich (goal_id; Unteraufgaben zählen für das Ziel ihrer Wurzelaufgabe,
 steht als goal an der Aufgabe); filter_tasks mit goal_id „none“ findet die Lücken. plan_day \
 bestimmt den ganzen Tag: die geordnete Liste ist der Plan, Liegengebliebenes, das nicht \
 aufgenommen wird, fällt aus Heute heraus. Eine Glut-Aufgabe für mich bevorzugt nach vorn. \
-Input und Logbuch liest man mit goal_input (Züge und Flammen-Minuten je Ziel und Woche) und \
+Ein Ziel nennt seine Timing-Projekte in timing_projects (ohne Unterprojekte, nie das \
+Flammen-Projekt); Claude pflegt das und bucht fehlende Zeit in Timing nach, statt zu raten. \
+Input und Logbuch liest man mit goal_input (Züge, Flammen- und Timing-Minuten je Ziel und Woche) und \
 done_log (erledigt und daran gearbeitet je Tag); sachlich spiegeln, nicht bewerten. \
 Abgelehnte Änderungen kommen mit deutscher Begründung zurück; nichts wird still verworfen.";
 

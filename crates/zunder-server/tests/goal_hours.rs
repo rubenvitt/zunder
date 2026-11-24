@@ -17,7 +17,7 @@ use zunder_core::ids::Id;
 use zunder_core::GoalState;
 use zunder_server::config::TimingConfig;
 
-use common::{client_clock, ops, Auth, TestServer, BOOTSTRAP};
+use common::{api_token, client_clock, mcp_err, mcp_ok, ops, Auth, TestServer, BOOTSTRAP};
 
 #[derive(Default)]
 struct MockState {
@@ -252,4 +252,146 @@ async fn without_projects_timing_is_not_asked_and_a_bad_week_is_refused() {
     assert_eq!(r.error_code(), "invalid_request");
     let r = s.get("/api/goal-hours", Auth::None).await;
     assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+}
+
+// ---- MCP (create_goal, update_goal, goal_input) ---------------------------
+
+#[tokio::test]
+async fn mcp_normalizes_and_checks_timing_projects() {
+    let (s, _mock) = with_timing(Some("/projects/9")).await;
+    let t = api_token(&s, "claude").await;
+
+    let r = mcp_ok(
+        &s,
+        &t,
+        "create_goal",
+        json!({"name": "I&K", "timing_projects": ["https://web.timingapp.com/api/v1/projects/1/", "1"]}),
+    )
+    .await;
+    assert_eq!(r["goal"]["timing_projects"], json!(["/projects/1"]));
+    assert_eq!(r["warnings"], json!([]));
+    let ik = r["goal"]["id"].as_str().unwrap().to_owned();
+
+    // The flame project, an unknown project and garbage are refused.
+    let (code, message) = mcp_err(
+        &s,
+        &t,
+        "create_goal",
+        json!({"name": "Flammen", "timing_projects": ["/projects/9"]}),
+    )
+    .await;
+    assert_eq!(code, "invalid_arguments");
+    assert!(message.contains("Flammen-Projekt"), "{message}");
+    let (_, message) = mcp_err(
+        &s,
+        &t,
+        "create_goal",
+        json!({"name": "X", "timing_projects": ["/projects/5"]}),
+    )
+    .await;
+    assert!(message.contains("/projects/5"), "{message}");
+    let (_, message) = mcp_err(
+        &s,
+        &t,
+        "create_goal",
+        json!({"name": "X", "timing_projects": ["DRK"]}),
+    )
+    .await;
+    assert!(message.contains("kein Timing-Projekt"), "{message}");
+
+    // Taken by another active goal: refused; once that goal is closed: fine.
+    let other = mcp_ok(&s, &t, "create_goal", json!({"name": "Sichtbar"})).await;
+    let other = other["goal"]["id"].as_str().unwrap().to_owned();
+    let (_, message) = mcp_err(
+        &s,
+        &t,
+        "update_goal",
+        json!({"goal_id": other, "timing_projects": ["/projects/1"]}),
+    )
+    .await;
+    assert!(message.contains("„I&K“"), "{message}");
+    mcp_ok(
+        &s,
+        &t,
+        "update_goal",
+        json!({"goal_id": ik, "state": "closed"}),
+    )
+    .await;
+    let r = mcp_ok(
+        &s,
+        &t,
+        "update_goal",
+        json!({"goal_id": other, "timing_projects": ["/projects/1"]}),
+    )
+    .await;
+    assert_eq!(r["goal"]["timing_projects"], json!(["/projects/1"]));
+
+    // null removes the list; list_goals shows the field.
+    mcp_ok(
+        &s,
+        &t,
+        "update_goal",
+        json!({"goal_id": other, "timing_projects": null}),
+    )
+    .await;
+    let goals = mcp_ok(&s, &t, "list_goals", json!({})).await;
+    let listed = goals["goals"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|g| g["id"] == other)
+        .unwrap()
+        .clone();
+    assert_eq!(listed["timing_projects"], json!([]));
+}
+
+#[tokio::test]
+async fn goal_input_reports_timing_minutes() {
+    let (s, _mock) = with_timing(None).await;
+    let t = api_token(&s, "claude").await;
+    let ik = mcp_ok(
+        &s,
+        &t,
+        "create_goal",
+        json!({"name": "I&K", "timing_projects": ["/projects/1"]}),
+    )
+    .await;
+    let ik = ik["goal"]["id"].as_str().unwrap().to_owned();
+    let sport = mcp_ok(&s, &t, "create_goal", json!({"name": "Sport"})).await;
+    let sport = sport["goal"]["id"].as_str().unwrap().to_owned();
+
+    let r = mcp_ok(&s, &t, "goal_input", json!({})).await;
+    assert_eq!(r["timing_status"], "ok");
+    let row = |id: &str| {
+        r["goals"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|g| g["goal_id"] == id)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(row(&ik)["timing_minutes"], 60);
+    assert_eq!(row(&sport)["timing_minutes"], Value::Null);
+}
+
+#[tokio::test]
+async fn goal_input_without_timing_is_not_configured() {
+    let s = TestServer::new().await;
+    let t = api_token(&s, "claude").await;
+    let r = mcp_ok(
+        &s,
+        &t,
+        "create_goal",
+        json!({"name": "I&K", "timing_projects": ["/projects/1"]}),
+    )
+    .await;
+    assert_eq!(
+        r["warnings"],
+        json!(["Timing ist nicht eingerichtet; die Projekte sind ungeprüft."])
+    );
+    let r = mcp_ok(&s, &t, "goal_input", json!({})).await;
+    assert_eq!(r["timing_status"], "not_configured");
+    assert_eq!(r["goals"][0]["timing_minutes"], Value::Null);
+    assert!(r.get("timing_message").is_none());
 }

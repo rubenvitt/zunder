@@ -1592,6 +1592,14 @@
         "storm": {
           "description": "Bezeichnung des Feuersturms, z. B. „Feuersturm 2026-Q4“ (aus dem Vault).",
           "type": "string"
+        },
+        "timing_projects": {
+          "description": "Timing-Projekte, deren Zeiteinträge auf das Ziel einzahlen: Self-Links wie /projects/123 (auch API-URL oder Nummer), ohne Unterprojekte; soll ein Unterprojekt mitzählen, steht es selbst in der Liste. Ersetzt die ganze Liste, [] oder null entfernt sie. Nie das Flammen-Projekt; ein Projekt zählt für höchstens ein aktives Ziel. Claude pflegt das.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
         }
       },
       "required": [
@@ -1680,6 +1688,17 @@
             "string",
             "null"
           ]
+        },
+        "timing_projects": {
+          "description": "Timing-Projekte, deren Zeiteinträge auf das Ziel einzahlen: Self-Links wie /projects/123 (auch API-URL oder Nummer), ohne Unterprojekte; soll ein Unterprojekt mitzählen, steht es selbst in der Liste. Ersetzt die ganze Liste, [] oder null entfernt sie. Nie das Flammen-Projekt; ein Projekt zählt für höchstens ein aktives Ziel. Claude pflegt das.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
         }
       },
       "required": [
@@ -1729,7 +1748,7 @@
       "readOnlyHint": true,
       "title": "Ziel-Input"
     },
-    "description": "Input pro Ziel für eine ISO-Woche: je aktivem Ziel done (erledigte Aufgaben mit diesem wirksamen Ziel, Unteraufgaben einzeln, Dev-Projekte eingeschlossen, verworfene nicht), minutes (Flammen-Minuten dieser Woche) und lead_per_week mit reached (done erreicht lead_per_week). Ergebnis: week, from, to (Montag und Sonntag) und goals mit goal_id, name, emoji. Für Reviews: sachlich spiegeln, nicht bewerten.",
+    "description": "Input pro Ziel für eine ISO-Woche: je aktivem Ziel done (erledigte Aufgaben mit diesem wirksamen Ziel, Unteraufgaben einzeln, Dev-Projekte eingeschlossen, verworfene nicht), minutes (Flammen-Minuten dieser Woche), timing_minutes (Timing-Zeiteinträge dieser Woche in den timing_projects des Ziels; null ohne Zuordnung oder wenn Timing nicht verfügbar ist) und lead_per_week mit reached (done erreicht lead_per_week). Ergebnis: week, from, to (Montag und Sonntag), timing_status (ok, not_configured, unavailable; dann timing_message) und goals mit goal_id, name, emoji. Für Reviews: sachlich spiegeln, nicht bewerten.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
