@@ -30,6 +30,7 @@ pub mod flame;
 pub mod flame_backfill;
 pub mod focus;
 pub mod github;
+pub mod goal_hours;
 pub mod healthcheck;
 pub mod http;
 pub mod intake;
