@@ -1,7 +1,7 @@
 # Timing-Stunden pro Ziel – Design
 
 - **Datum:** 2026-11-24
-- **Status:** Entwurf, wartet auf Freigabe
+- **Status:** freigegeben (24.11.2026)
 - **Aufgabe:** ZUN-66 (Stufe 1b; nach ZUN-58, vor ZUN-59)
 - **Bezug:** [Ziele, Heute, Logbuch](2026-11-23-ziele-heute-logbuch-design.md) (Kap. 4.1, 6, 8), [Zunder-Design](2026-10-11-zunder-design.md)
 
