@@ -5153,7 +5153,7 @@ button.jev-chip:focus-visible {
   cursor: pointer;
 }
 .goal-head:hover {
-  background: var(--hover, transparent);
+  background: var(--surface-2);
 }
 .goal-name {
   overflow-wrap: anywhere;

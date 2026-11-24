@@ -842,7 +842,7 @@ function GoalField(props: { task: Task; onChange: (goalId: string | null) => boo
   const closedOwn = () => (own()?.state === "closed" ? own() : undefined);
   return (
     <Show when={active().length > 0 || own() || inherited()}>
-      <Prop icon="target" label="Ziel">
+      <Prop icon="star" label="Ziel">
         <select
           class="prop-select"
           aria-label="Ziel"
