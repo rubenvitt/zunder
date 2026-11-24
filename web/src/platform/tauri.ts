@@ -31,6 +31,7 @@ import type {
   JevEval,
   JevSettings,
   JevStatus,
+  GoalHours,
   PrStatuses,
   JevSettingsUpdate,
   Me,
@@ -345,6 +346,11 @@ export class TauriApp {
     return this.call("pr_status", { urls });
   }
 
+  /** Timing hours per goal through the app; an old server without the endpoint answers `unsupported`. */
+  goalHours(week?: string): Promise<GoalHours> {
+    return this.call("goal_hours", { week: week ?? null });
+  }
+
   appInfo(): Promise<AppInfo> {
     return this.call("app_info");
   }
@@ -535,6 +541,10 @@ export class TauriTransport implements SyncTransport, ApiClient {
 
   prStatus(urls: string[]): Promise<PrStatuses> {
     return this.app.prStatus(urls);
+  }
+
+  goalHours(week?: string): Promise<GoalHours> {
+    return this.app.goalHours(week);
   }
 
   calendarSettings(): Promise<CalendarSettings> {

@@ -176,6 +176,7 @@ pub fn run() {
             commands::jev_status,
             commands::task_suggestion,
             commands::pr_status,
+            commands::goal_hours,
             commands::task_suggest,
             commands::app_info,
             commands::set_autostart,

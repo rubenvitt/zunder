@@ -20,6 +20,7 @@ import type {
   JevSettingsUpdate,
   Me,
   OAuthClient,
+  GoalHours,
   PrStatuses,
   PullResponse,
   PushRequest,
@@ -127,6 +128,8 @@ export interface ApiClient {
   suggestTask(taskId: string): Promise<Suggestion>;
   /** Status of linked GitHub PRs (browser and app). */
   prStatus(urls: string[]): Promise<PrStatuses>;
+  /** Timing hours per goal for an ISO week (default: this week on the server; browser and app). */
+  goalHours(week?: string): Promise<GoalHours>;
   calendarSettings(): Promise<CalendarSettings>;
   /** Creates the feed token; an existing one stops working. */
   createCalendarFeed(): Promise<CreatedCalendarFeed>;
@@ -334,6 +337,10 @@ export class HttpTransport implements SyncTransport, ApiClient {
 
   prStatus(urls: string[]): Promise<PrStatuses> {
     return this.request("POST", "/api/pr-status", { urls });
+  }
+
+  goalHours(week?: string): Promise<GoalHours> {
+    return this.request("GET", week ? `/api/goal-hours?week=${encodeURIComponent(week)}` : "/api/goal-hours");
   }
 
   calendarSettings(): Promise<CalendarSettings> {

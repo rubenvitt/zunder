@@ -579,6 +579,18 @@ export interface PrStatuses {
   statuses: Record<string, PrStatus | null>;
 }
 
+/**
+ * `GET /api/goal-hours`: Timing time entries per active goal in an ISO week, in minutes. Goals without
+ * projects or without time are missing. `not_configured` = no Timing token, `unavailable` = Timing did
+ * not answer (then `message`); `goals` is empty in both cases.
+ */
+export interface GoalHours {
+  week: string;
+  status: "ok" | "not_configured" | "unavailable";
+  goals: Record<string, number>;
+  message?: string;
+}
+
 /** `GET /api/settings/jev`: the decision model for proposals. Never contains the key. */
 export interface JevSettings {
   configured: boolean;

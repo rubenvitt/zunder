@@ -200,6 +200,27 @@ impl HttpClient {
     }
 }
 
+/// Timing hours per goal (ZUN-66).
+impl HttpClient {
+    /// `GET /api/goal-hours[?week=JJJJ-Www]`, answer unchanged
+    /// (`{week, status, goals, message?}`). A server that does not know the
+    /// endpoint yet (404) is `Error::Unsupported`: the UI then shows no hours.
+    pub async fn goal_hours(&self, week: Option<&str>) -> Result<serde_json::Value> {
+        let mut url = self.url("api/goal-hours")?;
+        if let Some(week) = week {
+            url.query_pairs_mut().append_pair("week", week);
+        }
+        match self.send(self.http.get(url)).await {
+            Err(Error::Server {
+                status: 404,
+                message,
+                ..
+            }) => Err(Error::Unsupported(message)),
+            other => other,
+        }
+    }
+}
+
 const FOCUS_PATH: &str = "api/settings/focus";
 
 fn focus_only_for_devices(result: Result<serde_json::Value>) -> Result<serde_json::Value> {
@@ -478,6 +499,35 @@ mod tests {
 
         let err = client.pr_status(&urls).await.unwrap_err();
         assert_eq!(err.code(), "unsupported", "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn goal_hours_passes_through_and_404_is_unsupported() {
+        let (url, seen) = canned(vec![
+            (
+                200,
+                r#"{"week":"2026-W48","status":"ok","goals":{"g":210}}"#,
+            ),
+            (
+                404,
+                r#"{"error":{"code":"not_found","message":"unbekannt"}}"#,
+            ),
+        ]);
+        let client = client(&url);
+
+        let got = client.goal_hours(Some("2026-W48")).await.unwrap();
+        assert_eq!(got["goals"]["g"], 210);
+        let request = seen.recv().unwrap();
+        assert_eq!(
+            request.request_line,
+            "GET /zunder/api/goal-hours?week=2026-W48 HTTP/1.1"
+        );
+        assert_eq!(request.authorization.as_deref(), Some("Bearer zt_secret"));
+
+        let err = client.goal_hours(None).await.unwrap_err();
+        assert_eq!(err.code(), "unsupported", "{err:?}");
+        let request = seen.recv().unwrap();
+        assert_eq!(request.request_line, "GET /zunder/api/goal-hours HTTP/1.1");
     }
 
     #[tokio::test]
