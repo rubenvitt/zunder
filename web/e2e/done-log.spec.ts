@@ -1,8 +1,8 @@
 // Logbuch „Erledigt“ (design 7): days newest first with the day's flame minutes, what was done and
 // below it what was only worked on. Dev tasks and dropped ones are left out, older days load in steps
 // of 14. Flames come from a flame that started a few minutes ago (the server alone writes flame_log;
-// a running flame counts until now). The real backend keeps data between tests, so seeded tasks are
-// deleted in `finally`.
+// a running flame counts until now). The real backend keeps data between tests, so seeded tasks
+// and goals are deleted in `finally`.
 
 import { expect, test, type Page } from "@playwright/test";
 import { toRfc3339Local } from "../src/sync/dates";
@@ -18,9 +18,10 @@ const loose = { kind: "loose" };
 const logRow = (page: Page, title: string) => page.locator(".log-row", { has: page.locator(".log-title", { hasText: title }) });
 const sevenMinutesAgo = () => toRfc3339Local(new Date(Date.now() - 7 * 60_000));
 
-async function remove(page: Page, tasks: string[]): Promise<void> {
+async function remove(page: Page, tasks: string[], goals: string[] = []): Promise<void> {
   const seeder = new Seeder();
   for (const id of tasks) seeder.raw("task", id, { deleted: true });
+  for (const id of goals) seeder.raw("goal", id, { deleted: true });
   await seeder.push(page);
 }
 
@@ -54,7 +55,7 @@ test("zeigt erledigte Aufgaben mit Minuten und Tagessumme", async ({ page }) => 
     await burned.getByRole("button").first().click();
     await expect(page.getByRole("complementary", { name: "Aufgabendetail" })).toContainText(`Gebrannt ${s}`);
   } finally {
-    await remove(page, ids);
+    await remove(page, ids, [goal]);
   }
 });
 
