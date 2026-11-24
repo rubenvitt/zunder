@@ -4,6 +4,7 @@ import { needsDecision } from "../sync/defer";
 import type { Task } from "../sync/types";
 import { deferralsLabel, describeRecurrence, FOR_WHOM_HINTS, FOR_WHOM_LABELS, locationLabel, PHOENIX_LABELS, STATUS_LABELS, TYPE_LABELS, waitingLabel, WEIGHT_HINTS, WEIGHT_LABELS } from "../labels";
 import { data, now, taskIndex } from "../state/store";
+import { GoalMark } from "./GoalMark";
 import { Icon } from "./Icon";
 import { CheckButton, DueChip, RefButton, SubtaskToggle, SubtaskTree } from "./TaskBits";
 
@@ -32,8 +33,6 @@ export interface TaskRowProps {
   waitingStill?: boolean;
   /** The due date without colour and time of day (Heute's order, design 5.1). */
   quietDue?: boolean;
-  /** Something quiet beside the title, e.g. the sign of the task's goal in Heute. */
-  mark?: JSX.Element;
   /** HTML5 drag & drop (Heute's order). */
   drag?: RowDrag;
   onOpen: () => void;
@@ -233,7 +232,7 @@ export function TaskRow(props: TaskRowProps) {
           <TaskMeta task={props.task} showLocation={props.showLocation} waitingStill={props.waitingStill} quietDue={props.quietDue} />
         </button>
         <span class="row-side">
-          {props.mark}
+          <GoalMark task={props.task} />
           <SubtaskToggle task={props.task} open={subtasksOpen()} onToggle={() => setSubtasksOpen((o) => !o)} />
           <RefButton task={props.task} />
         </span>

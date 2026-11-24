@@ -103,6 +103,7 @@ const SHORTCUT_GROUPS: { title: string; items: Shortcut[] }[] = [
       [[["g", "p"]], "Phönix"],
       [[["g", "w"]], "Wartet auf andere"],
       [[["g", "z"]], "Offene Zusagen"],
+      [[["g", "e"]], "Ziele"],
     ],
   },
 ];

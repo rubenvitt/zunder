@@ -127,6 +127,16 @@ export function commitmentsLabel(count: number): string {
   return count === 1 ? "1 offene Zusage" : `${count} offene Zusagen`;
 }
 
+/** "1 Zug", "2 Züge": the moves of a goal this week. */
+export function movesLabel(count: number): string {
+  return count === 1 ? "1 Zug" : `${count} Züge`;
+}
+
+/** "noch 1 Woche", "noch 4 Wochen": what is left of the Feuersturm. */
+export function weeksLeftLabel(weeks: number): string {
+  return weeks === 1 ? "noch 1 Woche" : `noch ${weeks} Wochen`;
+}
+
 /** Tagesvorschau: "1 fällig", "9 fällig" (sync/dayload). */
 export function dueCountLabel(count: number): string {
   return `${count} fällig`;

@@ -248,3 +248,59 @@ export function doneLog(index: TaskIndex, projects: Record<string, Project>, fro
       return { date, minutes, done: lists.done, worked: lists.worked };
     });
 }
+
+export interface GoalWeekTasks {
+  /** Done in the week, the latest first. */
+  done: LogEntry[];
+  /** Flames in the week but not done in it, most minutes first. */
+  worked: LogEntry[];
+}
+
+/**
+ * The tasks of one goal in a week (what `goalInput` counts for it): live tasks whose effective
+ * goal is `goalId` and that were done in the week (with their minutes of the week), and those
+ * with flame minutes in the week that were not.
+ */
+export function goalWeekTasks(index: TaskIndex, goals: Record<string, Goal>, goalId: string, week: string, nowMs: number): GoalWeekTasks {
+  const monday = mondayOf(week);
+  if (!monday) return { done: [], worked: [] };
+  const from = localDate(monday);
+  const to = localDate(addDays(monday, 6));
+  const start = dateFromLocal(from)!.getTime();
+  const end = addDays(dateFromLocal(from)!, 7).getTime();
+  const done: LogEntry[] = [];
+  const worked: LogEntry[] = [];
+  for (const t of index.byId.values()) {
+    if (index.isDeleted(t) || effectiveGoal(index, goals, t)?.id !== goalId) continue;
+    let minutes = 0;
+    for (const f of flamesOf(t, nowMs)) if (f.day >= from && f.day <= to) minutes += f.minutes;
+    const changed = t.status === "done" ? statusChangedMs(t) : NaN;
+    if (changed >= start && changed < end) done.push({ task: t, minutes });
+    else if (minutes > 0) worked.push({ task: t, minutes });
+  }
+  done.sort((a, b) => compareStrings(b.task.status_hlc, a.task.status_hlc) || compareStrings(a.task.id, b.task.id));
+  worked.sort((a, b) => b.minutes - a.minutes || compareStrings(a.task.id, b.task.id));
+  return { done, worked };
+}
+
+/** The active goal whose `ends_on` is the latest and not past `today` (its `storm` names the Feuersturm). */
+export function stormGoal(goals: Record<string, Goal>, today: Date): Goal | null {
+  const todayDate = localDate(today);
+  let latest: Goal | null = null;
+  for (const g of Object.values(goals)) {
+    if (g.deleted || g.state !== "active" || !g.ends_on || g.ends_on < todayDate) continue;
+    if (!latest || g.ends_on > latest.ends_on! || (g.ends_on === latest.ends_on && compareGoals(g, latest) < 0)) latest = g;
+  }
+  return latest;
+}
+
+/**
+ * Whole weeks (rounded up, at least 1) from `today` to the latest `ends_on` among the active
+ * goals; null when none has an end that is still ahead (today counts).
+ */
+export function weeksLeft(goals: Record<string, Goal>, today: Date): number | null {
+  const endDay = dateFromLocal(stormGoal(goals, today)?.ends_on ?? "");
+  if (!endDay) return null;
+  const days = Math.round((endDay.getTime() - dateFromLocal(localDate(today))!.getTime()) / 86_400_000);
+  return Math.max(1, Math.ceil(days / 7));
+}

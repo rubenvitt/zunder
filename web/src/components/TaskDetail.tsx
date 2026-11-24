@@ -51,7 +51,8 @@ import {
   updateTask,
 } from "../state/actions";
 import { detailBack, NARROW_LAYOUT } from "../state/back";
-import { api, commentsOf, data, now, pendingCount, taskIndex } from "../state/store";
+import { api, commentsOf, data, goalList, now, pendingCount, taskIndex } from "../state/store";
+import { effectiveGoal } from "../sync/planning";
 import { dueCountOn } from "../state/selectors";
 import { copyTaskId, copyText, detailWide, pickLocation, pickTask, selectedId, setDetailId, setDetailWide, setDetailWidth, setHandBackRequest, setSelectedId } from "../state/ui";
 import { waitingNames } from "../sync/handback";
@@ -400,6 +401,8 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
                 <For each={TASK_TYPES.filter((ty) => ty === "aufgabe" || dev() || t().type === ty)}>{(ty) => <option value={ty}>{TYPE_LABELS[ty]}</option>}</For>
               </select>
             </Prop>
+
+            <GoalField task={t()} onChange={(goal_id) => set({ goal_id })} />
 
             <Show when={personal() || t().weight}>
               <Prop icon="target" label="Gewicht">
@@ -820,6 +823,40 @@ function WaitingOnField(props: { task: Task }) {
         </button>
       </Show>
     </span>
+  );
+}
+
+const goalName = (g: { name: string; emoji: string | null }) => (g.emoji ? `${g.emoji} ${g.name}` : g.name);
+
+/**
+ * The goal of a task: only active goals and "Ohne Ziel" are offered. A closed own goal is shown as
+ * the current one but not offered again; a subtask without its own goal says whose it follows.
+ */
+function GoalField(props: { task: Task; onChange: (goalId: string | null) => boolean }) {
+  const own = () => {
+    const g = props.task.goal_id ? data.goals[props.task.goal_id] : undefined;
+    return g && !g.deleted ? g : undefined;
+  };
+  const inherited = () => (own() ? null : effectiveGoal(taskIndex(), data.goals, props.task));
+  const active = () => goalList().filter((g) => g.state === "active");
+  const closedOwn = () => (own()?.state === "closed" ? own() : undefined);
+  return (
+    <Show when={active().length > 0 || own() || inherited()}>
+      <Prop icon="target" label="Ziel">
+        <select
+          class="prop-select"
+          aria-label="Ziel"
+          value={own()?.id ?? ""}
+          onChange={(e) => {
+            if (!props.onChange(e.currentTarget.value || null)) e.currentTarget.value = own()?.id ?? "";
+          }}
+        >
+          <option value="">{inherited() ? `Wie die Oberaufgabe: ${goalName(inherited()!)}` : "Ohne Ziel"}</option>
+          <Show when={closedOwn()}>{(g) => <option value={g().id}>{`${goalName(g())} (beendet)`}</option>}</Show>
+          <For each={active()}>{(g) => <option value={g.id}>{goalName(g)}</option>}</For>
+        </select>
+      </Prop>
+    </Show>
   );
 }
 

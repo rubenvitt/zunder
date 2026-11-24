@@ -25,6 +25,7 @@ import { CommitmentsView, InboxView, LooseView, TodayView, WaitingView } from ".
 import { DevView, LoginView, PhoenixView, TokensView } from "./views/Other";
 import { AgentLogView } from "./views/AgentLog";
 import { SettingsView } from "./views/Settings";
+import { GoalsView } from "./views/Goals";
 import { StructureView } from "./views/Structure";
 
 interface NavItem {
@@ -46,11 +47,12 @@ const NAV: NavItem[] = [
   { view: "dev", label: "Dev", icon: "code", keys: "g d" },
   { view: "phoenix", label: "Phönix", icon: "flame", keys: "g p" },
   { view: "wartet", label: "Wartet auf andere", short: "Wartet", icon: "user", keys: "g w", gap: true },
+  { view: "ziele", label: "Ziele", icon: "target", keys: "g e" },
 ];
 
 // The phone's tab bar holds four views, as iOS advises (at most five tabs); the rest sit behind "Mehr".
 const TAB_PRIMARY: ViewName[] = ["heute", "inbox", "bereiche", "phoenix"];
-const TAB_MORE: ViewName[] = ["lose", "dev", "wartet"];
+const TAB_MORE: ViewName[] = ["lose", "dev", "wartet", "ziele"];
 const navItem = (view: ViewName): NavItem => NAV.find((n) => n.view === view)!;
 
 setNotifier({
@@ -264,6 +266,9 @@ function Shell() {
           </Match>
           <Match when={route().view === "zusagen"}>
             <CommitmentsView />
+          </Match>
+          <Match when={route().view === "ziele"}>
+            <GoalsView />
           </Match>
           <Match when={route().view === "bereiche"}>
             <StructureView />

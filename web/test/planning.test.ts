@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { TaskIndex } from "../src/sync/derived";
-import { doneLog, effectiveGoal, goalInput, todayList } from "../src/sync/planning";
+import { doneLog, effectiveGoal, goalInput, goalWeekTasks, todayList, weeksLeft } from "../src/sync/planning";
 import type { Goal, Task } from "../src/sync/types";
 
 function task(id: string, extra: Partial<Task> = {}): Task {
@@ -115,5 +115,42 @@ describe("closed goal", () => {
     const entry = log.flatMap((d) => d.done)[0]!;
     expect(effectiveGoal(index, goals, entry.task)?.emoji).toBe("🏃");
     expect(goalInput(index, goals, "2026-W47", 0).goals).toEqual([]);
+  });
+});
+
+describe("goalWeekTasks", () => {
+  const goals = { sport: goal("sport"), lesen: goal("lesen") };
+  const monday = Date.parse("2026-11-23T10:00:00+01:00");
+  const hlcAt = (ms: number) => `${ms}:00000:test`;
+  const index = new TaskIndex([
+    task("a", { goal_id: "sport", status: "done", status_hlc: hlcAt(monday) }),
+    task("b", { goal_id: "sport", status: "done", status_hlc: hlcAt(monday - 7 * 86_400_000) }),
+    task("c", { goal_id: "sport", flame_log: [{ start: "2026-11-24T08:00:00+01:00", end: "2026-11-24T08:40:00+01:00" }] }),
+    task("c2", { parent_id: "c", flame_log: [{ start: "2026-11-25T08:00:00+01:00", end: "2026-11-25T08:10:00+01:00" }] }),
+    task("d", { goal_id: "lesen", status: "done", status_hlc: hlcAt(monday) }),
+  ]);
+
+  it("lists the week's done tasks and tasks with flames of that goal, with minutes", () => {
+    const out = goalWeekTasks(index, goals, "sport", "2026-W48", 0);
+    expect(out.done.map((e) => e.task.id)).toEqual(["a"]);
+    expect(out.worked.map((e) => [e.task.id, e.minutes])).toEqual([["c", 40], ["c2", 10]]);
+  });
+
+  it("is empty for a malformed week", () => {
+    expect(goalWeekTasks(index, goals, "sport", "x", 0)).toEqual({ done: [], worked: [] });
+  });
+});
+
+describe("weeksLeft", () => {
+  const today = new Date(2026, 10, 23);
+  it("rounds weeks up to the latest end of the active goals", () => {
+    const goals = { a: goal("a", { ends_on: "2026-12-07" }), b: goal("b", { ends_on: "2026-12-10" }), c: goal("c", { ends_on: "2027-06-01", state: "closed" }) };
+    expect(weeksLeft(goals, today)).toBe(3);
+  });
+  it("is null when no end lies ahead", () => {
+    expect(weeksLeft({ a: goal("a", { ends_on: "2026-11-20" }), b: goal("b") }, today)).toBeNull();
+  });
+  it("counts today's end as the last week", () => {
+    expect(weeksLeft({ a: goal("a", { ends_on: "2026-11-23" }) }, today)).toBe(1);
   });
 });

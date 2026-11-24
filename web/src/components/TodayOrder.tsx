@@ -2,27 +2,11 @@
 // "Danach" or onto the Fokus box. A drop writes day_rank and plans the task (and whatever stands
 // above it) for today; the rule is in sync/day-order, the writes in state/actions.
 
-import { createSignal, For, Show, type JSX } from "solid-js";
-import { effectiveGoal } from "../sync/planning";
+import { createSignal, For, Show } from "solid-js";
 import type { Task } from "../sync/types";
 import { placeInToday } from "../state/actions";
-import { data, taskIndex } from "../state/store";
 import { selectedId, setDetailId, setSelectedId } from "../state/ui";
 import { TaskRow, type RowAction, type RowDrag, type SwipeActions } from "./TaskRow";
-
-/** The sign of the task's effective goal, small and quiet; nothing without one. */
-export function GoalMark(props: { task: Task }): JSX.Element {
-  const goal = () => effectiveGoal(taskIndex(), data.goals, props.task);
-  return (
-    <Show when={goal()?.emoji ? goal() : null}>
-      {(g) => (
-        <span class="goal-mark" role="img" title={`Ziel: ${g().name}`} aria-label={`Ziel: ${g().name}`}>
-          {g().emoji}
-        </span>
-      )}
-    </Show>
-  );
-}
 
 /**
  * The neighbours `id` gets in `items` when put in front of `anchor`; without an anchor right
@@ -144,7 +128,6 @@ export function TodayOrder(props: TodayOrderProps) {
               selected={selectedId() === task.id}
               showLocation
               quietDue
-              mark={<GoalMark task={task} />}
               drag={d.row(() => task)}
               actions={props.actions?.(task)}
               swipe={props.swipe?.(task)}

@@ -14,7 +14,7 @@ import { askToast, selectedId, setDetailId, setSelectedId } from "../state/ui";
 import { FOCUS_EMPTY, FOR_YOU_FIRST, PLAN_DONE, TODAY_FOCUS } from "../labels";
 import { Icon } from "./Icon";
 import { TaskRow, type RowAction, type SwipeActions } from "./TaskRow";
-import { GoalMark, type TodayDrag } from "./TodayOrder";
+import type { TodayDrag } from "./TodayOrder";
 
 export interface TodayFocusState {
   /** The task in the box. */
@@ -59,7 +59,6 @@ export function TodayFocus(props: TodayFocusProps) {
         selected={selectedId() === t().id}
         showLocation
         quietDue
-        mark={<GoalMark task={t()} />}
         drag={props.drag.row(t)}
         actions={props.actions?.(t())}
         swipe={props.swipe?.(t())}
