@@ -124,7 +124,7 @@ export function TodayView() {
           <h2 class="tone tone-violet">
             Erinnerungen <span class="count">{reminders().length}</span>
           </h2>
-          <TaskList tasks={reminders()} showLocation label="Erinnerungen" actions={todayRowActions} swipe={todaySwipe} />
+          <TaskList tasks={reminders()} showLocation quietDue label="Erinnerungen" actions={todayRowActions} swipe={todaySwipe} />
         </section>
       </Show>
       <Show when={followUps().length > 0}>
@@ -133,7 +133,7 @@ export function TodayView() {
             Wiedervorlage <span class="count">{followUps().length}</span>
           </h2>
           <p class="muted group-hint">Noch keine Antwort. Nachfragen, wenn es dir hilft; sonst wartet es einfach weiter.</p>
-          <TaskList tasks={followUps()} showLocation waitingStill label="Wiedervorlage" actions={followUpActions} swipe={todaySwipe} />
+          <TaskList tasks={followUps()} showLocation waitingStill quietDue label="Wiedervorlage" actions={followUpActions} swipe={todaySwipe} />
         </section>
       </Show>
       <Show when={nothing() && !focus().planDone}>

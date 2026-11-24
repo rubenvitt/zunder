@@ -107,6 +107,31 @@ test("liegengebliebene und fällige stehen ohne Rot unter Danach", async ({ page
   }
 });
 
+test("Erinnerung an später Geplantes zeigt die Frist ohne Rot", async ({ page }) => {
+  const s = suffix();
+  const seeder = new Seeder();
+  const remind_at = toRfc3339Local(new Date(new Date().setHours(0, 5, 0, 0)));
+  // Overdue, but planned for tomorrow: Heute lists it only as a reminder, and that is quiet too.
+  const tasks = [
+    seeder.task(`Später geplant ${s}`, {
+      location: loose,
+      planned_on: localDate(addDays(new Date(), 1)),
+      due: toRfc3339Local(addDays(new Date(new Date().setHours(14, 0, 0, 0)), -1)),
+      remind_at,
+    }),
+  ];
+  await seeder.push(page);
+  try {
+    await openApp(page, "#/heute");
+    const reminders = page.getByRole("list", { name: "Erinnerungen" });
+    await expect(reminders.locator(".task-title").filter({ hasText: s })).toHaveText([`Später geplant ${s}`]);
+    await expect(row(page, `Später geplant ${s}`).locator(".task-meta")).toContainText("Gestern");
+    await expect(page.locator(".view .chip-danger")).toHaveCount(0);
+  } finally {
+    await remove(page, tasks);
+  }
+});
+
 test("ziehen ändert die Reihenfolge", async ({ page }) => {
   const s = suffix();
   const seeder = new Seeder();
