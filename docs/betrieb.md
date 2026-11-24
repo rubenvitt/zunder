@@ -122,6 +122,8 @@ Dann `https://zunder.rubeen.dev` im Browser öffnen, über Pocket-ID anmelden un
 | `ZUNDER_DEV_AUTH` | `true` = Login ohne OIDC | **nie in Produktion**, nur lokal |
 | `ZUNDER_DEV_AUTH_ALLOW_REMOTE` | `true` = Dev-Auth auch mit nicht lokaler `ZUNDER_BIND` (nur für einen lokalen Container mit `-p 127.0.0.1:…`) | **nie in Produktion** |
 
+Den Timing-Token nutzt der Server auch für die **Timing-Zeit pro Ziel** (Ziele-Ansicht und MCP `goal_input`): Er fragt dafür Timings Bericht (`GET /report`, nur Zeiteinträge, keine Titel oder Notizen) für die Projekte, die Claude einem Ziel zuordnet. Ohne Token zeigt die Ansicht einfach keine Timing-Zeit.
+
 Leere Werte gelten als nicht gesetzt. Timing und der GitHub-Token lassen sich statt über `.env` auch in der Web-UI unter **Einstellungen** einrichten: Die Werte liegen dann in der Datenbank (Tabelle `settings`, Tokens im Klartext, also auch in den Backups), gelten sofort ohne Neustart und überschreiben die Variablen; „Zurücksetzen“ dort lässt wieder die Variablen gelten. Der Abschnitt GitHub verlinkt die GitHub-Seite für einen neuen Fine-grained Token, auf der Name, Ablauf (366 Tage) und die Leserechte *Pull requests* und *Commit statuses* schon ausgewählt sind; Besitzer und Repos wählt man dort selbst. Fine-grained Tokens können die Checks-API nicht lesen; bleibt der CI-Status leer, hilft ein klassischer Token mit `repo` (ebenfalls verlinkt). Wer das Session-Secret ändert, meldet alle Browser-Sessions ab; API-Tokens bleiben gültig.
 
 ## API-Tokens
@@ -340,6 +342,10 @@ Schema 7 legt nur die neuen Tabellen `intake_channels` und `intake_submissions` 
 ### Idempotenzschlüssel (Schema 9)
 
 Schema 9 legt nur die neue Tabelle `task_client_refs` an (Schlüssel `client_ref` von MCP `create_task`); bestehende Daten bleiben unberührt. **Zurückrollen:** Eine ältere Version startet nicht mit Schema 9; dann das Backup von vor dem Update einspielen.
+
+### Timing-Stunden pro Ziel (ZUN-66)
+
+Ziele bekommen das Feld `timing_projects` (Timing-Projekte, deren Zeiteinträge auf das Ziel einzahlen). Eine Migration gibt es nicht. **App-Update nötig:** Eine ältere Desktop- oder iOS-App kennt das Feld nicht; sobald Claude die erste Zuordnung schreibt, scheitert ihr Abgleich mit einem Sync-Protokollfehler, bis sie aktualisiert ist (keine Daten gehen verloren). Deshalb **erst die iOS-App neu bauen**, dann zuordnen. Eine ältere App an einem neuen Server zeigt nur keine Timing-Zeit.
 
 ### Ziele, Tagesplan und Logbuch (Schema 10)
 

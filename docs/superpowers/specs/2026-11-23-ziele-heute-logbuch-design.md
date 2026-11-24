@@ -32,7 +32,7 @@ Hintergrund im Vault: `wiki/sources/steenfatt-der-beste-task-manager.md`, `wiki/
 - Wochenplanung, Feuer-Planung, Reisewochen (ZUN-59).
 - Review-Funktion in Zunder (ZUN-60). Stufe 1 liefert nur die Daten, die ein Review lesen kann.
 - KI-Vorschläge in Zunder für Ziel-Zuordnung oder Reihenfolge (ZUN-62).
-- Zeiterfassung jenseits der Flammen. Timing spiegelt nur die Flammen (`timing_ref`) und liefert keine eigenen Zahlen. Die Wahrheit sind die Flammen-Minuten in Zunder.
+- Zeiterfassung jenseits der Flammen. Timing spiegelt nur die Flammen (`timing_ref`) und liefert keine eigenen Zahlen. Die Wahrheit sind die Flammen-Minuten in Zunder. **Nachgeholt in ZUN-66:** [Timing-Stunden pro Ziel](2026-11-24-timing-stunden-pro-ziel-design.md).
 - Die Anpassung des Skills `/tages-planung` selbst. Er liegt im Vault (`~/rnotes/_System/claude-skills/tages-planung/`) und wird nach dem Zunder-Teil angepasst. Stufe 1 liefert die MCP-Schnittstelle dafür.
 
 **Gegen-Ziele** (Stufe 1 ist gescheitert, wenn sie technisch läuft, aber eines davon zeigt):
