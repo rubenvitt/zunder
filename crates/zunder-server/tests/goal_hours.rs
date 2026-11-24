@@ -82,12 +82,16 @@ async fn report(State(mock): State<TimingMock>, RawQuery(query): RawQuery) -> Re
     .into_response()
 }
 
-async fn projects() -> Response {
-    Json(json!({"data": [
-        {"self": "/projects/1", "title": "DRK"},
-        {"self": "/projects/9", "title": "🔥 Flammen"},
-    ]}))
-    .into_response()
+/// Projects 1 and 9; the archived project 4 only without `hide_archived`.
+async fn projects(RawQuery(query): RawQuery) -> Response {
+    let mut data = vec![
+        json!({"self": "/projects/1", "title": "DRK"}),
+        json!({"self": "/projects/9", "title": "🔥 Flammen"}),
+    ];
+    if !query.unwrap_or_default().contains("hide_archived=true") {
+        data.push(json!({"self": "/projects/4", "title": "Alt", "is_archived": true}));
+    }
+    Json(json!({"data": data})).into_response()
 }
 
 async fn with_timing(project: Option<&str>) -> (TestServer, TimingMock) {
@@ -325,6 +329,26 @@ async fn mcp_normalizes_and_checks_timing_projects() {
     )
     .await;
     assert_eq!(r["goal"]["timing_projects"], json!(["/projects/1"]));
+
+    // Reopening I&K would count project 1 twice: refused.
+    let (_, message) = mcp_err(
+        &s,
+        &t,
+        "update_goal",
+        json!({"goal_id": ik, "state": "active"}),
+    )
+    .await;
+    assert!(message.contains("„Sichtbar“"), "{message}");
+
+    // An archived project still counts for past weeks: accepted.
+    let r = mcp_ok(
+        &s,
+        &t,
+        "create_goal",
+        json!({"name": "Früher", "timing_projects": ["/projects/4"]}),
+    )
+    .await;
+    assert_eq!(r["goal"]["timing_projects"], json!(["/projects/4"]));
 
     // null removes the list; list_goals shows the field.
     mcp_ok(

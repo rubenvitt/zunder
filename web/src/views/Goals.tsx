@@ -3,7 +3,7 @@
 // lead and the week's tasks of the goal. Below: the Feuersturm and what is left of it.
 // Timing time (ZUN-66) comes from the server and fills in after the rows; without it nothing shows.
 
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
 import { movesLabel, timingDuration, timingLabel, weeksLeftLabel } from "../labels";
@@ -44,7 +44,8 @@ export function GoalsView() {
   const ids = createMemo(() => rows().map((r) => r.goal.id));
   const [openId, setOpenId] = createSignal<string | null>(null);
   const hours = goalHours();
-  createEffect(() => onCleanup(hours.watch(week())));
+  // Only the week drives the watch; the store reads inside watch() must not re-run it.
+  createEffect(on(week, (w) => onCleanup(hours.watch(w))));
   const timing = (goalId: string) => {
     const m = hours.minutes(goalId);
     return m !== undefined && m > 0 ? m : null;

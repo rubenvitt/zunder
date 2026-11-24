@@ -161,33 +161,55 @@ struct CacheEntry {
     exclude: Option<String>,
 }
 
+type CacheKey = (String, Vec<String>);
+
+#[derive(Debug, Default)]
+struct CacheState {
+    entries: HashMap<CacheKey, CacheEntry>,
+    /// Raised by [`HoursCache::clear`]: an answer asked before is not stored.
+    generation: u64,
+}
+
 /// Reports per week and project set, kept in memory.
 #[derive(Debug, Default)]
 pub struct HoursCache {
-    entries: Mutex<HashMap<(String, Vec<String>), CacheEntry>>,
+    state: Mutex<CacheState>,
 }
 
 impl HoursCache {
-    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<(String, Vec<String>), CacheEntry>> {
-        self.entries
+    fn lock(&self) -> std::sync::MutexGuard<'_, CacheState> {
+        self.state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// Forgets every report (e.g. after the Timing settings changed).
+    /// Forgets every report (e.g. after the Timing settings changed); a
+    /// report still being asked with the old settings is not stored.
     pub fn clear(&self) {
-        self.lock().clear();
+        let mut state = self.lock();
+        state.entries.clear();
+        state.generation += 1;
     }
 
-    fn get(&self, key: &(String, Vec<String>), now: Instant) -> Option<CacheEntry> {
+    fn generation(&self) -> u64 {
+        self.lock().generation
+    }
+
+    fn get(&self, key: &CacheKey, now: Instant) -> Option<CacheEntry> {
         self.lock()
+            .entries
             .get(key)
             .filter(|e| now.duration_since(e.fetched_at) < e.ttl)
             .cloned()
     }
 
-    fn put(&self, key: (String, Vec<String>), entry: CacheEntry) {
-        let mut entries = self.lock();
+    /// Stores `entry` unless the cache was cleared since `generation`.
+    fn put(&self, key: CacheKey, entry: CacheEntry, generation: u64) {
+        let mut state = self.lock();
+        if state.generation != generation {
+            return;
+        }
+        let entries = &mut state.entries;
         if entries.len() >= MAX_CACHE_ENTRIES {
             let now = Instant::now();
             entries.retain(|_, e| now.duration_since(e.fetched_at) < e.ttl);
@@ -222,6 +244,7 @@ pub async fn goal_hours(
     let entry = match cache.get(&key, Instant::now()) {
         Some(entry) => entry,
         None => {
+            let generation = cache.generation();
             let (from, to) = week_bounds(week, zone);
             let ask = async {
                 let times = bridge.api.report(from, to, &key.1).await?;
@@ -247,7 +270,7 @@ pub async fn goal_hours(
                 times,
                 exclude,
             };
-            cache.put(key, entry.clone());
+            cache.put(key, entry.clone(), generation);
             entry
         }
     };
@@ -298,6 +321,24 @@ mod tests {
         let goals = vec![(a, vec!["/projects/1".into(), "/projects/1".into()])];
         let got = distribute(&goals, &[time("/projects/1", 600.0)], None);
         assert_eq!(got.get(&a), Some(&10));
+    }
+
+    #[test]
+    fn a_report_asked_before_a_clear_is_not_stored() {
+        let cache = HoursCache::default();
+        let key: CacheKey = ("2026-W48".into(), vec!["/projects/1".into()]);
+        let entry = CacheEntry {
+            fetched_at: Instant::now(),
+            ttl: TTL_CURRENT_WEEK,
+            times: vec![time("/projects/1", 60.0)],
+            exclude: None,
+        };
+        let before = cache.generation();
+        cache.clear();
+        cache.put(key.clone(), entry.clone(), before);
+        assert!(cache.get(&key, Instant::now()).is_none());
+        cache.put(key.clone(), entry, cache.generation());
+        assert!(cache.get(&key, Instant::now()).is_some());
     }
 
     #[test]

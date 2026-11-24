@@ -1739,6 +1739,14 @@ async fn update_goal(app: &App, source: Source, args: &Args) -> AppResult<Value>
         if let Some(value) = projects {
             check_projects_free(state, id, &value)?;
             fields.push((fg::TIMING_PROJECTS, value));
+        } else if fields
+            .iter()
+            .any(|(f, v)| *f == fg::STATE && v.as_str() == Some(GoalState::Active.as_str()))
+        {
+            // Reopened with its stored projects: they must still be free.
+            if let Some(goal) = state.goal(id) {
+                check_projects_free(state, id, &json!(goal.timing_projects))?;
+            }
         }
         for (field, value) in fields {
             if changes(state, EntityKind::Goal, id, field, &value) {
@@ -1795,7 +1803,24 @@ async fn timing_projects_arg(app: &App, args: &Args) -> AppResult<Option<(Value,
             warnings.push("Timing ist nicht eingerichtet; die Projekte sind ungeprüft.".to_owned())
         }
         Some(bridge) => {
-            if let Some(flame) = flame_project_ref(&bridge).await {
+            // One time limit for both questions to Timing.
+            let ask = async {
+                let flame = flame_project_ref(&bridge).await;
+                (flame, bridge.api.all_projects().await)
+            };
+            let (flame, known) = match tokio::time::timeout(TIMING_TIMEOUT, ask).await {
+                Ok((flame, known)) => (flame, Some(known)),
+                // Without an answer only a self link can be compared.
+                Err(_) => (
+                    bridge
+                        .project
+                        .as_deref()
+                        .filter(|p| p.contains("/projects/"))
+                        .and_then(project_path),
+                    None,
+                ),
+            };
+            if let Some(flame) = flame {
                 if projects.contains(&flame) {
                     return Err(invalid(format!(
                         "{flame} ist das Flammen-Projekt. Flammen zählen schon über flame_log und \
@@ -1803,8 +1828,8 @@ async fn timing_projects_arg(app: &App, args: &Args) -> AppResult<Option<(Value,
                     )));
                 }
             }
-            match tokio::time::timeout(TIMING_TIMEOUT, bridge.api.projects()).await {
-                Ok(Ok(known)) => {
+            match known {
+                Some(Ok(known)) => {
                     let known: std::collections::HashSet<String> = known
                         .iter()
                         .filter_map(|p| project_path(&p.self_ref))
@@ -1816,7 +1841,7 @@ async fn timing_projects_arg(app: &App, args: &Args) -> AppResult<Option<(Value,
                         .collect();
                     if !unknown.is_empty() {
                         return Err(invalid(format!(
-                            "Timing kennt diese Projekte nicht (oder sie sind archiviert): {}.",
+                            "Timing kennt diese Projekte nicht: {}.",
                             unknown.join(", ")
                         )));
                     }

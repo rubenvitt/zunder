@@ -1,4 +1,4 @@
-import { createRoot } from "solid-js";
+import { createEffect, createRoot, createSignal, on, onCleanup } from "solid-js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { timingDuration, timingLabel } from "../src/labels";
 import { createGoalHours, REFRESH_MS } from "../src/state/goal-hours";
@@ -82,4 +82,37 @@ describe("createGoalHours", () => {
     expect(tracker.minutes("a")).toBeUndefined();
     done();
   });
+});
+
+describe("goal hours in a view", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  // Like Goals.tsx (`on(week, …)`) and as a plain effect: the store reads inside watch() must not re-run it.
+  for (const style of ["on", "plain"] as const) {
+    it(`asks once per shown week (${style} effect)`, async () => {
+      const calls: string[] = [];
+      const fetch = (week: string) => {
+        calls.push(week);
+        return Promise.resolve<GoalHours>({ week, status: "ok", goals: { a: 30 } });
+      };
+      let dispose = () => {};
+      const { tracker, setWeek } = createRoot((d) => {
+        dispose = d;
+        const tracker = createGoalHours(() => fetch, () => Date.now());
+        const [week, setWeek] = createSignal("2026-W48");
+        if (style === "on") createEffect(on(week, (w) => onCleanup(tracker.watch(w))));
+        else createEffect(() => onCleanup(tracker.watch(week())));
+        return { tracker, setWeek };
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls).toEqual(["2026-W48"]);
+      setWeek("2026-W49");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls).toEqual(["2026-W48", "2026-W49"]);
+      expect(tracker.minutes("a")).toBe(30);
+      tracker.dispose();
+      dispose();
+    });
+  }
 });

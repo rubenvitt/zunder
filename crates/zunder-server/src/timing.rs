@@ -19,7 +19,8 @@
 //! - **check**: the same `GET /time-entries/running` tells whether Timing
 //!   accepts the token (settings view, "Verbindung prüfen").
 //! - **projects**: `GET /projects?hide_archived=true` lists the projects the
-//!   settings view offers for new time entries.
+//!   settings view offers for new time entries; `GET /projects` (archived
+//!   ones included) is what MCP checks goal projects against.
 //! - **report**: `GET /report` with `columns[]=project` sums the time
 //!   entries of given projects in a time range (goal hours, ZUN-66). Only
 //!   time entries count: `include_app_usage` is never set, and child
@@ -109,6 +110,9 @@ pub trait TimingApi: Send + Sync {
 
     /// The projects that are not archived.
     fn projects(&self) -> BoxFuture<'_, Result<Vec<TimingProject>, TimingError>>;
+
+    /// All projects, archived ones included.
+    fn all_projects(&self) -> BoxFuture<'_, Result<Vec<TimingProject>, TimingError>>;
 
     /// Seconds of time entries per project in `[from, to]`, for exactly
     /// these projects (no child projects, no app usage). Projects without
@@ -267,9 +271,16 @@ impl TimingClient {
 
     /// Projects that are not archived, with the title chain filled in.
     pub async fn list_projects(&self) -> Result<Vec<TimingProject>, TimingError> {
-        let (status, json) = self
-            .send(Method::GET, "/projects?hide_archived=true", None)
-            .await?;
+        self.project_list("/projects?hide_archived=true").await
+    }
+
+    /// All projects, archived ones included.
+    pub async fn list_all_projects(&self) -> Result<Vec<TimingProject>, TimingError> {
+        self.project_list("/projects").await
+    }
+
+    async fn project_list(&self, path: &str) -> Result<Vec<TimingProject>, TimingError> {
+        let (status, json) = self.send(Method::GET, path, None).await?;
         if !status.is_success() {
             return Err(Self::status_error(status, &json));
         }
@@ -356,6 +367,10 @@ impl TimingApi for TimingClient {
 
     fn projects(&self) -> BoxFuture<'_, Result<Vec<TimingProject>, TimingError>> {
         Box::pin(async move { self.list_projects().await })
+    }
+
+    fn all_projects(&self) -> BoxFuture<'_, Result<Vec<TimingProject>, TimingError>> {
+        Box::pin(async move { self.list_all_projects().await })
     }
 
     fn report<'a>(

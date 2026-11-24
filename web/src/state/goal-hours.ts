@@ -6,7 +6,7 @@
 // (`unavailable`) or for an old server (`unsupported`), `minutes` stays `undefined` and the view shows
 // nothing. On a network error the last answer for the same week stays (it is at most a few minutes old).
 
-import { createSignal } from "solid-js";
+import { createSignal, untrack } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import type { GoalHours } from "../sync/types";
 import { api } from "./store";
@@ -74,7 +74,8 @@ export function createGoalHours(fetch: () => Fetch, now: () => number = Date.now
       stop();
       watched = week;
       setWatchedWeek(week);
-      if (state.week !== week) clear();
+      // Called from effects: reading the store here must not subscribe them.
+      if (untrack(() => state.week) !== week) clear();
       void ask(week);
       interval = setInterval(() => {
         if (watched !== null) void ask(watched);
