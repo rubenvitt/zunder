@@ -1532,7 +1532,7 @@
       "readOnlyHint": true,
       "title": "Ziele auflisten"
     },
-    "description": "Listet die Ziele mit allen Feldern (id, name, emoji, lead = Leitgedanke, lead_per_week = Züge pro Woche, storm = der Feuersturm, starts_on, ends_on, state, rank). Ziele pflegt Claude (den Feuersturm aus dem Vault), nicht Ruben. Standard nur aktive Ziele, nach Rang; include_closed zeigt auch geschlossene.",
+    "description": "Listet die Ziele mit allen Feldern (id, name, emoji, lead = Leitkennzahl in Worten, lead_per_week = Züge pro Woche für das stille Häkchen, storm = Bezeichnung des Feuersturms, starts_on, ends_on, state, rank). Ziele pflegt Claude (den Feuersturm aus dem Vault), nicht Ruben. Standard nur aktive Ziele, nach Rang; include_closed zeigt auch geschlossene.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1568,11 +1568,11 @@
           "type": "string"
         },
         "lead": {
-          "description": "Leitgedanke: worum es beim Ziel geht, in Rubens Worten.",
+          "description": "Leitkennzahl in Worten, z. B. „1 Sichtbarkeits-Zug pro Woche“ oder „3×, 2× in Reisewochen; 15 min zählen voll“.",
           "type": "string"
         },
         "lead_per_week": {
-          "description": "Wie viele Züge (erledigte Aufgaben) pro Woche der Leitgedanke trägt, 1–99.",
+          "description": "Wie viele Züge (erledigte Aufgaben) pro Woche für das stille Häkchen, 1–99. Ausnahmen nur in lead.",
           "maximum": 99,
           "minimum": 1,
           "type": "integer"
@@ -1590,7 +1590,7 @@
           "type": "string"
         },
         "storm": {
-          "description": "Der Feuersturm: was im Weg steht (aus dem Vault).",
+          "description": "Bezeichnung des Feuersturms, z. B. „Feuersturm 2026-Q4“ (aus dem Vault).",
           "type": "string"
         }
       },
@@ -1633,14 +1633,14 @@
           "type": "string"
         },
         "lead": {
-          "description": "Leitgedanke: worum es beim Ziel geht, in Rubens Worten. null entfernt den Wert.",
+          "description": "Leitkennzahl in Worten, z. B. „1 Sichtbarkeits-Zug pro Woche“ oder „3×, 2× in Reisewochen; 15 min zählen voll“. null entfernt den Wert.",
           "type": [
             "string",
             "null"
           ]
         },
         "lead_per_week": {
-          "description": "Wie viele Züge (erledigte Aufgaben) pro Woche der Leitgedanke trägt, 1–99. null entfernt den Wert.",
+          "description": "Wie viele Züge (erledigte Aufgaben) pro Woche für das stille Häkchen, 1–99. Ausnahmen nur in lead. null entfernt den Wert.",
           "maximum": 99,
           "minimum": 1,
           "type": [
@@ -1675,7 +1675,7 @@
           "type": "string"
         },
         "storm": {
-          "description": "Der Feuersturm: was im Weg steht (aus dem Vault). null entfernt den Wert.",
+          "description": "Bezeichnung des Feuersturms, z. B. „Feuersturm 2026-Q4“ (aus dem Vault). null entfernt den Wert.",
           "type": [
             "string",
             "null"
@@ -1692,7 +1692,7 @@
   },
   {
     "annotations": {
-      "destructiveHint": false,
+      "destructiveHint": true,
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": false,

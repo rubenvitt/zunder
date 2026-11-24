@@ -175,11 +175,11 @@ pub mod fields {
         pub const NAME: &str = "name";
         /// A single emoji (or short symbol) shown beside the name.
         pub const EMOJI: &str = "emoji";
-        /// The lead: what the goal is about, in the owner's words.
+        /// The lead figure in words, e.g. "1 visibility move per week" or "3x, 2x in travel weeks; 15 min count in full".
         pub const LEAD: &str = "lead";
-        /// How many times per week the lead is held (1-99).
+        /// Moves per week for the quiet check mark (1-99); exceptions only in `lead`.
         pub const LEAD_PER_WEEK: &str = "lead_per_week";
-        /// The storm: what gets in the way.
+        /// Name of the Feuersturm, e.g. "Feuersturm 2026-Q4".
         pub const STORM: &str = "storm";
         /// First day of the goal (`YYYY-MM-DD`).
         pub const STARTS_ON: &str = "starts_on";

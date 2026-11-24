@@ -402,8 +402,8 @@ const WEEK_BALANCE: &str = "Wochenbilanz: zählt die in einer ISO-Woche erledigt
     (brand, glut, rauch, asche, none = ohne Gewicht) und by_for_whom (mich, uns, andere, none = \
     ohne Angabe). Für Wochenrückblick und Feuer-Review: sachlich spiegeln, nicht bewerten.";
 
-const LIST_GOALS: &str = "Listet die Ziele mit allen Feldern (id, name, emoji, lead = Leitgedanke, \
-    lead_per_week = Züge pro Woche, storm = der Feuersturm, starts_on, ends_on, state, rank). Ziele \
+const LIST_GOALS: &str = "Listet die Ziele mit allen Feldern (id, name, emoji, lead = Leitkennzahl in Worten, \
+    lead_per_week = Züge pro Woche für das stille Häkchen, storm = Bezeichnung des Feuersturms, starts_on, ends_on, state, rank). Ziele \
     pflegt Claude (den Feuersturm aus dem Vault), nicht Ruben. Standard nur aktive Ziele, nach \
     Rang; include_closed zeigt auch geschlossene.";
 
@@ -444,21 +444,21 @@ fn goal_fields(nullable: bool) -> Vec<(&'static str, Value)> {
         ("emoji", text("Ein Zeichen (Emoji) neben dem Namen.")),
         (
             "lead",
-            text("Leitgedanke: worum es beim Ziel geht, in Rubens Worten."),
+            text("Leitkennzahl in Worten, z. B. „1 Sichtbarkeits-Zug pro Woche“ oder „3×, 2× in Reisewochen; 15 min zählen voll“."),
         ),
         (
             "lead_per_week",
             if nullable {
                 json!({"type": ["integer", "null"], "minimum": 1, "maximum": 99,
-                    "description": "Wie viele Züge (erledigte Aufgaben) pro Woche der Leitgedanke trägt, 1–99. null entfernt den Wert."})
+                    "description": "Wie viele Züge (erledigte Aufgaben) pro Woche für das stille Häkchen, 1–99. Ausnahmen nur in lead. null entfernt den Wert."})
             } else {
                 json!({"type": "integer", "minimum": 1, "maximum": 99,
-                    "description": "Wie viele Züge (erledigte Aufgaben) pro Woche der Leitgedanke trägt, 1–99."})
+                    "description": "Wie viele Züge (erledigte Aufgaben) pro Woche für das stille Häkchen, 1–99. Ausnahmen nur in lead."})
             },
         ),
         (
             "storm",
-            text("Der Feuersturm: was im Weg steht (aus dem Vault)."),
+            text("Bezeichnung des Feuersturms, z. B. „Feuersturm 2026-Q4“ (aus dem Vault)."),
         ),
         ("starts_on", text("Erster Tag des Ziels (JJJJ-MM-TT).")),
         ("ends_on", text("Letzter Tag des Ziels (JJJJ-MM-TT).")),
@@ -1111,7 +1111,7 @@ pub fn definitions() -> Vec<ToolDef> {
                 &["task_ids"],
             ),
             read_only: false,
-            destructive: false,
+            destructive: true,
             idempotent: true,
         },
         ToolDef {
