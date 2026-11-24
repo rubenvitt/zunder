@@ -82,6 +82,7 @@ pub fn routes() -> Router<App> {
         .route("/settings/jev/eval", post(eval_jev))
         .route("/jev", get(jev_status))
         .route("/pr-status", post(pr_status))
+        .route("/goal-hours", get(goal_hours))
         .route(
             "/tasks/{id}/suggestion",
             get(task_suggestion).post(suggest_task),
@@ -533,6 +534,26 @@ async fn pr_status(
     ApiJson(body): ApiJson<PrStatusBody>,
 ) -> AppResult<Json<crate::app::PrStatuses>> {
     Ok(Json(app.pr_statuses(body.urls).await?))
+}
+
+#[derive(Deserialize)]
+struct GoalHoursQuery {
+    week: Option<String>,
+}
+
+/// Timing hours per active goal for an ISO week (default: this week).
+async fn goal_hours(
+    State(app): State<App>,
+    _principal: Principal,
+    ApiQuery(q): ApiQuery<GoalHoursQuery>,
+) -> AppResult<Json<crate::goal_hours::GoalHours>> {
+    let week = match q.week.as_deref() {
+        Some(s) => zunder_core::IsoWeek::parse(s).ok_or_else(|| {
+            AppError::bad_request("„week“ muss eine ISO-Woche JJJJ-Www sein, z. B. 2026-W48.")
+        })?,
+        None => zunder_core::IsoWeek::of(crate::app::local_today()),
+    };
+    Ok(Json(app.goal_hours(week).await))
 }
 
 async fn jev_status(

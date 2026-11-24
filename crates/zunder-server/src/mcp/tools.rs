@@ -30,6 +30,8 @@ use crate::app::{format_ms, now_ms, App, ServerZone, Source};
 use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::flame;
+use crate::goal_hours::{flame_project_ref, GoalHoursStatus, TIMING_TIMEOUT};
+use crate::timing::project_path;
 use crate::views::{
     claim_active, flame_running, location_kind, AreaView, CommentView, GoalRef, GoalView,
     ProjectView, TaskRef, TaskView, TodayListView,
@@ -1696,10 +1698,18 @@ fn goal_view(app: &App, id: Id) -> AppResult<GoalView> {
 
 async fn create_goal(app: &App, source: Source, args: &Args) -> AppResult<Value> {
     let name = args.raw(fg::NAME).cloned().unwrap_or(Value::Null);
-    let fields = present(args, GOAL_FIELDS, false);
+    let mut fields = present(args, GOAL_FIELDS, false);
+    let (projects, warnings) = match timing_projects_arg(app, args).await? {
+        Some((value, warnings)) => (Some(value), warnings),
+        None => (None, Vec::new()),
+    };
     let (id, _) = app
-        .mutate_atomic(source, move |_state, batch| {
+        .mutate_atomic(source, move |state, batch| {
             let id = zunder_core::ids::new_id();
+            if let Some(value) = projects {
+                check_projects_free(state, id, &value)?;
+                fields.push((fg::TIMING_PROJECTS, value));
+            }
             batch.set_goal(id, fg::NAME, name);
             batch.set_goal(id, fg::STATE, GoalState::Active.as_str());
             for (field, value) in fields {
@@ -1708,20 +1718,36 @@ async fn create_goal(app: &App, source: Source, args: &Args) -> AppResult<Value>
             Ok(id)
         })
         .await?;
-    Ok(json!({"goal": goal_view(app, id)?}))
+    Ok(json!({"goal": goal_view(app, id)?, "warnings": warnings}))
 }
 
 async fn update_goal(app: &App, source: Source, args: &Args) -> AppResult<Value> {
     let id = args.required_id("goal_id")?;
     let mut fields = present(args, &[fg::NAME, fg::STATE], true);
     fields.extend(present(args, GOAL_FIELDS, true));
-    if fields.is_empty() {
+    let (projects, warnings) = match timing_projects_arg(app, args).await? {
+        Some((value, warnings)) => (Some(value), warnings),
+        None => (None, Vec::new()),
+    };
+    if fields.is_empty() && projects.is_none() {
         return Err(invalid("Keine Änderung angegeben."));
     }
     app.mutate_atomic(source, move |state, batch| {
         state
             .live_entity(EntityKind::Goal, id)
             .ok_or_else(|| AppError::NotFound(format!("Ziel {id} nicht gefunden.")))?;
+        if let Some(value) = projects {
+            check_projects_free(state, id, &value)?;
+            fields.push((fg::TIMING_PROJECTS, value));
+        } else if fields
+            .iter()
+            .any(|(f, v)| *f == fg::STATE && v.as_str() == Some(GoalState::Active.as_str()))
+        {
+            // Reopened with its stored projects: they must still be free.
+            if let Some(goal) = state.goal(id) {
+                check_projects_free(state, id, &json!(goal.timing_projects))?;
+            }
+        }
         for (field, value) in fields {
             if changes(state, EntityKind::Goal, id, field, &value) {
                 batch.set_goal(id, field, value);
@@ -1730,7 +1756,126 @@ async fn update_goal(app: &App, source: Source, args: &Args) -> AppResult<Value>
         Ok(())
     })
     .await?;
-    Ok(json!({"goal": goal_view(app, id)?}))
+    Ok(json!({"goal": goal_view(app, id)?, "warnings": warnings}))
+}
+
+/// `timing_projects` of create_goal and update_goal (ZUN-66): `None` when
+/// absent; otherwise the value to store (normalized self links, `null` for
+/// none) and warnings. Refuses the flame project and, when Timing answers,
+/// projects Timing does not know.
+async fn timing_projects_arg(app: &App, args: &Args) -> AppResult<Option<(Value, Vec<String>)>> {
+    const KEY: &str = fg::TIMING_PROJECTS;
+    let Some(raw) = args.raw(KEY) else {
+        return Ok(None);
+    };
+    if raw.is_null() {
+        return Ok(Some((Value::Null, Vec::new())));
+    }
+    let items = raw
+        .as_array()
+        .ok_or_else(|| invalid(format!("„{KEY}“ muss eine Liste sein (oder null).")))?;
+    let mut projects: Vec<String> = Vec::new();
+    for item in items {
+        let text = item
+            .as_str()
+            .ok_or_else(|| invalid(format!("„{KEY}“ enthält nur Texte.")))?;
+        let project = project_path(text).ok_or_else(|| {
+            invalid(format!(
+                "„{text}“ ist kein Timing-Projekt. Erwartet: Self-Link wie /projects/123, die API-URL oder die Nummer."
+            ))
+        })?;
+        if !projects.contains(&project) {
+            projects.push(project);
+        }
+    }
+    if projects.is_empty() {
+        return Ok(Some((Value::Null, Vec::new())));
+    }
+    if projects.len() > zunder_core::model::MAX_TIMING_PROJECTS {
+        return Err(invalid(format!(
+            "Ein Ziel nennt höchstens {} Timing-Projekte.",
+            zunder_core::model::MAX_TIMING_PROJECTS
+        )));
+    }
+    let mut warnings = Vec::new();
+    match app.timing() {
+        None => {
+            warnings.push("Timing ist nicht eingerichtet; die Projekte sind ungeprüft.".to_owned())
+        }
+        Some(bridge) => {
+            // One time limit for both questions to Timing.
+            let ask = async {
+                let flame = flame_project_ref(&bridge).await;
+                (flame, bridge.api.all_projects().await)
+            };
+            let (flame, known) = match tokio::time::timeout(TIMING_TIMEOUT, ask).await {
+                Ok((flame, known)) => (flame, Some(known)),
+                // Without an answer only a self link can be compared.
+                Err(_) => (
+                    bridge
+                        .project
+                        .as_deref()
+                        .filter(|p| p.contains("/projects/"))
+                        .and_then(project_path),
+                    None,
+                ),
+            };
+            if let Some(flame) = flame {
+                if projects.contains(&flame) {
+                    return Err(invalid(format!(
+                        "{flame} ist das Flammen-Projekt. Flammen zählen schon über flame_log und \
+                         werden keinem Ziel zugeordnet."
+                    )));
+                }
+            }
+            match known {
+                Some(Ok(known)) => {
+                    let known: std::collections::HashSet<String> = known
+                        .iter()
+                        .filter_map(|p| project_path(&p.self_ref))
+                        .collect();
+                    let unknown: Vec<&str> = projects
+                        .iter()
+                        .filter(|p| !known.contains(*p))
+                        .map(String::as_str)
+                        .collect();
+                    if !unknown.is_empty() {
+                        return Err(invalid(format!(
+                            "Timing kennt diese Projekte nicht: {}.",
+                            unknown.join(", ")
+                        )));
+                    }
+                }
+                _ => warnings
+                    .push("Timing war nicht erreichbar; die Projekte sind ungeprüft.".to_owned()),
+            }
+        }
+    }
+    Ok(Some((json!(projects), warnings)))
+}
+
+/// Refuses Timing projects another active goal already names (they would
+/// count twice).
+fn check_projects_free(state: &State, id: Id, value: &Value) -> AppResult<()> {
+    let Some(projects) = value.as_array() else {
+        return Ok(());
+    };
+    for other in state
+        .live_goals()
+        .filter(|g| g.id != id && g.state == GoalState::Active)
+    {
+        if let Some(taken) = projects
+            .iter()
+            .filter_map(Value::as_str)
+            .find(|p| other.timing_projects.iter().any(|o| o == p))
+        {
+            return Err(invalid(format!(
+                "{taken} ist schon dem Ziel „{}“ zugeordnet. Ein Timing-Projekt zählt für höchstens ein aktives Ziel.",
+                other.name
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn closed_message(task: &zunder_core::Task) -> String {
@@ -1815,6 +1960,7 @@ async fn goal_input(app: &App, args: &Args) -> AppResult<Value> {
         None => IsoWeek::of(today()?),
     };
     let now = time::OffsetDateTime::now_utc();
+    let hours = app.goal_hours(week).await;
     app.read_blocking(move |state| {
         let input = planning::goal_input(state, week, &ServerZone, now);
         let goals: Vec<Value> = input
@@ -1822,18 +1968,34 @@ async fn goal_input(app: &App, args: &Args) -> AppResult<Value> {
             .iter()
             .map(|row| {
                 let goal = GoalRef::of(state, row.goal_id);
+                let mapped = state
+                    .goal(row.goal_id)
+                    .is_some_and(|g| !g.timing_projects.is_empty());
+                let timing_minutes = (mapped && hours.status == GoalHoursStatus::Ok)
+                    .then(|| hours.goals.get(&row.goal_id).copied().unwrap_or(0));
                 json!({
                     "goal_id": row.goal_id,
                     "name": goal.as_ref().map(|g| g.name.clone()),
                     "emoji": goal.and_then(|g| g.emoji),
                     "done": row.done,
                     "minutes": row.minutes,
+                    "timing_minutes": timing_minutes,
                     "lead_per_week": row.lead_per_week,
                     "reached": row.reached,
                 })
             })
             .collect();
-        json!({"week": input.week, "from": format_date(input.from), "to": format_date(input.to), "goals": goals})
+        let mut out = json!({
+            "week": input.week,
+            "from": format_date(input.from),
+            "to": format_date(input.to),
+            "goals": goals,
+            "timing_status": hours.status,
+        });
+        if let Some(message) = hours.message {
+            out["timing_message"] = json!(message);
+        }
+        out
     })
     .await
 }

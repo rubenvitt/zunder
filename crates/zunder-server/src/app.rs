@@ -45,6 +45,7 @@ use crate::db::{self, TokenRow, User};
 use crate::error::{AppError, AppResult};
 use crate::focus::{FocusSettings, FocusUpdate, FOCUS_PREFIX};
 use crate::github::{GithubClient, PrRef, PrStatus, MAX_PR_URLS};
+use crate::goal_hours::{GoalHours, HoursCache};
 use crate::settings::{
     github_token_from_rows, EffectiveTiming, GithubCheck, GithubSettings, GithubUpdate,
     TimingCheck, TimingOverrides, TimingSettings, TimingUpdate, GITHUB_PREFIX, GITHUB_TOKEN_KEY,
@@ -244,6 +245,8 @@ struct Inner {
     /// Client for outgoing requests (Timing bridge).
     http: reqwest::Client,
     timing: RwLock<TimingState>,
+    /// Timing reports behind the goal hours (ZUN-66).
+    hours: HoursCache,
     /// PR status reader (environment plus settings).
     github: RwLock<GithubState>,
 }
@@ -417,6 +420,7 @@ impl App {
                 shutdown: CancellationToken::new(),
                 bootstrap_hash,
                 timing: RwLock::new(timing),
+                hours: HoursCache::default(),
                 github: RwLock::new(github),
                 http,
                 config,
@@ -602,6 +606,8 @@ impl App {
             change(&writer.conn, &mut overrides, now_ms())?;
             let state = TimingState::new(&inner.config, &inner.http, overrides);
             *inner.timing.write().unwrap_or_else(PoisonError::into_inner) = state;
+            // Another token or flame project: reports asked before no longer apply.
+            inner.hours.clear();
             drop(writer);
             tracing::info!("Timing settings changed");
             Ok(app.timing_settings())
@@ -624,6 +630,33 @@ impl App {
                 error: Some(e.to_string()),
             },
         })
+    }
+
+    /// Timing hours per active goal in `week` (`GET /api/goal-hours`,
+    /// `goal_input`). Never fails: see [`GoalHours`].
+    pub async fn goal_hours(&self, week: zunder_core::IsoWeek) -> GoalHours {
+        let Some(bridge) = self.timing() else {
+            return GoalHours::not_configured(week);
+        };
+        let goals: Vec<(Id, Vec<String>)> = self.read(|state| {
+            state
+                .live_goals()
+                .filter(|g| {
+                    g.state == zunder_core::GoalState::Active && !g.timing_projects.is_empty()
+                })
+                .map(|g| (g.id, g.timing_projects))
+                .collect()
+        });
+        let current = zunder_core::IsoWeek::of(local_today());
+        crate::goal_hours::goal_hours(
+            &bridge,
+            &self.inner.hours,
+            week,
+            current,
+            &ServerZone,
+            goals,
+        )
+        .await
     }
 
     /// The Timing projects for the settings view's project picker.
@@ -1868,7 +1901,7 @@ impl LocalZone for ServerZone {
 }
 
 /// Today's date in the server's time zone.
-fn local_today() -> time::Date {
+pub(crate) fn local_today() -> time::Date {
     use chrono::Datelike;
     let today = chrono::Local::now().date_naive();
     u16::try_from(today.ordinal())

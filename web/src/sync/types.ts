@@ -75,6 +75,14 @@ export const PROJECT_VIEWS: readonly ProjectView[] = ["list", "board"];
 export const GOAL_STATES: readonly GoalState[] = ["active", "closed"];
 /** Highest value of a goal's `lead_per_week` (core: model::MAX_LEAD_PER_WEEK). */
 export const MAX_LEAD_PER_WEEK = 99;
+
+/** Most Timing projects one goal may name (core: model::MAX_TIMING_PROJECTS). */
+export const MAX_TIMING_PROJECTS = 50;
+
+/** A Timing project self link `/projects/<digits>` (core: model::is_timing_project_ref). */
+export function isTimingProjectRef(v: unknown): v is string {
+  return typeof v === "string" && /^\/projects\/[0-9]+$/.test(v);
+}
 export const TASK_TYPES: readonly TaskType[] = ["aufgabe", "bug", "feature"];
 export const TASK_STATUSES: readonly TaskStatus[] = ["open", "in_progress", "review", "blocked", "done", "dropped"];
 export const PHOENIX_ROLES: readonly PhoenixRole[] = ["feuer_schritt", "flamme"];
@@ -138,6 +146,7 @@ export const GOAL_FIELDS = [
   "ends_on",
   "state",
   "rank",
+  "timing_projects",
   "deleted",
 ] as const;
 
@@ -263,6 +272,8 @@ export interface Goal extends EntityMeta {
   ends_on: string | null;
   state: GoalState;
   rank: string | null;
+  /** Timing project self links (`/projects/1`) whose time entries count for the goal; Claude keeps them. */
+  timing_projects: string[];
 }
 
 // ---- HTTP API payloads ---------------------------------------------------
@@ -566,6 +577,18 @@ export interface PrStatus {
 export interface PrStatuses {
   configured: boolean;
   statuses: Record<string, PrStatus | null>;
+}
+
+/**
+ * `GET /api/goal-hours`: Timing time entries per active goal in an ISO week, in minutes. Goals without
+ * projects or without time are missing. `not_configured` = no Timing token, `unavailable` = Timing did
+ * not answer (then `message`); `goals` is empty in both cases.
+ */
+export interface GoalHours {
+  week: string;
+  status: "ok" | "not_configured" | "unavailable";
+  goals: Record<string, number>;
+  message?: string;
 }
 
 /** `GET /api/settings/jev`: the decision model for proposals. Never contains the key. */

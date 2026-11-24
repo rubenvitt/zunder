@@ -115,7 +115,7 @@ const FIELDS: Record<string, string[]> = {
     "for_whom", "deferrals", "waiting_on", "goal_id", "planned_on", "day_rank", "flame_log", "ref", "deleted",
   ],
   comment: ["task_id", "body", "author", "deleted"],
-  goal: ["name", "emoji", "lead", "lead_per_week", "storm", "starts_on", "ends_on", "state", "rank", "deleted"],
+  goal: ["name", "emoji", "lead", "lead_per_week", "storm", "starts_on", "ends_on", "state", "rank", "timing_projects", "deleted"],
 };
 const ENUMS: Record<string, string[]> = {
   "task.status": ["open", "in_progress", "review", "blocked", "done", "dropped"],
@@ -272,6 +272,13 @@ function checkOp(op: Op): [string, string] | null {
   }
   if (["planned_on", "starts_on", "ends_on"].includes(op.field) && !(typeof op.value === "string" && isCalendarDay(op.value))) {
     return ["invalid_value", `„${op.field}“ muss ein Datum (JJJJ-MM-TT) sein.`];
+  }
+  if (
+    op.field === "timing_projects" &&
+    op.value !== null &&
+    !(Array.isArray(op.value) && op.value.length <= 50 && op.value.every((p) => typeof p === "string" && /^\/projects\/[0-9]+$/.test(p)) && new Set(op.value).size === op.value.length)
+  ) {
+    return ["invalid_value", "„timing_projects“ muss eine Liste verschiedener Timing-Projekte der Form „/projects/123“ sein."];
   }
   if (op.field === "lead_per_week" && !(Number.isInteger(op.value) && (op.value as number) >= 1 && (op.value as number) <= 99)) {
     return ["invalid_value", "„lead_per_week“ muss eine ganze Zahl von 1 bis 99 sein."];
@@ -1218,6 +1225,18 @@ const server = createServer(async (req, res) => {
         const report = jevEval(limit);
         if (report.asked === 0) return error(res, 409, "conflict", "Keine eingeordneten Aufgaben für einen Probelauf (Gewicht, „für wen“ oder Ort fehlen überall).");
         return send(res, 200, report);
+      }
+      if (path === "/api/goal-hours" && method === "GET") {
+        // Timing hours (ZUN-66): a fixed 3.5 h for every active goal that names Timing projects.
+        const week = url.searchParams.get("week") ?? "";
+        if (week !== "" && !/^\d{4}-W\d{2}$/.test(week)) return error(res, 400, "invalid_request", "„week“ muss eine ISO-Woche JJJJ-Www sein, z. B. 2026-W48.");
+        const goals: Record<string, number> = {};
+        for (const e of state.values()) {
+          if (e.entity !== "goal" || e.fields.deleted?.value === true || (e.fields.state?.value ?? "active") !== "active") continue;
+          const projects = e.fields.timing_projects?.value;
+          if (Array.isArray(projects) && projects.length > 0) goals[e.id] = 210;
+        }
+        return send(res, 200, { week: week || "2026-W48", status: "ok", goals });
       }
       if (path === "/api/pr-status" && method === "POST") {
         const body = await readJson(req);

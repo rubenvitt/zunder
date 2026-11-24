@@ -184,6 +184,16 @@ pub async fn pr_status(
     client.pr_status(&urls).await
 }
 
+/// `GET /api/goal-hours` with the stored token: Timing hours per goal.
+#[tauri::command]
+pub async fn goal_hours(
+    state: State<'_, AppState>,
+    week: Option<String>,
+) -> Result<serde_json::Value, Error> {
+    let client = state.syncer.client(&state.store)?;
+    client.goal_hours(week.as_deref()).await
+}
+
 /// `GET /api/tasks/{id}/suggestion`: Jev's stored proposal or `null`.
 #[tauri::command(rename_all = "snake_case")]
 pub async fn task_suggestion(

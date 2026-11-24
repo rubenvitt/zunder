@@ -187,6 +187,9 @@ pub mod fields {
         pub const ENDS_ON: &str = "ends_on";
         pub const STATE: &str = "state";
         pub const RANK: &str = "rank";
+        /// Timing projects whose time entries count for the goal, as self
+        /// links `/projects/<digits>` (without their child projects).
+        pub const TIMING_PROJECTS: &str = "timing_projects";
         pub const DELETED: &str = super::DELETED;
         pub const ALL: &[&str] = &[
             NAME,
@@ -198,6 +201,7 @@ pub mod fields {
             ENDS_ON,
             STATE,
             RANK,
+            TIMING_PROJECTS,
             DELETED,
         ];
         pub const REQUIRED: &[&str] = &[NAME];
@@ -403,6 +407,15 @@ string_enum! {
 
 /// Highest value of a goal's `lead_per_week`.
 pub const MAX_LEAD_PER_WEEK: u64 = 99;
+
+/// Most Timing projects one goal may name.
+pub const MAX_TIMING_PROJECTS: usize = 50;
+
+/// Whether `s` is a Timing project self link `/projects/<digits>`.
+pub fn is_timing_project_ref(s: &str) -> bool {
+    s.strip_prefix("/projects/")
+        .is_some_and(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()))
+}
 
 /// Highest value of a task's `deferrals`.
 pub const MAX_DEFERRALS: u64 = 9999;
@@ -1010,6 +1023,9 @@ pub struct Goal {
     pub ends_on: Option<Date>,
     pub state: GoalState,
     pub rank: Option<String>,
+    /// Timing project self links (`/projects/1`); empty: none.
+    #[serde(default)]
+    pub timing_projects: Vec<String>,
     pub deleted: bool,
 }
 
@@ -1078,6 +1094,8 @@ enum Shape {
     /// List of [`FlameInterval`] with `end > start`, at most
     /// [`MAX_FLAME_LOG`].
     FlameLog,
+    /// Distinct Timing project self links, at most [`MAX_TIMING_PROJECTS`].
+    TimingProjects,
     Recurrence,
     Repo,
     HttpUrl,
@@ -1155,6 +1173,7 @@ fn shape_of(kind: EntityKind, field: &str) -> Option<Shape> {
             g::LEAD_PER_WEEK => Shape::PositiveCount,
             g::STARTS_ON | g::ENDS_ON => Shape::Date,
             g::STATE => Shape::Enum(GoalState::codes),
+            g::TIMING_PROJECTS => Shape::TimingProjects,
             _ => return None,
         },
     };
@@ -1397,6 +1416,21 @@ fn check_shape(shape: Shape, field: &str, value: &Value) -> Result<(), ValueErro
                 )));
             }
         }
+        Shape::TimingProjects => {
+            let ok = value.as_array().is_some_and(|items| {
+                let mut seen = std::collections::HashSet::new();
+                items.len() <= MAX_TIMING_PROJECTS
+                    && items.iter().all(|v| {
+                        v.as_str()
+                            .is_some_and(|s| is_timing_project_ref(s) && seen.insert(s))
+                    })
+            });
+            if !ok {
+                return Err(ValueError::invalid(format!(
+                    "„{field}“ muss eine Liste verschiedener Timing-Projekte der Form „/projects/123“ sein (höchstens {MAX_TIMING_PROJECTS})."
+                )));
+            }
+        }
     }
     Ok(())
 }
@@ -1513,6 +1547,25 @@ mod tests {
         ok(g, "state", json!("closed"));
         assert_eq!(bad(g, "state", json!("archived")), RejectCode::InvalidValue);
         ok(g, "rank", json!("a0"));
+        ok(g, "timing_projects", json!(["/projects/1", "/projects/37"]));
+        ok(g, "timing_projects", json!([]));
+        ok(g, "timing_projects", Value::Null);
+        for bad_value in [
+            json!(["/projects/1", "/projects/1"]),
+            json!(["projects/1"]),
+            json!(["/projects/abc"]),
+            json!(["/projects/"]),
+            json!("/projects/1"),
+            json!((0..51)
+                .map(|i| format!("/projects/{i}"))
+                .collect::<Vec<_>>()),
+        ] {
+            assert_eq!(
+                bad(g, "timing_projects", bad_value.clone()),
+                RejectCode::InvalidValue,
+                "{bad_value}"
+            );
+        }
         ok(g, "deleted", json!(true));
         assert_eq!(bad(g, "unknown", json!("x")), RejectCode::UnknownField);
         assert_eq!(
@@ -1535,6 +1588,7 @@ mod tests {
             ends_on: None,
             state: GoalState::default(),
             rank: None,
+            timing_projects: vec!["/projects/1".into()],
             deleted: false,
         };
         let json = serde_json::to_value(&goal).unwrap();

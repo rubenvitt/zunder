@@ -420,9 +420,11 @@ const PLAN_DAY: &str = "Plant einen ganzen Tag: task_ids ist die geordnete Liste
 
 const GOAL_INPUT: &str = "Input pro Ziel für eine ISO-Woche: je aktivem Ziel done (erledigte Aufgaben \
     mit diesem wirksamen Ziel, Unteraufgaben einzeln, Dev-Projekte eingeschlossen, verworfene nicht), \
-    minutes (Flammen-Minuten dieser Woche) und lead_per_week mit reached (done erreicht lead_per_week). \
-    Ergebnis: week, from, to (Montag und Sonntag) und goals mit goal_id, name, emoji. Für Reviews: \
-    sachlich spiegeln, nicht bewerten.";
+    minutes (Flammen-Minuten dieser Woche), timing_minutes (Timing-Zeiteinträge dieser Woche in den \
+    timing_projects des Ziels; null ohne Zuordnung oder wenn Timing nicht verfügbar ist) und \
+    lead_per_week mit reached (done erreicht lead_per_week). Ergebnis: week, from, to (Montag und \
+    Sonntag), timing_status (ok, not_configured, unavailable; dann timing_message) und goals mit \
+    goal_id, name, emoji. Für Reviews: sachlich spiegeln, nicht bewerten.";
 
 const DONE_LOG: &str = "Logbuch „Erledigt“ für einen Zeitraum, neuester Tag zuerst: je Tag done (an \
     diesem Tag erledigte Aufgaben mit den Flammen-Minuten des Tages), worked (Aufgaben mit Flammen, \
@@ -465,6 +467,18 @@ fn goal_fields(nullable: bool) -> Vec<(&'static str, Value)> {
         (
             "rank",
             text("Rangschlüssel für die Reihenfolge der Ziele (Text, aufsteigend)."),
+        ),
+        (
+            "timing_projects",
+            json!({
+                "type": if nullable { json!(["array", "null"]) } else { json!("array") },
+                "description": "Timing-Projekte, deren Zeiteinträge auf das Ziel einzahlen: Self-Links wie \
+                    /projects/123 (auch API-URL oder Nummer), ohne Unterprojekte; soll ein Unterprojekt \
+                    mitzählen, steht es selbst in der Liste. Ersetzt die ganze Liste, [] oder null entfernt \
+                    sie. Nie das Flammen-Projekt; ein Projekt zählt für höchstens ein aktives Ziel. Claude \
+                    pflegt das.",
+                "items": {"type": "string", "minLength": 1},
+            }),
         ),
     ]
 }

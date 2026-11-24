@@ -13,6 +13,8 @@ import {
   GOAL_STATES,
   MAX_DEFERRALS,
   MAX_LEAD_PER_WEEK,
+  MAX_TIMING_PROJECTS,
+  isTimingProjectRef,
   PHOENIX_ROLES,
   PROJECT_KINDS,
   PROJECT_STATUSES,
@@ -162,6 +164,7 @@ type Shape =
   | "links"
   | "phoenix"
   | "flame_log"
+  | "timing_projects"
   | "recurrence"
   | "repo"
   | "http_url"
@@ -230,6 +233,7 @@ const SHAPES: Record<EntityKind, Record<string, Shape>> = {
     ends_on: "date",
     state: GOAL_STATES,
     rank: "text",
+    timing_projects: "timing_projects",
     deleted: "bool",
   },
 };
@@ -264,6 +268,7 @@ const FIELD_LABELS: Record<string, string> = {
   lead_per_week: `Mal pro Woche (ganze Zahl von 1 bis ${MAX_LEAD_PER_WEEK})`,
   starts_on: "Beginn (Datum JJJJ-MM-TT)",
   ends_on: "Ende (Datum JJJJ-MM-TT)",
+  timing_projects: `Timing-Projekte (verschiedene Self-Links wie /projects/123, höchstens ${MAX_TIMING_PROJECTS})`,
 };
 
 const label = (field: string) => FIELD_LABELS[field] ?? `„${field}“`;
@@ -316,6 +321,8 @@ function shapeOk(shape: Shape, v: JsonValue): boolean {
         typeof v.fire === "string" &&
         isValidFire(v.fire)
       );
+    case "timing_projects":
+      return Array.isArray(v) && v.length <= MAX_TIMING_PROJECTS && v.every(isTimingProjectRef) && new Set(v).size === v.length;
     case "flame_log":
       return (
         Array.isArray(v) &&

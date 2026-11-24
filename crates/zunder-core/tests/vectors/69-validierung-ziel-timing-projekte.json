@@ -1,0 +1,44 @@
+{
+  "name": "validierung-ziel-timing-projekte",
+  "description": "timing_projects ist eine Liste verschiedener Timing-Self-Links /projects/<Ziffern>: Ein Ziel mit doppeltem Projekt hat einen ungültigen Wert, ein Ziel mit einem Projekt wird angenommen.",
+  "kind": "validate",
+  "now_ms": 1760000101000,
+  "state": [],
+  "push": [
+    {
+      "op_id": "v000700080000f0000000500",
+      "entity": "goal",
+      "entity_id": "v000700080000g0000000021",
+      "field": "name",
+      "value": "I&K-Gruppe",
+      "hlc": "1760000100000:00000:web-test"
+    },
+    {
+      "op_id": "v000700080000f0000000501",
+      "entity": "goal",
+      "entity_id": "v000700080000g0000000021",
+      "field": "timing_projects",
+      "value": ["/projects/3708302322996078848", "/projects/3708302322996078848"],
+      "hlc": "1760000100001:00000:web-test"
+    },
+    {
+      "op_id": "v000700080000f0000000502",
+      "entity": "goal",
+      "entity_id": "v000700080000g0000000022",
+      "field": "name",
+      "value": "Sichtbar werden",
+      "hlc": "1760000100002:00000:web-test"
+    },
+    {
+      "op_id": "v000700080000f0000000503",
+      "entity": "goal",
+      "entity_id": "v000700080000g0000000022",
+      "field": "timing_projects",
+      "value": ["/projects/3708302322996078848"],
+      "hlc": "1760000100003:00000:web-test"
+    }
+  ],
+  "expected_rejected": {
+    "v000700080000g0000000021": "invalid_value"
+  }
+}

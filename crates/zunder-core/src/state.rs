@@ -340,6 +340,9 @@ impl Entity {
             ends_on: date(f::ENDS_ON),
             state: self.code::<GoalState>(f::STATE),
             rank: self.string(f::RANK),
+            timing_projects: self
+                .parsed::<Vec<String>>(f::TIMING_PROJECTS)
+                .unwrap_or_default(),
             deleted: self.is_deleted(),
         })
     }

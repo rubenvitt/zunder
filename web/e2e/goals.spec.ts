@@ -5,7 +5,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 import { toRfc3339Local } from "../src/sync/dates";
-import { newId, openApp, prepare, row, Seeder, suffix } from "./fixtures";
+import { isMock, newId, openApp, prepare, row, Seeder, suffix } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
   await prepare(page);
@@ -142,5 +142,29 @@ test("Zeilen bleiben beim Neuberechnen der Uhr stehen", async ({ page }) => {
     expect(await button.evaluate((el) => (el as HTMLElement & { marker?: string }).marker)).toBe("same");
   } finally {
     await remove(page, [], [sport]);
+  }
+});
+
+test("Timing-Zeit nur bei zugeordneten Projekten, sonst nichts", async ({ page }) => {
+  const s = suffix();
+  const seeder = new Seeder();
+  const mit = seeder.raw("goal", newId(), { name: `Mit Timing ${s}`, state: "active", timing_projects: ["/projects/1"], rank: "e" });
+  const ohne = seeder.raw("goal", newId(), { name: `Ohne Timing ${s}`, state: "active", rank: "f" });
+  await seeder.push(page);
+  try {
+    await openApp(page, "#/ziele");
+    await expect(goalRow(page, `Ohne Timing ${s}`)).toBeVisible();
+    if (isMock) {
+      // The mock answers 3.5 h for every goal with projects.
+      await expect(goalRow(page, `Mit Timing ${s}`).locator(".goal-timing")).toHaveText("3,5 h Timing");
+      await goalRow(page, `Mit Timing ${s}`).getByRole("button").click();
+      await expect(page.locator(".goal-timing-text")).toHaveText("Timing: 3,5 h");
+    } else {
+      // The real test server has no Timing token: quietly nothing.
+      await expect(goalRow(page, `Mit Timing ${s}`).locator(".goal-timing")).toHaveText("");
+    }
+    await expect(goalRow(page, `Ohne Timing ${s}`).locator(".goal-timing")).toHaveText("");
+  } finally {
+    await remove(page, [], [mit, ohne]);
   }
 });

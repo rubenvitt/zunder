@@ -1,11 +1,13 @@
 // Ziele (design 6.2/6.3): the active goals with this week's input, quietly: moves, minutes, the lead
 // figure in brackets and a check mark only when it is reached. No colour, no bars. A click opens the
 // lead and the week's tasks of the goal. Below: the Feuersturm and what is left of it.
+// Timing time (ZUN-66) comes from the server and fills in after the rows; without it nothing shows.
 
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
 import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
-import { movesLabel, weeksLeftLabel } from "../labels";
+import { movesLabel, timingDuration, timingLabel, weeksLeftLabel } from "../labels";
+import { goalHours } from "../state/goal-hours";
 import { data, now, taskIndex } from "../state/store";
 import { openTask } from "../state/ui";
 import { fireOf } from "../sync/dates";
@@ -41,6 +43,13 @@ export function GoalsView() {
   const byId = createMemo(() => new Map(rows().map((r) => [r.goal.id, r])));
   const ids = createMemo(() => rows().map((r) => r.goal.id));
   const [openId, setOpenId] = createSignal<string | null>(null);
+  const hours = goalHours();
+  // Only the week drives the watch; the store reads inside watch() must not re-run it.
+  createEffect(on(week, (w) => onCleanup(hours.watch(w))));
+  const timing = (goalId: string) => {
+    const m = hours.minutes(goalId);
+    return m !== undefined && m > 0 ? m : null;
+  };
   const weekTasks = createMemo(() => {
     const id = openId();
     return id ? goalWeekTasks(taskIndex(), data.goals, id, week(), now()) : null;
@@ -76,6 +85,7 @@ export function GoalsView() {
                         <span class="goal-name">{row().goal.name}</span>
                         <span class="goal-moves">{movesLabel(row().done)}</span>
                         <span class="goal-minutes">{row().minutes > 0 ? `${row().minutes} min` : ""}</span>
+                        <span class="goal-timing">{timing(id) !== null ? timingLabel(timing(id)!) : ""}</span>
                         <span class="goal-lead">{row().lead_per_week !== null ? `(${row().lead_per_week}×)` : ""}</span>
                         <span class="goal-check">
                           <Show when={row().reached}>
@@ -89,6 +99,9 @@ export function GoalsView() {
                         <div class="goal-detail">
                           <Show when={row().goal.lead}>
                             <p class="goal-lead-text">{row().goal.lead}</p>
+                          </Show>
+                          <Show when={timing(id)}>
+                            {(m) => <p class="goal-timing-text muted">Timing: {timingDuration(m())}</p>}
                           </Show>
                           <Entries title="Erledigt diese Woche" entries={weekTasks()?.done ?? []} />
                           <Entries title="Mit Flammen diese Woche" entries={weekTasks()?.worked ?? []} />

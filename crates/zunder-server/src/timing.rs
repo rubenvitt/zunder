@@ -19,7 +19,13 @@
 //! - **check**: the same `GET /time-entries/running` tells whether Timing
 //!   accepts the token (settings view, "Verbindung prüfen").
 //! - **projects**: `GET /projects?hide_archived=true` lists the projects the
-//!   settings view offers for new time entries.
+//!   settings view offers for new time entries; `GET /projects` (archived
+//!   ones included) is what MCP checks goal projects against.
+//! - **report**: `GET /report` with `columns[]=project` sums the time
+//!   entries of given projects in a time range (goal hours, ZUN-66). Only
+//!   time entries count: `include_app_usage` is never set, and child
+//!   projects are left out (`include_child_projects=0`). Titles and notes
+//!   are neither asked nor read.
 //!
 //! The bridge sits behind [`TimingApi`] so the flame service does not depend
 //! on HTTP details; tests run [`TimingClient`] against a mock server.
@@ -28,6 +34,8 @@ use futures_util::future::BoxFuture;
 use reqwest::{Method, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use time::format_description::well_known::Rfc3339;
+use time::OffsetDateTime;
 use url::Url;
 
 /// Base URL of the Timing web API.
@@ -67,6 +75,14 @@ pub struct TimingProject {
     pub color: Option<String>,
 }
 
+/// Time entries of one project in a report.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProjectTime {
+    /// Self link, normalized to `/projects/<digits>`.
+    pub project: String,
+    pub seconds: f64,
+}
+
 /// Errors of the Timing API (messages are German, shown to users).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum TimingError {
@@ -94,6 +110,19 @@ pub trait TimingApi: Send + Sync {
 
     /// The projects that are not archived.
     fn projects(&self) -> BoxFuture<'_, Result<Vec<TimingProject>, TimingError>>;
+
+    /// All projects, archived ones included.
+    fn all_projects(&self) -> BoxFuture<'_, Result<Vec<TimingProject>, TimingError>>;
+
+    /// Seconds of time entries per project in `[from, to]`, for exactly
+    /// these projects (no child projects, no app usage). Projects without
+    /// time may be missing.
+    fn report<'a>(
+        &'a self,
+        from: OffsetDateTime,
+        to: OffsetDateTime,
+        projects: &'a [String],
+    ) -> BoxFuture<'a, Result<Vec<ProjectTime>, TimingError>>;
 }
 
 /// HTTP implementation of [`TimingApi`].
@@ -112,6 +141,25 @@ struct EntryEnvelope {
 #[derive(Deserialize)]
 struct ProjectsEnvelope {
     data: Vec<TimingProject>,
+}
+
+#[derive(Deserialize)]
+struct ReportEnvelope {
+    data: Vec<ReportLine>,
+}
+
+#[derive(Deserialize)]
+struct ReportLine {
+    #[serde(default)]
+    duration: f64,
+    #[serde(default)]
+    project: Option<ReportProject>,
+}
+
+#[derive(Deserialize)]
+struct ReportProject {
+    #[serde(rename = "self")]
+    self_ref: String,
 }
 
 #[derive(Deserialize)]
@@ -223,9 +271,16 @@ impl TimingClient {
 
     /// Projects that are not archived, with the title chain filled in.
     pub async fn list_projects(&self) -> Result<Vec<TimingProject>, TimingError> {
-        let (status, json) = self
-            .send(Method::GET, "/projects?hide_archived=true", None)
-            .await?;
+        self.project_list("/projects?hide_archived=true").await
+    }
+
+    /// All projects, archived ones included.
+    pub async fn list_all_projects(&self) -> Result<Vec<TimingProject>, TimingError> {
+        self.project_list("/projects").await
+    }
+
+    async fn project_list(&self, path: &str) -> Result<Vec<TimingProject>, TimingError> {
+        let (status, json) = self.send(Method::GET, path, None).await?;
         if !status.is_success() {
             return Err(Self::status_error(status, &json));
         }
@@ -239,6 +294,40 @@ impl TimingClient {
                     p.title_chain = vec![p.title.clone()];
                 }
                 p
+            })
+            .collect())
+    }
+
+    /// Seconds of time entries per project (see [`TimingApi::report`]).
+    pub async fn project_report(
+        &self,
+        from: OffsetDateTime,
+        to: OffsetDateTime,
+        projects: &[String],
+    ) -> Result<Vec<ProjectTime>, TimingError> {
+        let query = {
+            let mut query = url::form_urlencoded::Serializer::new(String::new());
+            for (key, value) in report_query(from, to, projects)? {
+                query.append_pair(&key, &value);
+            }
+            query.finish()
+        };
+        let path = format!("/report?{query}");
+        let (status, json) = self.send(Method::GET, &path, None).await?;
+        if !status.is_success() {
+            return Err(Self::status_error(status, &json));
+        }
+        let envelope: ReportEnvelope = serde_json::from_value(json)
+            .map_err(|e| TimingError::InvalidResponse(format!("Bericht ({e})")))?;
+        Ok(envelope
+            .data
+            .into_iter()
+            .filter_map(|line| {
+                let project = project_path(&line.project?.self_ref)?;
+                Some(ProjectTime {
+                    project,
+                    seconds: line.duration.max(0.0),
+                })
             })
             .collect())
     }
@@ -279,6 +368,55 @@ impl TimingApi for TimingClient {
     fn projects(&self) -> BoxFuture<'_, Result<Vec<TimingProject>, TimingError>> {
         Box::pin(async move { self.list_projects().await })
     }
+
+    fn all_projects(&self) -> BoxFuture<'_, Result<Vec<TimingProject>, TimingError>> {
+        Box::pin(async move { self.list_all_projects().await })
+    }
+
+    fn report<'a>(
+        &'a self,
+        from: OffsetDateTime,
+        to: OffsetDateTime,
+        projects: &'a [String],
+    ) -> BoxFuture<'a, Result<Vec<ProjectTime>, TimingError>> {
+        Box::pin(async move { self.project_report(from, to, projects).await })
+    }
+}
+
+/// Query parameters of a project report (see [`TimingApi::report`]).
+fn report_query(
+    from: OffsetDateTime,
+    to: OffsetDateTime,
+    projects: &[String],
+) -> Result<Vec<(String, String)>, TimingError> {
+    let format = |t: OffsetDateTime| {
+        t.format(&Rfc3339)
+            .map_err(|e| TimingError::InvalidResponse(format!("Zeitpunkt ({e})")))
+    };
+    let mut query = vec![
+        ("start_date_min".to_owned(), format(from)?),
+        ("start_date_max".to_owned(), format(to)?),
+        ("columns[]".to_owned(), "project".to_owned()),
+        ("include_child_projects".to_owned(), "0".to_owned()),
+    ];
+    query.extend(
+        projects
+            .iter()
+            .map(|p| ("projects[]".to_owned(), p.clone())),
+    );
+    Ok(query)
+}
+
+/// A Timing project reference as self link `/projects/<digits>`: accepts
+/// the self link, an absolute API URL (`https://…/api/v1/projects/1/`)
+/// and the bare number. `None` for anything else.
+pub fn project_path(s: &str) -> Option<String> {
+    let s = s.trim().trim_end_matches('/');
+    let id = match s.rfind("/projects/") {
+        Some(i) => &s[i + "/projects/".len()..],
+        None => s,
+    };
+    (!id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())).then(|| format!("/projects/{id}"))
 }
 
 /// Compares self links, tolerating an absolute URL on one side.
@@ -303,6 +441,54 @@ mod tests {
             entry_path("https://web.timingapp.com/api/v1/time-entries/2/"),
             "/time-entries/2"
         );
+    }
+
+    #[test]
+    fn project_paths_are_normalized() {
+        assert_eq!(
+            project_path("/projects/12").as_deref(),
+            Some("/projects/12")
+        );
+        assert_eq!(
+            project_path("https://web.timingapp.com/api/v1/projects/3708302322996078848/")
+                .as_deref(),
+            Some("/projects/3708302322996078848")
+        );
+        assert_eq!(project_path(" 42 ").as_deref(), Some("/projects/42"));
+        for bad in [
+            "",
+            "/projects/",
+            "/projects/abc",
+            "DRK",
+            "/time-entries/2",
+            "-1",
+        ] {
+            assert_eq!(project_path(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn report_query_counts_only_time_entries_of_exactly_these_projects() {
+        use time::macros::datetime;
+        let query = report_query(
+            datetime!(2026-11-23 00:00 +1),
+            datetime!(2026-11-29 23:59:59 +1),
+            &["/projects/1".into(), "/projects/2".into()],
+        )
+        .unwrap();
+        let get = |k: &str| -> Vec<&str> {
+            query
+                .iter()
+                .filter(|(key, _)| key == k)
+                .map(|(_, v)| v.as_str())
+                .collect()
+        };
+        assert_eq!(get("start_date_min"), ["2026-11-23T00:00:00+01:00"]);
+        assert_eq!(get("start_date_max"), ["2026-11-29T23:59:59+01:00"]);
+        assert_eq!(get("columns[]"), ["project"]);
+        assert_eq!(get("include_child_projects"), ["0"]);
+        assert_eq!(get("projects[]"), ["/projects/1", "/projects/2"]);
+        assert!(get("include_app_usage").is_empty());
     }
 
     #[test]

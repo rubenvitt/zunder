@@ -132,6 +132,18 @@ export function movesLabel(count: number): string {
   return count === 1 ? "1 Zug" : `${count} Züge`;
 }
 
+/** Timing time as shown beside a goal: "40 min", from an hour on "1 h", "3,5 h" (one decimal at most). */
+export function timingDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.round(minutes / 6) / 10;
+  return `${String(hours).replace(".", ",")} h`;
+}
+
+/** "3,5 h Timing": the Timing time of a goal row, set apart from the flame minutes. */
+export function timingLabel(minutes: number): string {
+  return `${timingDuration(minutes)} Timing`;
+}
+
 /** "noch 1 Woche", "noch 4 Wochen": what is left of the Feuersturm. */
 export function weeksLeftLabel(weeks: number): string {
   return weeks === 1 ? "noch 1 Woche" : `noch ${weeks} Wochen`;
