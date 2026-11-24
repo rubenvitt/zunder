@@ -9,6 +9,7 @@ import {
   AREA_STATES,
   FOR_WHOMS,
   GOAL_STATES,
+  isTimingProjectRef,
   MAX_DEFERRALS,
   MAX_LEAD_PER_WEEK,
   PHOENIX_ROLES,
@@ -188,6 +189,11 @@ function plainDate(v: JsonValue | undefined): string | null {
   return typeof v === "string" && isDateOnly(v) ? v : null;
 }
 
+/** A list of Timing project self links; anything else counts as none. */
+function timingProjects(v: JsonValue | undefined): string[] {
+  return Array.isArray(v) && v.every(isTimingProjectRef) ? [...v] : [];
+}
+
 export function toGoal(e: EntityState): Goal {
   const { min, max } = hlcRange(e);
   return {
@@ -204,6 +210,7 @@ export function toGoal(e: EntityState): Goal {
     ends_on: plainDate(value(e, "ends_on")),
     state: oneOf(value(e, "state"), GOAL_STATES, "active"),
     rank: str(value(e, "rank")),
+    timing_projects: timingProjects(value(e, "timing_projects")),
   };
 }
 

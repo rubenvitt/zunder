@@ -412,6 +412,8 @@ pub struct GoalView {
     pub ends_on: Option<String>,
     pub state: GoalState,
     pub rank: Option<String>,
+    /// Timing project self links whose time entries count for the goal.
+    pub timing_projects: Vec<String>,
     pub deleted: bool,
 }
 
@@ -428,6 +430,7 @@ impl From<Goal> for GoalView {
             ends_on: goal.ends_on.map(format_date),
             state: goal.state,
             rank: goal.rank,
+            timing_projects: goal.timing_projects,
             deleted: goal.deleted,
         }
     }
@@ -565,6 +568,7 @@ mod tests {
             ends_on: None,
             state: GoalState::default(),
             rank: Some("m".into()),
+            timing_projects: vec!["/projects/7".into()],
             deleted: false,
         });
         let json = serde_json::to_value(&view).unwrap();
@@ -573,5 +577,6 @@ mod tests {
         assert_eq!(json["ends_on"], serde_json::Value::Null);
         assert_eq!(json["lead_per_week"], 3);
         assert_eq!(json["state"], "active");
+        assert_eq!(json["timing_projects"], serde_json::json!(["/projects/7"]));
     }
 }
