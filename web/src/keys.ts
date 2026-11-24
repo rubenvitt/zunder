@@ -35,6 +35,7 @@ const GO: Record<string, Route> = {
   w: { view: "wartet" },
   z: { view: "zusagen" },
   e: { view: "ziele" },
+  r: { view: "erledigt" },
 };
 
 function isTyping(target: EventTarget | null): boolean {
