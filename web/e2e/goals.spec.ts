@@ -123,3 +123,24 @@ test("Ziel im Detail setzen zeigt Zeichen in der Zeile", async ({ page }) => {
     await remove(page, [task], [sport, zu]);
   }
 });
+
+test("Zeilen bleiben beim Neuberechnen der Uhr stehen", async ({ page }) => {
+  const s = suffix();
+  const seeder = new Seeder();
+  const sport = seeder.raw("goal", newId(), { name: `Sport ${s}`, emoji: "🏃", state: "active", rank: "a" });
+  await seeder.push(page);
+  try {
+    await page.clock.install();
+    await openApp(page, "#/ziele");
+    const button = goalRow(page, `Sport ${s}`).locator(".goal-head");
+    await button.focus();
+    await expect(button).toBeFocused();
+    await button.evaluate((el) => ((el as HTMLElement & { marker?: string }).marker = "same"));
+    // The store's clock ticks every 30 s and recomputes the rows.
+    await page.clock.fastForward(31_000);
+    await expect(button).toBeFocused();
+    expect(await button.evaluate((el) => (el as HTMLElement & { marker?: string }).marker)).toBe("same");
+  } finally {
+    await remove(page, [], [sport]);
+  }
+});

@@ -36,6 +36,10 @@ function Entries(props: { title: string; entries: LogEntry[] }) {
 export function GoalsView() {
   const week = createMemo(() => fireOf(new Date(now())));
   const rows = createMemo(() => goalInput(taskIndex(), data.goals, week(), now()).goals);
+  // The clock recomputes the rows every 30 s with new objects; rows are keyed by goal id (a string),
+  // so they stay in place and keep focus and hover.
+  const byId = createMemo(() => new Map(rows().map((r) => [r.goal.id, r])));
+  const ids = createMemo(() => rows().map((r) => r.goal.id));
   const [openId, setOpenId] = createSignal<string | null>(null);
   const weekTasks = createMemo(() => {
     const id = openId();
@@ -58,42 +62,46 @@ export function GoalsView() {
         fallback={<EmptyState icon="target" title="Noch keine Ziele. Claude legt sie aus dem Feuersturm an." />}
       >
         <ul class="goal-list" aria-label="Ziele">
-          <For each={rows()}>
-            {(row) => {
-              const open = () => openId() === row.goal.id;
-              return (
-                <li class="goal-row" classList={{ open: open() }}>
-                  <button class="goal-head" aria-expanded={open()} onClick={() => setOpenId(open() ? null : row.goal.id)}>
-                    <span class="goal-emoji" aria-hidden="true">
-                      {row.goal.emoji}
-                    </span>
-                    <span class="goal-name">{row.goal.name}</span>
-                    <span class="goal-moves">{movesLabel(row.done)}</span>
-                    <span class="goal-minutes">{row.minutes > 0 ? `${row.minutes} min` : ""}</span>
-                    <span class="goal-lead">{row.lead_per_week !== null ? `(${row.lead_per_week}×)` : ""}</span>
-                    <span class="goal-check">
-                      <Show when={row.reached}>
-                        <span class="goal-reached" role="img" aria-label="Erreicht" title="Erreicht">
-                          <Icon name="check" size={14} />
+          <For each={ids()}>
+            {(id) => (
+              <Show when={byId().get(id)}>
+                {(row) => {
+                  const open = () => openId() === id;
+                  return (
+                    <li class="goal-row" classList={{ open: open() }}>
+                      <button class="goal-head" aria-expanded={open()} onClick={() => setOpenId(open() ? null : row().goal.id)}>
+                        <span class="goal-emoji" aria-hidden="true">
+                          {row().goal.emoji}
                         </span>
+                        <span class="goal-name">{row().goal.name}</span>
+                        <span class="goal-moves">{movesLabel(row().done)}</span>
+                        <span class="goal-minutes">{row().minutes > 0 ? `${row().minutes} min` : ""}</span>
+                        <span class="goal-lead">{row().lead_per_week !== null ? `(${row().lead_per_week}×)` : ""}</span>
+                        <span class="goal-check">
+                          <Show when={row().reached}>
+                            <span class="goal-reached" role="img" aria-label="Erreicht" title="Erreicht">
+                              <Icon name="check" size={14} />
+                            </span>
+                          </Show>
+                        </span>
+                      </button>
+                      <Show when={open()}>
+                        <div class="goal-detail">
+                          <Show when={row().goal.lead}>
+                            <p class="goal-lead-text">{row().goal.lead}</p>
+                          </Show>
+                          <Entries title="Erledigt diese Woche" entries={weekTasks()?.done ?? []} />
+                          <Entries title="Mit Flammen diese Woche" entries={weekTasks()?.worked ?? []} />
+                          <Show when={!weekTasks()?.done.length && !weekTasks()?.worked.length}>
+                            <p class="muted">Diese Woche noch nichts.</p>
+                          </Show>
+                        </div>
                       </Show>
-                    </span>
-                  </button>
-                  <Show when={open()}>
-                    <div class="goal-detail">
-                      <Show when={row.goal.lead}>
-                        <p class="goal-lead-text">{row.goal.lead}</p>
-                      </Show>
-                      <Entries title="Erledigt diese Woche" entries={weekTasks()?.done ?? []} />
-                      <Entries title="Mit Flammen diese Woche" entries={weekTasks()?.worked ?? []} />
-                      <Show when={!weekTasks()?.done.length && !weekTasks()?.worked.length}>
-                        <p class="muted">Diese Woche noch nichts.</p>
-                      </Show>
-                    </div>
-                  </Show>
-                </li>
-              );
-            }}
+                    </li>
+                  );
+                }}
+              </Show>
+            )}
           </For>
         </ul>
         <Show when={storm()}>
