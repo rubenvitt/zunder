@@ -73,7 +73,7 @@ export function describeChange(change: AgentChange): ChangeSummary {
       return { icon: "folder", lead: "Bereich", name, href, verb, details };
     }
     case "goal": {
-      // No goal store yet: the name comes from the change itself.
+      // The name comes from the change itself (a renamed or deleted goal still reads as it was then).
       const name = text(lastValue(change, "name")) ?? "unbekanntes Ziel";
       return { icon: "pencil", lead: "Ziel", name, verb, details };
     }

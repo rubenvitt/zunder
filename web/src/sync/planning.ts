@@ -151,17 +151,17 @@ export interface WeekGoalInput {
   goals: GoalInput[];
 }
 
+/** Goal order everywhere: rank (missing last), then name, then ID. */
+export function compareGoals(a: Goal, b: Goal): number {
+  return presentFirst(a.rank, b.rank) || compareStrings(a.name, b.name) || compareStrings(a.id, b.id);
+}
+
 /**
  * Input of every live active goal in `week` (design 6.1): `done` counts live done tasks whose
  * status changed in the week and whose effective goal it is (subtasks one by one, dev projects
  * included); `minutes` sums the flames of live tasks with this effective goal (any status) that
  * started in the week, the running one until `nowMs`.
  */
-/** Goal order everywhere: rank (missing last), then name, then ID. */
-export function compareGoals(a: Goal, b: Goal): number {
-  return presentFirst(a.rank, b.rank) || compareStrings(a.name, b.name) || compareStrings(a.id, b.id);
-}
-
 export function goalInput(index: TaskIndex, goals: Record<string, Goal>, week: string, nowMs: number): WeekGoalInput {
   const monday = mondayOf(week);
   const from = monday ? localDate(monday) : "";
