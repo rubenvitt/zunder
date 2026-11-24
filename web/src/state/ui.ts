@@ -104,6 +104,13 @@ export interface BoardController {
 const [activeBoard, setActiveBoard] = createSignal<BoardController | null>(null);
 export { activeBoard, setActiveBoard };
 
+/** A list that can be ordered by hand without being a board (Heute): Shift+J/K move the selection. */
+const [activeReorder, setActiveReorderSignal] = createSignal<((dy: -1 | 1) => void) | null>(null);
+export { activeReorder };
+export function setActiveReorder(reorder: ((dy: -1 | 1) => void) | null): void {
+  setActiveReorderSignal(() => reorder);
+}
+
 /** Focuses the search field of the current list or board (f); null = the view has none. */
 const [filterInput, setFilterInputSignal] = createSignal<(() => void) | null>(null);
 export { filterInput };

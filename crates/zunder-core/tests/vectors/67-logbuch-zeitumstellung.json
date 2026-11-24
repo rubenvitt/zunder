@@ -1,0 +1,1762 @@
+{
+  "name": "logbuch-zeitumstellung",
+  "description": "Logbuch „Erledigt“ (Entwurf 7) über das Ende der Sommerzeit (25.10.2026) in Europe/Berlin: Tage von to bis from absteigend, nur Tage mit Einträgen. done: lebende, erledigte Aufgaben außerhalb von Dev-Projekten nach dem Ortstag von status_changed_at, neueste zuerst, mit den Flammen-Minuten dieses Tages. worked: Aufgaben mit Flammen an diesem Tag, die dort nicht erledigt wurden (nicht verworfen, nicht gelöscht, nicht im Dev-Projekt), nach Minuten absteigend, dann ID. Eine Flamme zählt für den Ortstag ihres Starts; 2:30 MESZ bis 2:10 MEZ sind 40 min. Die laufende Flamme zählt bis now. Ein geschlossenes Ziel ändert nichts.",
+  "kind": "done_log",
+  "time_zone": "Europe/Berlin",
+  "cases": [
+    {
+      "description": "24. bis 26.10.2026",
+      "now": "2026-10-26T10:20:30+01:00",
+      "from": "2026-10-24",
+      "to": "2026-10-26",
+      "state": [
+        {
+          "op_id": "p670000000e0000000000001",
+          "entity": "area",
+          "entity_id": "p670000000a0000000000001",
+          "field": "name",
+          "value": "Arbeit",
+          "hlc": "1790838001000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000002",
+          "entity": "project",
+          "entity_id": "p670000000b0000000000002",
+          "field": "name",
+          "value": "App",
+          "hlc": "1790838002000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000003",
+          "entity": "project",
+          "entity_id": "p670000000b0000000000002",
+          "field": "area_id",
+          "value": "p670000000a0000000000001",
+          "hlc": "1790838002000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000004",
+          "entity": "project",
+          "entity_id": "p670000000b0000000000002",
+          "field": "kind",
+          "value": "dev",
+          "hlc": "1790838002000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000005",
+          "entity": "project",
+          "entity_id": "p670000000b0000000000002",
+          "field": "repo",
+          "value": "example/app",
+          "hlc": "1790838002000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000006",
+          "entity": "goal",
+          "entity_id": "p670000000g0000000000001",
+          "field": "name",
+          "value": "Altes Ziel",
+          "hlc": "1790838003000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000007",
+          "entity": "goal",
+          "entity_id": "p670000000g0000000000001",
+          "field": "state",
+          "value": "closed",
+          "hlc": "1790838003000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000008",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000001",
+          "field": "title",
+          "value": "So 23:30 MEZ erledigt",
+          "hlc": "1790838004000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000009",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000001",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838004000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000010",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000001",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-25T22:50:00+01:00",
+              "end": "2026-10-25T23:25:00+01:00"
+            }
+          ],
+          "hlc": "1790838004000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000011",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000001",
+          "field": "status",
+          "value": "done",
+          "hlc": "1792967400000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000012",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000002",
+          "field": "title",
+          "value": "So 0:30 MESZ erledigt",
+          "hlc": "1790838005000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000013",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000002",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838005000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000014",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000002",
+          "field": "status",
+          "value": "done",
+          "hlc": "1792881000000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000015",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000003",
+          "field": "title",
+          "value": "Offen, daran gearbeitet",
+          "hlc": "1790838006000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000016",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000003",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838006000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000017",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000003",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-24T10:00:00+02:00",
+              "end": "2026-10-24T10:45:00+02:00"
+            }
+          ],
+          "hlc": "1790838006000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000018",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000003",
+          "field": "flame_started_at",
+          "value": "2026-10-26T09:45:00+01:00",
+          "hlc": "1790838006000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000019",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000003",
+          "field": "flame_ended_at",
+          "value": "2026-10-24T10:45:00+02:00",
+          "hlc": "1790838006000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000020",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000004",
+          "field": "title",
+          "value": "Über die Umstellung",
+          "hlc": "1790838007000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000021",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000004",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838007000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000022",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000004",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-25T02:30:00+02:00",
+              "end": "2026-10-25T02:10:00+01:00"
+            }
+          ],
+          "hlc": "1790838007000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000023",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000004",
+          "field": "status",
+          "value": "in_progress",
+          "hlc": "1790838007000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000024",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000005",
+          "field": "title",
+          "value": "Verworfen",
+          "hlc": "1790838008000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000025",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000005",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838008000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000026",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000005",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-24T11:00:00+02:00",
+              "end": "2026-10-24T11:30:00+02:00"
+            }
+          ],
+          "hlc": "1790838008000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000027",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000005",
+          "field": "status",
+          "value": "dropped",
+          "hlc": "1792836000000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000028",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000006",
+          "field": "title",
+          "value": "Dev erledigt",
+          "hlc": "1790838009000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000029",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000006",
+          "field": "location",
+          "value": {
+            "kind": "project",
+            "id": "p670000000b0000000000002"
+          },
+          "hlc": "1790838009000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000030",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000006",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-26T07:00:00+01:00",
+              "end": "2026-10-26T07:50:00+01:00"
+            }
+          ],
+          "hlc": "1790838009000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000031",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000006",
+          "field": "status",
+          "value": "done",
+          "hlc": "1792998000000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000032",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000007",
+          "field": "title",
+          "value": "Dev, daran gearbeitet",
+          "hlc": "1790838010000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000033",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000007",
+          "field": "location",
+          "value": {
+            "kind": "project",
+            "id": "p670000000b0000000000002"
+          },
+          "hlc": "1790838010000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000034",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000007",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-25T10:00:00+01:00",
+              "end": "2026-10-25T10:50:00+01:00"
+            }
+          ],
+          "hlc": "1790838010000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000035",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000008",
+          "field": "title",
+          "value": "Mit geschlossenem Ziel",
+          "hlc": "1790838011000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000036",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000008",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838011000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000037",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000008",
+          "field": "goal_id",
+          "value": "p670000000g0000000000001",
+          "hlc": "1790838011000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000038",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000008",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-25T15:00:00+01:00",
+              "end": "2026-10-25T15:20:00+01:00"
+            },
+            {
+              "start": "2026-10-26T07:00:00+01:00",
+              "end": "2026-10-26T07:30:59+01:00"
+            }
+          ],
+          "hlc": "1790838011000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000039",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000008",
+          "field": "status",
+          "value": "done",
+          "hlc": "1792998000000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000040",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000009",
+          "field": "title",
+          "value": "Vorher erledigt",
+          "hlc": "1790838012000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000041",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000009",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838012000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000042",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000009",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-23T22:00:00+02:00",
+              "end": "2026-10-23T23:00:00+02:00"
+            }
+          ],
+          "hlc": "1790838012000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000043",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000009",
+          "field": "status",
+          "value": "done",
+          "hlc": "1792791000000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000044",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000010",
+          "field": "title",
+          "value": "Gelöscht",
+          "hlc": "1790838013000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000045",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000010",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838013000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000046",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000010",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-25T11:00:00+01:00",
+              "end": "2026-10-25T11:30:00+01:00"
+            }
+          ],
+          "hlc": "1790838013000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000047",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000010",
+          "field": "status",
+          "value": "done",
+          "hlc": "1792926000000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000048",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000010",
+          "field": "deleted",
+          "value": true,
+          "hlc": "1792929600000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000049",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000011",
+          "field": "title",
+          "value": "Erledigt ohne Flamme",
+          "hlc": "1790838014000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000050",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000011",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838014000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000051",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000011",
+          "field": "status",
+          "value": "done",
+          "hlc": "1793001600000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000052",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000012",
+          "field": "title",
+          "value": "Sa gearbeitet, Mo erledigt",
+          "hlc": "1790838015000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000053",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000012",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838015000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000054",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000012",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-24T14:00:00+02:00",
+              "end": "2026-10-24T14:45:00+02:00"
+            }
+          ],
+          "hlc": "1790838015000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000055",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000012",
+          "field": "status",
+          "value": "done",
+          "hlc": "1792999800000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000056",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000013",
+          "field": "title",
+          "value": "Nach dem Zeitraum erledigt",
+          "hlc": "1790838016000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000057",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000013",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838016000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000058",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000013",
+          "field": "status",
+          "value": "done",
+          "hlc": "1793088000000:00000:p"
+        }
+      ],
+      "expected": [
+        {
+          "date": "2026-10-26",
+          "minutes": 65,
+          "done": [
+            {
+              "task_id": "p670000000t0000000000011",
+              "minutes": 0
+            },
+            {
+              "task_id": "p670000000t0000000000012",
+              "minutes": 0
+            },
+            {
+              "task_id": "p670000000t0000000000008",
+              "minutes": 30
+            }
+          ],
+          "worked": [
+            {
+              "task_id": "p670000000t0000000000003",
+              "minutes": 35
+            }
+          ]
+        },
+        {
+          "date": "2026-10-25",
+          "minutes": 95,
+          "done": [
+            {
+              "task_id": "p670000000t0000000000001",
+              "minutes": 35
+            },
+            {
+              "task_id": "p670000000t0000000000002",
+              "minutes": 0
+            }
+          ],
+          "worked": [
+            {
+              "task_id": "p670000000t0000000000004",
+              "minutes": 40
+            },
+            {
+              "task_id": "p670000000t0000000000008",
+              "minutes": 20
+            }
+          ]
+        },
+        {
+          "date": "2026-10-24",
+          "minutes": 90,
+          "done": [],
+          "worked": [
+            {
+              "task_id": "p670000000t0000000000003",
+              "minutes": 45
+            },
+            {
+              "task_id": "p670000000t0000000000012",
+              "minutes": 45
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "description": "Nur der 25.10.: from = to",
+      "now": "2026-10-26T10:20:30+01:00",
+      "from": "2026-10-25",
+      "to": "2026-10-25",
+      "state": [
+        {
+          "op_id": "p670000000e0000000000001",
+          "entity": "area",
+          "entity_id": "p670000000a0000000000001",
+          "field": "name",
+          "value": "Arbeit",
+          "hlc": "1790838001000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000002",
+          "entity": "project",
+          "entity_id": "p670000000b0000000000002",
+          "field": "name",
+          "value": "App",
+          "hlc": "1790838002000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000003",
+          "entity": "project",
+          "entity_id": "p670000000b0000000000002",
+          "field": "area_id",
+          "value": "p670000000a0000000000001",
+          "hlc": "1790838002000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000004",
+          "entity": "project",
+          "entity_id": "p670000000b0000000000002",
+          "field": "kind",
+          "value": "dev",
+          "hlc": "1790838002000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000005",
+          "entity": "project",
+          "entity_id": "p670000000b0000000000002",
+          "field": "repo",
+          "value": "example/app",
+          "hlc": "1790838002000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000006",
+          "entity": "goal",
+          "entity_id": "p670000000g0000000000001",
+          "field": "name",
+          "value": "Altes Ziel",
+          "hlc": "1790838003000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000007",
+          "entity": "goal",
+          "entity_id": "p670000000g0000000000001",
+          "field": "state",
+          "value": "closed",
+          "hlc": "1790838003000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000008",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000001",
+          "field": "title",
+          "value": "So 23:30 MEZ erledigt",
+          "hlc": "1790838004000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000009",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000001",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838004000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000010",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000001",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-25T22:50:00+01:00",
+              "end": "2026-10-25T23:25:00+01:00"
+            }
+          ],
+          "hlc": "1790838004000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000011",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000001",
+          "field": "status",
+          "value": "done",
+          "hlc": "1792967400000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000012",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000002",
+          "field": "title",
+          "value": "So 0:30 MESZ erledigt",
+          "hlc": "1790838005000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000013",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000002",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838005000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000014",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000002",
+          "field": "status",
+          "value": "done",
+          "hlc": "1792881000000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000015",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000003",
+          "field": "title",
+          "value": "Offen, daran gearbeitet",
+          "hlc": "1790838006000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000016",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000003",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838006000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000017",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000003",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-24T10:00:00+02:00",
+              "end": "2026-10-24T10:45:00+02:00"
+            }
+          ],
+          "hlc": "1790838006000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000018",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000003",
+          "field": "flame_started_at",
+          "value": "2026-10-26T09:45:00+01:00",
+          "hlc": "1790838006000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000019",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000003",
+          "field": "flame_ended_at",
+          "value": "2026-10-24T10:45:00+02:00",
+          "hlc": "1790838006000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000020",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000004",
+          "field": "title",
+          "value": "Über die Umstellung",
+          "hlc": "1790838007000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000021",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000004",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838007000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000022",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000004",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-25T02:30:00+02:00",
+              "end": "2026-10-25T02:10:00+01:00"
+            }
+          ],
+          "hlc": "1790838007000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000023",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000004",
+          "field": "status",
+          "value": "in_progress",
+          "hlc": "1790838007000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000024",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000005",
+          "field": "title",
+          "value": "Verworfen",
+          "hlc": "1790838008000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000025",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000005",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838008000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000026",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000005",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-24T11:00:00+02:00",
+              "end": "2026-10-24T11:30:00+02:00"
+            }
+          ],
+          "hlc": "1790838008000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000027",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000005",
+          "field": "status",
+          "value": "dropped",
+          "hlc": "1792836000000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000028",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000006",
+          "field": "title",
+          "value": "Dev erledigt",
+          "hlc": "1790838009000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000029",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000006",
+          "field": "location",
+          "value": {
+            "kind": "project",
+            "id": "p670000000b0000000000002"
+          },
+          "hlc": "1790838009000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000030",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000006",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-26T07:00:00+01:00",
+              "end": "2026-10-26T07:50:00+01:00"
+            }
+          ],
+          "hlc": "1790838009000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000031",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000006",
+          "field": "status",
+          "value": "done",
+          "hlc": "1792998000000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000032",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000007",
+          "field": "title",
+          "value": "Dev, daran gearbeitet",
+          "hlc": "1790838010000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000033",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000007",
+          "field": "location",
+          "value": {
+            "kind": "project",
+            "id": "p670000000b0000000000002"
+          },
+          "hlc": "1790838010000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000034",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000007",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-25T10:00:00+01:00",
+              "end": "2026-10-25T10:50:00+01:00"
+            }
+          ],
+          "hlc": "1790838010000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000035",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000008",
+          "field": "title",
+          "value": "Mit geschlossenem Ziel",
+          "hlc": "1790838011000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000036",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000008",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838011000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000037",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000008",
+          "field": "goal_id",
+          "value": "p670000000g0000000000001",
+          "hlc": "1790838011000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000038",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000008",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-25T15:00:00+01:00",
+              "end": "2026-10-25T15:20:00+01:00"
+            },
+            {
+              "start": "2026-10-26T07:00:00+01:00",
+              "end": "2026-10-26T07:30:59+01:00"
+            }
+          ],
+          "hlc": "1790838011000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000039",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000008",
+          "field": "status",
+          "value": "done",
+          "hlc": "1792998000000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000040",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000009",
+          "field": "title",
+          "value": "Vorher erledigt",
+          "hlc": "1790838012000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000041",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000009",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838012000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000042",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000009",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-23T22:00:00+02:00",
+              "end": "2026-10-23T23:00:00+02:00"
+            }
+          ],
+          "hlc": "1790838012000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000043",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000009",
+          "field": "status",
+          "value": "done",
+          "hlc": "1792791000000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000044",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000010",
+          "field": "title",
+          "value": "Gelöscht",
+          "hlc": "1790838013000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000045",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000010",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838013000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000046",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000010",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-25T11:00:00+01:00",
+              "end": "2026-10-25T11:30:00+01:00"
+            }
+          ],
+          "hlc": "1790838013000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000047",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000010",
+          "field": "status",
+          "value": "done",
+          "hlc": "1792926000000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000048",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000010",
+          "field": "deleted",
+          "value": true,
+          "hlc": "1792929600000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000049",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000011",
+          "field": "title",
+          "value": "Erledigt ohne Flamme",
+          "hlc": "1790838014000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000050",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000011",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838014000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000051",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000011",
+          "field": "status",
+          "value": "done",
+          "hlc": "1793001600000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000052",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000012",
+          "field": "title",
+          "value": "Sa gearbeitet, Mo erledigt",
+          "hlc": "1790838015000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000053",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000012",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838015000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000054",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000012",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-24T14:00:00+02:00",
+              "end": "2026-10-24T14:45:00+02:00"
+            }
+          ],
+          "hlc": "1790838015000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000055",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000012",
+          "field": "status",
+          "value": "done",
+          "hlc": "1792999800000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000056",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000013",
+          "field": "title",
+          "value": "Nach dem Zeitraum erledigt",
+          "hlc": "1790838016000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000057",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000013",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838016000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000058",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000013",
+          "field": "status",
+          "value": "done",
+          "hlc": "1793088000000:00000:p"
+        }
+      ],
+      "expected": [
+        {
+          "date": "2026-10-25",
+          "minutes": 95,
+          "done": [
+            {
+              "task_id": "p670000000t0000000000001",
+              "minutes": 35
+            },
+            {
+              "task_id": "p670000000t0000000000002",
+              "minutes": 0
+            }
+          ],
+          "worked": [
+            {
+              "task_id": "p670000000t0000000000004",
+              "minutes": 40
+            },
+            {
+              "task_id": "p670000000t0000000000008",
+              "minutes": 20
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "description": "Ein Zeitraum ohne Einträge ist leer",
+      "now": "2026-10-26T10:20:30+01:00",
+      "from": "2026-10-20",
+      "to": "2026-10-22",
+      "state": [
+        {
+          "op_id": "p670000000e0000000000001",
+          "entity": "area",
+          "entity_id": "p670000000a0000000000001",
+          "field": "name",
+          "value": "Arbeit",
+          "hlc": "1790838001000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000002",
+          "entity": "project",
+          "entity_id": "p670000000b0000000000002",
+          "field": "name",
+          "value": "App",
+          "hlc": "1790838002000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000003",
+          "entity": "project",
+          "entity_id": "p670000000b0000000000002",
+          "field": "area_id",
+          "value": "p670000000a0000000000001",
+          "hlc": "1790838002000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000004",
+          "entity": "project",
+          "entity_id": "p670000000b0000000000002",
+          "field": "kind",
+          "value": "dev",
+          "hlc": "1790838002000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000005",
+          "entity": "project",
+          "entity_id": "p670000000b0000000000002",
+          "field": "repo",
+          "value": "example/app",
+          "hlc": "1790838002000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000006",
+          "entity": "goal",
+          "entity_id": "p670000000g0000000000001",
+          "field": "name",
+          "value": "Altes Ziel",
+          "hlc": "1790838003000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000007",
+          "entity": "goal",
+          "entity_id": "p670000000g0000000000001",
+          "field": "state",
+          "value": "closed",
+          "hlc": "1790838003000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000008",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000001",
+          "field": "title",
+          "value": "So 23:30 MEZ erledigt",
+          "hlc": "1790838004000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000009",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000001",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838004000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000010",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000001",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-25T22:50:00+01:00",
+              "end": "2026-10-25T23:25:00+01:00"
+            }
+          ],
+          "hlc": "1790838004000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000011",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000001",
+          "field": "status",
+          "value": "done",
+          "hlc": "1792967400000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000012",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000002",
+          "field": "title",
+          "value": "So 0:30 MESZ erledigt",
+          "hlc": "1790838005000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000013",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000002",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838005000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000014",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000002",
+          "field": "status",
+          "value": "done",
+          "hlc": "1792881000000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000015",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000003",
+          "field": "title",
+          "value": "Offen, daran gearbeitet",
+          "hlc": "1790838006000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000016",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000003",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838006000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000017",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000003",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-24T10:00:00+02:00",
+              "end": "2026-10-24T10:45:00+02:00"
+            }
+          ],
+          "hlc": "1790838006000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000018",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000003",
+          "field": "flame_started_at",
+          "value": "2026-10-26T09:45:00+01:00",
+          "hlc": "1790838006000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000019",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000003",
+          "field": "flame_ended_at",
+          "value": "2026-10-24T10:45:00+02:00",
+          "hlc": "1790838006000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000020",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000004",
+          "field": "title",
+          "value": "Über die Umstellung",
+          "hlc": "1790838007000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000021",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000004",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838007000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000022",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000004",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-25T02:30:00+02:00",
+              "end": "2026-10-25T02:10:00+01:00"
+            }
+          ],
+          "hlc": "1790838007000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000023",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000004",
+          "field": "status",
+          "value": "in_progress",
+          "hlc": "1790838007000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000024",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000005",
+          "field": "title",
+          "value": "Verworfen",
+          "hlc": "1790838008000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000025",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000005",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838008000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000026",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000005",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-24T11:00:00+02:00",
+              "end": "2026-10-24T11:30:00+02:00"
+            }
+          ],
+          "hlc": "1790838008000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000027",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000005",
+          "field": "status",
+          "value": "dropped",
+          "hlc": "1792836000000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000028",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000006",
+          "field": "title",
+          "value": "Dev erledigt",
+          "hlc": "1790838009000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000029",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000006",
+          "field": "location",
+          "value": {
+            "kind": "project",
+            "id": "p670000000b0000000000002"
+          },
+          "hlc": "1790838009000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000030",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000006",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-26T07:00:00+01:00",
+              "end": "2026-10-26T07:50:00+01:00"
+            }
+          ],
+          "hlc": "1790838009000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000031",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000006",
+          "field": "status",
+          "value": "done",
+          "hlc": "1792998000000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000032",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000007",
+          "field": "title",
+          "value": "Dev, daran gearbeitet",
+          "hlc": "1790838010000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000033",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000007",
+          "field": "location",
+          "value": {
+            "kind": "project",
+            "id": "p670000000b0000000000002"
+          },
+          "hlc": "1790838010000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000034",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000007",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-25T10:00:00+01:00",
+              "end": "2026-10-25T10:50:00+01:00"
+            }
+          ],
+          "hlc": "1790838010000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000035",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000008",
+          "field": "title",
+          "value": "Mit geschlossenem Ziel",
+          "hlc": "1790838011000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000036",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000008",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838011000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000037",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000008",
+          "field": "goal_id",
+          "value": "p670000000g0000000000001",
+          "hlc": "1790838011000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000038",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000008",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-25T15:00:00+01:00",
+              "end": "2026-10-25T15:20:00+01:00"
+            },
+            {
+              "start": "2026-10-26T07:00:00+01:00",
+              "end": "2026-10-26T07:30:59+01:00"
+            }
+          ],
+          "hlc": "1790838011000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000039",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000008",
+          "field": "status",
+          "value": "done",
+          "hlc": "1792998000000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000040",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000009",
+          "field": "title",
+          "value": "Vorher erledigt",
+          "hlc": "1790838012000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000041",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000009",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838012000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000042",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000009",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-23T22:00:00+02:00",
+              "end": "2026-10-23T23:00:00+02:00"
+            }
+          ],
+          "hlc": "1790838012000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000043",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000009",
+          "field": "status",
+          "value": "done",
+          "hlc": "1792791000000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000044",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000010",
+          "field": "title",
+          "value": "Gelöscht",
+          "hlc": "1790838013000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000045",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000010",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838013000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000046",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000010",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-25T11:00:00+01:00",
+              "end": "2026-10-25T11:30:00+01:00"
+            }
+          ],
+          "hlc": "1790838013000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000047",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000010",
+          "field": "status",
+          "value": "done",
+          "hlc": "1792926000000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000048",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000010",
+          "field": "deleted",
+          "value": true,
+          "hlc": "1792929600000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000049",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000011",
+          "field": "title",
+          "value": "Erledigt ohne Flamme",
+          "hlc": "1790838014000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000050",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000011",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838014000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000051",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000011",
+          "field": "status",
+          "value": "done",
+          "hlc": "1793001600000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000052",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000012",
+          "field": "title",
+          "value": "Sa gearbeitet, Mo erledigt",
+          "hlc": "1790838015000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000053",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000012",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838015000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000054",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000012",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-10-24T14:00:00+02:00",
+              "end": "2026-10-24T14:45:00+02:00"
+            }
+          ],
+          "hlc": "1790838015000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000055",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000012",
+          "field": "status",
+          "value": "done",
+          "hlc": "1792999800000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000056",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000013",
+          "field": "title",
+          "value": "Nach dem Zeitraum erledigt",
+          "hlc": "1790838016000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000057",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000013",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1790838016000:00000:p"
+        },
+        {
+          "op_id": "p670000000e0000000000058",
+          "entity": "task",
+          "entity_id": "p670000000t0000000000013",
+          "field": "status",
+          "value": "done",
+          "hlc": "1793088000000:00000:p"
+        }
+      ],
+      "expected": []
+    }
+  ]
+}

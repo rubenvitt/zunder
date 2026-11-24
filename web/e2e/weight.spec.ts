@@ -68,9 +68,9 @@ test("Heute nicht: zweimal verschieben, beim dritten Mal ruhen lassen", async ({
   await seeder.push(page);
   await openApp(page, "#/heute");
 
-  // What matters comes first within a group.
-  const overdue = page.getByRole("list", { name: "Überfällig" });
-  await expect(overdue.locator(".task-title")).toHaveText([`Zusage ${s}`, `Keller ${s}`]);
+  // What matters comes first in Heute's order (the box, then "Danach").
+  const order = page.getByRole("list", { name: /^(Fokus|Danach)$/ }).locator(".task-title").filter({ hasText: s });
+  await expect(order).toHaveText([`Zusage ${s}`, `Keller ${s}`]);
 
   await row(page, `Keller ${s}`).getByRole("button", { name: "Heute nicht" }).click();
   await expect(row(page, `Keller ${s}`)).toHaveCount(0);

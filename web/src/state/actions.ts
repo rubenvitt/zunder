@@ -13,6 +13,8 @@ import { api, data, getEngine, now, taskIndex } from "./store";
 import { expectNextInstance } from "./series";
 import { setDeferRequest, setDetailId, setDropRequest, setSelectedId, toast } from "./ui";
 import { deferDay, deferFields, needsDecision, type DeferTarget } from "../sync/defer";
+import { dayOrderChanges } from "../sync/day-order";
+import { todayList } from "../sync/planning";
 import { formatDateLabel, formatInstant, localDate, toRfc3339Local } from "../sync/dates";
 import { handbackRemindAt, offersHandBack, pickAlternative } from "../sync/handback";
 
@@ -217,6 +219,52 @@ export function letRest(id: string): boolean {
   const ok = updateTask(id, { due: null, remind_at: null, undated_ack: toRfc3339Local(new Date(now())), deferrals: null });
   if (ok) toast(`„${shorten(task.title)}“ ruht, ohne Datum. Die Deadline-Prüfung fragt erst später wieder.`);
   return ok;
+}
+
+// ---- Heute as an order (design 5.3) ------------------------------------------
+
+/** Heute's order for this device's calendar day. */
+function todayOrder(): { today: string; items: Task[] } {
+  const today = localDate(new Date(now()));
+  return { today, items: todayList(taskIndex(), today).items };
+}
+
+function writeDayOrder(id: string, before: Task | null, after: Task | null): boolean {
+  const task = data.tasks[id];
+  if (!task || isClosed(task.status)) return false;
+  const { today, items } = todayOrder();
+  const changes = dayOrderChanges(items, task, before, after, today);
+  return changes.length === 0 || apply(changes.map((c) => ({ entity: "task" as const, id: c.id, fields: c.fields })));
+}
+
+/**
+ * "Für heute einplanen": planned_on = today, at the end of today's plan ("back") or at its top
+ * ("front", e.g. a pick from "Erst für dich").
+ */
+export function planForToday(id: string, position: "front" | "back" = "back"): boolean {
+  const { today, items } = todayOrder();
+  const plan = items.filter((t) => t.planned_on === today && t.id !== id);
+  return position === "front" ? writeDayOrder(id, null, plan[0] ?? items.find((t) => t.id !== id) ?? null) : writeDayOrder(id, plan[plan.length - 1] ?? null, null);
+}
+
+/** Whether the task is planned for today or an earlier day ("Aus Heute nehmen" applies, not "Für heute einplanen"). */
+export function isInToday(task: Pick<Task, "planned_on">, today: string): boolean {
+  return task.planned_on !== null && task.planned_on <= today;
+}
+
+/** "Aus Heute nehmen": no plan any more; a due task stays in Heute as due without a plan. */
+export function removeFromToday(id: string): boolean {
+  const task = data.tasks[id];
+  if (!task || task.planned_on === null) return false;
+  return updateTask(id, task.day_rank !== null ? { planned_on: null, day_rank: null } : { planned_on: null });
+}
+
+/**
+ * Puts a task between `before` and `after`, its neighbours in Heute's order (dragging, Shift+J/K):
+ * writes day_rank and plans it, and whatever stands above it, for today (rule in sync/day-order).
+ */
+export function placeInToday(id: string, before: Task | null, after: Task | null): boolean {
+  return writeDayOrder(id, before, after);
 }
 
 // ---- "Zurückgeben" (contract 5.1) -------------------------------------------

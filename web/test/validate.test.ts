@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mergeOps } from "../src/sync/merge";
 import { checkField, deleteCascade, validateOps } from "../src/sync/validate";
-import { toTask } from "../src/sync/model";
+import { toGoal, toTask } from "../src/sync/model";
 import { op } from "./helpers";
 
 const id = (n: number) => `v${String(n).padStart(23, "0")}`;
@@ -219,5 +219,39 @@ describe("delete cascade", () => {
     const all = deleteCascade(store, "area", A1);
     const ops = all.map(([kind, i], n) => op(kind, i, "deleted", true, 200 + n));
     expect(validateOps(store, ops)).toEqual([]);
+  });
+});
+
+describe("goals", () => {
+  it("checks the goal fields like the core", () => {
+    expect(checkField("goal", "name", "Sport")).toBeNull();
+    expect(checkField("goal", "name", "")?.code).toBe("invalid_value");
+    expect(checkField("goal", "name", null)?.code).toBe("invalid_value");
+    expect(checkField("goal", "emoji", "🏃")).toBeNull();
+    expect(checkField("goal", "lead_per_week", 3)).toBeNull();
+    expect(checkField("goal", "lead_per_week", 99)).toBeNull();
+    expect(checkField("goal", "lead_per_week", null)).toBeNull();
+    expect(checkField("goal", "lead_per_week", 0)?.code).toBe("invalid_value");
+    expect(checkField("goal", "lead_per_week", 100)?.code).toBe("invalid_value");
+    expect(checkField("goal", "lead_per_week", "3")?.code).toBe("invalid_value");
+    expect(checkField("goal", "starts_on", "2026-09-28")).toBeNull();
+    expect(checkField("goal", "starts_on", "2026-02-30")?.code).toBe("invalid_value");
+    expect(checkField("goal", "starts_on", "2026-09-28T00:00:00Z")?.code).toBe("invalid_value");
+    expect(checkField("goal", "state", "closed")).toBeNull();
+    expect(checkField("goal", "state", "archived")?.code).toBe("invalid_value");
+    expect(checkField("goal", "unknown", "x")).toEqual({ code: "unknown_field", message: "Unbekanntes Feld „unknown“ für Ziel." });
+  });
+
+  it("names the goal in German messages", () => {
+    expect(checkField("goal", "name", " ")?.message).toBe("Das Ziel braucht einen Namen.");
+    const issues = validateOps(base(), [op("goal", id(40), "emoji", "🏃", 60)]);
+    expect(issues.map((i) => i.code)).toEqual(["missing_required"]);
+    expect(issues[0]?.message).toBe("Pflichtfeld „name“ fehlt für ein Ziel.");
+  });
+
+  it("materializes a goal with defaults", () => {
+    const store = mergeOps([op("goal", id(41), "name", "Sport", 1), op("goal", id(41), "lead_per_week", 3, 2), op("goal", id(41), "starts_on", "2026-09-28", 3)]);
+    const goal = toGoal(store.get("goal", id(41))!);
+    expect(goal).toMatchObject({ name: "Sport", lead_per_week: 3, starts_on: "2026-09-28", ends_on: null, state: "active", emoji: null, deleted: false });
   });
 });

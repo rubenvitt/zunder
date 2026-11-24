@@ -102,6 +102,19 @@ pub mod fields {
         /// Rauch task back); unset = nobody is waited for. Status follows it
         /// like a blocker (see [`crate::blocking`]).
         pub const WAITING_ON: &str = "waiting_on";
+        /// The goal the task serves (ID); a soft reference that must name a
+        /// live goal when written, and may dangle once the goal is deleted.
+        pub const GOAL_ID: &str = "goal_id";
+        /// The day the task is planned for ("Heute"), `YYYY-MM-DD`; unset =
+        /// not planned.
+        pub const PLANNED_ON: &str = "planned_on";
+        /// Order among the tasks of the same planned day (a rank text like
+        /// [`RANK`]).
+        pub const DAY_RANK: &str = "day_rank";
+        /// Finished flames of the task (list of
+        /// [`crate::model::FlameInterval`]). Written only by the server when
+        /// a flame ends.
+        pub const FLAME_LOG: &str = "flame_log";
         /// Human-readable reference (`ZUN-42`). Assigned once by the server,
         /// never changed afterwards (see [`crate::numbering`]).
         pub const REF: &str = "ref";
@@ -136,6 +149,10 @@ pub mod fields {
             FOR_WHOM,
             DEFERRALS,
             WAITING_ON,
+            GOAL_ID,
+            PLANNED_ON,
+            DAY_RANK,
+            FLAME_LOG,
             REF,
             DELETED,
         ];
@@ -154,6 +171,38 @@ pub mod fields {
         pub const REQUIRED: &[&str] = &[TASK_ID, BODY];
     }
 
+    pub mod goal {
+        pub const NAME: &str = "name";
+        /// A single emoji (or short symbol) shown beside the name.
+        pub const EMOJI: &str = "emoji";
+        /// The lead figure in words, e.g. "1 visibility move per week" or "3x, 2x in travel weeks; 15 min count in full".
+        pub const LEAD: &str = "lead";
+        /// Moves per week for the quiet check mark (1-99); exceptions only in `lead`.
+        pub const LEAD_PER_WEEK: &str = "lead_per_week";
+        /// Name of the Feuersturm, e.g. "Feuersturm 2026-Q4".
+        pub const STORM: &str = "storm";
+        /// First day of the goal (`YYYY-MM-DD`).
+        pub const STARTS_ON: &str = "starts_on";
+        /// Last day of the goal (`YYYY-MM-DD`).
+        pub const ENDS_ON: &str = "ends_on";
+        pub const STATE: &str = "state";
+        pub const RANK: &str = "rank";
+        pub const DELETED: &str = super::DELETED;
+        pub const ALL: &[&str] = &[
+            NAME,
+            EMOJI,
+            LEAD,
+            LEAD_PER_WEEK,
+            STORM,
+            STARTS_ON,
+            ENDS_ON,
+            STATE,
+            RANK,
+            DELETED,
+        ];
+        pub const REQUIRED: &[&str] = &[NAME];
+    }
+
     /// All known fields of an entity kind.
     pub fn all(kind: EntityKind) -> &'static [&'static str] {
         match kind {
@@ -161,6 +210,7 @@ pub mod fields {
             EntityKind::Project => project::ALL,
             EntityKind::Task => task::ALL,
             EntityKind::Comment => comment::ALL,
+            EntityKind::Goal => goal::ALL,
         }
     }
 
@@ -171,6 +221,7 @@ pub mod fields {
             EntityKind::Project => project::REQUIRED,
             EntityKind::Task => task::REQUIRED,
             EntityKind::Comment => comment::REQUIRED,
+            EntityKind::Goal => goal::REQUIRED,
         }
     }
 
@@ -184,6 +235,8 @@ pub const MAX_TITLE_CHARS: usize = 500;
 
 /// Maximum number of entries in a task's `blocked_by`.
 pub const MAX_BLOCKED_BY: usize = 100;
+/// Most entries in `flame_log` of one task.
+pub const MAX_FLAME_LOG: usize = 1000;
 
 macro_rules! string_enum {
     (
@@ -339,6 +392,17 @@ string_enum! {
         Andere => "andere", "für andere";
     }
 }
+
+string_enum! {
+    /// State of a goal.
+    GoalState, default = Active {
+        Active => "active", "aktiv";
+        Closed => "closed", "abgeschlossen";
+    }
+}
+
+/// Highest value of a goal's `lead_per_week`.
+pub const MAX_LEAD_PER_WEEK: u64 = 99;
 
 /// Highest value of a task's `deferrals`.
 pub const MAX_DEFERRALS: u64 = 9999;
@@ -819,6 +883,16 @@ pub struct Link {
     pub title: Option<String>,
 }
 
+/// A finished flame: when it started and ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FlameInterval {
+    #[serde(with = "time::serde::rfc3339")]
+    pub start: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    pub end: OffsetDateTime,
+}
+
 /// Typed view of an area.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Area {
@@ -896,6 +970,15 @@ pub struct Task {
     pub deferrals: u32,
     /// Who has the decision; `None` = nobody is waited for.
     pub waiting_on: Option<String>,
+    /// The goal the task serves (as stored; may name a deleted goal).
+    pub goal_id: Option<Id>,
+    /// The day the task is planned for.
+    #[serde(with = "plain_date_option")]
+    pub planned_on: Option<Date>,
+    /// Order among the tasks of the planned day.
+    pub day_rank: Option<String>,
+    /// Finished flames, oldest first as the server appended them.
+    pub flame_log: Vec<FlameInterval>,
     /// Reference such as `ZUN-42`, once the server has assigned it.
     #[serde(rename = "ref")]
     pub reference: Option<String>,
@@ -910,6 +993,45 @@ pub struct Comment {
     pub body: String,
     pub author: Option<String>,
     pub deleted: bool,
+}
+
+/// Typed view of a goal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Goal {
+    pub id: Id,
+    pub name: String,
+    pub emoji: Option<String>,
+    pub lead: Option<String>,
+    pub lead_per_week: Option<u32>,
+    pub storm: Option<String>,
+    #[serde(with = "plain_date_option")]
+    pub starts_on: Option<Date>,
+    #[serde(with = "plain_date_option")]
+    pub ends_on: Option<Date>,
+    pub state: GoalState,
+    pub rank: Option<String>,
+    pub deleted: bool,
+}
+
+/// Serde for optional calendar dates as `YYYY-MM-DD`.
+mod plain_date_option {
+    use super::*;
+
+    pub fn serialize<S: Serializer>(d: &Option<Date>, s: S) -> Result<S::Ok, S::Error> {
+        match d {
+            Some(d) => s.serialize_some(&format_date(*d)),
+            None => s.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Date>, D::Error> {
+        match Option::<String>::deserialize(d)? {
+            None => Ok(None),
+            Some(s) => parse_plain_date(&s)
+                .map(Some)
+                .ok_or_else(|| de::Error::custom(format!("invalid date {s:?}"))),
+        }
+    }
 }
 
 /// Rejection of a single field value.
@@ -939,6 +1061,10 @@ enum Shape {
     Bool,
     /// Whole number from 0 to [`MAX_DEFERRALS`].
     Count,
+    /// Whole number from 1 to [`MAX_LEAD_PER_WEEK`].
+    PositiveCount,
+    /// Calendar date `YYYY-MM-DD` (no time).
+    Date,
     Enum(fn() -> Vec<&'static str>),
     Id,
     Location,
@@ -949,6 +1075,9 @@ enum Shape {
     IdList,
     Links,
     Phoenix,
+    /// List of [`FlameInterval`] with `end > start`, at most
+    /// [`MAX_FLAME_LOG`].
+    FlameLog,
     Recurrence,
     Repo,
     HttpUrl,
@@ -957,7 +1086,7 @@ enum Shape {
 }
 
 fn shape_of(kind: EntityKind, field: &str) -> Option<Shape> {
-    use fields::{area as a, comment as c, project as p, task as t};
+    use fields::{area as a, comment as c, goal as g, project as p, task as t};
     if field == fields::DELETED {
         return Some(Shape::Bool);
     }
@@ -987,7 +1116,7 @@ fn shape_of(kind: EntityKind, field: &str) -> Option<Shape> {
             t::FOR_WHOM => Shape::Enum(ForWhom::codes),
             t::DEFERRALS => Shape::Count,
             t::LOCATION => Shape::Location,
-            t::PARENT_ID | t::RECURRENCE_PREV => Shape::Id,
+            t::PARENT_ID | t::RECURRENCE_PREV | t::GOAL_ID => Shape::Id,
             t::DUE => Shape::Due,
             t::REMIND_AT
             | t::CLAIM_EXPIRES_AT
@@ -1002,19 +1131,30 @@ fn shape_of(kind: EntityKind, field: &str) -> Option<Shape> {
             t::PR_URL => Shape::HttpUrl,
             t::REF => Shape::TaskRef,
             t::WAITING_ON => Shape::Title,
+            t::PLANNED_ON => Shape::Date,
+            t::FLAME_LOG => Shape::FlameLog,
             t::DESCRIPTION
             | t::CLAIMED_BY
             | t::PLAN
             | t::BRANCH
             | t::TIMING_REF
             | t::CLICKUP_ID
-            | t::RANK => Shape::Text,
+            | t::RANK
+            | t::DAY_RANK => Shape::Text,
             _ => return None,
         },
         EntityKind::Comment => match field {
             c::TASK_ID => Shape::Id,
             c::BODY => Shape::Body,
             c::AUTHOR => Shape::Title,
+            _ => return None,
+        },
+        EntityKind::Goal => match field {
+            g::NAME | g::EMOJI | g::STORM => Shape::Title,
+            g::LEAD | g::RANK => Shape::Text,
+            g::LEAD_PER_WEEK => Shape::PositiveCount,
+            g::STARTS_ON | g::ENDS_ON => Shape::Date,
+            g::STATE => Shape::Enum(GoalState::codes),
             _ => return None,
         },
     };
@@ -1089,6 +1229,23 @@ fn check_shape(shape: Shape, field: &str, value: &Value) -> Result<(), ValueErro
             if !value.as_u64().is_some_and(|n| n <= MAX_DEFERRALS) {
                 return Err(ValueError::invalid(format!(
                     "„{field}“ muss eine ganze Zahl von 0 bis {MAX_DEFERRALS} sein."
+                )));
+            }
+        }
+        Shape::PositiveCount => {
+            if !value
+                .as_u64()
+                .is_some_and(|n| (1..=MAX_LEAD_PER_WEEK).contains(&n))
+            {
+                return Err(ValueError::invalid(format!(
+                    "„{field}“ muss eine ganze Zahl von 1 bis {MAX_LEAD_PER_WEEK} sein."
+                )));
+            }
+        }
+        Shape::Date => {
+            if parse_plain_date(text()?).is_none() {
+                return Err(ValueError::invalid(format!(
+                    "„{field}“ muss ein Datum (JJJJ-MM-TT) sein."
                 )));
             }
         }
@@ -1191,6 +1348,17 @@ fn check_shape(shape: Shape, field: &str, value: &Value) -> Result<(), ValueErro
                      \"fire\":\"JJJJ-Www\"} mit gültiger ISO-Woche sein.",
                 )
             })?;
+        }
+        Shape::FlameLog => {
+            let ok =
+                serde_json::from_value::<Vec<FlameInterval>>(value.clone()).is_ok_and(|items| {
+                    items.len() <= MAX_FLAME_LOG && items.iter().all(|i| i.end > i.start)
+                });
+            if !ok {
+                return Err(ValueError::invalid(format!(
+                    "„{field}“ muss eine Liste von {{\"start\": Zeitpunkt, \"end\": Zeitpunkt}} sein (Ende nach Beginn, höchstens {MAX_FLAME_LOG} Einträge)."
+                )));
+            }
         }
         Shape::Recurrence => {
             Recurrence::parse(value).map_err(ValueError::invalid)?;
@@ -1310,6 +1478,70 @@ mod tests {
                 e.code
             }
         }
+    }
+
+    #[test]
+    fn goal_fields() {
+        let g = EntityKind::Goal;
+        ok(g, "name", json!("Sport"));
+        assert_eq!(bad(g, "name", json!("")), RejectCode::InvalidValue);
+        ok(g, "emoji", json!("🏃"));
+        ok(g, "lead", json!("Dreimal pro Woche laufen"));
+        ok(g, "storm", json!("Zu müde nach der Arbeit"));
+        ok(g, "lead_per_week", json!(3));
+        ok(g, "lead_per_week", json!(99));
+        ok(g, "lead_per_week", Value::Null);
+        assert_eq!(bad(g, "lead_per_week", json!(0)), RejectCode::InvalidValue);
+        assert_eq!(
+            bad(g, "lead_per_week", json!(100)),
+            RejectCode::InvalidValue
+        );
+        assert_eq!(
+            bad(g, "lead_per_week", json!("3")),
+            RejectCode::InvalidValue
+        );
+        ok(g, "starts_on", json!("2026-09-28"));
+        ok(g, "ends_on", json!("2026-12-31"));
+        assert_eq!(
+            bad(g, "starts_on", json!("2026-02-30")),
+            RejectCode::InvalidValue
+        );
+        assert_eq!(
+            bad(g, "starts_on", json!("2026-09-28T00:00:00Z")),
+            RejectCode::InvalidValue
+        );
+        ok(g, "state", json!("closed"));
+        assert_eq!(bad(g, "state", json!("archived")), RejectCode::InvalidValue);
+        ok(g, "rank", json!("a0"));
+        ok(g, "deleted", json!(true));
+        assert_eq!(bad(g, "unknown", json!("x")), RejectCode::UnknownField);
+        assert_eq!(
+            bad(g, "name", Value::Null),
+            RejectCode::InvalidValue,
+            "name is required"
+        );
+    }
+
+    #[test]
+    fn goal_serializes_dates_as_plain_dates() {
+        let goal = Goal {
+            id: Id::parse(ID).unwrap(),
+            name: "Sport".into(),
+            emoji: None,
+            lead: None,
+            lead_per_week: Some(3),
+            storm: None,
+            starts_on: parse_plain_date("2026-09-28"),
+            ends_on: None,
+            state: GoalState::default(),
+            rank: None,
+            deleted: false,
+        };
+        let json = serde_json::to_value(&goal).unwrap();
+        assert_eq!(json["starts_on"], "2026-09-28");
+        assert_eq!(json["ends_on"], Value::Null);
+        assert_eq!(json["state"], "active");
+        assert_eq!(serde_json::from_value::<Goal>(json).unwrap(), goal);
     }
 
     #[test]
@@ -1689,6 +1921,57 @@ mod tests {
         ok(EntityKind::Task, "recurrence_prev", json!(ID));
         ok(EntityKind::Task, "recurrence_prev", json!(null));
         bad(EntityKind::Task, "recurrence_prev", json!("ZUN-1"));
+    }
+
+    #[test]
+    fn planning_fields() {
+        ok(EntityKind::Task, "planned_on", json!("2026-11-23"));
+        ok(EntityKind::Task, "planned_on", json!(null));
+        bad(EntityKind::Task, "planned_on", json!("23.11.2026"));
+        bad(EntityKind::Task, "planned_on", json!("2026-02-30"));
+        ok(EntityKind::Task, "day_rank", json!("a0"));
+        bad(EntityKind::Task, "day_rank", json!(1));
+        ok(EntityKind::Task, "goal_id", json!(ID));
+        ok(EntityKind::Task, "goal_id", json!(null));
+        bad(EntityKind::Task, "goal_id", json!("ZUN-1"));
+        let interval = |start: &str, end: &str| json!({"start": start, "end": end});
+        ok(
+            EntityKind::Task,
+            "flame_log",
+            json!([interval("2026-11-23T08:00:00Z", "2026-11-23T08:15:00Z")]),
+        );
+        ok(EntityKind::Task, "flame_log", json!([]));
+        ok(EntityKind::Task, "flame_log", json!(null));
+        bad(
+            EntityKind::Task,
+            "flame_log",
+            json!([interval("2026-11-23T08:15:00Z", "2026-11-23T08:00:00Z")]),
+        );
+        bad(
+            EntityKind::Task,
+            "flame_log",
+            json!([interval("2026-11-23T08:00:00Z", "2026-11-23T08:00:00Z")]),
+        );
+        bad(
+            EntityKind::Task,
+            "flame_log",
+            json!([interval("2026-11-23", "2026-11-24")]),
+        );
+        bad(
+            EntityKind::Task,
+            "flame_log",
+            json!([{"start": "2026-11-23T08:00:00Z", "end": "2026-11-23T09:00:00Z", "x": 1}]),
+        );
+        bad(EntityKind::Task, "flame_log", json!({"start": "x"}));
+        let many: Vec<Value> = (0..1001)
+            .map(|_| interval("2026-11-23T08:00:00Z", "2026-11-23T08:15:00Z"))
+            .collect();
+        bad(EntityKind::Task, "flame_log", Value::Array(many.clone()));
+        ok(
+            EntityKind::Task,
+            "flame_log",
+            Value::Array(many[..1000].to_vec()),
+        );
     }
 
     #[test]

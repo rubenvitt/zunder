@@ -80,6 +80,7 @@ const SHORTCUT_GROUPS: { title: string; items: Shortcut[] }[] = [
       [[["y"]], "Kennung der Aufgabe (z. B. ZUN-42) kopieren, für Agenten"],
       [[["a"], ["l"], ["d"]], "Inbox: zuordnen / lose / verwerfen"],
       [[["s"], ["Shift", "S"]], "Heute: heute nicht, auf morgen / nächste Woche"],
+      [[["Shift", "J"], ["Shift", "K"]], "Heute: Aufgabe nach unten / oben, plant sie für heute ein"],
     ],
   },
   {
@@ -102,6 +103,8 @@ const SHORTCUT_GROUPS: { title: string; items: Shortcut[] }[] = [
       [[["g", "p"]], "Phönix"],
       [[["g", "w"]], "Wartet auf andere"],
       [[["g", "z"]], "Offene Zusagen"],
+      [[["g", "e"]], "Ziele"],
+      [[["g", "r"]], "Erledigt"],
     ],
   },
 ];

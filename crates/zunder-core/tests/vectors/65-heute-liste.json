@@ -1,0 +1,1149 @@
+{
+  "name": "heute-liste",
+  "description": "Heute als eine Reihenfolge (Entwurf 5.1/5.2): lebende Aufgaben mit Status open, in_progress, blocked oder review; erst für heute eingeplant (day_rank, dann Erstellung, ID), dann liegengeblieben (planned_on, day_rank, Erstellung, ID), dann fällig bis heute ohne Plan (Gewicht, Fälligkeitszeitpunkt, rank bzw. Standard-Rang der Erstellungszeit, Erstellung, ID). Fokus ist die laufende Flamme, sonst ohne erledigten Plan die erste offene oder begonnene Aufgabe ohne waiting_on.",
+  "kind": "today_list",
+  "time_zone": "Europe/Berlin",
+  "cases": [
+    {
+      "description": "Tag mit Plan: Gruppe 1 nach day_rank (a vor b, obwohl b zuerst angelegt wurde; ohne day_rank zuletzt), Gruppe 2 nach planned_on, Gruppe 3 nach Gewicht (Brand, Glut, ohne, Rauch), dann Fälligkeit (Datum ohne Uhrzeit = Mitternacht vor 8 Uhr). Die erste Geplante wartet auf Anna, also ist die zweite der Fokus. Erledigte, verworfene, gelöschte, morgen fällige und für morgen geplante Aufgaben fehlen.",
+      "today": "2026-11-23",
+      "state": [
+        {
+          "op_id": "p650000000e0000000000001",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000001",
+          "field": "title",
+          "value": "Geplant b",
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000002",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000001",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000003",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000001",
+          "field": "planned_on",
+          "value": "2026-11-23",
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000004",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000001",
+          "field": "day_rank",
+          "value": "b",
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000005",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000002",
+          "field": "title",
+          "value": "Geplant a, wartet auf Anna",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000006",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000002",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000007",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000002",
+          "field": "planned_on",
+          "value": "2026-11-23",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000008",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000002",
+          "field": "day_rank",
+          "value": "a",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000009",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000002",
+          "field": "waiting_on",
+          "value": "Anna",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000010",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000002",
+          "field": "status",
+          "value": "in_progress",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000011",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000003",
+          "field": "title",
+          "value": "Geplant ohne day_rank",
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000012",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000003",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000013",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000003",
+          "field": "planned_on",
+          "value": "2026-11-23",
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000014",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000004",
+          "field": "title",
+          "value": "Geplant und erledigt",
+          "hlc": "1793520004000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000015",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000004",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520004000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000016",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000004",
+          "field": "planned_on",
+          "value": "2026-11-23",
+          "hlc": "1793520004000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000017",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000004",
+          "field": "day_rank",
+          "value": "a0",
+          "hlc": "1793520004000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000018",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000004",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795415400000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000019",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000005",
+          "field": "title",
+          "value": "Liegengeblieben vom 21.11.",
+          "hlc": "1793520005000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000020",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000005",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520005000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000021",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000005",
+          "field": "planned_on",
+          "value": "2026-11-21",
+          "hlc": "1793520005000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000022",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000005",
+          "field": "day_rank",
+          "value": "z",
+          "hlc": "1793520005000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000023",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000006",
+          "field": "title",
+          "value": "Liegengeblieben vom 22.11.",
+          "hlc": "1793520006000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000024",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000006",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520006000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000025",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000006",
+          "field": "planned_on",
+          "value": "2026-11-22",
+          "hlc": "1793520006000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000026",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000006",
+          "field": "day_rank",
+          "value": "a",
+          "hlc": "1793520006000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000027",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000007",
+          "field": "title",
+          "value": "Fällig 22.11. ohne Plan",
+          "hlc": "1793520007000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000028",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000007",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520007000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000029",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000007",
+          "field": "due",
+          "value": "2026-11-22",
+          "hlc": "1793520007000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000030",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000008",
+          "field": "title",
+          "value": "Fällig heute, Glut",
+          "hlc": "1793520008000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000031",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000008",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520008000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000032",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000008",
+          "field": "due",
+          "value": "2026-11-23",
+          "hlc": "1793520008000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000033",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000008",
+          "field": "weight",
+          "value": "glut",
+          "hlc": "1793520008000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000034",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000009",
+          "field": "title",
+          "value": "Fällig heute, Rauch",
+          "hlc": "1793520009000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000035",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000009",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520009000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000036",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000009",
+          "field": "due",
+          "value": "2026-11-23",
+          "hlc": "1793520009000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000037",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000009",
+          "field": "weight",
+          "value": "rauch",
+          "hlc": "1793520009000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000038",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000010",
+          "field": "title",
+          "value": "Fällig heute 8 Uhr",
+          "hlc": "1793520010000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000039",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000010",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520010000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000040",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000010",
+          "field": "due",
+          "value": "2026-11-23T08:00:00+01:00",
+          "hlc": "1793520010000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000041",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000011",
+          "field": "title",
+          "value": "Fällig heute ohne Uhrzeit",
+          "hlc": "1793520011000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000042",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000011",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520011000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000043",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000011",
+          "field": "due",
+          "value": "2026-11-23",
+          "hlc": "1793520011000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000044",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000012",
+          "field": "title",
+          "value": "Wurzel ohne Fälligkeit",
+          "hlc": "1793520012000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000045",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000012",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520012000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000046",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000013",
+          "field": "title",
+          "value": "Unteraufgabe blockiert, Brand",
+          "hlc": "1793520013000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000047",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000013",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520013000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000048",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000013",
+          "field": "parent_id",
+          "value": "p650000000t0000000000012",
+          "hlc": "1793520013000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000049",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000013",
+          "field": "due",
+          "value": "2026-11-23",
+          "hlc": "1793520013000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000050",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000013",
+          "field": "weight",
+          "value": "brand",
+          "hlc": "1793520013000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000051",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000013",
+          "field": "status",
+          "value": "blocked",
+          "hlc": "1793520013000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000052",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000014",
+          "field": "title",
+          "value": "Fällig morgen",
+          "hlc": "1793520014000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000053",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000014",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520014000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000054",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000014",
+          "field": "due",
+          "value": "2026-11-24",
+          "hlc": "1793520014000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000055",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000015",
+          "field": "title",
+          "value": "Fällig, aber für morgen geplant",
+          "hlc": "1793520015000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000056",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000015",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520015000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000057",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000015",
+          "field": "due",
+          "value": "2026-11-20",
+          "hlc": "1793520015000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000058",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000015",
+          "field": "planned_on",
+          "value": "2026-11-24",
+          "hlc": "1793520015000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000059",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000016",
+          "field": "title",
+          "value": "Gelöscht, heute geplant",
+          "hlc": "1793520016000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000060",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000016",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520016000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000061",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000016",
+          "field": "planned_on",
+          "value": "2026-11-23",
+          "hlc": "1793520016000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000062",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000016",
+          "field": "deleted",
+          "value": true,
+          "hlc": "1795338000000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000063",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000017",
+          "field": "title",
+          "value": "Verworfen, fällig",
+          "hlc": "1793520017000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000064",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000017",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520017000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000065",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000017",
+          "field": "due",
+          "value": "2026-11-22",
+          "hlc": "1793520017000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000066",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000017",
+          "field": "status",
+          "value": "dropped",
+          "hlc": "1795338000000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000067",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000018",
+          "field": "title",
+          "value": "Erledigt, liegengeblieben",
+          "hlc": "1793520018000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000068",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000018",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520018000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000069",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000018",
+          "field": "planned_on",
+          "value": "2026-11-20",
+          "hlc": "1793520018000:00000:p"
+        },
+        {
+          "op_id": "p650000000e0000000000070",
+          "entity": "task",
+          "entity_id": "p650000000t0000000000018",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795338000000:00000:p"
+        }
+      ],
+      "expected": {
+        "items": [
+          "p650000000t0000000000002",
+          "p650000000t0000000000001",
+          "p650000000t0000000000003",
+          "p650000000t0000000000005",
+          "p650000000t0000000000006",
+          "p650000000t0000000000013",
+          "p650000000t0000000000008",
+          "p650000000t0000000000007",
+          "p650000000t0000000000011",
+          "p650000000t0000000000010",
+          "p650000000t0000000000009"
+        ],
+        "focus": "p650000000t0000000000001",
+        "has_plan": true,
+        "plan_done": false
+      }
+    },
+    {
+      "description": "Alles Geplante erledigt oder verworfen: Plan bleibt Plan (has_plan), plan_done, kein Fokus; Liegengebliebenes und Fälliges stehen trotzdem in der Liste.",
+      "today": "2026-11-23",
+      "state": [
+        {
+          "op_id": "q650000000e0000000000001",
+          "entity": "task",
+          "entity_id": "q650000000t0000000000001",
+          "field": "title",
+          "value": "Geplant, erledigt",
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "q650000000e0000000000002",
+          "entity": "task",
+          "entity_id": "q650000000t0000000000001",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "q650000000e0000000000003",
+          "entity": "task",
+          "entity_id": "q650000000t0000000000001",
+          "field": "planned_on",
+          "value": "2026-11-23",
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "q650000000e0000000000004",
+          "entity": "task",
+          "entity_id": "q650000000t0000000000001",
+          "field": "day_rank",
+          "value": "a",
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "q650000000e0000000000005",
+          "entity": "task",
+          "entity_id": "q650000000t0000000000001",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795417200000:00000:p"
+        },
+        {
+          "op_id": "q650000000e0000000000006",
+          "entity": "task",
+          "entity_id": "q650000000t0000000000002",
+          "field": "title",
+          "value": "Geplant, verworfen",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "q650000000e0000000000007",
+          "entity": "task",
+          "entity_id": "q650000000t0000000000002",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "q650000000e0000000000008",
+          "entity": "task",
+          "entity_id": "q650000000t0000000000002",
+          "field": "planned_on",
+          "value": "2026-11-23",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "q650000000e0000000000009",
+          "entity": "task",
+          "entity_id": "q650000000t0000000000002",
+          "field": "day_rank",
+          "value": "b",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "q650000000e0000000000010",
+          "entity": "task",
+          "entity_id": "q650000000t0000000000002",
+          "field": "status",
+          "value": "dropped",
+          "hlc": "1795419000000:00000:p"
+        },
+        {
+          "op_id": "q650000000e0000000000011",
+          "entity": "task",
+          "entity_id": "q650000000t0000000000003",
+          "field": "title",
+          "value": "Liegengeblieben",
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "q650000000e0000000000012",
+          "entity": "task",
+          "entity_id": "q650000000t0000000000003",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "q650000000e0000000000013",
+          "entity": "task",
+          "entity_id": "q650000000t0000000000003",
+          "field": "planned_on",
+          "value": "2026-11-20",
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "q650000000e0000000000014",
+          "entity": "task",
+          "entity_id": "q650000000t0000000000004",
+          "field": "title",
+          "value": "Fällig heute",
+          "hlc": "1793520004000:00000:p"
+        },
+        {
+          "op_id": "q650000000e0000000000015",
+          "entity": "task",
+          "entity_id": "q650000000t0000000000004",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520004000:00000:p"
+        },
+        {
+          "op_id": "q650000000e0000000000016",
+          "entity": "task",
+          "entity_id": "q650000000t0000000000004",
+          "field": "due",
+          "value": "2026-11-23",
+          "hlc": "1793520004000:00000:p"
+        }
+      ],
+      "expected": {
+        "items": [
+          "q650000000t0000000000003",
+          "q650000000t0000000000004"
+        ],
+        "focus": null,
+        "has_plan": true,
+        "plan_done": true
+      }
+    },
+    {
+      "description": "Eine laufende Flamme (Ende älter als Start) auf einer ungeplanten Aufgabe ist der Fokus, auch wenn sie nicht in der Liste steht; eine beendete Flamme zählt nicht.",
+      "today": "2026-11-23",
+      "state": [
+        {
+          "op_id": "r650000000e0000000000001",
+          "entity": "task",
+          "entity_id": "r650000000t0000000000001",
+          "field": "title",
+          "value": "Geplant",
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "r650000000e0000000000002",
+          "entity": "task",
+          "entity_id": "r650000000t0000000000001",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "r650000000e0000000000003",
+          "entity": "task",
+          "entity_id": "r650000000t0000000000001",
+          "field": "planned_on",
+          "value": "2026-11-23",
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "r650000000e0000000000004",
+          "entity": "task",
+          "entity_id": "r650000000t0000000000002",
+          "field": "title",
+          "value": "Ungeplant mit laufender Flamme",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "r650000000e0000000000005",
+          "entity": "task",
+          "entity_id": "r650000000t0000000000002",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "r650000000e0000000000006",
+          "entity": "task",
+          "entity_id": "r650000000t0000000000002",
+          "field": "flame_started_at",
+          "value": "2026-11-23T08:00:00+01:00",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "r650000000e0000000000007",
+          "entity": "task",
+          "entity_id": "r650000000t0000000000002",
+          "field": "flame_ended_at",
+          "value": "2026-11-22T17:00:00+01:00",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "r650000000e0000000000008",
+          "entity": "task",
+          "entity_id": "r650000000t0000000000002",
+          "field": "status",
+          "value": "in_progress",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "r650000000e0000000000009",
+          "entity": "task",
+          "entity_id": "r650000000t0000000000003",
+          "field": "title",
+          "value": "Flamme beendet",
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "r650000000e0000000000010",
+          "entity": "task",
+          "entity_id": "r650000000t0000000000003",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "r650000000e0000000000011",
+          "entity": "task",
+          "entity_id": "r650000000t0000000000003",
+          "field": "flame_started_at",
+          "value": "2026-11-22T10:00:00+01:00",
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "r650000000e0000000000012",
+          "entity": "task",
+          "entity_id": "r650000000t0000000000003",
+          "field": "flame_ended_at",
+          "value": "2026-11-22T11:00:00+01:00",
+          "hlc": "1793520003000:00000:p"
+        }
+      ],
+      "expected": {
+        "items": [
+          "r650000000t0000000000001"
+        ],
+        "focus": "r650000000t0000000000002",
+        "has_plan": true,
+        "plan_done": false
+      }
+    },
+    {
+      "description": "Ohne Plan für heute: kein has_plan; der Fokus ist die erste Aufgabe der Liste, die offen oder in Arbeit ist (blockiert und Review überspringen).",
+      "today": "2026-11-23",
+      "state": [
+        {
+          "op_id": "s650000000e0000000000001",
+          "entity": "task",
+          "entity_id": "s650000000t0000000000001",
+          "field": "title",
+          "value": "Liegengeblieben, blockiert",
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "s650000000e0000000000002",
+          "entity": "task",
+          "entity_id": "s650000000t0000000000001",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "s650000000e0000000000003",
+          "entity": "task",
+          "entity_id": "s650000000t0000000000001",
+          "field": "planned_on",
+          "value": "2026-11-22",
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "s650000000e0000000000004",
+          "entity": "task",
+          "entity_id": "s650000000t0000000000001",
+          "field": "status",
+          "value": "blocked",
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "s650000000e0000000000005",
+          "entity": "task",
+          "entity_id": "s650000000t0000000000002",
+          "field": "title",
+          "value": "Fällig, in Review",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "s650000000e0000000000006",
+          "entity": "task",
+          "entity_id": "s650000000t0000000000002",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "s650000000e0000000000007",
+          "entity": "task",
+          "entity_id": "s650000000t0000000000002",
+          "field": "due",
+          "value": "2026-11-23",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "s650000000e0000000000008",
+          "entity": "task",
+          "entity_id": "s650000000t0000000000002",
+          "field": "weight",
+          "value": "brand",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "s650000000e0000000000009",
+          "entity": "task",
+          "entity_id": "s650000000t0000000000002",
+          "field": "status",
+          "value": "review",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "s650000000e0000000000010",
+          "entity": "task",
+          "entity_id": "s650000000t0000000000003",
+          "field": "title",
+          "value": "Fällig heute",
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "s650000000e0000000000011",
+          "entity": "task",
+          "entity_id": "s650000000t0000000000003",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "s650000000e0000000000012",
+          "entity": "task",
+          "entity_id": "s650000000t0000000000003",
+          "field": "due",
+          "value": "2026-11-23",
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "s650000000e0000000000013",
+          "entity": "task",
+          "entity_id": "s650000000t0000000000004",
+          "field": "title",
+          "value": "Für morgen geplant",
+          "hlc": "1793520004000:00000:p"
+        },
+        {
+          "op_id": "s650000000e0000000000014",
+          "entity": "task",
+          "entity_id": "s650000000t0000000000004",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520004000:00000:p"
+        },
+        {
+          "op_id": "s650000000e0000000000015",
+          "entity": "task",
+          "entity_id": "s650000000t0000000000004",
+          "field": "planned_on",
+          "value": "2026-11-24",
+          "hlc": "1793520004000:00000:p"
+        }
+      ],
+      "expected": {
+        "items": [
+          "s650000000t0000000000001",
+          "s650000000t0000000000002",
+          "s650000000t0000000000003"
+        ],
+        "focus": "s650000000t0000000000003",
+        "has_plan": false,
+        "plan_done": false
+      }
+    },
+    {
+      "description": "Gleiches Gewicht und gleiche Fälligkeit ohne Uhrzeit: Reihenfolge wie bisher (byDue) nach rank, ohne rank nach dem Standard-Rang der Erstellungszeit (Basis 36, der vor a0 sortiert), erst dann Erstellung und ID.",
+      "today": "2026-11-23",
+      "state": [
+        {
+          "op_id": "t650000000e0000000000001",
+          "entity": "task",
+          "entity_id": "t650000000t0000000000001",
+          "field": "title",
+          "value": "Zuerst angelegt, rank b0",
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "t650000000e0000000000002",
+          "entity": "task",
+          "entity_id": "t650000000t0000000000001",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "t650000000e0000000000003",
+          "entity": "task",
+          "entity_id": "t650000000t0000000000001",
+          "field": "due",
+          "value": "2026-11-23",
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "t650000000e0000000000004",
+          "entity": "task",
+          "entity_id": "t650000000t0000000000001",
+          "field": "rank",
+          "value": "b0",
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "t650000000e0000000000005",
+          "entity": "task",
+          "entity_id": "t650000000t0000000000002",
+          "field": "title",
+          "value": "Danach angelegt, rank a0",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "t650000000e0000000000006",
+          "entity": "task",
+          "entity_id": "t650000000t0000000000002",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "t650000000e0000000000007",
+          "entity": "task",
+          "entity_id": "t650000000t0000000000002",
+          "field": "due",
+          "value": "2026-11-23",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "t650000000e0000000000008",
+          "entity": "task",
+          "entity_id": "t650000000t0000000000002",
+          "field": "rank",
+          "value": "a0",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "t650000000e0000000000009",
+          "entity": "task",
+          "entity_id": "t650000000t0000000000003",
+          "field": "title",
+          "value": "Zuletzt angelegt, ohne rank",
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "t650000000e0000000000010",
+          "entity": "task",
+          "entity_id": "t650000000t0000000000003",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "t650000000e0000000000011",
+          "entity": "task",
+          "entity_id": "t650000000t0000000000003",
+          "field": "due",
+          "value": "2026-11-23",
+          "hlc": "1793520003000:00000:p"
+        }
+      ],
+      "expected": {
+        "items": [
+          "t650000000t0000000000003",
+          "t650000000t0000000000002",
+          "t650000000t0000000000001"
+        ],
+        "focus": "t650000000t0000000000003",
+        "has_plan": false,
+        "plan_done": false
+      }
+    }
+  ]
+}

@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { deferDay, deferFields, needsDecision, offersNextWeek } from "../src/sync/defer";
 
-const base = { due: null, remind_at: null, deferrals: 0, undated_ack: null };
+const base = { due: null, remind_at: null, deferrals: 0, undated_ack: null, planned_on: null };
 
 describe("deferDay", () => {
   it("names tomorrow and the Monday of next week", () => {
@@ -44,6 +44,12 @@ describe("deferFields", () => {
       undated_ack: null,
       deferrals: 1,
     });
+  });
+
+  it("takes an earlier plan along, alone as well", () => {
+    expect(deferFields({ ...base, planned_on: "2026-10-16" }, "2026-10-17")).toEqual({ due: "2026-10-17", planned_on: "2026-10-17", deferrals: 1 });
+    expect(deferFields({ ...base, planned_on: "2026-10-16", due: "2026-10-30", deferrals: 1 }, "2026-10-17")).toEqual({ planned_on: "2026-10-17", deferrals: 2 });
+    expect(deferFields({ ...base, planned_on: "2026-10-17", due: "2026-10-30" }, "2026-10-17")).toBeNull();
   });
 
   it("changes nothing when everything already lies later", () => {

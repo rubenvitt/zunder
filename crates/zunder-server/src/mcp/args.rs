@@ -236,6 +236,30 @@ impl Args {
     }
 }
 
+impl Args {
+    /// A required list of task addresses (ID or reference like `ZUN-42`,
+    /// ClickUp IDs as fallback); may be empty.
+    pub fn task_list(&self, key: &str) -> AppResult<Vec<TaskRef>> {
+        let value = self
+            .value(key)
+            .ok_or_else(|| invalid(format!("Parameter „{key}“ fehlt.")))?;
+        let items = value
+            .as_array()
+            .ok_or_else(|| invalid(format!("„{key}“ muss eine Liste sein.")))?;
+        items
+            .iter()
+            .map(|item| match item.as_str().map(str::trim) {
+                Some(s) if !s.is_empty() => {
+                    Ok(task_address(s).unwrap_or_else(|| TaskRef::ClickUp(s.to_owned())))
+                }
+                _ => Err(invalid(format!(
+                    "„{key}“ darf nur nicht-leere Texte (ID oder Kennung wie „ZUN-42“) enthalten."
+                ))),
+            })
+            .collect()
+    }
+}
+
 /// A UUID or a task reference (`zun-42` counts as `ZUN-42`).
 fn task_address(s: &str) -> Option<TaskRef> {
     if let Some(id) = zunder_core::ids::parse_id(s) {

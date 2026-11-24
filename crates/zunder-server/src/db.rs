@@ -26,6 +26,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0007_intake.sql"),
     include_str!("../migrations/0008_suggestions.sql"),
     include_str!("../migrations/0009_client_refs.sql"),
+    include_str!("../migrations/0010_goals.sql"),
 ];
 
 /// The schema version this binary expects.
@@ -558,6 +559,18 @@ pub fn entity_history(
         entity_id.to_string(),
         entity.as_str()
     ])?;
+    history_rows(rows)
+}
+
+/// All `flame_started_at` / `flame_ended_at` operations of all tasks in log
+/// order (for the one-time `flame_log` backfill).
+pub fn flame_ops(conn: &Connection, owner: Uuid) -> anyhow::Result<Vec<HistoryRow>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT seq, op_id, entity, entity_id, field, value_json, hlc, source, received_at
+         FROM ops WHERE owner_id = ?1 AND entity = 'task'
+           AND field IN ('flame_started_at', 'flame_ended_at') ORDER BY seq",
+    )?;
+    let rows = stmt.query(params![owner.to_string()])?;
     history_rows(rows)
 }
 
@@ -1614,6 +1627,63 @@ mod tests {
             .query_row("SELECT count(*) FROM entities", [], |r| r.get(0))
             .unwrap();
         assert_eq!(entities, 2);
+        assert!(conn
+            .execute(
+                "INSERT INTO entities VALUES ('u', 'note', 'n1', 'h', 'h', 0, '{}')",
+                [],
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn schema_10_rebuilds_tables_for_goals_and_keeps_the_cursor() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut conn = Connection::open(dir.path().join("zunder.db")).unwrap();
+        for (index, sql) in MIGRATIONS.iter().take(9).enumerate() {
+            conn.execute_batch(sql).unwrap();
+            conn.pragma_update(None, "user_version", index as i64 + 1)
+                .unwrap();
+        }
+        conn.execute_batch(
+            "INSERT INTO users (id, created_at) VALUES ('u', 0);
+             INSERT INTO ops (seq, op_id, owner_id, entity, entity_id, field, value_json, hlc,
+                              source, received_at)
+                 VALUES (7, 'o1', 'u', 'task', 't1', 'title', '\"A\"', 'h', 'web', 0),
+                        (9, 'o2', 'u', 'task', 't1', 'title', '\"B\"', 'h', 'web', 0);
+             DELETE FROM ops WHERE seq = 9;
+             INSERT INTO entities VALUES ('u', 'task', 't1', 'h', 'h', 0, '{}');",
+        )
+        .unwrap();
+        assert!(conn
+            .execute(
+                "INSERT INTO entities VALUES ('u', 'goal', 'g1', 'h', 'h', 0, '{}')",
+                [],
+            )
+            .is_err());
+        migrate(&mut conn).unwrap();
+        let v: i64 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(v, 10);
+
+        let ops: i64 = conn
+            .query_row("SELECT count(*) FROM ops WHERE seq = 7", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(ops, 1);
+        conn.execute(
+            "INSERT INTO ops (op_id, owner_id, entity, entity_id, field, value_json, hlc,
+                              source, received_at)
+                 VALUES ('o3', 'u', 'goal', 'g1', 'name', '\"x\"', 'h', 'web', 0)",
+            [],
+        )
+        .unwrap();
+        // seq 9 was handed out before; it is never reused.
+        assert_eq!(conn.last_insert_rowid(), 10);
+        conn.execute(
+            "INSERT INTO entities VALUES ('u', 'goal', 'g1', 'h', 'h', 0, '{}')",
+            [],
+        )
+        .unwrap();
         assert!(conn
             .execute(
                 "INSERT INTO entities VALUES ('u', 'note', 'n1', 'h', 'h', 0, '{}')",

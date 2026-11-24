@@ -49,6 +49,10 @@
           },
           "type": "array"
         },
+        "goal_id": {
+          "description": "Nur Aufgaben mit diesem wirksamen Ziel (eigenes Ziel, sonst das der Wurzelaufgabe; ID aus list_goals) oder \"none\" für Aufgaben ohne wirksames Ziel, um Lücken zu finden.",
+          "type": "string"
+        },
         "has_due": {
           "description": "true: nur Aufgaben mit Fälligkeit; false: nur ohne.",
           "type": "boolean"
@@ -119,6 +123,10 @@
             "feuer_schritt",
             "flamme"
           ],
+          "type": "string"
+        },
+        "planned_on": {
+          "description": "Nur Aufgaben, die für diesen Tag eingeplant sind (JJJJ-MM-TT).",
           "type": "string"
         },
         "project_id": {
@@ -250,6 +258,10 @@
           "pattern": "^[A-Za-z0-9_.:-]+$",
           "type": "string"
         },
+        "day_rank": {
+          "description": "Reihenfolge innerhalb des geplanten Tages (Text, aufsteigend sortiert). Setzt plan_day selbst.",
+          "type": "string"
+        },
         "description": {
           "description": "Beschreibung (Markdown).",
           "type": "string"
@@ -265,6 +277,10 @@
             "uns",
             "andere"
           ],
+          "type": "string"
+        },
+        "goal_id": {
+          "description": "Ziel der Aufgabe (ID aus list_goals). Unteraufgaben ohne eigenes Ziel zählen für das Ziel ihrer Wurzelaufgabe. Jede neue Aufgabe bekommt ihr Ziel ausdrücklich.",
           "type": "string"
         },
         "links": {
@@ -342,6 +358,10 @@
         },
         "plan": {
           "description": "Plan (Markdown), z. B. aus dem Dev-Modus.",
+          "type": "string"
+        },
+        "planned_on": {
+          "description": "Tag, für den die Aufgabe eingeplant ist (JJJJ-MM-TT). Den ganzen Tag legt plan_day fest; einzeln setzen nur in Ausnahmen.",
           "type": "string"
         },
         "pr_url": {
@@ -518,6 +538,13 @@
           "description": "ClickUp-ID einer importierten Aufgabe (statt task_id).",
           "type": "string"
         },
+        "day_rank": {
+          "description": "Reihenfolge innerhalb des geplanten Tages (Text, aufsteigend sortiert). Setzt plan_day selbst. null entfernt den Wert.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "deferrals": {
           "description": "Zähler der Aufschübe (defer_task) setzen, etwa 0, nachdem entschieden ist, die Aufgabe neu zu schneiden oder ruhen zu lassen. null wie 0.",
           "maximum": 9999,
@@ -557,6 +584,13 @@
         "force": {
           "description": "Aufgabe trotz offener Unteraufgaben schließen (Standard false). Nur nach der Warnung open_subtasks und bewusst setzen.",
           "type": "boolean"
+        },
+        "goal_id": {
+          "description": "Ziel der Aufgabe (ID aus list_goals); null entfernt es. Unteraufgaben ohne eigenes Ziel zählen für das Ziel ihrer Wurzelaufgabe.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "links": {
           "description": "Externe Links; ersetzt die ganze Liste.",
@@ -606,6 +640,13 @@
         },
         "plan": {
           "description": "Plan (Markdown), z. B. aus dem Dev-Modus. null entfernt den Wert.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "planned_on": {
+          "description": "Tag, für den die Aufgabe eingeplant ist (JJJJ-MM-TT). Den ganzen Tag legt plan_day fest; einzeln setzen nur in Ausnahmen. null entfernt den Wert.",
           "type": [
             "string",
             "null"
@@ -780,7 +821,7 @@
       "readOnlyHint": false,
       "title": "Heute nicht"
     },
-    "description": "Verschiebt eine Aufgabe auf später („Heute nicht“) und zählt mit (deferrals, Verschiebungs-Counter der Phönix-Progression). Eine Fälligkeit vor dem Zieltag rückt auf ihn (eine Uhrzeit bleibt), ebenso eine frühere Erinnerung; eine Aufgabe ganz ohne Datum bekommt den Zieltag als Fälligkeit. Liegt beides schon auf oder nach dem Zieltag, ändert sich nichts. Zweimal verschieben geht ohne Weiteres; der dritte Aufschub ist eine Entscheidung und wird ohne force abgelehnt (Fehler decision_due): den Nutzer fragen, ob die Aufgabe gestrichen (update_task status dropped), neu geschnitten (Titel oder Beschreibung schärfen oder decompose_task, dann deferrals 0) oder ruhen gelassen wird (due null, undated_ack true, deferrals 0).",
+    "description": "Verschiebt eine Aufgabe auf später („Heute nicht“) und zählt mit (deferrals, Verschiebungs-Counter der Phönix-Progression). Eine Fälligkeit vor dem Zieltag rückt auf ihn (eine Uhrzeit bleibt), ebenso eine frühere Erinnerung; eine Aufgabe ganz ohne Datum bekommt den Zieltag als Fälligkeit. Ist die Aufgabe für einen früheren Tag eingeplant (planned_on), wandert der Plan mit auf den Zieltag, auch wenn Fälligkeit und Erinnerung schon später liegen (das zählt dann ebenfalls). Liegt alles schon auf oder nach dem Zieltag, ändert sich nichts. Zweimal verschieben geht ohne Weiteres; der dritte Aufschub ist eine Entscheidung und wird ohne force abgelehnt (Fehler decision_due): den Nutzer fragen, ob die Aufgabe gestrichen (update_task status dropped), neu geschnitten (Titel oder Beschreibung schärfen oder decompose_task, dann deferrals 0) oder ruhen gelassen wird (due null, undated_ack true, deferrals 0).",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1484,5 +1525,248 @@
     },
     "name": "add_comment",
     "title": "Aufgabe kommentieren"
+  },
+  {
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Ziele auflisten"
+    },
+    "description": "Listet die Ziele mit allen Feldern (id, name, emoji, lead = Leitkennzahl in Worten, lead_per_week = Züge pro Woche für das stille Häkchen, storm = Bezeichnung des Feuersturms, starts_on, ends_on, state, rank). Ziele pflegt Claude (den Feuersturm aus dem Vault), nicht Ruben. Standard nur aktive Ziele, nach Rang; include_closed zeigt auch geschlossene.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "include_closed": {
+          "description": "Auch geschlossene Ziele (Standard false).",
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "list_goals",
+    "title": "Ziele auflisten"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Ziel anlegen"
+    },
+    "description": "Legt ein Ziel an (aktiv). Nur name ist Pflicht. Ziele pflegt Claude, nicht Ruben; es gibt kein Löschwerkzeug, geschlossen wird über update_goal mit state closed.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "emoji": {
+          "description": "Ein Zeichen (Emoji) neben dem Namen.",
+          "type": "string"
+        },
+        "ends_on": {
+          "description": "Letzter Tag des Ziels (JJJJ-MM-TT).",
+          "type": "string"
+        },
+        "lead": {
+          "description": "Leitkennzahl in Worten, z. B. „1 Sichtbarkeits-Zug pro Woche“ oder „3×, 2× in Reisewochen; 15 min zählen voll“.",
+          "type": "string"
+        },
+        "lead_per_week": {
+          "description": "Wie viele Züge (erledigte Aufgaben) pro Woche für das stille Häkchen, 1–99. Ausnahmen nur in lead.",
+          "maximum": 99,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "name": {
+          "description": "Name des Ziels (Pflicht).",
+          "type": "string"
+        },
+        "rank": {
+          "description": "Rangschlüssel für die Reihenfolge der Ziele (Text, aufsteigend).",
+          "type": "string"
+        },
+        "starts_on": {
+          "description": "Erster Tag des Ziels (JJJJ-MM-TT).",
+          "type": "string"
+        },
+        "storm": {
+          "description": "Bezeichnung des Feuersturms, z. B. „Feuersturm 2026-Q4“ (aus dem Vault).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "create_goal",
+    "title": "Ziel anlegen"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Ziel ändern"
+    },
+    "description": "Ändert Felder eines Ziels; nur angegebene ändern sich, null entfernt optionale Werte. Schließen: state closed (wieder öffnen: active).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "emoji": {
+          "description": "Ein Zeichen (Emoji) neben dem Namen. null entfernt den Wert.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ends_on": {
+          "description": "Letzter Tag des Ziels (JJJJ-MM-TT). null entfernt den Wert.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "goal_id": {
+          "description": "ID des Ziels.",
+          "type": "string"
+        },
+        "lead": {
+          "description": "Leitkennzahl in Worten, z. B. „1 Sichtbarkeits-Zug pro Woche“ oder „3×, 2× in Reisewochen; 15 min zählen voll“. null entfernt den Wert.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lead_per_week": {
+          "description": "Wie viele Züge (erledigte Aufgaben) pro Woche für das stille Häkchen, 1–99. Ausnahmen nur in lead. null entfernt den Wert.",
+          "maximum": 99,
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "Neuer Name.",
+          "type": "string"
+        },
+        "rank": {
+          "description": "Rangschlüssel für die Reihenfolge der Ziele (Text, aufsteigend). null entfernt den Wert.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "starts_on": {
+          "description": "Erster Tag des Ziels (JJJJ-MM-TT). null entfernt den Wert.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "description": "active oder closed.",
+          "enum": [
+            "active",
+            "closed"
+          ],
+          "type": "string"
+        },
+        "storm": {
+          "description": "Bezeichnung des Feuersturms, z. B. „Feuersturm 2026-Q4“ (aus dem Vault). null entfernt den Wert.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "goal_id"
+      ],
+      "type": "object"
+    },
+    "name": "update_goal",
+    "title": "Ziel ändern"
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Tag planen"
+    },
+    "description": "Plant einen ganzen Tag: task_ids ist die geordnete Liste (IDs oder Kennungen wie „ZUN-42“), alles darin bekommt planned_on = date und day_rank in dieser Reihenfolge. Der Aufruf bestimmt den ganzen Tag: Nicht geschlossene Aufgaben mit planned_on bis einschließlich date, die nicht in der Liste stehen, verlieren planned_on und day_rank (Liegengebliebenes fällt aus Heute heraus und bleibt an seiner Stelle; fällige Aufgaben stehen weiter in Heute). Erledigte und verworfene Aufgaben behalten ihr planned_on. Eine Glut-Aufgabe für mich gehört bevorzugt nach vorn. Eine leere Liste leert den Plan. Ist eine ID oder Kennung unbekannt, eine Aufgabe gelöscht, erledigt oder verworfen oder kommt eine doppelt vor, wird der ganze Aufruf abgelehnt und nichts geschrieben. Ergebnis: date und today (die resultierende Heute-Liste: items in Reihenfolge, focus, has_plan, plan_done).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "date": {
+          "description": "Der Tag (JJJJ-MM-TT). Standard: heute in der Zeitzone des Servers.",
+          "type": "string"
+        },
+        "task_ids": {
+          "description": "Geordnete Aufgaben des Tages (IDs oder Kennungen wie „ZUN-42“), die wichtigste zuerst. Leer: der Plan des Tages wird geleert.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "task_ids"
+      ],
+      "type": "object"
+    },
+    "name": "plan_day",
+    "title": "Tag planen"
+  },
+  {
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Ziel-Input"
+    },
+    "description": "Input pro Ziel für eine ISO-Woche: je aktivem Ziel done (erledigte Aufgaben mit diesem wirksamen Ziel, Unteraufgaben einzeln, Dev-Projekte eingeschlossen, verworfene nicht), minutes (Flammen-Minuten dieser Woche) und lead_per_week mit reached (done erreicht lead_per_week). Ergebnis: week, from, to (Montag und Sonntag) und goals mit goal_id, name, emoji. Für Reviews: sachlich spiegeln, nicht bewerten.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "week": {
+          "description": "ISO-Woche JJJJ-Www, z. B. 2026-W47. Standard: die aktuelle Woche in der Zeitzone des Servers.",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "goal_input",
+    "title": "Ziel-Input"
+  },
+  {
+    "annotations": {
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Logbuch"
+    },
+    "description": "Logbuch „Erledigt“ für einen Zeitraum, neuester Tag zuerst: je Tag done (an diesem Tag erledigte Aufgaben mit den Flammen-Minuten des Tages), worked (Aufgaben mit Flammen, aber an diesem Tag nicht erledigt) und die Tagessumme minutes. Ohne Dev-Projekte und ohne verworfene Aufgaben; Tage ohne Einträge entfallen. Jeder Eintrag nennt task_id, ref, title, minutes und goal (id, name, emoji des wirksamen Ziels oder null). Standard: die letzten 14 Tage bis heute; höchstens 92 Tage.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "description": "Erster Tag (JJJJ-MM-TT, inklusive). Standard: 13 Tage vor to.",
+          "type": "string"
+        },
+        "to": {
+          "description": "Letzter Tag (JJJJ-MM-TT, inklusive). Standard: heute in der Zeitzone des Servers.",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "done_log",
+    "title": "Logbuch"
   }
 ]

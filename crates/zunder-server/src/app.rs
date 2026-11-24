@@ -83,6 +83,16 @@ pub enum Source {
     Server,
 }
 
+/// Operations of the server itself (Timing bridge, backfill) may write the
+/// fields only the server owns; everything else is validated as a client.
+fn author_of(source: &Source) -> Author {
+    if matches!(source, Source::Server) {
+        Author::Server
+    } else {
+        Author::Client
+    }
+}
+
 impl Source {
     pub fn label(&self) -> String {
         match self {
@@ -1618,7 +1628,10 @@ impl Locked<'_> {
             let mut batch = OpBatch::new(self.clock, now);
             let value = build(&mat.state, &mut batch)?;
             // Validated once, under the write lock, and committed as is.
-            (value, Validated::new(&mat, batch.ops(), now))
+            (
+                value,
+                Validated::by(&mat, batch.ops(), now, author_of(source)),
+            )
         };
         if let Some(e) = rejection_error(&validated.outcome.rejected) {
             return Err(e);
@@ -1649,7 +1662,12 @@ impl Inner {
         client_id: Option<&str>,
         remote: bool,
     ) -> AppResult<PushResult> {
-        let validated = Validated::new(&self.read_materialized(), ops, system_time_ms());
+        let validated = Validated::by(
+            &self.read_materialized(),
+            ops,
+            system_time_ms(),
+            author_of(source),
+        );
         self.persist(conn, clock, validated, source, client_id, remote, None)
     }
 
@@ -1870,10 +1888,6 @@ struct Validated {
 }
 
 impl Validated {
-    fn new(mat: &Materialized, ops: &[Op], now: u64) -> Self {
-        Self::by(mat, ops, now, Author::Client)
-    }
-
     fn by(mat: &Materialized, ops: &[Op], now: u64, author: Author) -> Self {
         let outcome = validate_push_as(&mat.state, ops, now, author);
         let touched = touched_entities(&mat.state, &outcome.new_ops);

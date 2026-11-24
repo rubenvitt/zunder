@@ -11,11 +11,12 @@ use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
 use zunder_core::ids::Id;
-use zunder_core::model::format_rfc3339;
+use zunder_core::model::{format_date, format_rfc3339};
+use zunder_core::planning;
 use zunder_core::{
-    AreaState, Comment, Due, EntityKind, ForWhom, Link, Location, Phoenix, Progress, ProjectKind,
-    ProjectStatus, ProjectView as ProjectViewMode, Recurrence, State, Task, TaskStatus, TaskType,
-    Weight,
+    AreaState, Comment, Due, EntityKind, ForWhom, Goal, GoalState, Link, Location, Phoenix,
+    Progress, ProjectKind, ProjectStatus, ProjectView as ProjectViewMode, Recurrence, State, Task,
+    TaskStatus, TaskType, Weight,
 };
 
 use crate::app::format_ms;
@@ -122,6 +123,16 @@ pub struct TaskView {
     pub flame_ended_at: Option<String>,
     /// Whether a flame is running on this task.
     pub flame_running: bool,
+    /// The goal set on the task itself (not the inherited one).
+    pub goal_id: Option<Id>,
+    /// The effective goal: the task's own live goal, else its root task's.
+    pub goal: Option<GoalRef>,
+    /// Day the task is planned for (`YYYY-MM-DD`).
+    pub planned_on: Option<String>,
+    /// Order within the planned day.
+    pub day_rank: Option<String>,
+    /// Finished flames, oldest first.
+    pub flame_log: Vec<FlameIntervalView>,
     pub clickup_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -263,6 +274,18 @@ impl TaskView {
             flame_started_at: task.flame_started_at.map(format_rfc3339),
             flame_ended_at: task.flame_ended_at.map(format_rfc3339),
             flame_running: flame_running(&task),
+            goal_id: task.goal_id,
+            goal: GoalRef::effective(state, id),
+            planned_on: task.planned_on.map(format_date),
+            day_rank: task.day_rank,
+            flame_log: task
+                .flame_log
+                .iter()
+                .map(|i| FlameIntervalView {
+                    start: format_rfc3339(i.start),
+                    end: format_rfc3339(i.end),
+                })
+                .collect(),
             created_at: hlc_time(state.created_at(EntityKind::Task, id)),
             updated_at: hlc_time(state.updated_at(EntityKind::Task, id)),
             status_changed_at: hlc_time(state.status_changed_at(id)),
@@ -321,6 +344,93 @@ fn subtask_tree(
         }
     }
     out
+}
+
+/// A finished flame as returned by tools (RFC 3339 times).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FlameIntervalView {
+    pub start: String,
+    pub end: String,
+}
+
+/// A goal in short, as named by tasks and logbook entries.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GoalRef {
+    pub id: Id,
+    pub name: String,
+    pub emoji: Option<String>,
+}
+
+impl GoalRef {
+    pub fn of(state: &State, id: Id) -> Option<Self> {
+        let goal = state.goal(id).filter(|g| !g.deleted)?;
+        Some(GoalRef {
+            id,
+            name: goal.name,
+            emoji: goal.emoji,
+        })
+    }
+
+    /// The effective goal of a task ([`planning::effective_goal`]).
+    pub fn effective(state: &State, task_id: Id) -> Option<Self> {
+        planning::effective_goal(state, task_id).and_then(|id| Self::of(state, id))
+    }
+}
+
+/// Heute as returned by `plan_day`: the list in order with the focus.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TodayListView {
+    pub items: Vec<TaskView>,
+    pub focus: Option<TaskView>,
+    pub has_plan: bool,
+    pub plan_done: bool,
+}
+
+impl TodayListView {
+    pub fn build(state: &State, list: &planning::TodayList, now_ms: u64) -> Self {
+        let blocks = state.blocks_index();
+        let view = |id: Id| TaskView::build_with(state, &blocks, id, now_ms, false);
+        TodayListView {
+            items: list.items.iter().filter_map(|id| view(*id)).collect(),
+            focus: list.focus.and_then(view),
+            has_plan: list.has_plan,
+            plan_done: list.plan_done,
+        }
+    }
+}
+
+/// A goal as returned by tools; dates are `YYYY-MM-DD`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GoalView {
+    pub id: Id,
+    pub name: String,
+    pub emoji: Option<String>,
+    pub lead: Option<String>,
+    pub lead_per_week: Option<u32>,
+    pub storm: Option<String>,
+    pub starts_on: Option<String>,
+    pub ends_on: Option<String>,
+    pub state: GoalState,
+    pub rank: Option<String>,
+    pub deleted: bool,
+}
+
+impl From<Goal> for GoalView {
+    fn from(goal: Goal) -> Self {
+        GoalView {
+            id: goal.id,
+            name: goal.name,
+            emoji: goal.emoji,
+            lead: goal.lead,
+            lead_per_week: goal.lead_per_week,
+            storm: goal.storm,
+            starts_on: goal.starts_on.map(format_date),
+            ends_on: goal.ends_on.map(format_date),
+            state: goal.state,
+            rank: goal.rank,
+            deleted: goal.deleted,
+        }
+    }
 }
 
 /// An area as returned by tools.
@@ -433,5 +543,35 @@ impl TaskRef {
             return Err(AppError::NotFound(format!("Aufgabe {id} ist gelöscht.")));
         }
         Ok(id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::macros::date;
+
+    #[test]
+    fn goal_view_formats_dates_and_keeps_fields() {
+        let id = Id::new();
+        let view = GoalView::from(Goal {
+            id,
+            name: "Fit bleiben".into(),
+            emoji: Some("🏃".into()),
+            lead: Some("Laufen".into()),
+            lead_per_week: Some(3),
+            storm: None,
+            starts_on: Some(date!(2026 - 01 - 05)),
+            ends_on: None,
+            state: GoalState::default(),
+            rank: Some("m".into()),
+            deleted: false,
+        });
+        let json = serde_json::to_value(&view).unwrap();
+        assert_eq!(json["id"], id.to_string());
+        assert_eq!(json["starts_on"], "2026-01-05");
+        assert_eq!(json["ends_on"], serde_json::Value::Null);
+        assert_eq!(json["lead_per_week"], 3);
+        assert_eq!(json["state"], "active");
     }
 }

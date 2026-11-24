@@ -87,6 +87,10 @@ for (const tag of ["", " @mobile"]) {
     // The detail slides in: measure only once it stands still. A hover transition the tap
     // started under the opening panel may be cancelled instead of finishing; that is still.
     await detail(page).evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished.catch(() => undefined))));
+    // Real users always have goals (an extra "Ziel" row above the description), so the
+    // description may sit anywhere: bring it to the middle first, so the click below
+    // never needs to scroll and a shift can only come from the focus itself.
+    await description.evaluate((el) => el.scrollIntoView({ block: "center" }));
     const before = await first.boundingBox();
 
     await description.locator("p").last().click();

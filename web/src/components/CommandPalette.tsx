@@ -120,6 +120,8 @@ export function CommandPalette(props: { request: PaletteRequest }) {
       go("Gehe zu Phönix", () => navigate({ view: "phoenix" }), "flame", { keys: "g p" }),
       go("Gehe zu Wartet auf andere", () => navigate({ view: "wartet" }), "user", { keys: "g w" }),
       go("Gehe zu Offene Zusagen", () => navigate({ view: "zusagen" }), "user", { keys: "g z" }),
+      go("Gehe zu Ziele", () => navigate({ view: "ziele" }), "target", { keys: "g e" }),
+      go("Gehe zu Erledigt", () => navigate({ view: "erledigt" }), "check", { keys: "g r" }),
       go("Neuer Bereich", () => setStructureEdit({ kind: "area" }), "folder"),
       go("Neues Projekt", () => setStructureEdit({ kind: "project" }), "list"),
       go(sidebarHidden() ? "Seitenleiste einblenden" : "Seitenleiste ausblenden", toggleSidebar, "menu", { keys: "⌘ B" }),

@@ -1,7 +1,8 @@
-// "Erst für dich" at the top of Heute (contract 5.1): one Glut task for oneself, or a quiet line
-// with a few Glut tasks to pick; clicking it away holds for the day (server setting).
-// The real backend keeps data between tests: seeded tasks are closed and the setting is reset
-// in `finally`; tasks that must win carry the earliest due dates.
+// "Erst für dich" in Heute's Fokus box on a day without a plan (contract 5.1, design 5.2): one
+// Glut task for oneself, or a quiet line with a few Glut tasks to plan for today; clicking it
+// away holds for the day (server setting) and only hides the offer. The real backend keeps data
+// between tests: seeded tasks are closed and taken out of today's plan, the setting is reset in
+// `finally`; tasks that must win carry the earliest due dates.
 
 import { expect, test, type Page } from "@playwright/test";
 import { FOCUS_EMPTY } from "../src/labels";
@@ -12,8 +13,9 @@ test.beforeEach(async ({ page }) => {
   await prepare(page);
 });
 
-const section = (page: Page) => page.getByRole("region", { name: "Erst für dich" });
-const focusTitle = (page: Page) => section(page).locator(".focus-task .focus-title");
+const section = (page: Page) => page.getByRole("group", { name: "Erst für dich" });
+const focusTitle = (page: Page) => section(page).locator(".task-title");
+const box = (page: Page) => page.getByRole("region", { name: "Fokus" });
 const today = () => localDate(new Date());
 
 interface FocusSettings {
@@ -32,10 +34,10 @@ async function putFocus(page: Page, body: Partial<FocusSettings>): Promise<void>
   expect(res.ok(), await res.text()).toBe(true);
 }
 
-/** Closes seeded tasks and resets the setting (real backend keeps both for later tests). */
+/** Closes seeded tasks, takes them out of today's plan and resets the setting (real backend keeps all for later tests). */
 async function cleanUp(page: Page, ...ids: string[]): Promise<void> {
   const seeder = new Seeder();
-  for (const id of ids) seeder.raw("task", id, { status: "done" });
+  for (const id of ids) seeder.raw("task", id, { status: "done", planned_on: null });
   if (ids.length > 0) await seeder.push(page);
   await putFocus(page, { dismissed_on: null, chosen: null });
 }
@@ -58,9 +60,9 @@ test("Erst für dich zeigt die Glut-Aufgabe für dich mit der frühesten Fällig
   await seeder.push(page);
   try {
     await openApp(page, "#/heute");
-    await expect(section(page).getByRole("heading", { name: "Erst für dich" })).toBeVisible();
+    await expect(section(page)).toBeVisible();
     await expect(focusTitle(page)).toHaveText(`Laufen ${s}`);
-    // Above everything else in Heute.
+    // In the Fokus box, above everything else in Heute.
     const first = await page.locator(".view > section, .view > .group").first().getAttribute("aria-labelledby");
     expect(first).toBe("focus-heading");
 
@@ -68,7 +70,7 @@ test("Erst für dich zeigt die Glut-Aufgabe für dich mit der frühesten Fällig
     await expect(page.getByRole("complementary", { name: "Aufgabendetail" })).toBeVisible();
 
     // Done from the top: the next one moves up.
-    await section(page).locator(".focus-task .check").click();
+    await section(page).locator(".check").click();
     await expect(focusTitle(page)).toHaveText(`Später ${s}`);
     await expect.poll(async () => (await entityFields(page, "task", ids[0]!)).status).toBe("done");
   } finally {
@@ -76,11 +78,11 @@ test("Erst für dich zeigt die Glut-Aufgabe für dich mit der frühesten Fällig
   }
 });
 
-test("Ohne Glut für dich: leise Zeile und eine Auswahl für heute, ohne Felder zu ändern", async ({ page }) => {
+test("Ohne Glut für dich: leise Zeile und eine Auswahl, Wählen plant für heute ein", async ({ page }) => {
   const s = suffix();
   await openApp(page, "#/heute");
   // The empty state needs a Heute without open Glut tasks for oneself (other specs close theirs).
-  await expect(section(page).locator(".focus-task"), "offene Glut-Aufgabe für mich aus einem anderen Test").toHaveCount(0);
+  await expect(section(page).locator(".task-row"), "offene Glut-Aufgabe für mich aus einem anderen Test").toHaveCount(0);
 
   const seeder = new Seeder();
   const loose = { kind: "loose" };
@@ -102,16 +104,18 @@ test("Ohne Glut für dich: leise Zeile und eine Auswahl für heute, ohne Felder 
     await expect(choices.filter({ hasText: `Gutachten ${s}` })).toHaveCount(0);
     await expect(choices.filter({ hasText: `Rauch ${s}` })).toHaveCount(0);
 
+    // Picking plans the task for today, at the front: the plan fills the box from now on.
     await choices.nth(1).click();
-    await expect(focusTitle(page)).toHaveText(`Steuer ${s}`);
-    await expect(section(page).getByText("für heute gewählt")).toBeVisible();
-    await expect.poll(() => serverFocus(page)).toMatchObject({ chosen: { on: today(), task_id: steuer } });
-    // A day setting, not a task field: whom it is for stays unset.
+    await expect(box(page).locator(".task-title")).toHaveText(`Steuer ${s}`);
+    await expect(section(page)).toHaveCount(0);
+    await expect.poll(async () => (await entityFields(page, "task", steuer)).planned_on).toBe(today());
+    // Whom it is for stays unset, and the day setting is not written any more.
     expect((await entityFields(page, "task", steuer)).for_whom ?? null).toBeNull();
+    expect((await serverFocus(page)).chosen).toBeNull();
 
-    // Every browser sees the pick (server), also after a reload.
+    // Every browser sees the plan (server), also after a reload.
     await reloadApp(page);
-    await expect(focusTitle(page)).toHaveText(`Steuer ${s}`);
+    await expect(box(page).locator(".task-title")).toHaveText(`Steuer ${s}`);
   } finally {
     await cleanUp(page, ...ids);
   }
@@ -128,6 +132,8 @@ test("Wegklicken gilt für den Tag: bleibt nach Neuladen weg, morgen ist es wied
     await section(page).getByRole("button", { name: "Für heute ausblenden" }).click();
     await expect(section(page)).toHaveCount(0);
     await expect(page.locator(".toast")).toContainText("„Erst für dich“ ist für heute ausgeblendet.");
+    // Only the offer goes: the box shows the list's first task (Klavier is due, so in the list).
+    if (isMock) await expect(box(page).locator(".task-title")).toHaveText(`Klavier ${s}`);
     await expect.poll(async () => (await serverFocus(page)).dismissed_on).toBe(today());
 
     await reloadApp(page);

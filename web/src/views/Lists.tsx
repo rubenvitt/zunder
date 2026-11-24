@@ -1,23 +1,24 @@
 // Heute, Inbox, Lose, Wartet auf andere and Offene Zusagen.
 
-import { createMemo, For, onMount, Show } from "solid-js";
+import { createMemo, For, onCleanup, onMount, Show } from "solid-js";
 import { EmptyState } from "../components/EmptyState";
-import { Icon } from "../components/Icon";
 import { TaskList } from "../components/TaskList";
 import { createTaskFilter, NoMatches, TaskFilterBar } from "../components/TaskFilter";
-import { FocusSection } from "../components/FocusSection";
+import { TodayFocus, todayFocus } from "../components/TodayFocus";
+import { createTodayDrag, TodayOrder } from "../components/TodayOrder";
 import { WeekMirror } from "../components/WeekMirror";
 import { DayPreview, openDayTasks, previewLoads } from "../components/DayPreview";
 import type { DeferTarget } from "../sync/defer";
 import type { Task } from "../sync/types";
-import { canHandBack, deferTask, dropTask, moveTask, setWaitingOn, shorten } from "../state/actions";
-import { commitmentTasks, inboxTasks, tasksAt, todayGroups, waitingGroups } from "../state/selectors";
-import { activeList, copyText, pickLocation, registerList, selectedId, setCaptureOpen, setHandBackRequest, setSelectedId, toast } from "../state/ui";
+import { canHandBack, deferTask, dropTask, moveTask, placeInToday, setWaitingOn, shorten } from "../state/actions";
+import { commitmentTasks, inboxTasks, tasksAt, todaySections, waitingGroups } from "../state/selectors";
+import { activeList, copyText, pickLocation, registerList, selectedId, setActiveReorder, setCaptureOpen, setHandBackRequest, setSelectedId, toast } from "../state/ui";
 import { followUpSentence } from "../sync/handback";
 import { now } from "../state/store";
-import { refreshFocus } from "../state/focus";
+import { focusSettings, focusToday, refreshFocus } from "../state/focus";
+import { isDismissed } from "../sync/focus";
 import { tooManyCommitments } from "../sync/commitments";
-import { COMMITMENT_HINT, commitmentsLabel, locationLabel } from "../labels";
+import { COMMITMENT_HINT, commitmentsLabel, locationLabel, TODAY_REST } from "../labels";
 
 /** "Heute nicht" from the Heute list (s: tomorrow, Shift+S: next week, swipe right). */
 export const todayActions = {
@@ -52,25 +53,43 @@ const followUpActions = (task: Task) => [
 ];
 
 export function TodayView() {
-  const groups = createMemo(todayGroups);
+  const sections = createMemo(todaySections);
+  const today = createMemo(focusToday);
+  // The box: the flame, the plan's first task or, without a plan, "Erst für dich" (design 5.2).
+  const focus = createMemo(() => todayFocus(sections(), today(), isDismissed(focusSettings(), today())));
+  const focusId = () => focus().task?.id;
+  const rest = createMemo(() => sections().list.filter((t) => t.id !== focusId()));
+  const reminders = createMemo(() => sections().reminders.filter((t) => t.id !== focusId()));
+  const followUps = createMemo(() => sections().followUps.filter((t) => t.id !== focusId()));
+  const boxShown = () => !!focus().task || focus().choices !== null || focus().planDone;
   // Tagesvorschau: the next days and their due tasks (contract 5.1).
   const loads = createMemo(previewLoads);
   const all = createMemo(() => {
-    const g = groups();
     const seen = new Set<string>();
-    return [...g.flames, ...g.overdue, ...g.dueToday, ...g.reminders, ...g.followUps, ...openDayTasks(loads())].filter((t) => !seen.has(t.id) && !!seen.add(t.id));
+    const box = focus().task;
+    return [...(box ? [box] : []), ...rest(), ...reminders(), ...followUps(), ...openDayTasks(loads())].filter((t) => !seen.has(t.id) && !!seen.add(t.id));
   });
   // Zusagen-Bremse: how many promises are open, shown before they press (contract 5.1).
   const commitments = createMemo(() => commitmentTasks().length);
+  const drag = createTodayDrag(() => sections().list);
+  /** Shift+J/K: one step down or up in the whole order, past the box as well (design 5.3). */
+  const reorder = (dy: -1 | 1) => {
+    const id = selectedId();
+    const items = sections().list;
+    const i = items.findIndex((t) => t.id === id);
+    if (!id || i < 0) return;
+    const order = items.filter((t) => t.id !== id);
+    const at = Math.max(0, Math.min(order.length, i + dy));
+    if (at !== i) placeInToday(id, order[at - 1] ?? null, order[at] ?? null);
+  };
   onMount(() => {
     registerList(all);
-    // Another device may have clicked "Erst für dich" away or picked a task today.
+    setActiveReorder(reorder);
+    // Another device may have clicked "Erst für dich" away today.
     void refreshFocus();
   });
-  const nothing = () => {
-    const g = groups();
-    return g.flames.length + g.overdue.length + g.dueToday.length + g.reminders.length + g.followUps.length === 0;
-  };
+  onCleanup(() => setActiveReorder(null));
+  const nothing = () => !focus().task && rest().length + reminders().length + followUps().length === 0;
   return (
     <div class="view">
       <header class="view-head today-head">
@@ -89,49 +108,35 @@ export function TodayView() {
           </span>
         </Show>
       </header>
-      <FocusSection />
-      <Show when={groups().flames.length > 0}>
-        <section class="group group-flame">
-          <h2>
-            <Icon name="flame" size={15} /> Laufende Flamme
-          </h2>
-          <TaskList tasks={groups().flames} showLocation label="Laufende Flamme" />
+      <Show when={boxShown()}>
+        <TodayFocus state={focus()} drag={drag} actions={todayRowActions} swipe={todaySwipe} />
+      </Show>
+      <Show when={rest().length > 0}>
+        <section class="group today-rest" aria-labelledby={boxShown() ? "today-rest-heading" : undefined}>
+          <Show when={boxShown()}>
+            <h2 id="today-rest-heading">{TODAY_REST}</h2>
+          </Show>
+          <TodayOrder tasks={rest()} items={sections().list} drag={drag} label={TODAY_REST} actions={todayRowActions} swipe={todaySwipe} />
         </section>
       </Show>
-      <Show when={groups().overdue.length > 0}>
-        <section class="group">
-          <h2 class="tone tone-danger">
-            Überfällig <span class="count">{groups().overdue.length}</span>
-          </h2>
-          <TaskList tasks={groups().overdue} showLocation label="Überfällig" actions={todayRowActions} swipe={todaySwipe} />
-        </section>
-      </Show>
-      <Show when={groups().dueToday.length > 0}>
-        <section class="group">
-          <h2 class="tone tone-accent">
-            Heute fällig <span class="count">{groups().dueToday.length}</span>
-          </h2>
-          <TaskList tasks={groups().dueToday} showLocation label="Heute fällig" actions={todayRowActions} swipe={todaySwipe} />
-        </section>
-      </Show>
-      <Show when={groups().reminders.length > 0}>
+      <Show when={reminders().length > 0}>
         <section class="group">
           <h2 class="tone tone-violet">
-            Erinnerungen <span class="count">{groups().reminders.length}</span>
+            Erinnerungen <span class="count">{reminders().length}</span>
           </h2>
-          <TaskList tasks={groups().reminders} showLocation label="Erinnerungen" actions={todayRowActions} swipe={todaySwipe} />
+          <TaskList tasks={reminders()} showLocation quietDue label="Erinnerungen" actions={todayRowActions} swipe={todaySwipe} />
         </section>
       </Show>
-      <Show when={groups().followUps.length > 0}>
+      <Show when={followUps().length > 0}>
         <section class="group">
           <h2 class="tone tone-info">
-            Wiedervorlage <span class="count">{groups().followUps.length}</span>
+            Wiedervorlage <span class="count">{followUps().length}</span>
           </h2>
           <p class="muted group-hint">Noch keine Antwort. Nachfragen, wenn es dir hilft; sonst wartet es einfach weiter.</p>
-          <TaskList tasks={groups().followUps} showLocation waitingStill label="Wiedervorlage" actions={followUpActions} swipe={todaySwipe} />
+          <TaskList tasks={followUps()} showLocation waitingStill quietDue label="Wiedervorlage" actions={followUpActions} swipe={todaySwipe} />
         </section>
       </Show>
-      <Show when={nothing()}>
+      <Show when={nothing() && !focus().planDone}>
         <EmptyState
           icon="sun"
           figure={{ name: "slow", label: "Kisten auf einem Förderband, das gemächlich läuft", play: true }}

@@ -479,7 +479,7 @@ test("Mobil: vier Tabs und Mehr, Ziehen über die Leiste wechselt die Sicht @mob
   // "Mehr" holds the rest; a tap elsewhere closes it.
   await tabbar.getByRole("button", { name: "Mehr" }).click();
   const more = page.getByRole("menu", { name: "Weitere Sichten" });
-  await expect(more.getByRole("menuitem")).toHaveText([/Lose/, /Dev/, /Wartet auf andere/]);
+  await expect(more.getByRole("menuitem")).toHaveText([/Lose/, /Dev/, /Wartet auf andere/, /Ziele/, /Erledigt/]);
   await more.getByRole("menuitem", { name: /Dev/ }).click();
   await expect(more).toHaveCount(0);
   await expect(page).toHaveURL(/#\/dev/);

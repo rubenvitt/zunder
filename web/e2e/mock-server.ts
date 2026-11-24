@@ -42,7 +42,7 @@ const DIST = resolve(process.env.MOCK_DIST ?? join(here, "..", "dist"));
 const PORT = Number(process.env.MOCK_PORT ?? 4173);
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
-type EntityKind = "area" | "project" | "task" | "comment";
+type EntityKind = "area" | "project" | "task" | "comment" | "goal";
 
 interface Op {
   op_id: string;
@@ -112,9 +112,10 @@ const FIELDS: Record<string, string[]> = {
     "title", "description", "type", "status", "location", "parent_id", "due", "remind_at", "vault_links", "links",
     "phoenix", "claimed_by", "claim_expires_at", "plan", "branch", "pr_url", "timing_ref", "flame_started_at",
     "flame_ended_at", "clickup_id", "rank", "undated_ack", "recurrence", "recurrence_prev", "blocked_by", "weight",
-    "for_whom", "deferrals", "waiting_on", "ref", "deleted",
+    "for_whom", "deferrals", "waiting_on", "goal_id", "planned_on", "day_rank", "flame_log", "ref", "deleted",
   ],
   comment: ["task_id", "body", "author", "deleted"],
+  goal: ["name", "emoji", "lead", "lead_per_week", "storm", "starts_on", "ends_on", "state", "rank", "deleted"],
 };
 const ENUMS: Record<string, string[]> = {
   "task.status": ["open", "in_progress", "review", "blocked", "done", "dropped"],
@@ -122,6 +123,7 @@ const ENUMS: Record<string, string[]> = {
   "task.weight": ["brand", "glut", "rauch", "asche"],
   "task.for_whom": ["mich", "uns", "andere"],
   "project.status": ["active", "paused", "completed"],
+  "goal.state": ["active", "closed"],
   "project.kind": ["standard", "dev"],
   "project.view": ["list", "board"],
   "area.state": ["active", "archived"],
@@ -221,14 +223,14 @@ function isCalendarDay(value: string): boolean {
   return d.getUTCFullYear() === Number(m[1]) && d.getUTCMonth() === Number(m[2]) - 1 && d.getUTCDate() === Number(m[3]);
 }
 const HLC_RE = /^\d{13}:\d{5}:[a-z0-9-]{1,36}$/;
-const REQUIRED: Record<string, string[]> = { area: ["name"], project: ["name", "area_id"], task: ["title"], comment: ["task_id", "body"] };
+const REQUIRED: Record<string, string[]> = { area: ["name"], project: ["name", "area_id"], task: ["title"], comment: ["task_id", "body"], goal: ["name"] };
 
 /** Wire-format check; a malformed op fails the whole push with 400 (like the server). */
 function wireError(op: unknown): string | null {
   if (!op || typeof op !== "object") return "Operation ist kein Objekt.";
   const o = op as Record<string, unknown>;
   if (!ID_RE.test(String(o.op_id)) || !ID_RE.test(String(o.entity_id))) return "Keine kanonische ID.";
-  if (!["area", "project", "task", "comment"].includes(String(o.entity))) return "Unbekannte Entitätsart.";
+  if (!["area", "project", "task", "comment", "goal"].includes(String(o.entity))) return "Unbekannte Entitätsart.";
   if (typeof o.field !== "string") return "Feld fehlt.";
   if (!("value" in o)) return "value fehlt.";
   if (typeof o.hlc !== "string" || !HLC_RE.test(o.hlc)) return "Ungültiger HLC.";
@@ -246,6 +248,9 @@ function checkOp(op: Op): [string, string] | null {
   }
   if (op.entity === "task" && op.field === "recurrence_prev") {
     return ["invalid_value", "Die Vorgängerin in einer Serie („recurrence_prev“) setzt nur der Server, wenn er die nächste Instanz anlegt."];
+  }
+  if (op.entity === "task" && op.field === "flame_log") {
+    return ["invalid_value", "Die Flammen-Historie („flame_log“) schreibt nur der Server, wenn eine Flamme endet."];
   }
   if (op.value === null) {
     return REQUIRED[op.entity]!.includes(op.field) ? ["invalid_value", `Pflichtfeld „${op.field}“ kann nicht zurückgesetzt werden.`] : null;
@@ -265,6 +270,13 @@ function checkOp(op: Op): [string, string] | null {
   if (op.entity === "project" && op.field === "key" && !/^[A-Z][A-Z0-9]{0,9}$/.test(String(op.value))) {
     return ["invalid_value", "Ungültiger Schlüssel."];
   }
+  if (["planned_on", "starts_on", "ends_on"].includes(op.field) && !(typeof op.value === "string" && isCalendarDay(op.value))) {
+    return ["invalid_value", `„${op.field}“ muss ein Datum (JJJJ-MM-TT) sein.`];
+  }
+  if (op.field === "lead_per_week" && !(Number.isInteger(op.value) && (op.value as number) >= 1 && (op.value as number) <= 99)) {
+    return ["invalid_value", "„lead_per_week“ muss eine ganze Zahl von 1 bis 99 sein."];
+  }
+  if (op.field === "goal_id" && !ID_RE.test(String(op.value))) return ["invalid_value", "„goal_id“ muss eine ID sein."];
   if (op.field === "deleted" && typeof op.value !== "boolean") return ["invalid_value", "„deleted“ muss true oder false sein."];
   if (op.field === "deferrals" && !(Number.isInteger(op.value) && (op.value as number) >= 0 && (op.value as number) <= 9999)) {
     return ["invalid_value", "„deferrals“ muss eine ganze Zahl von 0 bis 9999 sein."];
@@ -311,7 +323,8 @@ function effectiveProject(id: string, pending: Map<string, Op[]>): string | null
 
 function checkEntity(entity: EntityKind, id: string, pending: Map<string, Op[]>): [string, string] | null {
   const fields = fieldsAfter(entity, id, pending);
-  if (fields.deleted === true) {
+  // Tasks may keep pointing at a deleted goal (the core ignores it), so a goal has no dependents.
+  if (fields.deleted === true && entity !== "goal") {
     // Deleting needs the live dependents gone (deleted in the same push or before).
     const dependents = [...new Set([...state.keys(), ...pending.keys()])].filter((k) => {
       const [kind, other] = k.split("/") as [EntityKind, string];
@@ -334,6 +347,10 @@ function checkEntity(entity: EntityKind, id: string, pending: Map<string, Op[]>)
   } else if (entity === "task") {
     const loc = fields.location as { kind?: string; id?: string } | null | undefined;
     const parent = typeof fields.parent_id === "string" ? fields.parent_id : null;
+    const goal = typeof fields.goal_id === "string" ? fields.goal_id : null;
+    if (goal && (pending.get(key(entity, id)) ?? []).some((op) => op.field === "goal_id") && !aliveAfter("goal", goal, pending)) {
+      return ["invalid_reference", state.has(key("goal", goal)) || pending.has(key("goal", goal)) ? "Das Ziel ist gelöscht." : "Das Ziel existiert nicht."];
+    }
     if (parent && !aliveAfter("task", parent, pending)) return ["invalid_reference", "Die Aufgabe existiert nicht."];
     if (!parent && (loc?.kind === "area" || loc?.kind === "project") && !aliveAfter(loc.kind, String(loc.id), pending)) {
       return ["invalid_reference", loc.kind === "area" ? "Der Bereich existiert nicht." : "Das Projekt existiert nicht."];
@@ -519,6 +536,8 @@ function followUps(candidates: Set<string>): number {
     const fields: Record<string, Json> = {};
     for (const k of ["title", "description", "type", "location"]) if (f[k] !== undefined && f[k] !== null) fields[k] = f[k]!;
     for (const k of ["links", "vault_links"]) if (Array.isArray(f[k]) && (f[k] as Json[]).length > 0) fields[k] = f[k]!;
+    // The core carries the goal only while it is live; the plan and the flame history stay behind.
+    if (typeof f.goal_id === "string" && alive("goal", f.goal_id)) fields.goal_id = f.goal_id;
     fields.due = next.due;
     if (next.remind_at) fields.remind_at = next.remind_at;
     fields.status = "open";
@@ -880,6 +899,15 @@ function isFlameRunning(e: Entity | undefined): boolean {
   return typeof ended !== "string" || Date.parse(ended) < Date.parse(started);
 }
 
+/** The flame history with the running flame appended (server: flame::log_flame; at most 1000 entries). */
+function flameLogField(e: Entity, end: string): Record<string, Json> {
+  const start = e.fields.flame_started_at?.value;
+  if (typeof start !== "string" || !(Date.parse(end) > Date.parse(start))) return {};
+  const old = e.fields.flame_log?.value;
+  const log = [...(Array.isArray(old) ? old : []), { start, end }] as Json[];
+  return { flame_log: log.slice(-1000) };
+}
+
 function flameOutcome(id: string, running: boolean, stopped: string[], unchanged: boolean) {
   const e = state.get(key("task", id));
   return {
@@ -1139,12 +1167,12 @@ const server = createServer(async (req, res) => {
         if (m[2] === "start") {
           if (running) return send(res, 200, flameOutcome(id, true, [], true));
           const others = [...state.values()].filter((e) => e.entity === "task" && e.id !== id && e.fields.deleted?.value !== true && isFlameRunning(e));
-          for (const other of others) serverOps("task", other.id, { flame_ended_at: at });
+          for (const other of others) serverOps("task", other.id, { flame_ended_at: at, ...flameLogField(other, at) });
           serverOps("task", id, { flame_started_at: at, flame_ended_at: null });
           return send(res, 200, flameOutcome(id, true, others.map((o) => o.id), false));
         }
         if (!running) return error(res, 409, "conflict", "Auf dieser Aufgabe läuft keine Flamme.");
-        serverOps("task", id, { flame_ended_at: at });
+        serverOps("task", id, { flame_ended_at: at, ...flameLogField(state.get(key("task", id))!, at) });
         return send(res, 200, flameOutcome(id, false, [], false));
       }
 

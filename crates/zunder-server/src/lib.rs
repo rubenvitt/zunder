@@ -9,6 +9,7 @@
 //! - [`oauth`]: built-in OAuth 2.1 authorization server for `/mcp`
 //! - [`views`]: task, area and project representations for tools
 //! - [`flame`]: starting and stopping flames (shared by HTTP and MCP)
+//! - [`flame_backfill`]: one-time reconstruction of `flame_log` from the op log
 //! - [`calendar`]: calendar feed (iCalendar) of flames and timed tasks
 //! - [`focus`]: "Erst für dich" in Heute (day clicked away, task picked)
 //! - [`intake`]: intake channels (write-only task creation for other servers)
@@ -26,6 +27,7 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod flame;
+pub mod flame_backfill;
 pub mod focus;
 pub mod github;
 pub mod healthcheck;
@@ -112,6 +114,11 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
     log_startup_warnings(&config);
     let bind = config.bind;
     let (app, router) = build(config).await?;
+    match flame_backfill::backfill_flame_log(&app).await {
+        Ok(0) => {}
+        Ok(n) => tracing::info!(tasks = n, "flame_log backfilled from the op log"),
+        Err(e) => tracing::warn!(error = %e, "flame_log backfill failed"),
+    }
     let listener = tokio::net::TcpListener::bind(bind)
         .await
         .with_context(|| format!("{bind} lässt sich nicht binden"))?;

@@ -16,6 +16,7 @@
 //! - [`search`]: diacritic-tolerant full-text search
 //! - [`balance`]: Wochenbilanz, done tasks of an ISO week by weight and
 //!   for whom
+//! - [`planning`]: Heute as one list, input per goal and week, Logbuch
 
 pub mod balance;
 pub mod blocking;
@@ -26,6 +27,7 @@ pub mod ids;
 pub mod model;
 pub mod numbering;
 pub mod op;
+pub mod planning;
 pub mod recurrence;
 pub mod search;
 pub mod state;
@@ -37,9 +39,9 @@ mod testutil;
 pub use builder::{NewArea, NewProject, NewTask, OpBatch};
 pub use hlc::{Clock, Hlc, NodeId};
 pub use model::{
-    Area, AreaState, Comment, Due, ForWhom, IsoWeek, Link, Location, MonthDay, Phoenix,
-    PhoenixRole, Project, ProjectKind, ProjectStatus, ProjectView, Recurrence, RecurrenceFrom,
-    RecurrenceUnit, Task, TaskStatus, TaskType, WeekdayCode, Weight,
+    Area, AreaState, Comment, Due, FlameInterval, ForWhom, Goal, GoalState, IsoWeek, Link,
+    Location, MonthDay, Phoenix, PhoenixRole, Project, ProjectKind, ProjectStatus, ProjectView,
+    Recurrence, RecurrenceFrom, RecurrenceUnit, Task, TaskStatus, TaskType, WeekdayCode, Weight,
 };
 pub use op::{EntityKind, Op};
 pub use state::{Progress, SnapshotEntity, State};

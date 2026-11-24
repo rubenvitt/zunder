@@ -15,7 +15,7 @@ import { installDetailHistory, NARROW_LAYOUT } from "./state/back";
 import { isTauri } from "./platform/runtime";
 import { isUnauthorized } from "./sync/transport";
 import { navigate, parseRoute, route, type Route, type ViewName } from "./state/router";
-import { inboxCount, todayGroups, waitingGroups } from "./state/selectors";
+import { inboxCount, todayCount as countToday, waitingGroups } from "./state/selectors";
 import { api, data, getEngine, pendingCount, ready, setNotifier, startSync, syncStatus, taskIndex } from "./state/store";
 import { captureOpen, deferRequest, detailId, handBackRequest, dropRequest, detailWide, detailWidth, helpOpen, openSearch, palette, setCaptureOpen, setDetailId, setHelpOpen, setSelectedId, sidebarHidden, structureEdit, toast, toggleSidebar } from "./state/ui";
 import { Logo } from "./components/Logo";
@@ -25,6 +25,8 @@ import { CommitmentsView, InboxView, LooseView, TodayView, WaitingView } from ".
 import { DevView, LoginView, PhoenixView, TokensView } from "./views/Other";
 import { AgentLogView } from "./views/AgentLog";
 import { SettingsView } from "./views/Settings";
+import { DoneLogView } from "./views/DoneLog";
+import { GoalsView } from "./views/Goals";
 import { StructureView } from "./views/Structure";
 
 interface NavItem {
@@ -46,11 +48,13 @@ const NAV: NavItem[] = [
   { view: "dev", label: "Dev", icon: "code", keys: "g d" },
   { view: "phoenix", label: "Phönix", icon: "flame", keys: "g p" },
   { view: "wartet", label: "Wartet auf andere", short: "Wartet", icon: "user", keys: "g w", gap: true },
+  { view: "ziele", label: "Ziele", icon: "target", keys: "g e" },
+  { view: "erledigt", label: "Erledigt", icon: "check", keys: "g r" },
 ];
 
 // The phone's tab bar holds four views, as iOS advises (at most five tabs); the rest sit behind "Mehr".
 const TAB_PRIMARY: ViewName[] = ["heute", "inbox", "bereiche", "phoenix"];
-const TAB_MORE: ViewName[] = ["lose", "dev", "wartet"];
+const TAB_MORE: ViewName[] = ["lose", "dev", "wartet", "ziele", "erledigt"];
 const navItem = (view: ViewName): NavItem => NAV.find((n) => n.view === view)!;
 
 setNotifier({
@@ -143,11 +147,8 @@ function Shell() {
   onCleanup(() => narrowQuery.removeEventListener("change", onNarrow));
   const covered = () => narrow() && !!detailId();
   const mobileTitle = () => NAV.find((n) => n.view === route().view)?.label ?? "Zunder";
-  // What each list holds, beside its name: due today (without the running flame) and who is waited on.
-  const todayCount = createMemo(() => {
-    const g = todayGroups();
-    return new Set([...g.overdue, ...g.dueToday, ...g.reminders, ...g.followUps].map((t) => t.id)).size;
-  });
+  // What each list holds, beside its name: Heute's order with reminders (without the running flame) and who is waited on.
+  const todayCount = createMemo(countToday);
   const waitingCount = createMemo(() => waitingGroups().reduce((n, g) => n + g.tasks.length, 0));
   const countOf = (view: ViewName) => (view === "inbox" ? inboxCount() : view === "heute" ? todayCount() : view === "wartet" ? waitingCount() : 0);
   const mac = /Mac|iPhone|iPad/.test(navigator.platform);
@@ -267,6 +268,12 @@ function Shell() {
           </Match>
           <Match when={route().view === "zusagen"}>
             <CommitmentsView />
+          </Match>
+          <Match when={route().view === "ziele"}>
+            <GoalsView />
+          </Match>
+          <Match when={route().view === "erledigt"}>
+            <DoneLogView />
           </Match>
           <Match when={route().view === "bereiche"}>
             <StructureView />

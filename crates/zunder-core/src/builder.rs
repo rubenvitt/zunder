@@ -91,6 +91,7 @@ pub struct NewTask {
     pub status: TaskStatus,
     pub location: Location,
     pub parent_id: Option<Id>,
+    pub goal_id: Option<Id>,
     pub due: Option<Due>,
     pub remind_at: Option<OffsetDateTime>,
     pub vault_links: Vec<String>,
@@ -278,6 +279,9 @@ impl<'c> OpBatch<'c> {
         if let Some(for_whom) = new.for_whom {
             self.set_task(id, f::FOR_WHOM, for_whom);
         }
+        if let Some(goal_id) = new.goal_id {
+            self.set_task(id, f::GOAL_ID, goal_id.to_string());
+        }
         id
     }
 
@@ -300,6 +304,10 @@ impl<'c> OpBatch<'c> {
 
     pub fn set_comment(&mut self, id: Id, field: &str, value: impl Into<Value>) -> &mut Self {
         self.set(EntityKind::Comment, id, field, value)
+    }
+
+    pub fn set_goal(&mut self, id: Id, field: &str, value: impl Into<Value>) -> &mut Self {
+        self.set(EntityKind::Goal, id, field, value)
     }
 
     /// Adds a comment to a task; `author` unset means the owner.
@@ -384,7 +392,7 @@ fn cascade(state: &State, entity: EntityKind, id: Id) -> Vec<(EntityKind, Id)> {
                 }
             }
         }
-        EntityKind::Comment => {}
+        EntityKind::Comment | EntityKind::Goal => {}
     }
     out
 }

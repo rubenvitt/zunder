@@ -72,6 +72,11 @@ export function describeChange(change: AgentChange): ChangeSummary {
       const href = area && !area.deleted ? `#/bereiche/area/${encodeURIComponent(id)}` : undefined;
       return { icon: "folder", lead: "Bereich", name, href, verb, details };
     }
+    case "goal": {
+      // The name comes from the change itself (a renamed or deleted goal still reads as it was then).
+      const name = text(lastValue(change, "name")) ?? "unbekanntes Ziel";
+      return { icon: "pencil", lead: "Ziel", name, verb, details };
+    }
   }
 }
 

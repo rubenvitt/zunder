@@ -12,6 +12,7 @@ export interface TaskListProps {
   swipe?: (task: Task) => SwipeActions;
   /** Waiting chips read "wartet noch auf <Name>". */
   waitingStill?: boolean;
+  quietDue?: boolean;
   label?: string;
 }
 
@@ -29,6 +30,7 @@ export function TaskList(props: TaskListProps) {
               actions={props.actions?.(task)}
               swipe={props.swipe?.(task)}
               waitingStill={props.waitingStill}
+              quietDue={props.quietDue}
               onSelect={() => setSelectedId(task.id)}
               onOpen={() => setDetailId(task.id)}
             />

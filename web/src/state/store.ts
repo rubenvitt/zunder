@@ -7,15 +7,17 @@ import { TaskIndex } from "../sync/derived";
 import { SyncEngine, type SyncStatus } from "../sync/engine";
 import { BrowserLocalStore, type LocalStore } from "../sync/local-store";
 import type { EntityState } from "../sync/merge";
-import { toArea, toComment, toProject, toTask } from "../sync/model";
+import { toArea, toComment, toGoal, toProject, toTask } from "../sync/model";
+import { compareGoals } from "../sync/planning";
 import { HttpTransport, type ApiClient, type SyncTransport } from "../sync/transport";
-import type { Area, Comment, Project, Rejection, Task, Warning } from "../sync/types";
+import type { Area, Comment, Goal, Project, Rejection, Task, Warning } from "../sync/types";
 
 interface DataState {
   areas: Record<string, Area>;
   projects: Record<string, Project>;
   tasks: Record<string, Task>;
   comments: Record<string, Comment>;
+  goals: Record<string, Goal>;
 }
 
 export interface Services {
@@ -32,7 +34,7 @@ export interface Notifier {
 const httpTransport = new HttpTransport();
 const defaultServices: Services = { transport: httpTransport, api: httpTransport, localStore: new BrowserLocalStore() };
 
-const [data, setData] = createStore<DataState>({ areas: {}, projects: {}, tasks: {}, comments: {} });
+const [data, setData] = createStore<DataState>({ areas: {}, projects: {}, tasks: {}, comments: {}, goals: {} });
 const [syncStatus, setSyncStatus] = createSignal<SyncStatus>("loading");
 const [enginePending, setEnginePending] = createSignal(0);
 // Tauri app: operations stored locally but not yet pushed by the app.
@@ -61,15 +63,17 @@ function writeEntity(e: EntityState): void {
   else if (e.entity === "project") setData("projects", e.id, reconcile(toProject(e)));
   else if (e.entity === "area") setData("areas", e.id, reconcile(toArea(e)));
   else if (e.entity === "comment") setData("comments", e.id, reconcile(toComment(e)));
+  else if (e.entity === "goal") setData("goals", e.id, reconcile(toGoal(e)));
 }
 
 function writeAll(eng: SyncEngine): void {
-  const next: DataState = { areas: {}, projects: {}, tasks: {}, comments: {} };
+  const next: DataState = { areas: {}, projects: {}, tasks: {}, comments: {}, goals: {} };
   for (const e of eng.view.values()) {
     if (e.entity === "task") next.tasks[e.id] = toTask(e);
     else if (e.entity === "project") next.projects[e.id] = toProject(e);
     else if (e.entity === "area") next.areas[e.id] = toArea(e);
     else if (e.entity === "comment") next.comments[e.id] = toComment(e);
+    else if (e.entity === "goal") next.goals[e.id] = toGoal(e);
   }
   setData(reconcile(next, { merge: true }));
 }
@@ -159,12 +163,19 @@ const derived = createRoot(() => {
     }
     return out;
   });
-  return { index, areaList, projectList, commentsByTask };
+  const goalList = createMemo(() =>
+    Object.values(data.goals)
+      .filter((g) => !g.deleted)
+      .sort(compareGoals),
+  );
+  return { index, areaList, projectList, commentsByTask, goalList };
 });
 
 export const taskIndex = derived.index;
 export const areaList = derived.areaList;
 export const projectList = derived.projectList;
+/** Live goals (open and closed), by rank (missing last), name, ID. */
+export const goalList = derived.goalList;
 
 /** Live comments of a task, oldest first. */
 export function commentsOf(taskId: string): Comment[] {

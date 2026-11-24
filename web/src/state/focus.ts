@@ -1,9 +1,10 @@
-// "Erst für dich" (contract 5.1): the day it was clicked away and the task picked for a day live
-// on the server (`/api/settings/focus`), so every browser sees them. This device keeps the last
-// known value and its own changes in localStorage: offline they hold at once and go to the
-// server at the next chance (start, switching to Heute, the browser going online). The Tauri app
-// goes through its commands focus_get/focus_set with the device token; connected with an API token
-// instead, it keeps both on the device.
+// "Erst für dich" (contract 5.1, design 5.2): the day it was clicked away lives on the server
+// (`/api/settings/focus`), so every browser sees it. Picking a Glut task for the day plans it for
+// today instead (state/actions planForToday); the setting's `chosen` is no longer written. This
+// device keeps the last known value and its own changes in localStorage: offline they hold at
+// once and go to the server at the next chance (start, switching to Heute, the browser going
+// online). The Tauri app goes through its commands focus_get/focus_set with the device token;
+// connected with an API token instead, it keeps both on the device.
 
 import { createSignal } from "solid-js";
 import { localDate } from "../sync/dates";
@@ -86,11 +87,6 @@ export function dismissFocus(): void {
 /** Brings it back today (undo of the dismissal). */
 export function undismissFocus(): void {
   change({ dismissed_on: null });
-}
-
-/** Picks a Glut task for today. */
-export function chooseFocus(taskId: string): void {
-  change({ chosen: { on: focusToday(), task_id: taskId } });
 }
 
 if (typeof window !== "undefined") {

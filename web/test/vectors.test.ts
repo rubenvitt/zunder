@@ -8,12 +8,14 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { weekBalance, type WeekBalance } from "../src/sync/balance";
+import { deferFields } from "../src/sync/defer";
+import { doneLog, goalInput, todayList } from "../src/sync/planning";
 import { isDevLocation, TaskIndex } from "../src/sync/derived";
 import { compareHlc, isValidHlc } from "../src/sync/hlc";
-import { toProject, toTask } from "../src/sync/model";
+import { toGoal, toProject, toTask } from "../src/sync/model";
 import { mergeOps } from "../src/sync/merge";
 import { validateOps } from "../src/sync/validate";
-import type { JsonValue, Op, Project, Task } from "../src/sync/types";
+import type { Goal, JsonValue, Op, Project, Task } from "../src/sync/types";
 import { nextOccurrence, type MockNext, type MockRecurrence } from "../e2e/mock-recurrence";
 import { permutations, shuffled } from "./helpers";
 
@@ -72,7 +74,77 @@ interface NextOccurrenceVector {
   }[];
 }
 
-type Vector = MergeVector | HlcOrderVector | ValidateVector | WeekBalanceVector | NextOccurrenceVector;
+/**
+ * Planning vectors (zunder_core::planning, sync/planning): per case its own `state` (merged in
+ * every order), the inputs and `expected` in the core's shape, which names tasks and goals by ID.
+ */
+interface PlanningVector<K extends string, C> {
+  name: string;
+  kind: K;
+  /** The zone the cases hold in; the tests run in it (vite.config.ts, TZ). */
+  time_zone: string;
+  cases: ({ description: string; state: Op[] } & C)[];
+}
+
+type TodayListVector = PlanningVector<
+  "today_list",
+  { today: string; expected: { items: string[]; focus: string | null; has_plan: boolean; plan_done: boolean } }
+>;
+
+type GoalInputVector = PlanningVector<
+  "goal_input",
+  {
+    /** RFC 3339: a running flame counts until then. */
+    now: string;
+    week: string;
+    expected: {
+      week: string;
+      from: string;
+      to: string;
+      goals: { goal_id: string; done: number; minutes: number; lead_per_week: number | null; reached: boolean }[];
+    };
+  }
+>;
+
+interface LogEntryIds {
+  task_id: string;
+  minutes: number;
+}
+
+type DoneLogVector = PlanningVector<
+  "done_log",
+  {
+    /** RFC 3339: a running flame counts until then. */
+    now: string;
+    from: string;
+    to: string;
+    expected: { date: string; minutes: number; done: LogEntryIds[]; worked: LogEntryIds[] }[];
+  }
+>;
+
+/** "Heute nicht" (zunder_core::defer::plan, sync/defer deferFields): new values, null = stays. */
+interface DeferVector {
+  name: string;
+  kind: "defer";
+  cases: {
+    description: string;
+    day: string;
+    task_id: string;
+    state: Op[];
+    expected: { due: string | null; remind_at: string | null; planned_on: string | null; deferrals: number } | null;
+  }[];
+}
+
+type Vector =
+  | DeferVector
+  | MergeVector
+  | HlcOrderVector
+  | ValidateVector
+  | WeekBalanceVector
+  | NextOccurrenceVector
+  | TodayListVector
+  | GoalInputVector
+  | DoneLogVector;
 
 /** Noon of a local date "YYYY-MM-DD" in the process zone, as Unix milliseconds. */
 function localNoon(date: string): number {
@@ -91,6 +163,37 @@ function balanceOf(ops: Op[], week: string): WeekBalance {
   }
   const index = new TaskIndex(tasks);
   return weekBalance(index.byId.values(), week, (t) => index.isDeleted(t) || isDevLocation(index.location(t), (id) => projects.get(id)));
+}
+
+/** What the planning rules read from a merged state. */
+function planningInput(ops: Op[]): { index: TaskIndex; goals: Record<string, Goal>; projects: Record<string, Project> } {
+  const tasks: Task[] = [];
+  const goals: Record<string, Goal> = {};
+  const projects: Record<string, Project> = {};
+  for (const e of mergeOps(ops).values()) {
+    if (e.entity === "task") tasks.push(toTask(e));
+    else if (e.entity === "goal") goals[e.id] = toGoal(e);
+    else if (e.entity === "project") projects[e.id] = toProject(e);
+  }
+  return { index: new TaskIndex(tasks), goals, projects };
+}
+
+/** Runs the cases of a planning vector in every order of their state. */
+function checkPlanning<C extends { description: string; state: Op[]; expected: unknown }>(
+  vector: { time_zone: string; cases: C[] },
+  run: (c: C, ops: Op[]) => unknown,
+): void {
+  expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe(vector.time_zone);
+  expect(vector.cases.length).toBeGreaterThan(0);
+  for (const c of vector.cases) {
+    for (const order of orderings(c.state)) expect(run(c, order), c.description).toEqual(c.expected);
+  }
+}
+
+function nowOf(c: { description: string; now: string }): number {
+  const now = Date.parse(c.now);
+  expect(Number.isNaN(now), c.description).toBe(false);
+  return now;
 }
 
 function orderings<T>(items: readonly T[]): T[][] {
@@ -148,6 +251,42 @@ describe("shared test vectors", () => {
           const got = nextOccurrence(c.recurrence, c.due, c.remind_at ?? null, completed, localNoon(c.today));
           expect(got, c.description).toEqual(c.expected);
         }
+        return;
+      }
+      if (vector.kind === "today_list") {
+        checkPlanning(vector, (c, ops) => {
+          const got = todayList(planningInput(ops).index, c.today);
+          return { items: got.items.map((t) => t.id), focus: got.focus?.id ?? null, has_plan: got.has_plan, plan_done: got.plan_done };
+        });
+        return;
+      }
+      if (vector.kind === "defer") {
+        expect(vector.cases.length).toBeGreaterThan(0);
+        for (const c of vector.cases) {
+          for (const order of orderings(c.state)) {
+            const task = planningInput(order).index.byId.get(c.task_id);
+            expect(task, c.description).toBeDefined();
+            const f = deferFields(task!, c.day);
+            const got = f && { due: f.due ?? null, remind_at: f.remind_at ?? null, planned_on: f.planned_on ?? null, deferrals: f.deferrals };
+            expect(got, c.description).toEqual(c.expected);
+          }
+        }
+        return;
+      }
+      if (vector.kind === "goal_input") {
+        checkPlanning(vector, (c, ops) => {
+          const { index, goals } = planningInput(ops);
+          const got = goalInput(index, goals, c.week, nowOf(c));
+          return { ...got, goals: got.goals.map(({ goal, ...row }) => ({ goal_id: goal.id, ...row })) };
+        });
+        return;
+      }
+      if (vector.kind === "done_log") {
+        checkPlanning(vector, (c, ops) => {
+          const { index, projects } = planningInput(ops);
+          const ids = (entries: { task: Task; minutes: number }[]) => entries.map((e) => ({ task_id: e.task.id, minutes: e.minutes }));
+          return doneLog(index, projects, c.from, c.to, nowOf(c)).map((d) => ({ ...d, done: ids(d.done), worked: ids(d.worked) }));
+        });
         return;
       }
       expect(vector.kind).toBe("merge");

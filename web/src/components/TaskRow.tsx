@@ -4,6 +4,7 @@ import { needsDecision } from "../sync/defer";
 import type { Task } from "../sync/types";
 import { deferralsLabel, describeRecurrence, FOR_WHOM_HINTS, FOR_WHOM_LABELS, locationLabel, PHOENIX_LABELS, STATUS_LABELS, TYPE_LABELS, waitingLabel, WEIGHT_HINTS, WEIGHT_LABELS } from "../labels";
 import { data, now, taskIndex } from "../state/store";
+import { GoalMark } from "./GoalMark";
 import { Icon } from "./Icon";
 import { CheckButton, DueChip, RefButton, SubtaskToggle, SubtaskTree } from "./TaskBits";
 
@@ -30,8 +31,18 @@ export interface TaskRowProps {
   swipe?: SwipeActions;
   /** The chip reads "wartet noch auf <Name>" (Wiedervorlage in Heute). */
   waitingStill?: boolean;
+  /** The due date without colour and time of day (Heute's order, design 5.1). */
+  quietDue?: boolean;
+  /** HTML5 drag & drop (Heute's order). */
+  drag?: RowDrag;
   onOpen: () => void;
   onSelect: () => void;
+}
+
+export interface RowDrag {
+  dragging: boolean;
+  onDragStart: (e: DragEvent) => void;
+  onDragEnd: () => void;
 }
 
 const SWIPE_THRESHOLD = 80;
@@ -74,7 +85,7 @@ function PersonalChips(props: { task: Task }) {
   );
 }
 
-export function TaskMeta(props: { task: Task; showLocation?: boolean; showRef?: boolean; showProgress?: boolean; waitingStill?: boolean }) {
+export function TaskMeta(props: { task: Task; showLocation?: boolean; showRef?: boolean; showProgress?: boolean; waitingStill?: boolean; quietDue?: boolean }) {
   const progress = () => taskIndex().progress(props.task.id);
   return (
     <span class="task-meta">
@@ -107,7 +118,7 @@ export function TaskMeta(props: { task: Task; showLocation?: boolean; showRef?: 
           </span>
         )}
       </Show>
-      <DueChip task={props.task} />
+      <DueChip task={props.task} quiet={props.quietDue} />
       <PersonalChips task={props.task} />
       <Show when={props.task.recurrence}>
         {(r) => (
@@ -190,10 +201,13 @@ export function TaskRow(props: TaskRowProps) {
     <li
       ref={ref}
       class="task-row"
-      classList={{ selected: props.selected, closed: isClosed(props.task.status), swiping: dx() !== 0 }}
+      classList={{ selected: props.selected, closed: isClosed(props.task.status), swiping: dx() !== 0, dragging: !!props.drag?.dragging }}
       data-task-id={props.task.id}
       data-status={props.task.status}
       aria-selected={props.selected}
+      draggable={props.drag ? "true" : undefined}
+      onDragStart={(e) => props.drag?.onDragStart(e)}
+      onDragEnd={() => props.drag?.onDragEnd()}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -215,9 +229,10 @@ export function TaskRow(props: TaskRowProps) {
           onFocus={() => props.onSelect()}
         >
           <span class="task-title">{props.task.title}</span>
-          <TaskMeta task={props.task} showLocation={props.showLocation} waitingStill={props.waitingStill} />
+          <TaskMeta task={props.task} showLocation={props.showLocation} waitingStill={props.waitingStill} quietDue={props.quietDue} />
         </button>
         <span class="row-side">
+          <GoalMark task={props.task} />
           <SubtaskToggle task={props.task} open={subtasksOpen()} onToggle={() => setSubtasksOpen((o) => !o)} />
           <RefButton task={props.task} />
         </span>

@@ -1,0 +1,1658 @@
+{
+  "name": "ziel-input-woche",
+  "description": "Input pro Ziel und ISO-Woche (Entwurf 6.1) in Europe/Berlin: nur aktive, lebende Ziele nach rank (fehlend zuletzt), dann Name. done zählt lebende, erledigte Aufgaben mit diesem effektiven Ziel nach dem Ortstag von status_changed_at (Unteraufgabe ohne Ziel zählt für das Ziel der Wurzel, mit eigenem Ziel für dieses, mit gelöschtem eigenem Ziel wieder für das der Wurzel; Dev-Aufgaben zählen). minutes summiert ganze Minuten je Flamme aus flame_log plus die laufende Flamme bis now, nach dem Tag des Starts, egal welcher Status (verworfen zählt mit, gelöscht nicht). Die Flamme So 29.11. 23:30 bis Mo 0:30 zählt 60 min in W48; die laufende Flamme ab Mo 0:40 zählt in W49. Geschlossene und gelöschte Ziele fehlen.",
+  "kind": "goal_input",
+  "time_zone": "Europe/Berlin",
+  "cases": [
+    {
+      "description": "Woche 48: Sport erreicht (3 Züge bei 1), Sichtbar nicht (1 bei 2), I&K ohne Leitkennzahl mit Dev-Aufgabe und Unteraufgabe mit gelöschtem eigenem Ziel",
+      "now": "2026-11-30T01:10:45+01:00",
+      "week": "2026-W48",
+      "state": [
+        {
+          "op_id": "p660000000e0000000000001",
+          "entity": "area",
+          "entity_id": "p660000000a0000000000001",
+          "field": "name",
+          "value": "Arbeit",
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000002",
+          "entity": "project",
+          "entity_id": "p660000000b0000000000002",
+          "field": "name",
+          "value": "App",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000003",
+          "entity": "project",
+          "entity_id": "p660000000b0000000000002",
+          "field": "area_id",
+          "value": "p660000000a0000000000001",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000004",
+          "entity": "project",
+          "entity_id": "p660000000b0000000000002",
+          "field": "kind",
+          "value": "dev",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000005",
+          "entity": "project",
+          "entity_id": "p660000000b0000000000002",
+          "field": "repo",
+          "value": "example/app",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000006",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000001",
+          "field": "name",
+          "value": "Sport",
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000007",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000001",
+          "field": "emoji",
+          "value": "🏃",
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000008",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000001",
+          "field": "lead_per_week",
+          "value": 1,
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000009",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000001",
+          "field": "rank",
+          "value": "a1",
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000010",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000002",
+          "field": "name",
+          "value": "Sichtbar werden",
+          "hlc": "1793520004000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000011",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000002",
+          "field": "emoji",
+          "value": "🎤",
+          "hlc": "1793520004000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000012",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000002",
+          "field": "lead_per_week",
+          "value": 2,
+          "hlc": "1793520004000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000013",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000002",
+          "field": "rank",
+          "value": "a0",
+          "hlc": "1793520004000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000014",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000003",
+          "field": "name",
+          "value": "I&K-Gruppe",
+          "hlc": "1793520005000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000015",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000003",
+          "field": "emoji",
+          "value": "🚒",
+          "hlc": "1793520005000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000016",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000003",
+          "field": "rank",
+          "value": "a1",
+          "hlc": "1793520005000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000017",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000004",
+          "field": "name",
+          "value": "Lesen",
+          "hlc": "1793520006000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000018",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000004",
+          "field": "lead_per_week",
+          "value": 1,
+          "hlc": "1793520006000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000019",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000005",
+          "field": "name",
+          "value": "Altes Ziel",
+          "hlc": "1793520007000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000020",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000005",
+          "field": "state",
+          "value": "closed",
+          "hlc": "1793520007000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000021",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000005",
+          "field": "lead_per_week",
+          "value": 1,
+          "hlc": "1793520007000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000022",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000005",
+          "field": "rank",
+          "value": "a0",
+          "hlc": "1793520007000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000023",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000006",
+          "field": "name",
+          "value": "Gelöschtes Ziel",
+          "hlc": "1793520008000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000024",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000006",
+          "field": "lead_per_week",
+          "value": 1,
+          "hlc": "1793520008000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000025",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000006",
+          "field": "rank",
+          "value": "a0",
+          "hlc": "1793520008000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000026",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000006",
+          "field": "deleted",
+          "value": true,
+          "hlc": "1795165200000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000027",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000001",
+          "field": "title",
+          "value": "Laufen",
+          "hlc": "1793520009000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000028",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000001",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520009000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000029",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000001",
+          "field": "goal_id",
+          "value": "p660000000g0000000000001",
+          "hlc": "1793520009000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000030",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000001",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795604400000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000031",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000002",
+          "field": "title",
+          "value": "Laufen am Sonntagabend",
+          "hlc": "1793520010000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000032",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000002",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520010000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000033",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000002",
+          "field": "goal_id",
+          "value": "p660000000g0000000000001",
+          "hlc": "1793520010000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000034",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000002",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795991400000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000035",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000003",
+          "field": "title",
+          "value": "Laufen am Montag danach",
+          "hlc": "1793520011000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000036",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000003",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520011000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000037",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000003",
+          "field": "goal_id",
+          "value": "p660000000g0000000000001",
+          "hlc": "1793520011000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000038",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000003",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795993800000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000039",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000004",
+          "field": "title",
+          "value": "Blogartikel",
+          "hlc": "1793520012000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000040",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000004",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520012000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000041",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000004",
+          "field": "goal_id",
+          "value": "p660000000g0000000000002",
+          "hlc": "1793520012000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000042",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000004",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-11-25T10:00:00+01:00",
+              "end": "2026-11-25T10:40:59+01:00"
+            }
+          ],
+          "hlc": "1793520012000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000043",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000005",
+          "field": "title",
+          "value": "Gliederung (Unteraufgabe ohne Ziel)",
+          "hlc": "1793520013000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000044",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000005",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520013000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000045",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000005",
+          "field": "parent_id",
+          "value": "p660000000t0000000000004",
+          "hlc": "1793520013000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000046",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000005",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795712400000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000047",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000006",
+          "field": "title",
+          "value": "Dehnen (Unteraufgabe mit eigenem Ziel)",
+          "hlc": "1793520014000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000048",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000006",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520014000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000049",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000006",
+          "field": "parent_id",
+          "value": "p660000000t0000000000004",
+          "hlc": "1793520014000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000050",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000006",
+          "field": "goal_id",
+          "value": "p660000000g0000000000001",
+          "hlc": "1793520014000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000051",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000006",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795798800000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000052",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000007",
+          "field": "title",
+          "value": "Trainingsplan",
+          "hlc": "1793520015000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000053",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000007",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520015000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000054",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000007",
+          "field": "goal_id",
+          "value": "p660000000g0000000000001",
+          "hlc": "1793520015000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000055",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000007",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-11-22T10:00:00+01:00",
+              "end": "2026-11-22T11:00:00+01:00"
+            },
+            {
+              "start": "2026-11-29T23:30:00+01:00",
+              "end": "2026-11-30T00:30:00+01:00"
+            }
+          ],
+          "hlc": "1793520015000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000056",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000007",
+          "field": "flame_started_at",
+          "value": "2026-11-30T00:40:00+01:00",
+          "hlc": "1793520015000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000057",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000007",
+          "field": "flame_ended_at",
+          "value": "2026-11-30T00:30:00+01:00",
+          "hlc": "1793520015000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000058",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000008",
+          "field": "title",
+          "value": "Verworfen mit Flamme",
+          "hlc": "1793520016000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000059",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000008",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520016000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000060",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000008",
+          "field": "goal_id",
+          "value": "p660000000g0000000000001",
+          "hlc": "1793520016000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000061",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000008",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-11-24T18:00:00+01:00",
+              "end": "2026-11-24T18:15:00+01:00"
+            }
+          ],
+          "hlc": "1793520016000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000062",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000008",
+          "field": "status",
+          "value": "dropped",
+          "hlc": "1795543200000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000063",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000009",
+          "field": "title",
+          "value": "Funkplan im Dev-Projekt",
+          "hlc": "1793520017000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000064",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000009",
+          "field": "location",
+          "value": {
+            "kind": "project",
+            "id": "p660000000b0000000000002"
+          },
+          "hlc": "1793520017000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000065",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000009",
+          "field": "goal_id",
+          "value": "p660000000g0000000000003",
+          "hlc": "1793520017000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000066",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000009",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795507200000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000067",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000010",
+          "field": "title",
+          "value": "Für das alte Ziel",
+          "hlc": "1793520018000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000068",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000010",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520018000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000069",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000010",
+          "field": "goal_id",
+          "value": "p660000000g0000000000005",
+          "hlc": "1793520018000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000070",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000010",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-11-24T08:00:00+01:00",
+              "end": "2026-11-24T08:30:00+01:00"
+            }
+          ],
+          "hlc": "1793520018000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000071",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000010",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795507200000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000072",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000011",
+          "field": "title",
+          "value": "Für das gelöschte Ziel",
+          "hlc": "1793520019000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000073",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000011",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520019000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000074",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000011",
+          "field": "goal_id",
+          "value": "p660000000g0000000000006",
+          "hlc": "1793520019000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000075",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000011",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795507200000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000076",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000012",
+          "field": "title",
+          "value": "Gelöscht",
+          "hlc": "1793520020000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000077",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000012",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520020000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000078",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000012",
+          "field": "goal_id",
+          "value": "p660000000g0000000000001",
+          "hlc": "1793520020000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000079",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000012",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-11-24T08:00:00+01:00",
+              "end": "2026-11-24T08:30:00+01:00"
+            }
+          ],
+          "hlc": "1793520020000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000080",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000012",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795507200000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000081",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000012",
+          "field": "deleted",
+          "value": true,
+          "hlc": "1795510800000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000082",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000013",
+          "field": "title",
+          "value": "Offen mit Ziel",
+          "hlc": "1793520021000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000083",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000013",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520021000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000084",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000013",
+          "field": "goal_id",
+          "value": "p660000000g0000000000004",
+          "hlc": "1793520021000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000085",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "title",
+          "value": "Unteraufgabe mit gelöschtem eigenem Ziel",
+          "hlc": "1793520022000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000086",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520022000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000087",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "parent_id",
+          "value": "p660000000t0000000000009",
+          "hlc": "1793520022000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000088",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "goal_id",
+          "value": "p660000000g0000000000006",
+          "hlc": "1793520022000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000089",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-11-26T19:00:00+01:00",
+              "end": "2026-11-26T19:10:00+01:00"
+            }
+          ],
+          "hlc": "1793520022000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000090",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795719600000:00000:p"
+        }
+      ],
+      "expected": {
+        "week": "2026-W48",
+        "from": "2026-11-23",
+        "to": "2026-11-29",
+        "goals": [
+          {
+            "goal_id": "p660000000g0000000000002",
+            "done": 1,
+            "minutes": 40,
+            "lead_per_week": 2,
+            "reached": false
+          },
+          {
+            "goal_id": "p660000000g0000000000003",
+            "done": 2,
+            "minutes": 10,
+            "lead_per_week": null,
+            "reached": false
+          },
+          {
+            "goal_id": "p660000000g0000000000001",
+            "done": 3,
+            "minutes": 75,
+            "lead_per_week": 1,
+            "reached": true
+          },
+          {
+            "goal_id": "p660000000g0000000000004",
+            "done": 0,
+            "minutes": 0,
+            "lead_per_week": 1,
+            "reached": false
+          }
+        ]
+      }
+    },
+    {
+      "description": "Woche 49: die Erledigung Mo 0:10 und die laufende Flamme ab Mo 0:40 bis now (30 min)",
+      "now": "2026-11-30T01:10:45+01:00",
+      "week": "2026-W49",
+      "state": [
+        {
+          "op_id": "p660000000e0000000000001",
+          "entity": "area",
+          "entity_id": "p660000000a0000000000001",
+          "field": "name",
+          "value": "Arbeit",
+          "hlc": "1793520001000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000002",
+          "entity": "project",
+          "entity_id": "p660000000b0000000000002",
+          "field": "name",
+          "value": "App",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000003",
+          "entity": "project",
+          "entity_id": "p660000000b0000000000002",
+          "field": "area_id",
+          "value": "p660000000a0000000000001",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000004",
+          "entity": "project",
+          "entity_id": "p660000000b0000000000002",
+          "field": "kind",
+          "value": "dev",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000005",
+          "entity": "project",
+          "entity_id": "p660000000b0000000000002",
+          "field": "repo",
+          "value": "example/app",
+          "hlc": "1793520002000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000006",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000001",
+          "field": "name",
+          "value": "Sport",
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000007",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000001",
+          "field": "emoji",
+          "value": "🏃",
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000008",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000001",
+          "field": "lead_per_week",
+          "value": 1,
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000009",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000001",
+          "field": "rank",
+          "value": "a1",
+          "hlc": "1793520003000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000010",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000002",
+          "field": "name",
+          "value": "Sichtbar werden",
+          "hlc": "1793520004000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000011",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000002",
+          "field": "emoji",
+          "value": "🎤",
+          "hlc": "1793520004000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000012",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000002",
+          "field": "lead_per_week",
+          "value": 2,
+          "hlc": "1793520004000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000013",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000002",
+          "field": "rank",
+          "value": "a0",
+          "hlc": "1793520004000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000014",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000003",
+          "field": "name",
+          "value": "I&K-Gruppe",
+          "hlc": "1793520005000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000015",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000003",
+          "field": "emoji",
+          "value": "🚒",
+          "hlc": "1793520005000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000016",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000003",
+          "field": "rank",
+          "value": "a1",
+          "hlc": "1793520005000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000017",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000004",
+          "field": "name",
+          "value": "Lesen",
+          "hlc": "1793520006000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000018",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000004",
+          "field": "lead_per_week",
+          "value": 1,
+          "hlc": "1793520006000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000019",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000005",
+          "field": "name",
+          "value": "Altes Ziel",
+          "hlc": "1793520007000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000020",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000005",
+          "field": "state",
+          "value": "closed",
+          "hlc": "1793520007000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000021",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000005",
+          "field": "lead_per_week",
+          "value": 1,
+          "hlc": "1793520007000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000022",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000005",
+          "field": "rank",
+          "value": "a0",
+          "hlc": "1793520007000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000023",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000006",
+          "field": "name",
+          "value": "Gelöschtes Ziel",
+          "hlc": "1793520008000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000024",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000006",
+          "field": "lead_per_week",
+          "value": 1,
+          "hlc": "1793520008000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000025",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000006",
+          "field": "rank",
+          "value": "a0",
+          "hlc": "1793520008000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000026",
+          "entity": "goal",
+          "entity_id": "p660000000g0000000000006",
+          "field": "deleted",
+          "value": true,
+          "hlc": "1795165200000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000027",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000001",
+          "field": "title",
+          "value": "Laufen",
+          "hlc": "1793520009000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000028",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000001",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520009000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000029",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000001",
+          "field": "goal_id",
+          "value": "p660000000g0000000000001",
+          "hlc": "1793520009000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000030",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000001",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795604400000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000031",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000002",
+          "field": "title",
+          "value": "Laufen am Sonntagabend",
+          "hlc": "1793520010000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000032",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000002",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520010000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000033",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000002",
+          "field": "goal_id",
+          "value": "p660000000g0000000000001",
+          "hlc": "1793520010000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000034",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000002",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795991400000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000035",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000003",
+          "field": "title",
+          "value": "Laufen am Montag danach",
+          "hlc": "1793520011000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000036",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000003",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520011000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000037",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000003",
+          "field": "goal_id",
+          "value": "p660000000g0000000000001",
+          "hlc": "1793520011000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000038",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000003",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795993800000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000039",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000004",
+          "field": "title",
+          "value": "Blogartikel",
+          "hlc": "1793520012000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000040",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000004",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520012000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000041",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000004",
+          "field": "goal_id",
+          "value": "p660000000g0000000000002",
+          "hlc": "1793520012000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000042",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000004",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-11-25T10:00:00+01:00",
+              "end": "2026-11-25T10:40:59+01:00"
+            }
+          ],
+          "hlc": "1793520012000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000043",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000005",
+          "field": "title",
+          "value": "Gliederung (Unteraufgabe ohne Ziel)",
+          "hlc": "1793520013000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000044",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000005",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520013000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000045",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000005",
+          "field": "parent_id",
+          "value": "p660000000t0000000000004",
+          "hlc": "1793520013000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000046",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000005",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795712400000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000047",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000006",
+          "field": "title",
+          "value": "Dehnen (Unteraufgabe mit eigenem Ziel)",
+          "hlc": "1793520014000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000048",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000006",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520014000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000049",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000006",
+          "field": "parent_id",
+          "value": "p660000000t0000000000004",
+          "hlc": "1793520014000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000050",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000006",
+          "field": "goal_id",
+          "value": "p660000000g0000000000001",
+          "hlc": "1793520014000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000051",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000006",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795798800000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000052",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000007",
+          "field": "title",
+          "value": "Trainingsplan",
+          "hlc": "1793520015000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000053",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000007",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520015000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000054",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000007",
+          "field": "goal_id",
+          "value": "p660000000g0000000000001",
+          "hlc": "1793520015000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000055",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000007",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-11-22T10:00:00+01:00",
+              "end": "2026-11-22T11:00:00+01:00"
+            },
+            {
+              "start": "2026-11-29T23:30:00+01:00",
+              "end": "2026-11-30T00:30:00+01:00"
+            }
+          ],
+          "hlc": "1793520015000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000056",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000007",
+          "field": "flame_started_at",
+          "value": "2026-11-30T00:40:00+01:00",
+          "hlc": "1793520015000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000057",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000007",
+          "field": "flame_ended_at",
+          "value": "2026-11-30T00:30:00+01:00",
+          "hlc": "1793520015000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000058",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000008",
+          "field": "title",
+          "value": "Verworfen mit Flamme",
+          "hlc": "1793520016000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000059",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000008",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520016000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000060",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000008",
+          "field": "goal_id",
+          "value": "p660000000g0000000000001",
+          "hlc": "1793520016000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000061",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000008",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-11-24T18:00:00+01:00",
+              "end": "2026-11-24T18:15:00+01:00"
+            }
+          ],
+          "hlc": "1793520016000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000062",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000008",
+          "field": "status",
+          "value": "dropped",
+          "hlc": "1795543200000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000063",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000009",
+          "field": "title",
+          "value": "Funkplan im Dev-Projekt",
+          "hlc": "1793520017000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000064",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000009",
+          "field": "location",
+          "value": {
+            "kind": "project",
+            "id": "p660000000b0000000000002"
+          },
+          "hlc": "1793520017000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000065",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000009",
+          "field": "goal_id",
+          "value": "p660000000g0000000000003",
+          "hlc": "1793520017000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000066",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000009",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795507200000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000067",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000010",
+          "field": "title",
+          "value": "Für das alte Ziel",
+          "hlc": "1793520018000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000068",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000010",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520018000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000069",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000010",
+          "field": "goal_id",
+          "value": "p660000000g0000000000005",
+          "hlc": "1793520018000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000070",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000010",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-11-24T08:00:00+01:00",
+              "end": "2026-11-24T08:30:00+01:00"
+            }
+          ],
+          "hlc": "1793520018000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000071",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000010",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795507200000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000072",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000011",
+          "field": "title",
+          "value": "Für das gelöschte Ziel",
+          "hlc": "1793520019000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000073",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000011",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520019000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000074",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000011",
+          "field": "goal_id",
+          "value": "p660000000g0000000000006",
+          "hlc": "1793520019000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000075",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000011",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795507200000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000076",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000012",
+          "field": "title",
+          "value": "Gelöscht",
+          "hlc": "1793520020000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000077",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000012",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520020000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000078",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000012",
+          "field": "goal_id",
+          "value": "p660000000g0000000000001",
+          "hlc": "1793520020000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000079",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000012",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-11-24T08:00:00+01:00",
+              "end": "2026-11-24T08:30:00+01:00"
+            }
+          ],
+          "hlc": "1793520020000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000080",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000012",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795507200000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000081",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000012",
+          "field": "deleted",
+          "value": true,
+          "hlc": "1795510800000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000082",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000013",
+          "field": "title",
+          "value": "Offen mit Ziel",
+          "hlc": "1793520021000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000083",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000013",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520021000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000084",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000013",
+          "field": "goal_id",
+          "value": "p660000000g0000000000004",
+          "hlc": "1793520021000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000085",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "title",
+          "value": "Unteraufgabe mit gelöschtem eigenem Ziel",
+          "hlc": "1793520022000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000086",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "location",
+          "value": {
+            "kind": "loose"
+          },
+          "hlc": "1793520022000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000087",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "parent_id",
+          "value": "p660000000t0000000000009",
+          "hlc": "1793520022000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000088",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "goal_id",
+          "value": "p660000000g0000000000006",
+          "hlc": "1793520022000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000089",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "flame_log",
+          "value": [
+            {
+              "start": "2026-11-26T19:00:00+01:00",
+              "end": "2026-11-26T19:10:00+01:00"
+            }
+          ],
+          "hlc": "1793520022000:00000:p"
+        },
+        {
+          "op_id": "p660000000e0000000000090",
+          "entity": "task",
+          "entity_id": "p660000000t0000000000014",
+          "field": "status",
+          "value": "done",
+          "hlc": "1795719600000:00000:p"
+        }
+      ],
+      "expected": {
+        "week": "2026-W49",
+        "from": "2026-11-30",
+        "to": "2026-12-06",
+        "goals": [
+          {
+            "goal_id": "p660000000g0000000000002",
+            "done": 0,
+            "minutes": 0,
+            "lead_per_week": 2,
+            "reached": false
+          },
+          {
+            "goal_id": "p660000000g0000000000003",
+            "done": 0,
+            "minutes": 0,
+            "lead_per_week": null,
+            "reached": false
+          },
+          {
+            "goal_id": "p660000000g0000000000001",
+            "done": 1,
+            "minutes": 30,
+            "lead_per_week": 1,
+            "reached": true
+          },
+          {
+            "goal_id": "p660000000g0000000000004",
+            "done": 0,
+            "minutes": 0,
+            "lead_per_week": 1,
+            "reached": false
+          }
+        ]
+      }
+    }
+  ]
+}

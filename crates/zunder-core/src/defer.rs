@@ -1,6 +1,8 @@
 //! "Heute nicht": putting a task off to a later day, counted by the
-//! deferral counter of the Phönix-Progression (Verschiebungs-Counter). The
-//! web UI mirrors these rules in `web/src/sync/defer.ts`.
+//! deferral counter of the Phönix-Progression (Verschiebungs-Counter). A
+//! task planned for an earlier day takes its plan along (design 5.3). The
+//! web UI mirrors these rules in `web/src/sync/defer.ts`; the shared vector
+//! kind `defer` checks both.
 
 use time::{Date, OffsetDateTime, Weekday};
 
@@ -41,6 +43,8 @@ pub struct Deferral {
     pub due: Option<Due>,
     /// New reminder: one before `day` moves to `day` at the same time.
     pub remind_at: Option<OffsetDateTime>,
+    /// New plan day: a task planned before `day` is planned for `day`.
+    pub planned_on: Option<Date>,
     /// The counter after this deferral.
     pub deferrals: u32,
 }
@@ -50,8 +54,9 @@ pub fn needs_decision(task: &Task) -> bool {
     task.deferrals >= FREE_DEFERRALS
 }
 
-/// What putting `task` off to `day` changes; `None` when its due date and
-/// reminder already lie on or after `day`.
+/// What putting `task` off to `day` changes; `None` when its due date,
+/// reminder and plan day already lie on or after `day` (or are not set). A
+/// plan that moves alone counts as a deferral too.
 pub fn plan(task: &Task, day: Date) -> Option<Deferral> {
     let due = match task.due {
         Some(Due::Date(d)) if d < day => Some(Due::Date(day)),
@@ -66,12 +71,14 @@ pub fn plan(task: &Task, day: Date) -> Option<Deferral> {
         (None, None, None) => Some(Due::Date(day)),
         (due, ..) => due,
     };
-    if due.is_none() && remind_at.is_none() {
+    let planned_on = task.planned_on.filter(|p| *p < day).map(|_| day);
+    if due.is_none() && remind_at.is_none() && planned_on.is_none() {
         return None;
     }
     Some(Deferral {
         due,
         remind_at,
+        planned_on,
         deferrals: task.deferrals.saturating_add(1),
     })
 }
@@ -172,6 +179,25 @@ mod tests {
         let d = plan(&t, date!(2026 - 10 - 17)).unwrap();
         assert_eq!(d.due, Due::parse("2026-10-17"));
         assert_eq!(d.remind_at, None);
+    }
+
+    #[test]
+    fn a_planned_task_takes_its_plan_along() {
+        let mut t = task(Some("2026-10-15"), None, 0);
+        t.planned_on = Some(date!(2026 - 10 - 16));
+        let d = plan(&t, date!(2026 - 10 - 17)).unwrap();
+        assert_eq!(d.due, Due::parse("2026-10-17"));
+        assert_eq!(d.planned_on, Some(date!(2026 - 10 - 17)));
+        // Due later anyway: only the plan moves, and it counts.
+        let mut t = task(Some("2026-10-30"), None, 1);
+        t.planned_on = Some(date!(2026 - 10 - 16));
+        let d = plan(&t, date!(2026 - 10 - 17)).unwrap();
+        assert_eq!((d.due, d.remind_at), (None, None));
+        assert_eq!(d.planned_on, Some(date!(2026 - 10 - 17)));
+        assert_eq!(d.deferrals, 2);
+        // Planned for that day or later: the plan stays.
+        t.planned_on = Some(date!(2026 - 10 - 17));
+        assert_eq!(plan(&t, date!(2026 - 10 - 17)), None);
     }
 
     #[test]

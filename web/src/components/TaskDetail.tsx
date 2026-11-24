@@ -19,6 +19,8 @@ import {
   historyTaskRefs,
   locationLabel,
   PHOENIX_LABELS,
+  PLAN_FOR_TODAY,
+  REMOVE_FROM_TODAY,
   sourceLabel,
   STATUS_LABELS,
   TYPE_LABELS,
@@ -37,7 +39,10 @@ import {
   dependentsCount,
   dropTask,
   flame,
+  isInToday,
   moveTask,
+  planForToday,
+  removeFromToday,
   selfCommitted,
   setParent,
   setStatus,
@@ -46,7 +51,8 @@ import {
   updateTask,
 } from "../state/actions";
 import { detailBack, NARROW_LAYOUT } from "../state/back";
-import { api, commentsOf, data, now, pendingCount, taskIndex } from "../state/store";
+import { api, commentsOf, data, goalList, now, pendingCount, taskIndex } from "../state/store";
+import { effectiveGoal } from "../sync/planning";
 import { dueCountOn } from "../state/selectors";
 import { copyTaskId, copyText, detailWide, pickLocation, pickTask, selectedId, setDetailId, setDetailWide, setDetailWidth, setHandBackRequest, setSelectedId } from "../state/ui";
 import { waitingNames } from "../sync/handback";
@@ -396,6 +402,8 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
               </select>
             </Prop>
 
+            <GoalField task={t()} onChange={(goal_id) => set({ goal_id })} />
+
             <Show when={personal() || t().weight}>
               <Prop icon="target" label="Gewicht">
                 <Choice
@@ -477,6 +485,29 @@ function DetailBody(props: { task: Task; onMount: () => void }) {
                       {deferralsLabel(t().deferrals)}
                       {needsDecision(t()) ? ", beim nächsten Mal entscheiden" : ""}
                     </span>
+                  </Show>
+                </span>
+              </Prop>
+            </Show>
+
+            {/* Heute's plan (design 5.3): the one action that applies. */}
+            <Show when={!isClosed(t().status)}>
+              <Prop icon="sun" label="Heute">
+                <span class="prop-inline today-plan">
+                  <Show when={t().planned_on}>
+                    {(day) => <span class="muted">{plannedLabel(day())}</span>}
+                  </Show>
+                  <Show
+                    when={isInToday(t(), localDate(new Date(now())))}
+                    fallback={
+                      <button class="btn btn-ghost btn-small" onClick={() => planForToday(t().id)}>
+                        {PLAN_FOR_TODAY}
+                      </button>
+                    }
+                  >
+                    <button class="btn btn-ghost btn-small" onClick={() => removeFromToday(t().id)}>
+                      {REMOVE_FROM_TODAY}
+                    </button>
                   </Show>
                 </span>
               </Prop>
@@ -795,6 +826,40 @@ function WaitingOnField(props: { task: Task }) {
   );
 }
 
+const goalName = (g: { name: string; emoji: string | null }) => (g.emoji ? `${g.emoji} ${g.name}` : g.name);
+
+/**
+ * The goal of a task: only active goals and "Ohne Ziel" are offered. A closed own goal is shown as
+ * the current one but not offered again; a subtask without its own goal says whose it follows.
+ */
+function GoalField(props: { task: Task; onChange: (goalId: string | null) => boolean }) {
+  const own = () => {
+    const g = props.task.goal_id ? data.goals[props.task.goal_id] : undefined;
+    return g && !g.deleted ? g : undefined;
+  };
+  const inherited = () => (own() ? null : effectiveGoal(taskIndex(), data.goals, props.task));
+  const active = () => goalList().filter((g) => g.state === "active");
+  const closedOwn = () => (own()?.state === "closed" ? own() : undefined);
+  return (
+    <Show when={active().length > 0 || own() || inherited()}>
+      <Prop icon="star" label="Ziel">
+        <select
+          class="prop-select"
+          aria-label="Ziel"
+          value={own()?.id ?? ""}
+          onChange={(e) => {
+            if (!props.onChange(e.currentTarget.value || null)) e.currentTarget.value = own()?.id ?? "";
+          }}
+        >
+          <option value="">{inherited() ? `Wie die Oberaufgabe: ${goalName(inherited()!)}` : "Ohne Ziel"}</option>
+          <Show when={closedOwn()}>{(g) => <option value={g().id}>{`${goalName(g())} (beendet)`}</option>}</Show>
+          <For each={active()}>{(g) => <option value={g.id}>{goalName(g)}</option>}</For>
+        </select>
+      </Prop>
+    </Show>
+  );
+}
+
 function Prop(props: { icon: IconName; label: string; children: JSX.Element }) {
   return (
     <div class="prop">
@@ -805,6 +870,12 @@ function Prop(props: { icon: IconName; label: string; children: JSX.Element }) {
       <div class="prop-control">{props.children}</div>
     </div>
   );
+}
+
+/** "Eingeplant für heute", "Eingeplant für Fr, 20.11." … */
+function plannedLabel(day: string): string {
+  const label = formatDateLabel(day, new Date(now()));
+  return `Eingeplant für ${/^(Heute|Morgen|Gestern)$/.test(label) ? label.toLowerCase() : label}`;
 }
 
 /** German relative label for the wall time of an HLC. */

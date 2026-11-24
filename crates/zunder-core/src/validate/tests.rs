@@ -1417,3 +1417,28 @@ fn recurrence_prev_is_written_by_the_server_only() {
         RejectCode::InvalidValue,
     );
 }
+
+#[test]
+fn flame_log_is_written_by_the_server_only() {
+    let (state, ids) = fixture();
+    let log = json!([{"start": "2026-11-23T08:00:00Z", "end": "2026-11-23T08:15:00Z"}]);
+    let ops = batch(|b| {
+        b.set_task(ids.inbox_task, "flame_log", log.clone());
+    });
+    let outcome = push(&state, &ops);
+    assert_all_rejected(&outcome, &ops, RejectCode::InvalidValue);
+    assert!(outcome.rejected[0].message.contains("Flammen-Historie"));
+    assert_accepted(&validate_push_as(&state, &ops, NOW, Author::Server));
+    let bad = batch(|b| {
+        b.set_task(
+            ids.inbox_task,
+            "flame_log",
+            json!([{"start": "2026-11-23T08:15:00Z", "end": "2026-11-23T08:00:00Z"}]),
+        );
+    });
+    assert_all_rejected(
+        &validate_push_as(&state, &bad, NOW, Author::Server),
+        &bad,
+        RejectCode::InvalidValue,
+    );
+}

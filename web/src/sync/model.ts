@@ -2,12 +2,15 @@
 // Malformed values (which the server should never accept) fall back to defaults
 // instead of crashing the UI.
 
+import { isDateOnly } from "./dates";
 import type { EntityState } from "./merge";
 import { parseRecurrence } from "./recurrence";
 import {
   AREA_STATES,
   FOR_WHOMS,
+  GOAL_STATES,
   MAX_DEFERRALS,
+  MAX_LEAD_PER_WEEK,
   PHOENIX_ROLES,
   PROJECT_KINDS,
   PROJECT_STATUSES,
@@ -16,7 +19,9 @@ import {
   TASK_TYPES,
   WEIGHTS,
   type Area,
+  type FlameInterval,
   type Comment,
+  type Goal,
   type Hlc,
   type JsonValue,
   type Link,
@@ -83,6 +88,17 @@ export function parsePhoenix(v: JsonValue | undefined): Phoenix | null {
 
 function stringArray(v: JsonValue | undefined): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
+
+/** The finished flames; a malformed list counts as empty (like the core's typed view). */
+function flameLog(v: JsonValue | undefined): FlameInterval[] {
+  if (!Array.isArray(v)) return [];
+  const out: FlameInterval[] = [];
+  for (const x of v) {
+    if (!x || typeof x !== "object" || Array.isArray(x) || typeof x.start !== "string" || typeof x.end !== "string") return [];
+    out.push({ start: x.start, end: x.end });
+  }
+  return out;
 }
 
 export function toArea(e: EntityState): Area {
@@ -153,8 +169,41 @@ export function toTask(e: EntityState): Task {
     for_whom: optionalOneOf(value(e, "for_whom"), FOR_WHOMS),
     deferrals: count(value(e, "deferrals")),
     waiting_on: str(value(e, "waiting_on")),
+    goal_id: str(value(e, "goal_id")),
+    planned_on: plainDate(value(e, "planned_on")),
+    day_rank: str(value(e, "day_rank")),
+    flame_log: flameLog(value(e, "flame_log")),
     ref: str(value(e, "ref")),
     status_hlc: e.fields.status?.hlc ?? min,
+  };
+}
+
+/** A whole number from 1 to MAX_LEAD_PER_WEEK; anything else counts as unset. */
+function leadPerWeek(v: JsonValue | undefined): number | null {
+  return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= MAX_LEAD_PER_WEEK ? v : null;
+}
+
+/** A calendar date YYYY-MM-DD; anything else counts as unset. */
+function plainDate(v: JsonValue | undefined): string | null {
+  return typeof v === "string" && isDateOnly(v) ? v : null;
+}
+
+export function toGoal(e: EntityState): Goal {
+  const { min, max } = hlcRange(e);
+  return {
+    id: e.id,
+    deleted: value(e, "deleted") === true,
+    created_hlc: min,
+    updated_hlc: max,
+    name: str(value(e, "name")) ?? "",
+    emoji: str(value(e, "emoji")),
+    lead: str(value(e, "lead")),
+    lead_per_week: leadPerWeek(value(e, "lead_per_week")),
+    storm: str(value(e, "storm")),
+    starts_on: plainDate(value(e, "starts_on")),
+    ends_on: plainDate(value(e, "ends_on")),
+    state: oneOf(value(e, "state"), GOAL_STATES, "active"),
+    rank: str(value(e, "rank")),
   };
 }
 

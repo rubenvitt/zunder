@@ -204,6 +204,51 @@ fn the_written_instance_carries_the_series_and_nothing_else() {
 }
 
 #[test]
+fn follow_up_keeps_goal_but_not_plan() {
+    let mut w = World::new();
+    let id = w.recurring("Laufen", "2025-10-31");
+    let goal = crate::ids::new_id();
+    w.push(|b| {
+        b.set(EntityKind::Goal, goal, fields::goal::NAME, "Sport");
+        b.set_task(id, fields::task::GOAL_ID, goal.to_string());
+        b.set_task(id, fields::task::PLANNED_ON, "2025-10-09");
+        b.set_task(id, fields::task::DAY_RANK, "a0");
+        b.set_task(
+            id,
+            fields::task::FLAME_LOG,
+            json!([{"start": "2025-10-09T08:00:00Z", "end": "2025-10-09T08:15:00Z"}]),
+        );
+    });
+    let next = w.set_status(id, TaskStatus::Done);
+    assert_eq!(next.len(), 1);
+    let task = w.task(next[0]);
+    assert_eq!(task.goal_id, Some(goal));
+    assert_eq!(task.planned_on, None);
+    assert_eq!(task.day_rank, None);
+    assert!(task.flame_log.is_empty());
+    // The closed instance keeps its own plan and history.
+    let old = w.task(id);
+    assert!(old.planned_on.is_some() && old.day_rank.is_some() && !old.flame_log.is_empty());
+}
+
+#[test]
+fn follow_up_drops_a_deleted_goal() {
+    let mut w = World::new();
+    let id = w.recurring("Laufen", "2025-10-31");
+    let goal = crate::ids::new_id();
+    w.push(|b| {
+        b.set(EntityKind::Goal, goal, fields::goal::NAME, "Sport");
+        b.set_task(id, fields::task::GOAL_ID, goal.to_string());
+    });
+    w.push(|b| {
+        b.set(EntityKind::Goal, goal, fields::DELETED, true);
+    });
+    let next = w.set_status(id, TaskStatus::Done);
+    assert_eq!(next.len(), 1);
+    assert_eq!(w.task(next[0]).goal_id, None);
+}
+
+#[test]
 fn dropping_creates_the_next_instance_too() {
     let mut w = World::new();
     let id = w.recurring("Miete", "2025-10-31");

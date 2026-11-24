@@ -4,13 +4,15 @@
 // crates/zunder-core/tests/vectors) keep both sides in step.
 
 import { isCanonicalId } from "./ids";
-import { isRfc3339, isValidDue, isValidFire } from "./dates";
+import { isDateOnly, isRfc3339, isValidDue, isValidFire } from "./dates";
 import { entityKey, EntityStore, wins, type EntityState } from "./merge";
 import {
   AREA_STATES,
   FIELDS_BY_ENTITY,
   FOR_WHOMS,
+  GOAL_STATES,
   MAX_DEFERRALS,
+  MAX_LEAD_PER_WEEK,
   PHOENIX_ROLES,
   PROJECT_KINDS,
   PROJECT_STATUSES,
@@ -50,6 +52,8 @@ export interface ValidationIssue {
 export const TITLE_MAX = 500;
 /** Most entries in a task's `blocked_by` (core: model::MAX_BLOCKED_BY). */
 export const MAX_BLOCKED_BY = 100;
+/** Most entries in a task's `flame_log` (core: model::MAX_FLAME_LOG). */
+export const MAX_FLAME_LOG = 1000;
 export const MAX_FUTURE_MS = 24 * 60 * 60 * 1000;
 
 export const REQUIRED_FIELDS: Record<EntityKind, readonly string[]> = {
@@ -57,21 +61,24 @@ export const REQUIRED_FIELDS: Record<EntityKind, readonly string[]> = {
   project: ["name", "area_id"],
   task: ["title"],
   comment: ["task_id", "body"],
+  goal: ["name"],
 };
 
-const KIND_LABEL: Record<EntityKind, string> = { area: "Bereich", project: "Projekt", task: "Aufgabe", comment: "Kommentar" };
-const DEFINITE: Record<EntityKind, string> = { area: "Der", project: "Das", task: "Die", comment: "Der" };
+const KIND_LABEL: Record<EntityKind, string> = { area: "Bereich", project: "Projekt", task: "Aufgabe", comment: "Kommentar", goal: "Ziel" };
+const DEFINITE: Record<EntityKind, string> = { area: "Der", project: "Das", task: "Die", comment: "Der", goal: "Das" };
 const INDEFINITE_ACC: Record<EntityKind, string> = {
   area: "einen Bereich",
   project: "ein Projekt",
   task: "eine Aufgabe",
   comment: "einen Kommentar",
+  goal: "ein Ziel",
 };
 const DEPENDENT: Record<EntityKind, string> = {
   area: "noch ein Bereich",
   project: "noch ein Projekt",
   task: "noch eine Aufgabe",
   comment: "noch ein Kommentar",
+  goal: "noch ein Ziel",
 };
 
 export { isCanonicalId } from "./ids";
@@ -144,6 +151,8 @@ type Shape =
   | "body"
   | "bool"
   | "count"
+  | "positive_count"
+  | "date"
   | "id"
   | "location"
   | "due"
@@ -152,6 +161,7 @@ type Shape =
   | "id_list"
   | "links"
   | "phoenix"
+  | "flame_log"
   | "recurrence"
   | "repo"
   | "http_url"
@@ -202,10 +212,26 @@ const SHAPES: Record<EntityKind, Record<string, Shape>> = {
     for_whom: FOR_WHOMS,
     deferrals: "count",
     waiting_on: "title",
+    goal_id: "id",
+    planned_on: "date",
+    day_rank: "text",
+    flame_log: "flame_log",
     ref: "task_ref",
     deleted: "bool",
   },
   comment: { task_id: "id", body: "body", author: "title", deleted: "bool" },
+  goal: {
+    name: "title",
+    emoji: "title",
+    lead: "text",
+    lead_per_week: "positive_count",
+    storm: "title",
+    starts_on: "date",
+    ends_on: "date",
+    state: GOAL_STATES,
+    rank: "text",
+    deleted: "bool",
+  },
 };
 
 const FIELD_LABELS: Record<string, string> = {
@@ -222,6 +248,10 @@ const FIELD_LABELS: Record<string, string> = {
   for_whom: "Für wen (mich, uns oder andere)",
   deferrals: `Aufschübe (ganze Zahl von 0 bis ${MAX_DEFERRALS})`,
   waiting_on: "Wartet auf",
+  goal_id: "Ziel (Ziel-ID)",
+  planned_on: "Geplant für (Datum JJJJ-MM-TT)",
+  day_rank: "Reihenfolge am Tag",
+  flame_log: `Flammen-Historie (Liste von Beginn und Ende, höchstens ${MAX_FLAME_LOG} Einträge)`,
   pr_url: "PR-Link (http(s)-URL)",
   repo: "Repository (owner/name)",
   key: "Schlüssel (Großbuchstaben und Ziffern, z. B. ZUN)",
@@ -231,6 +261,9 @@ const FIELD_LABELS: Record<string, string> = {
   task_id: "Aufgabe",
   body: "Text",
   author: "Autor",
+  lead_per_week: `Mal pro Woche (ganze Zahl von 1 bis ${MAX_LEAD_PER_WEEK})`,
+  starts_on: "Beginn (Datum JJJJ-MM-TT)",
+  ends_on: "Ende (Datum JJJJ-MM-TT)",
 };
 
 const label = (field: string) => FIELD_LABELS[field] ?? `„${field}“`;
@@ -246,6 +279,10 @@ function shapeOk(shape: Shape, v: JsonValue): boolean {
       return typeof v === "boolean";
     case "count":
       return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= MAX_DEFERRALS;
+    case "positive_count":
+      return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= MAX_LEAD_PER_WEEK;
+    case "date":
+      return typeof v === "string" && isDateOnly(v);
     case "id":
       return isCanonicalId(v);
     case "location":
@@ -278,6 +315,21 @@ function shapeOk(shape: Shape, v: JsonValue): boolean {
         (PHOENIX_ROLES as readonly string[]).includes(v.role) &&
         typeof v.fire === "string" &&
         isValidFire(v.fire)
+      );
+    case "flame_log":
+      return (
+        Array.isArray(v) &&
+        v.length <= MAX_FLAME_LOG &&
+        v.every(
+          (x) =>
+            isObject(x) &&
+            onlyKeys(x, ["start", "end"]) &&
+            typeof x.start === "string" &&
+            typeof x.end === "string" &&
+            isRfc3339(x.start) &&
+            isRfc3339(x.end) &&
+            Date.parse(x.end) > Date.parse(x.start),
+        )
       );
     case "recurrence":
       return recurrenceProblem(v) === null;
@@ -564,6 +616,13 @@ class Checker {
     if (isCanonicalId(task) && this.changedAny("comment", c.id, via)) this.brokenReference("comment", c.id, via, "task", task);
   }
 
+  /** `goal_id` must name a live goal when written; deleting the goal later is allowed (core: Checker::check_goal). */
+  private checkGoal(t: EntityState): void {
+    const goal = strValue(t, "goal_id");
+    if (!isCanonicalId(goal) || !this.changedAny("task", t.id, ["goal_id"]) || this.scratch.live("goal", goal)) return;
+    this.blame(keyOf("task", t.id), "invalid_reference", this.scratch.entity("goal", goal) ? "Das Ziel ist gelöscht." : "Das Ziel existiert nicht.");
+  }
+
   private checkTask(t: EntityState): void {
     const key = keyOf("task", t.id);
     const refFields = ["parent_id", "location", "deleted"];
@@ -578,6 +637,7 @@ class Checker {
       const tgt = target(ownLocation(t));
       if (tgt) this.brokenReference("task", t.id, refFields, tgt[0], tgt[1]);
     }
+    this.checkGoal(t);
     if (this.changedAny("task", t.id, ["blocked_by"])) this.checkBlockedBy(t);
     if (value(t, "recurrence") !== undefined && this.changedAny("task", t.id, ["recurrence", "due", "parent_id"])) {
       this.checkRecurring(t);
@@ -770,6 +830,7 @@ function neighbourhood(scratch: View, changed: ReadonlyMap<Key, ReadonlySet<stri
 const SERVER_ONLY = new Map<string, string>([
   ["ref", "Die Kennung („ref“) vergibt der Server, sobald die Aufgabe in einem Projekt mit Schlüssel liegt."],
   ["recurrence_prev", "Die Vorgängerin in einer Serie („recurrence_prev“) setzt nur der Server, wenn er die nächste Instanz anlegt."],
+  ["flame_log", "Die Flammen-Historie („flame_log“) schreibt nur der Server, wenn eine Flamme endet."],
 ]);
 
 /**
@@ -787,7 +848,7 @@ export function validateOps(base: EntityStore, ops: readonly Op[], nowMs: number
     set.add(op.entity);
   }
   const failed = new Set<Key>();
-  const otherKinds = (kind: EntityKind, id: string) => (["area", "project", "task", "comment"] as const).filter((k) => k !== kind && base.has(k, id));
+  const otherKinds = (kind: EntityKind, id: string) => (["area", "project", "task", "comment", "goal"] as const).filter((k) => k !== kind && base.has(k, id));
   for (const op of ops) {
     const key = keyOf(op.entity, op.entity_id);
     if (failed.has(key)) continue;

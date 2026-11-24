@@ -711,3 +711,127 @@ async fn timing_settings_override_the_environment() {
     mcp_ok(&s, &t, "start_flame", json!({"task_id": b})).await;
     assert_eq!(mock.requests()[0].body["project"], "/projects/1");
 }
+
+// ----- Flammen-Historie (flame_log) -----------------------------------------------
+
+fn flame_log(s: &TestServer, id: &str) -> Vec<zunder_core::FlameInterval> {
+    let id = zunder_core::ids::Id::parse(id).unwrap();
+    s.app.read(|st| st.task(id).unwrap().flame_log)
+}
+
+async fn http_flame(s: &TestServer, id: &str, action: &str) {
+    let r = s
+        .request(
+            axum::http::Method::POST,
+            &format!("/api/tasks/{id}/flame/{action}"),
+            Auth::Bearer(BOOTSTRAP),
+            None,
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+}
+
+#[tokio::test]
+async fn stop_appends_to_flame_log() {
+    let s = TestServer::new().await;
+    let t = api_token(&s, "claude").await;
+    let a = task(&s, &t, "Lernen").await;
+    assert!(flame_log(&s, &a).is_empty());
+
+    http_flame(&s, &a, "start").await;
+    http_flame(&s, &a, "stop").await;
+    let log = flame_log(&s, &a);
+    assert_eq!(log.len(), 1);
+    assert!(log[0].end > log[0].start);
+
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    http_flame(&s, &a, "start").await;
+    http_flame(&s, &a, "stop").await;
+    let log2 = flame_log(&s, &a);
+    assert_eq!(log2.len(), 2);
+    assert_eq!(log2[0], log[0]);
+    assert!(log2[1].start >= log[0].end);
+}
+
+#[tokio::test]
+async fn start_elsewhere_logs_previous_flame() {
+    let s = TestServer::new().await;
+    let t = api_token(&s, "claude").await;
+    let a = task(&s, &t, "Lernen").await;
+    let b = task(&s, &t, "Üben").await;
+    http_flame(&s, &a, "start").await;
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    http_flame(&s, &b, "start").await;
+    let log = flame_log(&s, &a);
+    assert_eq!(log.len(), 1);
+    assert!(log[0].end > log[0].start);
+    assert!(flame_log(&s, &b).is_empty());
+}
+
+#[tokio::test]
+async fn backfill_reconstructs_old_flames() {
+    use zunder_core::EntityKind;
+    use zunder_server::flame_backfill::backfill_flame_log;
+    use zunder_server::Source;
+
+    let s = TestServer::new().await;
+    let t = api_token(&s, "claude").await;
+    let a = task(&s, &t, "Alt").await;
+    let id = zunder_core::ids::Id::parse(&a).unwrap();
+
+    // Ops as written before the change: start (clearing the end), end, ...
+    for (field, value) in [
+        ("flame_started_at", Some("2026-10-01T09:00:00Z")),
+        ("flame_ended_at", Some("2026-10-01T09:30:00Z")),
+        ("flame_started_at", Some("2026-10-02T10:00:00Z")),
+        ("flame_ended_at", Some("2026-10-02T10:45:00Z")),
+        ("flame_started_at", Some("2026-10-03T11:00:00Z")),
+    ] {
+        let (_, r) = s
+            .app
+            .mutate(Source::Server, move |_st, batch| {
+                match value {
+                    Some(v) => batch.set_task(id, field, v),
+                    None => batch.clear(EntityKind::Task, id, field),
+                };
+                if field == "flame_started_at" {
+                    batch.clear(EntityKind::Task, id, "flame_ended_at");
+                }
+                Ok(())
+            })
+            .await
+            .unwrap();
+        assert!(r.is_fully_accepted());
+    }
+    assert!(flame_log(&s, &a).is_empty());
+
+    assert_eq!(backfill_flame_log(&s.app).await.unwrap(), 1);
+    let log = flame_log(&s, &a);
+    assert_eq!(log.len(), 2);
+    assert_eq!(log[0].start.to_string(), "2026-10-01 9:00:00.0 +00:00:00");
+    assert_eq!(log[0].end.to_string(), "2026-10-01 9:30:00.0 +00:00:00");
+    assert_eq!(log[1].end.to_string(), "2026-10-02 10:45:00.0 +00:00:00");
+
+    assert_eq!(backfill_flame_log(&s.app).await.unwrap(), 0);
+    assert_eq!(flame_log(&s, &a).len(), 2);
+}
+
+#[tokio::test]
+async fn client_cannot_write_flame_log() {
+    let s = TestServer::new().await;
+    let t = api_token(&s, "claude").await;
+    let a = task(&s, &t, "Lernen").await;
+    let id = zunder_core::ids::Id::parse(&a).unwrap();
+    let mut clock = common::client_clock();
+    let ops = common::ops(&mut clock, |b| {
+        b.set_task(
+            id,
+            "flame_log",
+            json!([{"start": "2026-10-01T09:00:00Z", "end": "2026-10-01T09:30:00Z"}]),
+        );
+    });
+    let r = s.push(Auth::Bearer(&t), &ops).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.text());
+    assert_eq!(r.json()["rejected"][0]["code"], "invalid_value");
+    assert!(flame_log(&s, &a).is_empty());
+}
