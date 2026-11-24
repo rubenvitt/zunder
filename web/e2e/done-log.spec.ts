@@ -142,3 +142,24 @@ test("Ältere zeigen lädt weitere Tage", async ({ page }) => {
     await remove(page, ids);
   }
 });
+
+test("Zeilen bleiben beim Neuberechnen der Uhr stehen", async ({ page }) => {
+  const s = suffix();
+  const seeder = new Seeder();
+  const ids = [seeder.task(`Fokus ${s}`, { location: loose, status: "done" })];
+  await seeder.push(page);
+  try {
+    await page.clock.install();
+    await openApp(page, "#/erledigt");
+    const button = logRow(page, `Fokus ${s}`).locator(".log-open");
+    await button.focus();
+    await expect(button).toBeFocused();
+    await button.evaluate((el) => ((el as HTMLElement & { marker?: string }).marker = "same"));
+    // The store's clock ticks every 30 s and recomputes the log.
+    await page.clock.fastForward(31_000);
+    await expect(button).toBeFocused();
+    expect(await button.evaluate((el) => (el as HTMLElement & { marker?: string }).marker)).toBe("same");
+  } finally {
+    await remove(page, ids);
+  }
+});

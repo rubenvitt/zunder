@@ -42,6 +42,8 @@ export function DoneLogView() {
   const all = createMemo(() => doneLog(taskIndex(), data.projects, "0000-01-01", localDate(new Date(now())), now()));
   const from = createMemo(() => localDate(addDays(new Date(now()), 1 - days())));
   const shown = createMemo(() => all().filter((day) => day.date >= from()));
+  const byDate = createMemo(() => new Map(shown().map((day) => [day.date, day])));
+  const dates = createMemo(() => shown().map((day) => day.date));
   const hasOlder = createMemo(() => all().some((day) => day.date < from()));
 
   return (
@@ -51,30 +53,37 @@ export function DoneLogView() {
       </header>
       <Show when={shown().length > 0} fallback={<EmptyState icon="check" title="Hier erscheint, was du erledigst." />}>
         <div class="log-days">
-          <For each={shown()}>
-            {(day) => (
-              <section class="log-day" aria-label={dayLabel(day.date)}>
-                <h2 class="log-day-head">
-                  <span>{dayLabel(day.date)}</span>
-                  <Show when={day.minutes > 0}>
-                    <span class="log-day-minutes muted">{day.minutes} min</span>
-                  </Show>
-                </h2>
-                <Show when={day.done.length > 0}>
-                  <ul class="log-list log-done">
-                    <For each={day.done}>{(entry) => <Entry entry={entry} />}</For>
-                  </ul>
-                </Show>
-                <Show when={day.worked.length > 0}>
-                  <div class="log-worked">
-                    <h3 class="log-sub">Daran gearbeitet</h3>
-                    <ul class="log-list">
-                      <For each={day.worked}>{(entry) => <Entry entry={entry} worked />}</For>
+          {/* The clock recomputes the log every 30 s with new objects; rows are keyed by date and task id
+              (strings), so they stay in place and keep focus and hover. */}
+          <For each={dates()}>
+            {(date) => {
+              const day = () => byDate().get(date);
+              const ids = (list: "done" | "worked") => day()?.[list].map((e) => e.task.id) ?? [];
+              const entry = (list: "done" | "worked", id: string) => day()?.[list].find((e) => e.task.id === id);
+              return (
+                <section class="log-day" aria-label={dayLabel(date)}>
+                  <h2 class="log-day-head">
+                    <span>{dayLabel(date)}</span>
+                    <Show when={(day()?.minutes ?? 0) > 0}>
+                      <span class="log-day-minutes muted">{day()!.minutes} min</span>
+                    </Show>
+                  </h2>
+                  <Show when={ids("done").length > 0}>
+                    <ul class="log-list log-done">
+                      <For each={ids("done")}>{(id) => <Show when={entry("done", id)}>{(e) => <Entry entry={e()} />}</Show>}</For>
                     </ul>
-                  </div>
-                </Show>
-              </section>
-            )}
+                  </Show>
+                  <Show when={ids("worked").length > 0}>
+                    <div class="log-worked">
+                      <h3 class="log-sub">Daran gearbeitet</h3>
+                      <ul class="log-list">
+                        <For each={ids("worked")}>{(id) => <Show when={entry("worked", id)}>{(e) => <Entry entry={e()} worked />}</Show>}</For>
+                      </ul>
+                    </div>
+                  </Show>
+                </section>
+              );
+            }}
           </For>
         </div>
       </Show>
